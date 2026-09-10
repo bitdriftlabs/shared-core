@@ -42,7 +42,7 @@ use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::{OffsetDateTimeExt as _, TimeDurationExt};
 use bd_versioned_kv::{RetentionHandle, RetentionRegistry};
 use bd_workflows::config::FlushBufferId;
-use bd_workflows::engine::ProcessLocalPendingFlushState;
+use bd_workflows::engine::{PendingFlushStateTestHook, ProcessLocalPendingFlushState};
 use core::panic;
 use futures_util::poll;
 use protobuf::{CodedOutputStream, Message};
@@ -51,7 +51,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::sync::mpsc::{
+  Receiver,
+  Sender,
+  UnboundedReceiver,
+  UnboundedSender,
+  channel,
+  unbounded_channel,
+};
 
 fn make_flags(runtime_loader: &ConfigLoader) -> Flags {
   Flags {
@@ -670,12 +677,23 @@ fn make_test_log(t: time::OffsetDateTime) -> Vec<u8> {
   output
 }
 
+struct PendingFlushStateTestEvents {
+  state_changed_tx: UnboundedSender<(FlushBufferId, bool)>,
+}
+
+impl PendingFlushStateTestHook for PendingFlushStateTestEvents {
+  fn flush_state_changed(&self, flush_id: FlushBufferId, is_pending: bool) {
+    let _ignored = self.state_changed_tx.send((flush_id, is_pending));
+  }
+}
+
 struct SetupMultiConsumer {
   log_upload_rx: Receiver<DataUpload>,
   shutdown_trigger: ComponentShutdownTrigger,
   buffer_event_tx: Sender<BufferEventWithResponse>,
   trigger_upload_tx: Sender<TriggerUpload>,
   process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
+  pending_flush_state_rx: UnboundedReceiver<(FlushBufferId, bool)>,
   runtime_loader: Arc<ConfigLoader>,
   stats: Collector,
   sdk_directory: PathBuf,
@@ -696,7 +714,12 @@ impl SetupMultiConsumer {
 
     let (log_upload_tx, log_upload_rx) = tokio::sync::mpsc::channel(1);
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
-    let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
+    let (pending_flush_state_tx, pending_flush_state_rx) = unbounded_channel();
+    let process_local_pending_flush_state = Arc::new(
+      ProcessLocalPendingFlushState::new_with_test_hook(Arc::new(PendingFlushStateTestEvents {
+        state_changed_tx: pending_flush_state_tx,
+      })),
+    );
 
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let config_loader = ConfigLoader::new(&sdk_directory);
@@ -745,6 +768,7 @@ impl SetupMultiConsumer {
       buffer_event_tx,
       trigger_upload_tx,
       process_local_pending_flush_state,
+      pending_flush_state_rx,
       runtime_loader: config_loader,
       stats,
       sdk_directory,
@@ -846,6 +870,15 @@ impl SetupMultiConsumer {
 
   fn flush_is_pending(&self, flush_id: &FlushBufferId) -> bool {
     self.process_local_pending_flush_state.is_pending(flush_id)
+  }
+
+  async fn wait_for_flush_state(&mut self, flush_id: &FlushBufferId, expected_pending: bool) {
+    loop {
+      let (changed_flush_id, is_pending) = self.pending_flush_state_rx.recv().await.unwrap();
+      if &changed_flush_id == flush_id && is_pending == expected_pending {
+        return;
+      }
+    }
   }
 
   async fn next_upload(&mut self) -> Tracked<ApiRequest, UploadResponse> {
@@ -2176,6 +2209,8 @@ async fn remote_streaming_activation_channel_closure_preserves_flush_completion(
     .await
     .unwrap();
 
+  setup.wait_for_flush_state(&flush_id, true).await;
+  assert!(setup.flush_is_pending(&flush_id));
   let upload = setup.next_upload().await;
   assert!(setup.flush_is_pending(&flush_id));
 
@@ -2287,6 +2322,8 @@ async fn remote_streaming_activation_waits_for_channel_capacity_before_completin
     .await
     .unwrap();
 
+  setup.wait_for_flush_state(&flush_id, true).await;
+  assert!(setup.flush_is_pending(&flush_id));
   let upload = setup.next_upload().await;
   assert!(setup.flush_is_pending(&flush_id));
   upload
@@ -2297,9 +2334,6 @@ async fn remote_streaming_activation_waits_for_channel_capacity_before_completin
     })
     .unwrap();
 
-  for _ in 0 .. 100 {
-    tokio::task::yield_now().await;
-  }
   assert!(setup.flush_is_pending(&flush_id));
 
   let queued_request = remote_flush_streaming_rx.recv().await.unwrap();
@@ -2309,16 +2343,10 @@ async fn remote_streaming_activation_waits_for_channel_capacity_before_completin
   assert_eq!(activated_request.id, "flush-1");
   assert_eq!(activated_request.buffer_ids, vec!["buffer".to_string()]);
 
-  for _ in 0 .. 100 {
-    if !setup.flush_is_pending(&flush_id) {
-      setup.shutdown().await;
-      return;
-    }
+  setup.wait_for_flush_state(&flush_id, false).await;
+  assert!(!setup.flush_is_pending(&flush_id));
 
-    tokio::task::yield_now().await;
-  }
-
-  panic!("expected flush completion tracker to clear once remote streaming activation was sent");
+  setup.shutdown().await;
 }
 
 #[tokio::test]

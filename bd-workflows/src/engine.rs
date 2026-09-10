@@ -83,22 +83,57 @@ pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.12.bin";
 /// `PendingTriggerUploadsStore` remains the durable source of truth across restart. The logger
 /// projects that persisted state into this in-memory set during startup so the workflow engine can
 /// cheaply decide whether streaming is still waiting on its originating flush to complete.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ProcessLocalPendingFlushState {
   pending_flushes: RwLock<HashSet<FlushBufferId>>,
+  #[cfg(feature = "test")]
+  test_hook: Option<Arc<dyn PendingFlushStateTestHook>>,
+}
+
+#[cfg(feature = "test")]
+pub trait PendingFlushStateTestHook: Send + Sync {
+  fn flush_state_changed(&self, flush_id: FlushBufferId, is_pending: bool);
 }
 
 impl ProcessLocalPendingFlushState {
+  #[cfg(feature = "test")]
+  pub fn new_with_test_hook(test_hook: Arc<dyn PendingFlushStateTestHook>) -> Self {
+    Self {
+      pending_flushes: RwLock::default(),
+      test_hook: Some(test_hook),
+    }
+  }
+
   pub fn replace_pending_flushes(&self, flush_ids: impl IntoIterator<Item = FlushBufferId>) {
     *self.pending_flushes.write() = flush_ids.into_iter().collect();
   }
 
   pub fn mark_pending(&self, flush_id: FlushBufferId) {
-    self.pending_flushes.write().insert(flush_id);
+    #[cfg(feature = "test")]
+    {
+      let changed = self.pending_flushes.write().insert(flush_id.clone());
+      if changed && let Some(test_hook) = &self.test_hook {
+        test_hook.flush_state_changed(flush_id, true);
+      }
+    }
+    #[cfg(not(feature = "test"))]
+    {
+      self.pending_flushes.write().insert(flush_id);
+    }
   }
 
   pub fn mark_completed(&self, flush_id: &FlushBufferId) {
-    self.pending_flushes.write().remove(flush_id);
+    #[cfg(feature = "test")]
+    {
+      let changed = self.pending_flushes.write().remove(flush_id);
+      if changed && let Some(test_hook) = &self.test_hook {
+        test_hook.flush_state_changed(flush_id.clone(), false);
+      }
+    }
+    #[cfg(not(feature = "test"))]
+    {
+      self.pending_flushes.write().remove(flush_id);
+    }
   }
 
   pub fn is_pending(&self, flush_id: &FlushBufferId) -> bool {

@@ -2731,10 +2731,8 @@ fn remote_buffer_upload_with_streaming_matches_workflow_streaming_behavior() {
   // Wait until the remote action has installed its streaming route before emitting logs for it.
   setup.wait_for_remote_streaming_action_processing();
 
-  // Streaming becomes active only after the originating trigger upload completes. Its log-count
-  // termination is also intentionally held until that completion is visible to the workflow
-  // engine, so synchronize both sides before exercising the steady-state behavior.
-  setup.wait_for_remote_streaming_action_processing();
+  // Activation is delivered before the originating trigger upload is marked complete. Wait for
+  // that completion before exercising the steady-state streaming behavior.
   setup.wait_for_remote_streaming_trigger_upload_completion();
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
