@@ -1454,12 +1454,40 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
+        let persistent_value = persistent_field_value(value.clone());
+        if let Err(e) = state_store
+          .insert(Scope::CustomFields, key.clone(), persistent_value)
+          .await
+        {
+          // Capacity limits only prevent the virtual-state overlay. Preserve the established
+          // inline-field behavior so the current process still emits and matches this field.
+          log::warn!("failed to persist custom log field ({key:?}): {e}");
+        }
         if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value) {
           log::warn!("failed to add log field ({key:?}): {e}");
         }
       },
       LoggerControl::UpdateOotbLogField(key, value) => {
-        self.metadata_collector.update_ootb_field(key.into(), value);
+        let persistent_value = persistent_field_value(value.clone());
+        if let Err(e) = state_store
+          .insert(Scope::OotbFields, key.clone(), persistent_value)
+          .await
+        {
+          log::warn!("failed to persist OOTB log field ({key:?}): {e}");
+          // A rejected replacement must not leave an older OOTB overlay above the inline field.
+          // `remove` falls back to bounded in-memory state when its durable tombstone cannot fit.
+          if let Err(e) = state_store.remove(Scope::OotbFields, &key).await {
+            log::warn!("failed to clear stale OOTB log field ({key:?}): {e}");
+          }
+        }
+
+        self
+          .metadata_collector
+          .update_ootb_field(key.clone().into(), value);
+
+        if let Err(e) = state_store.remove(Scope::CustomFields, &key).await {
+          log::warn!("failed to remove shadowed custom log field ({key:?}): {e}");
+        }
       },
       LoggerControl::RemoveLogField(field_name) => {
         self.metadata_collector.remove_field(field_name.into());

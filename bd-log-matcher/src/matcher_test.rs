@@ -1617,6 +1617,25 @@ fn virtual_state_fields_preserve_matching_field_fallback() {
 }
 
 #[test]
+fn virtual_state_fields_preserve_inline_boolean_string_semantics() {
+  let mut state = bd_state::InMemoryStateReader::default();
+  state.insert(
+    bd_state::Scope::OotbFields,
+    "enabled",
+    persisted_log_field_state_value(DataValue::Boolean(true)),
+  );
+
+  assert!(
+    field_value_with_state(
+      FieldsRef::new(&LogFields::default(), &LogFields::default()),
+      &state,
+      "enabled",
+    )
+    .is_none()
+  );
+}
+
+#[test]
 fn virtual_state_fields_support_json_path_matching() {
   let matcher = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "payload".to_string(),

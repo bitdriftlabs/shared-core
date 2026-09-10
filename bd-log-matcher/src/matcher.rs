@@ -450,7 +450,7 @@ impl<'a> ResolvedFieldValue<'a> {
   }
 }
 
-/// Converts a state value into the string representation used by field matchers and extractors.
+/// Converts a state value into the string representation used by state matchers and extractors.
 ///
 /// State-backed custom and OOTB fields retain their logging `Data` representation, so this reads
 /// directly from the protobuf instead of allocating an intermediate `DataValue`.
@@ -471,6 +471,18 @@ pub fn state_value_as_cow(value: &bd_state::Value) -> Option<Cow<'_, str>> {
     },
     None => None,
   }
+}
+
+/// Views a logging `Data` value from a state entry with `DataValue` string semantics.
+///
+/// Virtual fields are only written as `Value_type::Data`, and must preserve the behavior of the
+/// equivalent inline `DataValue`. In particular, booleans are not string-matchable log fields.
+fn persisted_log_field_as_cow(value: &bd_state::Value) -> Option<Cow<'_, str>> {
+  let Value_type::Data(data) = value.value_type.as_ref()? else {
+    return None;
+  };
+
+  data_to_string_value(data)
 }
 
 /// Resolves a field using the metadata collector's persistent-field precedence.
@@ -511,13 +523,13 @@ pub fn field_value_with_state<'a>(
   // that, retain FieldsRef::field_value's captured-to-matching-only fallback before considering
   // the lowest-priority custom state layer.
   if let Some(value) = state.get(Scope::OotbFields, field_key) {
-    return state_value_as_cow(value);
+    return persisted_log_field_as_cow(value);
   }
 
   fields.field_value(field_key).or_else(|| {
     state
       .get(Scope::CustomFields, field_key)
-      .and_then(state_value_as_cow)
+      .and_then(persisted_log_field_as_cow)
   })
 }
 

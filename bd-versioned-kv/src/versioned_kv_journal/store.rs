@@ -1467,8 +1467,10 @@ impl VersionedKVStore {
   /// Returns `None` if the key didn't exist, otherwise returns the timestamp and old value.
   ///
   /// # Errors
-  /// If the persistent journal encounters a system error, the store transitions to bounded
-  /// in-memory mode and removes the value from the live state.
+  /// If the persistent journal cannot record the deletion due to a system error or exhausted
+  /// journal capacity, the store transitions to bounded in-memory mode and removes the value
+  /// from live state. A removal reduces live state, so leaving a stale value visible is worse
+  /// than losing durability for the rest of the process.
   pub async fn remove(
     &mut self,
     scope: Scope,
@@ -1482,6 +1484,12 @@ impl VersionedKVStore {
           return Ok(result);
         },
         Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
+        Err(UpdateError::CapacityExceeded) => {
+          let error = anyhow::anyhow!(
+            "journal capacity prevented recording a state deletion; retaining state in memory"
+          );
+          self.fallback_to_in_memory(&error);
+        },
         Err(error) => return Err(error),
       }
     }
