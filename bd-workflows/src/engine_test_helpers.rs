@@ -477,8 +477,10 @@ pub fn make_state_change_rule(
         bd_state::Scope::FeatureFlagExposure => StateScope::FEATURE_FLAG.into(),
         bd_state::Scope::GlobalState => StateScope::GLOBAL_STATE.into(),
         bd_state::Scope::System => StateScope::SYSTEM.into(),
+        // Virtual log fields never produce state changes. Leave the generated test config
+        // invalid when one is requested so normal configuration validation rejects it.
         bd_state::Scope::CustomFields | bd_state::Scope::OotbFields => {
-          unreachable!("virtual log fields do not produce workflow state changes")
+          StateScope::UNSPECIFIED.into()
         },
       },
       key: key.to_string(),
