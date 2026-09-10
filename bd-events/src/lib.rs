@@ -106,4 +106,17 @@ impl Listener {
       }
     }
   }
+
+  /// Stops the platform target when the owning logger is permanently shutting down.
+  ///
+  /// `run_with_shutdown` deliberately preserves an active target so a caller can restart its
+  /// listener future without re-registering platform callbacks. Logger teardown is terminal,
+  /// however, and must unregister those callbacks before the platform frees its logger handle.
+  pub fn shutdown(&mut self) {
+    if self.target_is_active {
+      log::debug!("events listener stop on shutdown");
+      self.target.stop();
+      self.target_is_active = false;
+    }
+  }
 }
