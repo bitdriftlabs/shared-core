@@ -1182,6 +1182,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       }
     }
 
+    // The listener future is cancelled when this loop exits, so it cannot run its own shutdown
+    // path. Stop platform callbacks while the logger and its platform handle are still alive.
+    self.events_listener.shutdown();
     self.event_buffer.close();
     self
   }
