@@ -12,8 +12,9 @@ mod metrics_test;
 use crate::config::{ActionEmitMetric, MetricMultiTag, TagValue};
 use crate::engine::EmitMetricActionCount;
 use crate::workflow::{TriggeredActionEmitSankey, WorkflowEvent};
-use bd_log_matcher::matcher::{field_value_with_state, state_value_as_cow};
+use bd_log_matcher::matcher::field_value_with_state;
 use bd_log_primitives::FieldsRef;
+use bd_state::state_value_as_cow;
 use bd_stats_common::{Counter, Histogram, MetricType};
 use bd_workflow_stats::StatsCollector;
 use std::borrow::Cow;
@@ -105,24 +106,8 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
             value,
             |timestamped| &timestamped.value,
           ),
-          bd_state::Scope::CustomFields => self.emit_multi_tag_matches(
-            action,
-            count,
-            &base_tags,
-            multi_tag,
-            scoped_maps.custom_fields.iter(),
-            value,
-            |timestamped| &timestamped.value,
-          ),
-          bd_state::Scope::OotbFields => self.emit_multi_tag_matches(
-            action,
-            count,
-            &base_tags,
-            multi_tag,
-            scoped_maps.ootb_fields.iter(),
-            value,
-            |timestamped| &timestamped.value,
-          ),
+          // Virtual log fields deliberately do not participate in state-driven workflows.
+          bd_state::Scope::CustomFields | bd_state::Scope::OotbFields => false,
         };
 
         if matched_any {

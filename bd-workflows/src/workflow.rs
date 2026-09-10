@@ -22,7 +22,7 @@ use crate::config::{
   WorkflowDebugMode,
 };
 use crate::generate_log::generate_log_action;
-use bd_log_matcher::matcher::{MatchContext, field_value_with_state, state_value_as_cow};
+use bd_log_matcher::matcher::{MatchContext, field_value_with_state};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, Log, log_level};
 use bd_proto::protos::logging::payload::LogType;

@@ -1475,62 +1475,23 @@ fn persisted_log_field_state_value(value: DataValue) -> bd_state::Value {
 }
 
 #[test]
-fn custom_and_ootb_state_fields_preserve_typed_values_for_matching() {
-  let mut state = bd_state::InMemoryStateReader::default();
-  state.insert(
-    bd_state::Scope::CustomFields,
-    "custom_count",
-    persisted_log_field_state_value(DataValue::I64(42)),
-  );
-  state.insert(
-    bd_state::Scope::OotbFields,
-    "ootb_version",
-    persisted_log_field_state_value(DataValue::String("1.2.3".to_string())),
-  );
-  state.insert(
-    bd_state::Scope::OotbFields,
-    "ootb_ratio",
-    persisted_log_field_state_value(DataValue::Double(
-      NotNan::new(0.75).expect("test value must not be NaN"),
-    )),
-  );
-  state.insert(
-    bd_state::Scope::OotbFields,
-    "ootb_enabled",
-    persisted_log_field_state_value(DataValue::Boolean(true)),
-  );
+fn custom_field_state_scopes_are_unsupported() {
+  for scope in [StateScope::CUSTOM_FIELDS, StateScope::OOTB_FIELDS] {
+    let matcher = simple_log_matcher(StateMatch(base_log_matcher::StateMatch {
+      scope: scope.into(),
+      state_key: "field".to_string(),
+      state_value_match: MessageField::from_option(Some(
+        bd_proto::protos::state::matcher::StateValueMatch {
+          value_match: Some(state_value_match::Value_match::IsSetMatch(
+            bd_proto::protos::value_matcher::value_matcher::IsSetMatch::default(),
+          )),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    }));
 
-  for matcher in [
-    make_int_state_matcher_in_scope(
-      StateScope::CUSTOM_FIELDS,
-      "custom_count",
-      Operator::OPERATOR_EQUALS,
-      42,
-    ),
-    make_string_state_matcher(
-      StateScope::OOTB_FIELDS,
-      "ootb_version",
-      Operator::OPERATOR_EQUALS,
-      "1.2.3",
-    ),
-    make_double_state_matcher_in_scope(
-      StateScope::OOTB_FIELDS,
-      "ootb_ratio",
-      Operator::OPERATOR_EQUALS,
-      0.75,
-    ),
-    make_string_state_matcher(
-      StateScope::OOTB_FIELDS,
-      "ootb_enabled",
-      Operator::OPERATOR_EQUALS,
-      "true",
-    ),
-  ] {
-    assert!(
-      TestMatcher::new(&matcher)
-        .expect("state matcher should be valid")
-        .match_log_with_state(TypedLogLevel::Debug, LogType::NORMAL, "foo", [], &state)
-    );
+    assert!(TestMatcher::new(&matcher).is_err());
   }
 }
 
@@ -1818,18 +1779,9 @@ fn make_string_feature_flag_matcher(
   operator: Operator,
   match_value: &str,
 ) -> LogMatcher {
-  make_string_state_matcher(StateScope::FEATURE_FLAG, flag_name, operator, match_value)
-}
-
-fn make_string_state_matcher(
-  scope: StateScope,
-  state_key: &str,
-  operator: Operator,
-  match_value: &str,
-) -> LogMatcher {
   simple_log_matcher(StateMatch(base_log_matcher::StateMatch {
-    scope: scope.into(),
-    state_key: state_key.to_string(),
+    scope: StateScope::FEATURE_FLAG.into(),
+    state_key: flag_name.to_string(),
     state_value_match: MessageField::from_option(Some(
       bd_proto::protos::state::matcher::StateValueMatch {
         value_match: Some(state_value_match::Value_match::StringValueMatch(
@@ -1865,17 +1817,8 @@ fn make_feature_flag_is_set_matcher(flag_name: &str) -> LogMatcher {
 }
 
 fn make_int_state_matcher(state_key: &str, operator: Operator, match_value: i32) -> LogMatcher {
-  make_int_state_matcher_in_scope(StateScope::FEATURE_FLAG, state_key, operator, match_value)
-}
-
-fn make_int_state_matcher_in_scope(
-  scope: StateScope,
-  state_key: &str,
-  operator: Operator,
-  match_value: i32,
-) -> LogMatcher {
   simple_log_matcher(StateMatch(base_log_matcher::StateMatch {
-    scope: scope.into(),
+    scope: StateScope::FEATURE_FLAG.into(),
     state_key: state_key.to_string(),
     state_value_match: MessageField::from_option(Some(
       bd_proto::protos::state::matcher::StateValueMatch {
@@ -1894,17 +1837,8 @@ fn make_int_state_matcher_in_scope(
 }
 
 fn make_double_state_matcher(state_key: &str, operator: Operator, match_value: f64) -> LogMatcher {
-  make_double_state_matcher_in_scope(StateScope::FEATURE_FLAG, state_key, operator, match_value)
-}
-
-fn make_double_state_matcher_in_scope(
-  scope: StateScope,
-  state_key: &str,
-  operator: Operator,
-  match_value: f64,
-) -> LogMatcher {
   simple_log_matcher(StateMatch(base_log_matcher::StateMatch {
-    scope: scope.into(),
+    scope: StateScope::FEATURE_FLAG.into(),
     state_key: state_key.to_string(),
     state_value_match: MessageField::from_option(Some(
       bd_proto::protos::state::matcher::StateValueMatch {

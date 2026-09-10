@@ -56,7 +56,7 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   KeyOrIndex,
   key_or_index,
 };
-use bd_state::{Scope, Value_type};
+use bd_state::{Scope, Value_type, state_value_as_cow};
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use rand::RngExt;
@@ -450,29 +450,6 @@ impl<'a> ResolvedFieldValue<'a> {
   }
 }
 
-/// Converts a state value into the string representation used by state matchers and extractors.
-///
-/// State-backed custom and OOTB fields retain their logging `Data` representation, so this reads
-/// directly from the protobuf instead of allocating an intermediate `DataValue`.
-#[must_use]
-pub fn state_value_as_cow(value: &bd_state::Value) -> Option<Cow<'_, str>> {
-  use bd_state::Value_type;
-
-  match value.value_type.as_ref() {
-    Some(Value_type::StringValue(value)) => Some(Cow::Borrowed(value.as_str())),
-    Some(Value_type::IntValue(value)) => Some(Cow::Owned(value.to_string())),
-    Some(Value_type::DoubleValue(value)) => Some(Cow::Owned(value.to_string())),
-    Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
-    Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
-    Some(Value_type::Data(value)) => match value.data_type.as_ref() {
-      Some(Data_type::BoolData(true)) => Some(Cow::Borrowed("true")),
-      Some(Data_type::BoolData(false)) => Some(Cow::Borrowed("false")),
-      _ => data_to_string_value(value),
-    },
-    None => None,
-  }
-}
-
 /// Views a logging `Data` value from a state entry with `DataValue` string semantics.
 ///
 /// Virtual fields are only written as `Value_type::Data`, and must preserve the behavior of the
@@ -821,12 +798,9 @@ impl Leaf {
             StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
             StateScope::GLOBAL_STATE => Scope::GlobalState,
             StateScope::SYSTEM => Scope::System,
-            StateScope::CUSTOM_FIELDS => Scope::CustomFields,
-            StateScope::OOTB_FIELDS => Scope::OotbFields,
-            StateScope::UNSPECIFIED => {
-              // For now, we only support feature flags. Other scopes would need additional
-              // handling.
-              // We'll need to config version guard any new scopes.
+            // Custom and SDK-owned fields are virtual log fields. They are intentionally not
+            // general state-matcher inputs until their state-change semantics are introduced.
+            StateScope::CUSTOM_FIELDS | StateScope::OOTB_FIELDS | StateScope::UNSPECIFIED => {
               return Err(anyhow!("Unsupported state scope"));
             },
           };

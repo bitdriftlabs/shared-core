@@ -229,25 +229,47 @@ fn initial_field_state_updates(
   updates
 }
 
-/// Returns the state view used to evaluate logs from the previous process.
+/// Overlays the previous process's virtual fields on the current state reader.
 ///
-/// Only custom and OOTB fields are process-scoped virtual fields. They must therefore come from
-/// the previous process snapshot, even when the current process has already seeded new values.
-/// When that snapshot has no virtual fields, regular field lookup falls through to the historical
-/// global-state fields materialized in the log metadata. All other state scopes retain the
-/// current-state view used by the processing pipeline.
-fn previous_process_state(
-  current_state: &dyn StateReader,
-  previous_run_state: &bd_versioned_kv::ScopedMaps,
-) -> bd_versioned_kv::ScopedMaps {
-  let mut state = current_state.as_scoped_maps().clone();
-  state
-    .custom_fields
-    .clone_from(&previous_run_state.custom_fields);
-  state
-    .ootb_fields
-    .clone_from(&previous_run_state.ootb_fields);
-  state
+/// Custom and OOTB fields are virtual log fields, not workflow state. Previous-process logs must
+/// see their snapshot values (or no value), while all real state scopes continue to use the live
+/// reader. Keeping this as an overlay avoids cloning the complete state map for every replayed
+/// previous-process log.
+struct PreviousProcessStateReader<'a> {
+  current_state: &'a dyn StateReader,
+  previous_run_state: &'a bd_versioned_kv::ScopedMaps,
+}
+
+fn previous_process_state<'a>(
+  current_state: &'a dyn StateReader,
+  previous_run_state: &'a bd_versioned_kv::ScopedMaps,
+) -> PreviousProcessStateReader<'a> {
+  PreviousProcessStateReader {
+    current_state,
+    previous_run_state,
+  }
+}
+
+impl StateReader for PreviousProcessStateReader<'_> {
+  fn get(&self, scope: Scope, key: &str) -> Option<&bd_state::Value> {
+    match scope {
+      Scope::CustomFields | Scope::OotbFields => self
+        .previous_run_state
+        .get(scope, key)
+        .map(|timestamped_value| &timestamped_value.value),
+      Scope::FeatureFlagExposure | Scope::GlobalState | Scope::System => {
+        self.current_state.get(scope, key)
+      },
+    }
+  }
+
+  fn iter(&self) -> Box<dyn Iterator<Item = bd_state::StateEntry> + '_> {
+    self.current_state.iter()
+  }
+
+  fn as_scoped_maps(&self) -> &bd_versioned_kv::ScopedMaps {
+    self.current_state.as_scoped_maps()
+  }
 }
 #[derive(Clone)]
 pub struct Sender {

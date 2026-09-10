@@ -29,30 +29,6 @@ fn make_metrics_collector() -> (MetricsCollector<Counter, Histogram>, Collector)
 }
 
 #[test]
-fn state_tag_value_skips_unsupported_typed_values() {
-  let mut state_reader = bd_state::InMemoryStateReader::default();
-  state_reader.insert(
-    Scope::CustomFields,
-    "binary",
-    bd_state::Value {
-      value_type: bd_state::Value_type::Data(DataValue::Bytes(vec![1, 2, 3].into()).into_proto())
-        .into(),
-      ..Default::default()
-    },
-  );
-
-  let fields = LogFields::default();
-  let message = LogMessage::String("message".to_string());
-  let tag = TagValue::StateExtract(Scope::CustomFields, "binary".to_string());
-
-  assert!(
-    tag
-      .extract_value(FieldsRef::new(&fields, &fields), &message, &state_reader)
-      .is_none()
-  );
-}
-
-#[test]
 fn field_tag_value_reads_virtual_state_fields_with_log_precedence() {
   let mut state_reader = bd_state::InMemoryStateReader::default();
   for (scope, key, value) in [
