@@ -1211,7 +1211,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     report_processor: impl ReportProcessor,
   ) -> Self {
     self
-      .run_with_previous_state(state_store, report_processor, Default::default())
+      .run_with_previous_state(
+        state_store,
+        report_processor,
+        bd_versioned_kv::ScopedMaps::default(),
+      )
       .await
   }
 
@@ -1244,7 +1248,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .run_with_shutdown_and_previous_state(
         state_store,
         report_processor,
-        Default::default(),
+        bd_versioned_kv::ScopedMaps::default(),
         shutdown,
       )
       .await
