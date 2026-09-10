@@ -24,12 +24,14 @@ use std::sync::Arc;
 #[derive(Clone)]
 struct CommonStats {
   capacity_exceeded_unrecoverable: bd_client_stats_store::Counter,
+  persistence_fallbacks: bd_client_stats_store::Counter,
 }
 
 impl CommonStats {
   fn new(stats: &bd_client_stats_store::Scope) -> Self {
     Self {
       capacity_exceeded_unrecoverable: stats.scope("kv").counter("capacity_exceeded_unrecoverable"),
+      persistence_fallbacks: stats.scope("kv").counter("persistence_fallbacks"),
     }
   }
 }
@@ -259,6 +261,31 @@ impl PendingScopedValues {
   }
 }
 
+//
+// TestHooks
+//
+
+#[cfg(test)]
+trait TestHooks: Send + Sync {
+  fn before_post_update_rotation(&self) -> anyhow::Result<()> {
+    Ok(())
+  }
+}
+
+//
+// FailNextPostUpdateRotation
+//
+
+#[cfg(test)]
+struct FailNextPostUpdateRotation;
+
+#[cfg(test)]
+impl TestHooks for FailNextPostUpdateRotation {
+  fn before_post_update_rotation(&self) -> anyhow::Result<()> {
+    anyhow::bail!("test-injected post-update rotation failure");
+  }
+}
+
 /// Persistent storage implementation using a memory-mapped journal.
 struct PersistentStore {
   journal: MemMappedVersionedJournal<StateValue>,
@@ -274,6 +301,15 @@ struct PersistentStore {
   max_capacity_bytes: usize,
   // Stats
   stats: CommonStats,
+  // Test-only hooks make persistence failures deterministic without filesystem faults.
+  #[cfg(test)]
+  test_hooks: Option<Arc<dyn TestHooks>>,
+}
+
+/// The result of a persistent mutation, including a failure that occurred after it committed.
+enum PersistentOperation<T> {
+  Persisted(T),
+  CommittedWithRotationFailure { result: T, error: anyhow::Error },
 }
 
 impl PersistentStore {
@@ -354,6 +390,8 @@ impl PersistentStore {
         initial_buffer_size: config.initial_buffer_size,
         max_capacity_bytes: config.max_capacity_bytes,
         stats,
+        #[cfg(test)]
+        test_hooks: None,
       },
       data_loss,
     ))
@@ -440,11 +478,14 @@ impl PersistentStore {
     scope: Scope,
     key: &str,
     value: StateValue,
-  ) -> Result<(u64, Option<StateValue>), UpdateError> {
+  ) -> Result<PersistentOperation<(u64, Option<StateValue>)>, UpdateError> {
     let (timestamp, old_value) = if value.value_type.is_none() {
       // Deletion
       if !self.cached_map.contains_key(scope, key) {
-        return Ok((self.current_timestamp(), None));
+        return Ok(PersistentOperation::Persisted((
+          self.current_timestamp(),
+          None,
+        )));
       }
       let timestamp = self
         .try_insert_with_rotation(scope, key, &StateValue::default())
@@ -455,7 +496,10 @@ impl PersistentStore {
       if let Some(existing) = self.cached_map.get(scope, key)
         && existing.value == value
       {
-        return Ok((existing.timestamp, Some(existing.value.clone())));
+        return Ok(PersistentOperation::Persisted((
+          existing.timestamp,
+          Some(existing.value.clone()),
+        )));
       }
       // Insert/update
       let timestamp = self.try_insert_with_rotation(scope, key, &value).await?;
@@ -473,25 +517,25 @@ impl PersistentStore {
       (timestamp, old_value)
     };
 
-    if self.journal.is_high_water_mark_triggered() {
-      self.rotate_journal().await?;
+    let result = (timestamp, old_value);
+    match self.rotate_after_update().await {
+      Ok(()) => Ok(PersistentOperation::Persisted(result)),
+      Err(error) => Ok(PersistentOperation::CommittedWithRotationFailure { result, error }),
     }
-
-    Ok((timestamp, old_value))
   }
 
   async fn extend_entries(
     &mut self,
     entries: Vec<(Scope, String, StateValue)>,
-  ) -> Result<u64, UpdateError> {
+  ) -> Result<PersistentOperation<u64>, UpdateError> {
     if entries.is_empty() {
       // Return zero timestamp for empty batch (no-op)
-      return Ok(self.current_timestamp());
+      return Ok(PersistentOperation::Persisted(self.current_timestamp()));
     }
 
     let entries = self.filter_noop_entries(entries);
     if entries.is_empty() {
-      return Ok(self.current_timestamp());
+      return Ok(PersistentOperation::Persisted(self.current_timestamp()));
     }
 
     // Try to insert all entries with rotation handling, preserving order
@@ -513,20 +557,22 @@ impl PersistentStore {
     }
 
     // Check if rotation is needed after extend
-    if self.journal.is_high_water_mark_triggered() {
-      self.rotate_journal().await?;
+    match self.rotate_after_update().await {
+      Ok(()) => Ok(PersistentOperation::Persisted(timestamp)),
+      Err(error) => Ok(PersistentOperation::CommittedWithRotationFailure {
+        result: timestamp,
+        error,
+      }),
     }
-
-    Ok(timestamp)
   }
 
   async fn remove(
     &mut self,
     scope: Scope,
     key: &str,
-  ) -> Result<Option<(u64, StateValue)>, UpdateError> {
+  ) -> Result<PersistentOperation<Option<(u64, StateValue)>>, UpdateError> {
     if !self.cached_map.contains_key(scope, key) {
-      return Ok(None);
+      return Ok(PersistentOperation::Persisted(None));
     }
 
     let timestamp = self
@@ -534,11 +580,25 @@ impl PersistentStore {
       .await?;
     let old_value = self.cached_map.remove(scope, key);
 
+    let result = old_value.map(|v| (timestamp, v.value));
+    match self.rotate_after_update().await {
+      Ok(()) => Ok(PersistentOperation::Persisted(result)),
+      Err(error) => Ok(PersistentOperation::CommittedWithRotationFailure { result, error }),
+    }
+  }
+
+  /// Rotates after a committed mutation has advanced the journal high-water mark.
+  async fn rotate_after_update(&mut self) -> anyhow::Result<()> {
+    #[cfg(test)]
+    if let Some(test_hooks) = &self.test_hooks {
+      test_hooks.before_post_update_rotation()?;
+    }
+
     if self.journal.is_high_water_mark_triggered() {
       self.rotate_journal().await?;
     }
 
-    Ok(old_value.map(|v| (timestamp, v.value)))
+    Ok(())
   }
 
   fn sync(&self) -> anyhow::Result<()> {
@@ -871,6 +931,27 @@ impl InMemoryStore {
     }
   }
 
+  /// Preserves the live state when persistence is no longer available.
+  ///
+  /// The fallback keeps the persistent store's configured capacity. A journal I/O failure must
+  /// not remove state from the running process, but it must not turn a bounded store into an
+  /// unbounded memory consumer either. The state will be lost on the next process restart.
+  fn from_persistent(store: PersistentStore) -> Self {
+    let current_size_bytes = store
+      .cached_map
+      .iter()
+      .map(|(_, key, value)| Self::estimate_entry_size(key, &value.value))
+      .sum();
+
+    Self {
+      time_provider: store.journal.time_provider.clone(),
+      cached_map: store.cached_map,
+      max_bytes: Some(store.max_capacity_bytes),
+      current_size_bytes,
+      stats: store.stats,
+    }
+  }
+
   /// Estimate the size in bytes of a key-value entry.
   ///
   /// This provides a conservative estimate of memory usage including:
@@ -924,15 +1005,17 @@ impl InMemoryStore {
           // Replacing existing entry - calculate size delta
           let old_value = entry.get().value.clone();
           let old_size = Self::estimate_entry_size(key, &old_value);
-          let size_delta = new_entry_size.saturating_sub(old_size);
+          let new_size = self
+            .current_size_bytes
+            .saturating_sub(old_size)
+            .saturating_add(new_entry_size);
 
           // Check capacity before replacing
-          if let Some(max_bytes) = self.max_bytes {
-            let new_size = self.current_size_bytes.saturating_add(size_delta);
-            if new_size > max_bytes {
-              self.stats.capacity_exceeded_unrecoverable.inc();
-              return Err(UpdateError::CapacityExceeded);
-            }
+          if let Some(max_bytes) = self.max_bytes
+            && new_size > max_bytes
+          {
+            self.stats.capacity_exceeded_unrecoverable.inc();
+            return Err(UpdateError::CapacityExceeded);
           }
 
           // Replace the value
@@ -940,7 +1023,7 @@ impl InMemoryStore {
             value: value.clone(),
             timestamp,
           });
-          self.current_size_bytes = self.current_size_bytes.saturating_add(size_delta);
+          self.current_size_bytes = new_size;
           Ok((timestamp, Some(old_value)))
         },
         Entry::Vacant(entry) => {
@@ -1063,7 +1146,12 @@ impl InMemoryStore {
     let timestamp = self.current_timestamp();
     let old_value = self.cached_map.remove(scope, key);
 
-    old_value.map(|v| (timestamp, v.value))
+    old_value.map(|value| {
+      self.current_size_bytes = self
+        .current_size_bytes
+        .saturating_sub(Self::estimate_entry_size(key, &value.value));
+      (timestamp, value.value)
+    })
   }
 }
 
@@ -1071,6 +1159,15 @@ impl InMemoryStore {
 enum StoreBackend {
   Persistent(PersistentStore),
   InMemory(InMemoryStore),
+}
+
+/// Indicates whether successful mutations are retained across process restarts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PersistenceMode {
+  /// Mutations are written to the journal and available after restart.
+  Persistent,
+  /// Mutations are retained only for the lifetime of the current process.
+  InMemory,
 }
 
 /// A key-value store with timestamp tracking and optional persistence.
@@ -1174,6 +1271,40 @@ impl VersionedKVStore {
     }
   }
 
+  /// Switches a persistently failed store to bounded in-memory operation without losing live state.
+  ///
+  /// A journal failure must not make runtime state disappear: callers such as workflow matching
+  /// and state consumers need the update even when it cannot survive a restart.
+  fn fallback_to_in_memory(&mut self, error: &anyhow::Error) {
+    let fallback = match &self.backend {
+      StoreBackend::Persistent(store) => {
+        store.stats.persistence_fallbacks.inc();
+        log::warn!(
+          "disabling state persistence after journal write failure; retaining state in memory: \
+           {error}"
+        );
+        InMemoryStore::new(
+          store.journal.time_provider.clone(),
+          Some(store.max_capacity_bytes),
+          store.stats.clone(),
+        )
+      },
+      StoreBackend::InMemory(_) => return,
+    };
+
+    let previous = std::mem::replace(&mut self.backend, StoreBackend::InMemory(fallback));
+    if let StoreBackend::Persistent(store) = previous {
+      self.backend = StoreBackend::InMemory(InMemoryStore::from_persistent(store));
+    }
+  }
+
+  #[cfg(test)]
+  pub(crate) fn fail_next_post_update_rotation_for_testing(&mut self) {
+    if let StoreBackend::Persistent(store) = &mut self.backend {
+      store.test_hooks = Some(Arc::new(FailNextPostUpdateRotation));
+    }
+  }
+
   /// Get a value by key.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
@@ -1205,26 +1336,51 @@ impl VersionedKVStore {
   ///
   /// Note: Inserting `Value::Null` is equivalent to removing the key.
   ///
+  /// If the persistent journal encounters a system error, the store transitions to bounded
+  /// in-memory mode and still applies the update when it fits. The state remains available to the
+  /// current process, but will not survive a restart. This degradation is logged and counted in
+  /// `kv:persistence_fallbacks`.
+  ///
+  /// Journal capacity rejections do not change storage mode or apply the update.
+  ///
+  /// While the persistent journal is healthy, a successful return means it accepted the update;
+  /// callers that require an explicit disk sync must call [`Self::sync`].
+  ///
   /// # Errors
-  /// - Returns `UpdateError::CapacityExceeded` if the in-memory store would exceed its size limit
-  /// - Returns `UpdateError::System` if the value cannot be written to the journal (persistent
-  ///   mode)
+  /// Returns `UpdateError::CapacityExceeded` when either persistent or in-memory admission rejects
+  /// the update.
   pub async fn insert(
     &mut self,
     scope: Scope,
     key: String,
     value: StateValue,
   ) -> Result<(u64, Option<StateValue>), UpdateError> {
-    match &mut self.backend {
-      StoreBackend::Persistent(store) => store.insert(scope, &key, value).await,
-      StoreBackend::InMemory(store) => store.insert(scope, &key, &value),
+    if let StoreBackend::Persistent(store) = &mut self.backend {
+      match store.insert(scope, &key, value.clone()).await {
+        Ok(PersistentOperation::Persisted(result)) => return Ok(result),
+        Ok(PersistentOperation::CommittedWithRotationFailure { result, error }) => {
+          self.fallback_to_in_memory(&error);
+          return Ok(result);
+        },
+        Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
+        Err(error) => return Err(error),
+      }
     }
+
+    if let StoreBackend::InMemory(store) = &mut self.backend {
+      return store.insert(scope, &key, &value);
+    }
+
+    Err(UpdateError::System(anyhow::anyhow!(
+      "state store did not transition to in-memory mode after a journal failure"
+    )))
   }
 
   /// Insert multiple key-value pairs with a shared timestamp.
   ///
-  /// All entries are written with the same timestamp. If any entry fails to write to the journal,
-  /// the operation is rolled back and an error is returned.
+  /// All entries are written with the same timestamp. If a persistent journal encounters a system
+  /// error, the store transitions to bounded in-memory mode and applies the entire batch there
+  /// when it fits. Capacity rejections leave the persistent store unchanged.
   ///
   /// For persistent stores, this operation handles rotation and retries automatically if needed.
   /// If empty, this is a no-op that returns the current timestamp.
@@ -1232,16 +1388,34 @@ impl VersionedKVStore {
   /// Note: Entries with `Value::Null` are treated as deletions.
   ///
   /// # Errors
-  /// - Returns `UpdateError::CapacityExceeded` if the batch would exceed capacity limits
-  /// - Returns `UpdateError::System` if the batch cannot be written (persistent mode)
+  /// Returns `UpdateError::CapacityExceeded` when either persistent or in-memory admission rejects
+  /// the batch.
   pub async fn extend(
     &mut self,
     entries: Vec<(Scope, String, StateValue)>,
   ) -> Result<u64, UpdateError> {
-    match &mut self.backend {
-      StoreBackend::Persistent(store) => store.extend_entries(entries).await,
-      StoreBackend::InMemory(store) => store.extend_entries(entries),
+    if let StoreBackend::Persistent(store) = &mut self.backend {
+      match store.extend_entries(entries.clone()).await {
+        Ok(PersistentOperation::Persisted(timestamp)) => return Ok(timestamp),
+        Ok(PersistentOperation::CommittedWithRotationFailure {
+          result: timestamp,
+          error,
+        }) => {
+          self.fallback_to_in_memory(&error);
+          return Ok(timestamp);
+        },
+        Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
+        Err(error) => return Err(error),
+      }
     }
+
+    if let StoreBackend::InMemory(store) = &mut self.backend {
+      return store.extend_entries(entries);
+    }
+
+    Err(UpdateError::System(anyhow::anyhow!(
+      "state store did not transition to in-memory mode after a journal failure"
+    )))
   }
 
   /// Remove a key and return the timestamp and old value.
@@ -1249,16 +1423,32 @@ impl VersionedKVStore {
   /// Returns `None` if the key didn't exist, otherwise returns the timestamp and old value.
   ///
   /// # Errors
-  /// Returns an error if the deletion cannot be written to the journal (persistent mode only).
+  /// If the persistent journal encounters a system error, the store transitions to bounded
+  /// in-memory mode and removes the value from the live state.
   pub async fn remove(
     &mut self,
     scope: Scope,
     key: &str,
   ) -> Result<Option<(u64, StateValue)>, UpdateError> {
-    match &mut self.backend {
-      StoreBackend::Persistent(store) => store.remove(scope, key).await,
-      StoreBackend::InMemory(store) => Ok(store.remove(scope, key)),
+    if let StoreBackend::Persistent(store) = &mut self.backend {
+      match store.remove(scope, key).await {
+        Ok(PersistentOperation::Persisted(result)) => return Ok(result),
+        Ok(PersistentOperation::CommittedWithRotationFailure { result, error }) => {
+          self.fallback_to_in_memory(&error);
+          return Ok(result);
+        },
+        Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
+        Err(error) => return Err(error),
+      }
     }
+
+    if let StoreBackend::InMemory(store) = &mut self.backend {
+      return Ok(store.remove(scope, key));
+    }
+
+    Err(UpdateError::System(anyhow::anyhow!(
+      "state store did not transition to in-memory mode after a journal failure"
+    )))
   }
 
   /// Clear all keys in a given scope with a shared timestamp.
@@ -1269,7 +1459,8 @@ impl VersionedKVStore {
   /// This is implemented using `extend()` for efficiency.
   ///
   /// # Errors
-  /// Returns an error if the deletions cannot be written to the journal (persistent mode only).
+  /// If persistent journal admission fails, the store transitions to in-memory mode and clears
+  /// the live state.
   pub async fn clear(&mut self, scope: Scope) -> Result<Option<u64>, UpdateError> {
     // Collect all keys in this scope
     let keys: Vec<String> = self
@@ -1368,6 +1559,15 @@ impl VersionedKVStore {
     match &self.backend {
       StoreBackend::Persistent(store) => Some(store.journal_path()),
       StoreBackend::InMemory(_) => None,
+    }
+  }
+
+  /// Returns whether future successful mutations are persistent or memory-only.
+  #[must_use]
+  pub fn persistence_mode(&self) -> PersistenceMode {
+    match &self.backend {
+      StoreBackend::Persistent(_) => PersistenceMode::Persistent,
+      StoreBackend::InMemory(_) => PersistenceMode::InMemory,
     }
   }
 

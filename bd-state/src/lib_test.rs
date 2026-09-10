@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{InitStrategy, SYSTEM_SESSION_ID_KEY, Scope, StateReader, Store};
+use crate::{InitStrategy, PersistenceMode, SYSTEM_SESSION_ID_KEY, Scope, StateReader, Store};
 use bd_client_stats_store::Collector;
 use bd_time::TimeProvider as _;
 use bd_versioned_kv::PersistentStoreConfig;
@@ -44,6 +44,31 @@ impl Setup {
       store,
     }
   }
+}
+
+#[tokio::test]
+async fn persistence_mode_matches_store_backend() {
+  let persistent = Setup::new().await;
+  assert_eq!(
+    persistent.store.persistence_mode().await,
+    PersistenceMode::Persistent
+  );
+
+  let in_memory_dir = tempfile::tempdir().unwrap();
+  let in_memory_runtime = bd_runtime::runtime::ConfigLoader::new(in_memory_dir.path());
+  let in_memory_collector = bd_client_stats_store::Collector::default();
+  let in_memory = Store::in_memory(
+    Arc::new(bd_time::TestTimeProvider::new(
+      datetime!(2024-01-01 00:00:00 UTC),
+    )),
+    None,
+    &in_memory_runtime,
+    &in_memory_collector.scope("test"),
+  );
+  assert_eq!(
+    in_memory.persistence_mode().await,
+    PersistenceMode::InMemory
+  );
 }
 
 #[tokio::test]

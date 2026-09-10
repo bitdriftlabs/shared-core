@@ -11,7 +11,7 @@ use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 use crate::versioned_kv_journal::store::PersistentStoreConfig;
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
-use crate::{DataLoss, Scope, UpdateError, VersionedKVStore};
+use crate::{DataLoss, PersistenceMode, Scope, UpdateError, VersionedKVStore};
 use bd_proto::protos::state::payload::StateValue;
 use bd_time::TestTimeProvider;
 use rstest::rstest;
@@ -570,6 +570,8 @@ async fn test_in_memory_no_size_limit() -> anyhow::Result<()> {
     bd_runtime::runtime::IntWatch::new_for_testing(2),
   );
 
+  assert_eq!(store.persistence_mode(), PersistenceMode::InMemory);
+
   // Should be able to insert many large values without limit
   for i in 0 .. 100 {
     let large_value = make_string_value(&"x".repeat(1000));
@@ -635,6 +637,59 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
     store.get(Scope::FeatureFlagExposure, "key1"),
     Some(&make_string_value("value"))
   );
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_in_memory_size_limit_reclaims_replaced_and_removed_values() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let mut store = VersionedKVStore::new_in_memory(
+    time_provider,
+    Some(2_000),
+    &stats,
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  );
+
+  let large_value = "x".repeat(1_200);
+  store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key1".to_string(),
+      make_string_value(&large_value),
+    )
+    .await?;
+
+  // Replacing a large value with a small one must reclaim the previous value's capacity.
+  store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key1".to_string(),
+      make_string_value("small"),
+    )
+    .await?;
+  store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key2".to_string(),
+      make_string_value(&large_value),
+    )
+    .await?;
+
+  // Removing the remaining large value must also make its capacity available to future writes.
+  store.remove(Scope::FeatureFlagExposure, "key2").await?;
+  store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key3".to_string(),
+      make_string_value(&large_value),
+    )
+    .await?;
+
+  assert!(store.contains_key(Scope::FeatureFlagExposure, "key1"));
+  assert!(store.contains_key(Scope::FeatureFlagExposure, "key3"));
 
   Ok(())
 }
@@ -1391,7 +1446,7 @@ async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
+async fn extend_capacity_rejection_keeps_persistent_store() -> anyhow::Result<()> {
   let collector = bd_client_stats_store::Collector::default();
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
@@ -1415,8 +1470,6 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
   )
   .await?;
 
-  let initial_len = store.len();
-
   // Try to insert a batch that's too large for max capacity
   let mut entries = Vec::new();
   for i in 0 .. 50 {
@@ -1427,15 +1480,145 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
     ));
   }
 
-  // This should fail with CapacityExceeded even after rotation
-  let result = store.extend(entries).await;
-  assert!(matches!(result, Err(UpdateError::CapacityExceeded)));
+  let Err(error) = store.extend(entries).await else {
+    anyhow::bail!("a batch that cannot fit after compaction must be rejected");
+  };
 
-  // Verify atomicity - no partial writes
-  assert_eq!(store.len(), initial_len);
+  assert!(matches!(error, UpdateError::CapacityExceeded));
+  assert!(store.journal_path().is_some());
   for i in 0 .. 50 {
     assert!(!store.contains_key(Scope::FeatureFlagExposure, &format!("key_{i}")));
   }
+
+  Ok(())
+}
+
+async fn persistent_store_for_post_update_rotation_failure()
+-> anyhow::Result<(VersionedKVStore, bd_client_stats_store::Collector, TempDir)> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
+  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
+
+  let (store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig::default(),
+    time_provider,
+    registry,
+    &stats,
+  )
+  .await?;
+
+  Ok((store, collector, temp_dir))
+}
+
+#[tokio::test]
+async fn post_update_rotation_failure_preserves_insert_result() -> anyhow::Result<()> {
+  use bd_client_stats_store::test::StatsHelper;
+  use std::collections::BTreeMap;
+
+  let (mut store, collector, _temp_dir) =
+    persistent_store_for_post_update_rotation_failure().await?;
+  let old_value = make_string_value("old");
+  let new_value = make_string_value("new");
+  store
+    .insert(Scope::GlobalState, "key".to_string(), old_value.clone())
+    .await?;
+
+  store.fail_next_post_update_rotation_for_testing();
+  let (_, previous_value) = store
+    .insert(Scope::GlobalState, "key".to_string(), new_value.clone())
+    .await?;
+
+  assert_eq!(previous_value, Some(old_value));
+  assert_eq!(store.get(Scope::GlobalState, "key"), Some(&new_value));
+  assert_eq!(store.persistence_mode(), PersistenceMode::InMemory);
+  collector.assert_counter_eq(1, "test:kv:persistence_fallbacks", BTreeMap::new());
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn post_update_rotation_failure_preserves_extend_result() -> anyhow::Result<()> {
+  use bd_client_stats_store::test::StatsHelper;
+  use std::collections::BTreeMap;
+
+  let (mut store, collector, _temp_dir) =
+    persistent_store_for_post_update_rotation_failure().await?;
+  store
+    .insert(
+      Scope::GlobalState,
+      "replaced".to_string(),
+      make_string_value("old"),
+    )
+    .await?;
+  store
+    .insert(
+      Scope::GlobalState,
+      "removed".to_string(),
+      make_string_value("old"),
+    )
+    .await?;
+
+  store.fail_next_post_update_rotation_for_testing();
+  store
+    .extend(vec![
+      (
+        Scope::GlobalState,
+        "replaced".to_string(),
+        make_string_value("new"),
+      ),
+      (
+        Scope::GlobalState,
+        "added".to_string(),
+        make_string_value("value"),
+      ),
+      (
+        Scope::GlobalState,
+        "removed".to_string(),
+        StateValue::default(),
+      ),
+    ])
+    .await?;
+
+  assert_eq!(
+    store.get(Scope::GlobalState, "replaced"),
+    Some(&make_string_value("new"))
+  );
+  assert_eq!(
+    store.get(Scope::GlobalState, "added"),
+    Some(&make_string_value("value"))
+  );
+  assert!(store.get(Scope::GlobalState, "removed").is_none());
+  assert_eq!(store.persistence_mode(), PersistenceMode::InMemory);
+  collector.assert_counter_eq(1, "test:kv:persistence_fallbacks", BTreeMap::new());
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn post_update_rotation_failure_preserves_remove_result() -> anyhow::Result<()> {
+  use bd_client_stats_store::test::StatsHelper;
+  use std::collections::BTreeMap;
+
+  let (mut store, collector, _temp_dir) =
+    persistent_store_for_post_update_rotation_failure().await?;
+  let old_value = make_string_value("old");
+  store
+    .insert(Scope::GlobalState, "key".to_string(), old_value.clone())
+    .await?;
+
+  store.fail_next_post_update_rotation_for_testing();
+  let removed = store.remove(Scope::GlobalState, "key").await?;
+
+  assert!(removed.is_some_and(|(_, value)| value == old_value));
+  assert!(store.get(Scope::GlobalState, "key").is_none());
+  assert_eq!(store.persistence_mode(), PersistenceMode::InMemory);
+  collector.assert_counter_eq(1, "test:kv:persistence_fallbacks", BTreeMap::new());
 
   Ok(())
 }

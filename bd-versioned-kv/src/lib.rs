@@ -49,7 +49,7 @@ pub use versioned_kv_journal::recovery::{
   extract_non_empty_string_values_from_compressed_journal,
 };
 pub use versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
-pub use versioned_kv_journal::store::{DataLoss, ScopedMaps, VersionedKVStore};
+pub use versioned_kv_journal::store::{DataLoss, PersistenceMode, ScopedMaps, VersionedKVStore};
 pub use versioned_kv_journal::{
   HEADER_SIZE as VERSIONED_JOURNAL_HEADER_SIZE,
   PersistentStoreConfig,

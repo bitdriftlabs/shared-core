@@ -27,6 +27,7 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use bd_versioned_kv::{DataLoss, ScopedMaps, StateValue};
 pub use bd_versioned_kv::{
+  PersistenceMode,
   PersistentStoreConfig,
   RetentionHandle,
   RetentionRegistry,
@@ -566,6 +567,11 @@ impl Store {
       .load(std::sync::atomic::Ordering::Relaxed)
   }
 
+  /// Returns whether state mutations are retained across process restarts.
+  pub async fn persistence_mode(&self) -> PersistenceMode {
+    self.inner.read().await.persistence_mode()
+  }
+
   fn record_change(&self, timestamp: OffsetDateTime) {
     let micros =
       timestamp.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(timestamp.microsecond());
@@ -574,6 +580,14 @@ impl Store {
       .fetch_max(micros, std::sync::atomic::Ordering::Relaxed);
   }
 
+  /// Inserts a value into state.
+  ///
+  /// If the persistent journal becomes unavailable, the state store retains live state and
+  /// continues in bounded in-memory mode. An update that fits is visible to all state readers for
+  /// the current process, but will not survive a restart. A successful persistent-journal
+  /// admission does not itself perform an explicit disk sync.
+  ///
+  /// Journal capacity rejections return an error without changing the live value or storage mode.
   pub async fn insert(
     &self,
     scope: Scope,

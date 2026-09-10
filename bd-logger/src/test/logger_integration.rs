@@ -2723,6 +2723,8 @@ fn remote_buffer_upload_with_streaming_matches_workflow_streaming_behavior() {
         ..Default::default()
       },
     });
+  // Wait until the remote action has installed its streaming route before emitting logs for it.
+  setup.wait_for_remote_streaming_action_processing();
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
