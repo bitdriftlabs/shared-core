@@ -7,16 +7,7 @@
 
 #![allow(clippy::cast_possible_truncation, clippy::unwrap_used)]
 
-use crate::{
-  DataValue,
-  EncodableLog,
-  Log,
-  LogFieldValue,
-  LogType,
-  TypedLogLevel,
-  data_to_string_value,
-  log_level,
-};
+use crate::{DataValue, EncodableLog, Log, LogFieldValue, LogType, data_to_string_value};
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::Field;

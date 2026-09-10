@@ -1490,7 +1490,6 @@ impl VersionedKVStore {
           );
           self.fallback_to_in_memory(&error);
         },
-        Err(error) => return Err(error),
       }
     }
 
