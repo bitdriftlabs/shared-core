@@ -231,8 +231,11 @@ fn initial_field_state_updates(
 
 /// Returns the state view used to evaluate logs from the previous process.
 ///
-/// Custom and OOTB fields are process-scoped virtual fields, so they must come from the
-/// previous process snapshot. Other state remains sourced from the current process.
+/// Only custom and OOTB fields are process-scoped virtual fields. They must therefore come from
+/// the previous process snapshot, even when the current process has already seeded new values.
+/// When that snapshot has no virtual fields, regular field lookup falls through to the historical
+/// global-state fields materialized in the log metadata. All other state scopes retain the
+/// current-state view used by the processing pipeline.
 fn previous_process_state(
   current_state: &dyn StateReader,
   previous_run_state: &bd_versioned_kv::ScopedMaps,
