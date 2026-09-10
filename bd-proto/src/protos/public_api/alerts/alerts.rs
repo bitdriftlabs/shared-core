@@ -3674,6 +3674,12 @@ pub mod get_all_alerts_request {
             LAST_RESOLVED = 3,
             // @@protoc_insertion_point(enum_value:bitdrift.public.unary.alerts.v1.GetAllAlertsRequest.Sort.SortKey.OWNER_NAME)
             OWNER_NAME = 4,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.alerts.v1.GetAllAlertsRequest.Sort.SortKey.ALERT_STATUS)
+            ALERT_STATUS = 5,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.alerts.v1.GetAllAlertsRequest.Sort.SortKey.ALERT_TYPE)
+            ALERT_TYPE = 6,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.alerts.v1.GetAllAlertsRequest.Sort.SortKey.LAST_DURATION)
+            LAST_DURATION = 7,
         }
 
         impl ::protobuf::Enum for SortKey {
@@ -3690,6 +3696,9 @@ pub mod get_all_alerts_request {
                     2 => ::std::option::Option::Some(SortKey::LAST_TRIGGERED),
                     3 => ::std::option::Option::Some(SortKey::LAST_RESOLVED),
                     4 => ::std::option::Option::Some(SortKey::OWNER_NAME),
+                    5 => ::std::option::Option::Some(SortKey::ALERT_STATUS),
+                    6 => ::std::option::Option::Some(SortKey::ALERT_TYPE),
+                    7 => ::std::option::Option::Some(SortKey::LAST_DURATION),
                     _ => ::std::option::Option::None
                 }
             }
@@ -3701,6 +3710,9 @@ pub mod get_all_alerts_request {
                     "LAST_TRIGGERED" => ::std::option::Option::Some(SortKey::LAST_TRIGGERED),
                     "LAST_RESOLVED" => ::std::option::Option::Some(SortKey::LAST_RESOLVED),
                     "OWNER_NAME" => ::std::option::Option::Some(SortKey::OWNER_NAME),
+                    "ALERT_STATUS" => ::std::option::Option::Some(SortKey::ALERT_STATUS),
+                    "ALERT_TYPE" => ::std::option::Option::Some(SortKey::ALERT_TYPE),
+                    "LAST_DURATION" => ::std::option::Option::Some(SortKey::LAST_DURATION),
                     _ => ::std::option::Option::None
                 }
             }
@@ -3711,6 +3723,9 @@ pub mod get_all_alerts_request {
                 SortKey::LAST_TRIGGERED,
                 SortKey::LAST_RESOLVED,
                 SortKey::OWNER_NAME,
+                SortKey::ALERT_STATUS,
+                SortKey::ALERT_TYPE,
+                SortKey::LAST_DURATION,
             ];
         }
 
@@ -5639,7 +5654,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     R\tnotFiring\x12]\n\nalert_type\x18\x04\x20\x01(\x0e22.bitdrift.public.u\
     nary.alerts.v1.WorkflowAlertTypeH\0R\talertTypeB\x08\xfaB\x05\x82\x01\
     \x02\x10\x01\x1a\x07\n\x05Owned\x1a\x08\n\x06Firing\x1a\x0b\n\tNotFiring\
-    B\x0b\n\x04type\x12\x03\xf8B\x01\"\x96\x05\n\x13GetAllAlertsRequest\x12\
+    B\x0b\n\x04type\x12\x03\xf8B\x01\"\xcc\x05\n\x13GetAllAlertsRequest\x12\
     \x1b\n\x06offset\x18\x01\x20\x01(\rH\0R\x06offset\x88\x01\x01\x12$\n\x05\
     limit\x18\x02\x20\x01(\rH\x01R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\x88\
     \x01\x01\x12T\n\x07filters\x18\x03\x20\x03(\x0b20.bitdrift.public.unary.\
@@ -5647,72 +5662,73 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     J\n\x07sort_by\x18\x04\x20\x03(\x0b2%.bitdrift.public.unary.common.v1.So\
     rtR\x06sortByB\n\x18\x01\xfaB\x05\x92\x01\x02\x10d\x12W\n\x04sort\x18\
     \x05\x20\x03(\x0b29.bitdrift.public.unary.alerts.v1.GetAllAlertsRequest.\
-    SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xab\x02\n\x04Sort\x12_\
+    SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xe1\x02\n\x04Sort\x12_\
     \n\x03key\x18\x01\x20\x01(\x0e2A.bitdrift.public.unary.alerts.v1.GetAllA\
     lertsRequest.Sort.SortKeyR\x03keyB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\
     \x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdrift.public.unary.common.v\
-    1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"j\n\x07So\
-    rtKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x0e\n\nALERT_NAME\x10\
-    \x01\x12\x12\n\x0eLAST_TRIGGERED\x10\x02\x12\x11\n\rLAST_RESOLVED\x10\
-    \x03\x12\x0e\n\nOWNER_NAME\x10\x04B\t\n\x07_offsetB\x08\n\x06_limit\"\
-    \x80\x05\n\x14GetAllAlertsResponse\x12P\n\x05items\x18\x01\x20\x03(\x0b2\
-    :.bitdrift.public.unary.alerts.v1.GetAllAlertsResponse.ItemR\x05items\
-    \x12!\n\x0ctotal_alerts\x18\x02\x20\x01(\rR\x0btotalAlerts\x1a\xf2\x03\n\
-    \x04Item\x12\x1d\n\nalert_name\x18\x01\x20\x01(\tR\talertName\x12\x19\n\
-    \x08alert_id\x18\x02\x20\x01(\x04R\x07alertId\x12\x1f\n\x0bworkflow_id\
-    \x18\x04\x20\x01(\tR\nworkflowId\x12\"\n\rchart_rule_id\x18\x05\x20\x01(\
-    \tR\x0bchartRuleId\x120\n\x14aggregated_action_id\x18\x06\x20\x01(\tR\
-    \x12aggregatedActionId\x12\x1a\n\x08disabled\x18\x07\x20\x01(\x08R\x08di\
-    sabled\x12F\n\x11last_triggered_at\x18\x08\x20\x01(\x0b2\x1a.google.prot\
-    obuf.TimestampR\x0flastTriggeredAt\x12D\n\x10last_resolved_at\x18\t\x20\
-    \x01(\x0b2\x1a.google.protobuf.TimestampR\x0elastResolvedAt\x12<\n\x05ow\
-    ner\x18\n\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\x05owner\
-    \x12Q\n\nalert_type\x18\x0b\x20\x01(\x0e22.bitdrift.public.unary.alerts.\
-    v1.WorkflowAlertTypeR\talertType\"\xb7\x02\n\x16GetAlertHistoryRequest\
-    \x12\x19\n\x08alert_id\x18\x01\x20\x01(\x04R\x07alertId\x12\x1b\n\x06off\
-    set\x18\x02\x20\x01(\rH\0R\x06offset\x88\x01\x01\x12$\n\x05limit\x18\x03\
-    \x20\x01(\rH\x01R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01\x12H\n\
-    \nstart_time\x18\x04\x20\x01(\x0b2\x1a.google.protobuf.TimestampH\x02R\t\
-    startTimeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x88\x01\x01\x12D\n\x08end_ti\
-    me\x18\x05\x20\x01(\x0b2\x1a.google.protobuf.TimestampH\x03R\x07endTimeB\
-    \x08\xfaB\x05\x8a\x01\x02\x10\x01\x88\x01\x01B\t\n\x07_offsetB\x08\n\x06\
-    _limitB\r\n\x0b_start_timeB\x0b\n\t_end_time\"\xac\x07\n\x13AlertHistory\
-    Details\x12.\n\x13group_by_dimensions\x18\x01\x20\x03(\tR\x11groupByDime\
-    nsions\x123\n\x15notification_failures\x18\x02\x20\x03(\tR\x14notificati\
-    onFailures\x12O\n\x0calert_config\x18\x04\x20\x01(\x0b2,.bitdrift.public\
-    .unary.alerts.v1.AlertConfigR\x0balertConfig\x12r\n\x11contributing_data\
-    \x18\x05\x20\x03(\x0b2E.bitdrift.public.unary.alerts.v1.AlertHistoryDeta\
-    ils.ContributingDataR\x10contributingData\x1ah\n\x15BasicContributingDat\
-    a\x12O\n\x0bdata_points\x18\x01\x20\x03(\x0b2..bitdrift.public.shared.wo\
-    rkflows.v1.DataPointR\ndataPoints\x1a\xa1\x02\n\x13SloContributingData\
-    \x12r\n\x14window_and_burn_rate\x18\x01\x20\x01(\x0b2A.bitdrift.public.u\
-    nary.alerts.v1.SloAlertConfig.WindowAndBurnRateR\x11windowAndBurnRate\
-    \x12K\n\x0bshort_table\x18\x02\x20\x01(\x0b2*.bitdrift.public.unary.dash\
-    boards.v1.TableR\nshortTable\x12I\n\nlong_table\x18\x03\x20\x01(\x0b2*.b\
-    itdrift.public.unary.dashboards.v1.TableR\tlongTable\x1a\xdc\x01\n\x10Co\
-    ntributingData\x12b\n\x05basic\x18\x01\x20\x01(\x0b2J.bitdrift.public.un\
-    ary.alerts.v1.AlertHistoryDetails.BasicContributingDataH\0R\x05basic\x12\
-    \\\n\x03slo\x18\x02\x20\x01(\x0b2H.bitdrift.public.unary.alerts.v1.Alert\
-    HistoryDetails.SloContributingDataH\0R\x03sloB\x06\n\x04data\"\x8f\x03\n\
-    \x17GetAlertHistoryResponse\x12c\n\x07history\x18\x01\x20\x03(\x0b2I.bit\
-    drift.public.unary.alerts.v1.GetAlertHistoryResponse.AlertHistoryItemR\
-    \x07history\x12.\n\x13total_alert_history\x18\x02\x20\x01(\rR\x11totalAl\
-    ertHistory\x1a\xde\x01\n\x10AlertHistoryItem\x12=\n\x0ctriggered_at\x18\
-    \x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0btriggeredAt\x12;\n\
-    \x0bresolved_at\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\nre\
-    solvedAt\x12N\n\x07details\x18\x03\x20\x01(\x0b24.bitdrift.public.unary.\
-    alerts.v1.AlertHistoryDetailsR\x07details**\n\x12ThresholdCondition\x12\
-    \t\n\x05ABOVE\x10\0\x12\t\n\x05BELOW\x10\x01*'\n\x11WorkflowAlertType\
-    \x12\t\n\x05BASIC\x10\0\x12\x07\n\x03SLO\x10\x012\xa4\x04\n\rAlertsServi\
-    ce\x12\x81\x01\n\x0eGetAlertConfig\x126.bitdrift.public.unary.alerts.v1.\
-    GetAlertConfigRequest\x1a7.bitdrift.public.unary.alerts.v1.GetAlertConfi\
-    gResponse\x12\x8a\x01\n\x11UpsertAlertConfig\x129.bitdrift.public.unary.\
-    alerts.v1.UpsertAlertConfigRequest\x1a:.bitdrift.public.unary.alerts.v1.\
-    UpsertAlertConfigResponse\x12{\n\x0cGetAllAlerts\x124.bitdrift.public.un\
-    ary.alerts.v1.GetAllAlertsRequest\x1a5.bitdrift.public.unary.alerts.v1.G\
-    etAllAlertsResponse\x12\x84\x01\n\x0fGetAlertHistory\x127.bitdrift.publi\
-    c.unary.alerts.v1.GetAlertHistoryRequest\x1a8.bitdrift.public.unary.aler\
-    ts.v1.GetAlertHistoryResponseb\x06proto3\
+    1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\x9f\x01\
+    \n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x0e\n\nALERT_N\
+    AME\x10\x01\x12\x12\n\x0eLAST_TRIGGERED\x10\x02\x12\x11\n\rLAST_RESOLVED\
+    \x10\x03\x12\x0e\n\nOWNER_NAME\x10\x04\x12\x10\n\x0cALERT_STATUS\x10\x05\
+    \x12\x0e\n\nALERT_TYPE\x10\x06\x12\x11\n\rLAST_DURATION\x10\x07B\t\n\x07\
+    _offsetB\x08\n\x06_limit\"\x80\x05\n\x14GetAllAlertsResponse\x12P\n\x05i\
+    tems\x18\x01\x20\x03(\x0b2:.bitdrift.public.unary.alerts.v1.GetAllAlerts\
+    Response.ItemR\x05items\x12!\n\x0ctotal_alerts\x18\x02\x20\x01(\rR\x0bto\
+    talAlerts\x1a\xf2\x03\n\x04Item\x12\x1d\n\nalert_name\x18\x01\x20\x01(\t\
+    R\talertName\x12\x19\n\x08alert_id\x18\x02\x20\x01(\x04R\x07alertId\x12\
+    \x1f\n\x0bworkflow_id\x18\x04\x20\x01(\tR\nworkflowId\x12\"\n\rchart_rul\
+    e_id\x18\x05\x20\x01(\tR\x0bchartRuleId\x120\n\x14aggregated_action_id\
+    \x18\x06\x20\x01(\tR\x12aggregatedActionId\x12\x1a\n\x08disabled\x18\x07\
+    \x20\x01(\x08R\x08disabled\x12F\n\x11last_triggered_at\x18\x08\x20\x01(\
+    \x0b2\x1a.google.protobuf.TimestampR\x0flastTriggeredAt\x12D\n\x10last_r\
+    esolved_at\x18\t\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0elastRes\
+    olvedAt\x12<\n\x05owner\x18\n\x20\x01(\x0b2&.bitdrift.public.unary.commo\
+    n.v1.OwnerR\x05owner\x12Q\n\nalert_type\x18\x0b\x20\x01(\x0e22.bitdrift.\
+    public.unary.alerts.v1.WorkflowAlertTypeR\talertType\"\xb7\x02\n\x16GetA\
+    lertHistoryRequest\x12\x19\n\x08alert_id\x18\x01\x20\x01(\x04R\x07alertI\
+    d\x12\x1b\n\x06offset\x18\x02\x20\x01(\rH\0R\x06offset\x88\x01\x01\x12$\
+    \n\x05limit\x18\x03\x20\x01(\rH\x01R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\
+    \x88\x01\x01\x12H\n\nstart_time\x18\x04\x20\x01(\x0b2\x1a.google.protobu\
+    f.TimestampH\x02R\tstartTimeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x88\x01\
+    \x01\x12D\n\x08end_time\x18\x05\x20\x01(\x0b2\x1a.google.protobuf.Timest\
+    ampH\x03R\x07endTimeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x88\x01\x01B\t\n\
+    \x07_offsetB\x08\n\x06_limitB\r\n\x0b_start_timeB\x0b\n\t_end_time\"\xac\
+    \x07\n\x13AlertHistoryDetails\x12.\n\x13group_by_dimensions\x18\x01\x20\
+    \x03(\tR\x11groupByDimensions\x123\n\x15notification_failures\x18\x02\
+    \x20\x03(\tR\x14notificationFailures\x12O\n\x0calert_config\x18\x04\x20\
+    \x01(\x0b2,.bitdrift.public.unary.alerts.v1.AlertConfigR\x0balertConfig\
+    \x12r\n\x11contributing_data\x18\x05\x20\x03(\x0b2E.bitdrift.public.unar\
+    y.alerts.v1.AlertHistoryDetails.ContributingDataR\x10contributingData\
+    \x1ah\n\x15BasicContributingData\x12O\n\x0bdata_points\x18\x01\x20\x03(\
+    \x0b2..bitdrift.public.shared.workflows.v1.DataPointR\ndataPoints\x1a\
+    \xa1\x02\n\x13SloContributingData\x12r\n\x14window_and_burn_rate\x18\x01\
+    \x20\x01(\x0b2A.bitdrift.public.unary.alerts.v1.SloAlertConfig.WindowAnd\
+    BurnRateR\x11windowAndBurnRate\x12K\n\x0bshort_table\x18\x02\x20\x01(\
+    \x0b2*.bitdrift.public.unary.dashboards.v1.TableR\nshortTable\x12I\n\nlo\
+    ng_table\x18\x03\x20\x01(\x0b2*.bitdrift.public.unary.dashboards.v1.Tabl\
+    eR\tlongTable\x1a\xdc\x01\n\x10ContributingData\x12b\n\x05basic\x18\x01\
+    \x20\x01(\x0b2J.bitdrift.public.unary.alerts.v1.AlertHistoryDetails.Basi\
+    cContributingDataH\0R\x05basic\x12\\\n\x03slo\x18\x02\x20\x01(\x0b2H.bit\
+    drift.public.unary.alerts.v1.AlertHistoryDetails.SloContributingDataH\0R\
+    \x03sloB\x06\n\x04data\"\x8f\x03\n\x17GetAlertHistoryResponse\x12c\n\x07\
+    history\x18\x01\x20\x03(\x0b2I.bitdrift.public.unary.alerts.v1.GetAlertH\
+    istoryResponse.AlertHistoryItemR\x07history\x12.\n\x13total_alert_histor\
+    y\x18\x02\x20\x01(\rR\x11totalAlertHistory\x1a\xde\x01\n\x10AlertHistory\
+    Item\x12=\n\x0ctriggered_at\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.Ti\
+    mestampR\x0btriggeredAt\x12;\n\x0bresolved_at\x18\x02\x20\x01(\x0b2\x1a.\
+    google.protobuf.TimestampR\nresolvedAt\x12N\n\x07details\x18\x03\x20\x01\
+    (\x0b24.bitdrift.public.unary.alerts.v1.AlertHistoryDetailsR\x07details*\
+    *\n\x12ThresholdCondition\x12\t\n\x05ABOVE\x10\0\x12\t\n\x05BELOW\x10\
+    \x01*'\n\x11WorkflowAlertType\x12\t\n\x05BASIC\x10\0\x12\x07\n\x03SLO\
+    \x10\x012\xa4\x04\n\rAlertsService\x12\x81\x01\n\x0eGetAlertConfig\x126.\
+    bitdrift.public.unary.alerts.v1.GetAlertConfigRequest\x1a7.bitdrift.publ\
+    ic.unary.alerts.v1.GetAlertConfigResponse\x12\x8a\x01\n\x11UpsertAlertCo\
+    nfig\x129.bitdrift.public.unary.alerts.v1.UpsertAlertConfigRequest\x1a:.\
+    bitdrift.public.unary.alerts.v1.UpsertAlertConfigResponse\x12{\n\x0cGetA\
+    llAlerts\x124.bitdrift.public.unary.alerts.v1.GetAllAlertsRequest\x1a5.b\
+    itdrift.public.unary.alerts.v1.GetAllAlertsResponse\x12\x84\x01\n\x0fGet\
+    AlertHistory\x127.bitdrift.public.unary.alerts.v1.GetAlertHistoryRequest\
+    \x1a8.bitdrift.public.unary.alerts.v1.GetAlertHistoryResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
