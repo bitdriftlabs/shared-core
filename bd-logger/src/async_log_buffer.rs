@@ -18,7 +18,7 @@ use crate::logger::{
   with_thread_local_logger_guard,
 };
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
-use crate::metadata::MetadataCollector;
+use crate::metadata::{MetadataCollector, verify_custom_field_name};
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::{Block, battery, internal_report, network};
 use anyhow::anyhow;
@@ -1482,6 +1482,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
+        if state_store
+          .read()
+          .await
+          .get(Scope::OotbFields, &key)
+          .is_some()
+        {
+          log::debug!("ignoring custom log field {key:?} because an OOTB field owns it");
+          return;
+        }
+
+        if let Err(e) = verify_custom_field_name(&key) {
+          log::warn!("failed to add log field ({key:?}): {e}");
+          return;
+        }
+
         if let Err(e) = state_store
           .insert(
             Scope::CustomFields,
@@ -1519,6 +1534,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         }
       },
       LoggerControl::RemoveLogField(field_name) => {
+        if state_store
+          .read()
+          .await
+          .get(Scope::OotbFields, &field_name)
+          .is_some()
+        {
+          log::debug!(
+            "ignoring removal of custom log field {field_name:?} because an OOTB field owns it"
+          );
+          return;
+        }
+
         if let Err(e) = state_store.remove(Scope::CustomFields, &field_name).await {
           log::warn!("failed to remove custom log field ({field_name:?}): {e}");
           return;

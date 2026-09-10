@@ -12,6 +12,7 @@ use crate::tests::make_string_value;
 use bd_proto::protos::state::state_payload::StateValue;
 use bd_time::TestTimeProvider;
 use crc32fast::Hasher;
+use std::cell::Cell;
 use std::sync::Arc;
 use time::macros::datetime;
 
@@ -49,13 +50,15 @@ fn unknown_scope_marks_partial_data_loss_without_startup_failure() {
   hasher.update(&buffer[frame_start .. crc_start]);
   buffer[crc_start .. crc_start + 4].copy_from_slice(&hasher.finalize().to_le_bytes());
 
+  let callback_called = Cell::new(false);
   let (_journal, data_loss) = VersionedJournal::<StateValue>::from_buffer(
     &mut buffer,
     0.8,
     time_provider,
-    |_scope, _key, _value, _timestamp| panic!("unknown frame must not be replayed"),
+    |_scope, _key, _value, _timestamp| callback_called.set(true),
   )
   .unwrap();
 
+  assert!(!callback_called.get());
   assert!(matches!(data_loss, PartialDataLoss::Yes));
 }

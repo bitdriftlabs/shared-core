@@ -2115,6 +2115,67 @@ fn initial_field_state_updates_skip_unchanged_values() {
 }
 
 #[tokio::test]
+async fn ootb_ownership_prevents_custom_state_changes() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new().await;
+  let ootb_value = super::persistent_field_value(DataValue::String("ootb".to_string()));
+  let custom_value = super::persistent_field_value(DataValue::String("custom".to_string()));
+
+  assert_ok!(
+    state_store
+      .insert(Scope::OotbFields, "shared".to_string(), ootb_value.clone())
+      .await
+  );
+
+  buffer
+    .process_control(
+      LoggerControl::AddLogField(
+        "shared".to_string(),
+        DataValue::String("custom".to_string()),
+      ),
+      &state_store,
+    )
+    .await;
+
+  let state = state_store.read().await;
+  assert_eq!(state.get(Scope::OotbFields, "shared"), Some(&ootb_value));
+  assert!(state.get(Scope::CustomFields, "shared").is_none());
+  drop(state);
+  assert!(
+    buffer
+      .metadata_collector
+      .initial_fields()
+      .get("shared")
+      .is_none()
+  );
+
+  // Preserve a legacy custom value while its OOTB counterpart owns the virtual field. This can
+  // occur after upgrading from a version that allowed both state entries to coexist.
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::CustomFields,
+        "shared".to_string(),
+        custom_value.clone()
+      )
+      .await
+  );
+  buffer
+    .process_control(
+      LoggerControl::RemoveLogField("shared".to_string()),
+      &state_store,
+    )
+    .await;
+
+  assert_eq!(
+    state_store.read().await.get(Scope::CustomFields, "shared"),
+    Some(&custom_value)
+  );
+}
+
+#[tokio::test]
 async fn previous_process_state_uses_only_snapshot_log_fields() {
   let current_store = TestStore::new().await;
   for (scope, key, value) in [
