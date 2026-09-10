@@ -1151,6 +1151,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   }
 
   async fn persist_initial_log_fields(
+    &mut self,
     initial_fields: AnnotatedLogFields,
     state_store: &bd_state::Store,
   ) {
@@ -1161,21 +1162,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     for (scope, key, value) in updates {
       match value {
-        Some(value) => Self::store_virtual_log_field(state_store, scope, &key, value).await,
+        Some(value) => {
+          if let Err(e) = state_store.insert(scope, key.clone(), value).await {
+            log::warn!("state rejected initial {scope:?} log field {key:?}; dropping it: {e}");
+            Self::clear_virtual_log_field(state_store, scope, &key).await;
+            if scope == Scope::CustomFields {
+              self.metadata_collector.remove_field(key.into());
+            } else {
+              self.metadata_collector.remove_ootb_field(key.into());
+            }
+          }
+        },
         None => Self::clear_virtual_log_field(state_store, scope, &key).await,
       }
-    }
-  }
-
-  async fn store_virtual_log_field(
-    state_store: &bd_state::Store,
-    scope: Scope,
-    key: &str,
-    value: Value,
-  ) {
-    if let Err(e) = state_store.insert(scope, key.to_string(), value).await {
-      log::warn!("state rejected {scope:?} log field {key:?}; using its inline value instead: {e}");
-      Self::clear_virtual_log_field(state_store, scope, key).await;
     }
   }
 
@@ -1269,7 +1268,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .start_startup_gate(self.startup_replay_delay.take());
 
     let initial_fields = self.metadata_collector.initial_fields();
-    Self::persist_initial_log_fields(initial_fields, &state_store).await;
+    self
+      .persist_initial_log_fields(initial_fields, &state_store)
+      .await;
 
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
@@ -1487,25 +1488,33 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
-        Self::store_virtual_log_field(
-          state_store,
-          Scope::CustomFields,
-          &key,
-          persistent_field_value(value.clone()),
-        )
-        .await;
+        if let Err(e) = state_store
+          .insert(
+            Scope::CustomFields,
+            key.clone(),
+            persistent_field_value(value.clone()),
+          )
+          .await
+        {
+          log::warn!("state rejected custom log field ({key:?}); leaving it unchanged: {e}");
+          return;
+        }
         if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value) {
           log::warn!("failed to add log field ({key:?}): {e}");
         }
       },
       LoggerControl::UpdateOotbLogField(key, value) => {
-        Self::store_virtual_log_field(
-          state_store,
-          Scope::OotbFields,
-          &key,
-          persistent_field_value(value.clone()),
-        )
-        .await;
+        if let Err(e) = state_store
+          .insert(
+            Scope::OotbFields,
+            key.clone(),
+            persistent_field_value(value.clone()),
+          )
+          .await
+        {
+          log::warn!("state rejected OOTB log field ({key:?}); leaving it unchanged: {e}");
+          return;
+        }
 
         self
           .metadata_collector
@@ -1516,7 +1525,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         }
       },
       LoggerControl::RemoveLogField(field_name) => {
-        Self::clear_virtual_log_field(state_store, Scope::CustomFields, &field_name).await;
+        if let Err(e) = state_store.remove(Scope::CustomFields, &field_name).await {
+          log::warn!("failed to remove custom log field ({field_name:?}): {e}");
+          return;
+        }
         self.metadata_collector.remove_field(field_name.into());
       },
       LoggerControl::SetMemoryPressureLevel { level } => {

@@ -285,6 +285,14 @@ impl MetadataCollector {
     }
   }
 
+  pub(crate) fn remove_ootb_field(&mut self, field_key: LogFieldKey) {
+    if let Entry::Occupied(entry) = self.fields.entry(field_key)
+      && entry.get().kind == LogFieldKind::Ootb
+    {
+      entry.remove();
+    }
+  }
+
   /// Returns the persistent fields supplied during logger construction for state-store seeding.
   pub(crate) fn initial_fields(&self) -> AnnotatedLogFields {
     self.fields.clone()
