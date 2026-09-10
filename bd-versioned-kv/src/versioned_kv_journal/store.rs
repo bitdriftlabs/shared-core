@@ -261,6 +261,31 @@ impl PendingScopedValues {
   }
 }
 
+//
+// TestHooks
+//
+
+#[cfg(test)]
+trait TestHooks: Send + Sync {
+  fn before_post_update_rotation(&self) -> anyhow::Result<()> {
+    Ok(())
+  }
+}
+
+//
+// FailNextPostUpdateRotation
+//
+
+#[cfg(test)]
+struct FailNextPostUpdateRotation;
+
+#[cfg(test)]
+impl TestHooks for FailNextPostUpdateRotation {
+  fn before_post_update_rotation(&self) -> anyhow::Result<()> {
+    anyhow::bail!("test-injected post-update rotation failure");
+  }
+}
+
 /// Persistent storage implementation using a memory-mapped journal.
 struct PersistentStore {
   journal: MemMappedVersionedJournal<StateValue>,
@@ -276,9 +301,9 @@ struct PersistentStore {
   max_capacity_bytes: usize,
   // Stats
   stats: CommonStats,
-  // Keeps post-mutation rotation failures deterministic without relying on filesystem faults.
+  // Test-only hooks make persistence failures deterministic without filesystem faults.
   #[cfg(test)]
-  fail_next_post_update_rotation: bool,
+  test_hooks: Option<Arc<dyn TestHooks>>,
 }
 
 /// The result of a persistent mutation, including a failure that occurred after it committed.
@@ -366,7 +391,7 @@ impl PersistentStore {
         max_capacity_bytes: config.max_capacity_bytes,
         stats,
         #[cfg(test)]
-        fail_next_post_update_rotation: false,
+        test_hooks: None,
       },
       data_loss,
     ))
@@ -565,8 +590,8 @@ impl PersistentStore {
   /// Rotates after a committed mutation has advanced the journal high-water mark.
   async fn rotate_after_update(&mut self) -> anyhow::Result<()> {
     #[cfg(test)]
-    if std::mem::take(&mut self.fail_next_post_update_rotation) {
-      anyhow::bail!("test-injected post-update rotation failure");
+    if let Some(test_hooks) = &self.test_hooks {
+      test_hooks.before_post_update_rotation()?;
     }
 
     if self.journal.is_high_water_mark_triggered() {
@@ -1276,7 +1301,7 @@ impl VersionedKVStore {
   #[cfg(test)]
   pub(crate) fn fail_next_post_update_rotation_for_testing(&mut self) {
     if let StoreBackend::Persistent(store) = &mut self.backend {
-      store.fail_next_post_update_rotation = true;
+      store.test_hooks = Some(Arc::new(FailNextPostUpdateRotation));
     }
   }
 
