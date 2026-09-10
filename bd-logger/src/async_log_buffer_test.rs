@@ -44,6 +44,7 @@ use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
   DataValue,
+  FieldsRef,
   Log,
   LogFields,
   log_level,
@@ -58,7 +59,13 @@ use bd_session::Strategy;
 use bd_session::test::no_timeout;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
-use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
+use bd_state::{
+  InMemoryStateReader,
+  MEMORY_PRESSURE_LEVEL_KEY,
+  SYSTEM_SESSION_ID_KEY,
+  Scope,
+  StateReader,
+};
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -1163,7 +1170,7 @@ impl LogReplay for TestReplay {
     &mut self,
     log: Log,
     _processing_pipeline: &mut ProcessingPipeline,
-    _state: &bd_state::Store,
+    _state: &dyn StateReader,
     _now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     if let Some(message) = log.message.as_str() {
@@ -1674,7 +1681,7 @@ async fn logs_are_replayed_in_order() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run(state_store, ()).await;
+    _ = Box::pin(buffer.run(state_store, ())).await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -2088,6 +2095,100 @@ async fn previous_run_log_does_not_override_system_session_id() {
 
   drop(test_store);
   task.join().unwrap();
+}
+
+#[test]
+fn initial_field_state_updates_skip_unchanged_values() {
+  let initial_fields: AnnotatedLogFields = [(
+    "field".into(),
+    AnnotatedLogField::new_custom(DataValue::String("value".to_string())),
+  )]
+  .into();
+  let mut state = InMemoryStateReader::new();
+  state.insert(
+    Scope::CustomFields,
+    "field",
+    super::persistent_field_value(DataValue::String("value".to_string())),
+  );
+
+  assert!(super::initial_field_state_updates(initial_fields, &state).is_empty());
+}
+
+#[tokio::test]
+async fn previous_process_state_uses_only_snapshot_log_fields() {
+  let current_store = TestStore::new().await;
+  for (scope, key, value) in [
+    (
+      Scope::CustomFields,
+      "current_custom",
+      super::persistent_field_value(DataValue::String("current".to_string())),
+    ),
+    (
+      Scope::OotbFields,
+      "current_ootb",
+      super::persistent_field_value(DataValue::String("current".to_string())),
+    ),
+    (
+      Scope::FeatureFlagExposure,
+      "current_flag",
+      bd_state::string_value("current"),
+    ),
+  ] {
+    assert_ok!(current_store.insert(scope, key.to_string(), value).await);
+  }
+
+  let previous_store = TestStore::new().await;
+  for (scope, key) in [
+    (Scope::CustomFields, "previous_custom"),
+    (Scope::OotbFields, "previous_ootb"),
+  ] {
+    assert_ok!(
+      previous_store
+        .insert(
+          scope,
+          key.to_string(),
+          super::persistent_field_value(DataValue::String("previous".to_string())),
+        )
+        .await
+    );
+  }
+  let previous_run_state = previous_store.read().await.as_scoped_maps().clone();
+
+  let current_state = current_store.read().await;
+  let state = super::previous_process_state(&current_state, &previous_run_state);
+
+  assert!(state.get(Scope::CustomFields, "current_custom").is_none());
+  assert!(state.get(Scope::OotbFields, "current_ootb").is_none());
+  assert!(state.get(Scope::CustomFields, "previous_custom").is_some());
+  assert!(state.get(Scope::OotbFields, "previous_ootb").is_some());
+
+  let no_previous_virtual_fields = bd_versioned_kv::ScopedMaps::default();
+  let no_virtual_state = super::previous_process_state(&current_state, &no_previous_virtual_fields);
+  assert!(
+    no_virtual_state
+      .get(Scope::CustomFields, "current_custom")
+      .is_none()
+  );
+  assert!(
+    no_virtual_state
+      .get(Scope::OotbFields, "current_ootb")
+      .is_none()
+  );
+  let previous_global_fields: LogFields = [("global_field".into(), "previous".into())].into();
+  assert_eq!(
+    bd_log_matcher::matcher::field_value_with_state(
+      FieldsRef::new(&previous_global_fields, &LogFields::default()),
+      &no_virtual_state,
+      "global_field",
+    )
+    .as_deref(),
+    Some("previous")
+  );
+  assert!(
+    state
+      .get(Scope::FeatureFlagExposure, "current_flag")
+      .is_some_and(|value| value.has_string_value() && value.string_value() == "current")
+  );
 }
 
 #[tokio::test]

@@ -128,14 +128,6 @@ pub enum AdmissionError {
   ContextCaptureFailed,
 }
 
-/// Stores a log field without changing its type in the persistent state journal.
-fn persistent_field_value(value: DataValue) -> Value {
-  Value {
-    value_type: Value_type::Data(value.into_proto()).into(),
-    ..Default::default()
-  }
-}
-
 //
 // AdmissionCounters
 //
@@ -1204,6 +1196,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self
   }
 
+  #[cfg(test)]
   pub async fn run(
     self,
     state_store: bd_state::Store,
@@ -1237,6 +1230,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   // TODO(mattklein123): This seems to only be used for tests. Figure out how to clean this up
   // so we don't need this just for tests.
+  #[cfg(test)]
   pub async fn run_with_shutdown(
     self,
     state_store: bd_state::Store,
