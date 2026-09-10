@@ -517,3 +517,55 @@ async fn compaction_capacity_rejection_keeps_persistent_store() -> anyhow::Resul
 
   Ok(())
 }
+
+/// A deletion must remain visible after its tombstone cannot fit in the persistent journal.
+#[tokio::test]
+async fn capacity_rejected_removal_falls_back_to_in_memory() -> anyhow::Result<()> {
+  use bd_client_stats_store::test::StatsHelper;
+  use std::collections::BTreeMap;
+
+  let setup = Setup::new();
+  let config = PersistentStoreConfig {
+    initial_buffer_size: 8 * 1024,
+    max_capacity_bytes: 8 * 1024,
+    high_water_mark_ratio: 0.8,
+  };
+  let mut store = setup.open_store(config).await?;
+
+  // The live entries fit in the journal, but replaying the long-key tombstone alongside the
+  // pre-deletion compacted map would not. The delete must still take effect in memory.
+  let deleted_key = "deleted".repeat(143);
+  let deleted_value = make_string_value("value");
+  let unrelated_value = make_string_value(&"x".repeat(6_200));
+  store
+    .insert(
+      Scope::GlobalState,
+      deleted_key.clone(),
+      deleted_value.clone(),
+    )
+    .await?;
+  store
+    .insert(
+      Scope::GlobalState,
+      "unrelated".to_string(),
+      unrelated_value.clone(),
+    )
+    .await?;
+  assert_eq!(store.persistence_mode(), PersistenceMode::Persistent);
+
+  let removed = store.remove(Scope::GlobalState, &deleted_key).await?;
+
+  assert!(removed.is_some_and(|(_, value)| value == deleted_value));
+  assert!(!store.contains_key(Scope::GlobalState, &deleted_key));
+  assert_eq!(
+    store.get(Scope::GlobalState, "unrelated"),
+    Some(&unrelated_value)
+  );
+  assert_eq!(store.persistence_mode(), PersistenceMode::InMemory);
+  assert!(store.journal_path().is_none());
+  setup
+    .collector
+    .assert_counter_eq(1, "test:kv:persistence_fallbacks", BTreeMap::new());
+
+  Ok(())
+}

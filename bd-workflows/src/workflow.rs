@@ -1251,6 +1251,7 @@ fn process_transition<'a>(
   mut extractions: TraversalExtractions,
   actions: &'a [Action],
   fields: FieldsRef<'_>,
+  state_reader: &dyn bd_state::StateReader,
   current_state_index: usize,
   next_state_index: usize,
   transition_type: WorkflowDebugTransitionType,
@@ -1261,7 +1262,7 @@ fn process_transition<'a>(
 
   // Collect triggered actions and injected logs.
   let (triggered_actions, logs_to_inject) =
-    Traversal::triggered_actions(actions, &mut extractions, fields);
+    Traversal::triggered_actions(actions, &mut extractions, fields, state_reader);
 
   result.triggered_actions.extend(triggered_actions);
   result.log_to_inject.extend(logs_to_inject);
@@ -1467,6 +1468,7 @@ impl Traversal {
         TraversalExtractions::default(),
         actions,
         fields,
+        state_reader,
         self.state_index,
         next_state_index,
         WorkflowDebugTransitionType::Timeout,
@@ -1532,6 +1534,7 @@ impl Traversal {
         self.do_log_extractions(config, index, log, state_reader),
         actions,
         FieldsRef::new(&log.fields, &log.matching_fields),
+        state_reader,
         self.state_index,
         next_state_index,
         WorkflowDebugTransitionType::Normal(index as u64),
@@ -1634,6 +1637,7 @@ impl Traversal {
         self.do_state_change_extractions(config, index, state_change, fields, state_reader),
         actions,
         fields,
+        state_reader,
         self.state_index,
         next_state_index,
         WorkflowDebugTransitionType::Normal(index as u64),
@@ -1666,6 +1670,7 @@ impl Traversal {
         self.do_log_extractions(config, index, log, state_reader),
         actions,
         FieldsRef::new(&log.fields, &log.matching_fields),
+        state_reader,
         self.state_index,
         next_state_index,
         WorkflowDebugTransitionType::Normal(index as u64),
@@ -1833,6 +1838,7 @@ impl Traversal {
     actions: &'a [Action],
     extractions: &mut TraversalExtractions,
     current_log_fields: FieldsRef<'_>,
+    state_reader: &dyn bd_state::StateReader,
   ) -> (Vec<TriggeredAction<'a>>, TinyMap<&'a str, Log>) {
     let mut triggered_actions = vec![];
     let mut logs_to_inject = TinyMap::default();
@@ -1866,7 +1872,9 @@ impl Traversal {
           triggered_actions.push(TriggeredAction::StartTracing);
         },
         Action::GenerateLog(action) => {
-          if let Some(log) = generate_log_action(extractions, action, current_log_fields) {
+          if let Some(log) =
+            generate_log_action(extractions, action, current_log_fields, state_reader)
+          {
             logs_to_inject.insert(action.id.as_str(), log);
           }
         },
