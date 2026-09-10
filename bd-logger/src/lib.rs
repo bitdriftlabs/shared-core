@@ -31,7 +31,6 @@ mod logger;
 mod logging_state;
 mod metadata;
 mod network;
-mod pre_config_buffer;
 mod service;
 mod state_upload;
 mod trigger_upload_artifact;
@@ -39,7 +38,7 @@ mod trigger_upload_artifact;
 pub use state_upload::{SnapshotRef, StateUploadHandle};
 
 #[cfg(test)]
-mod test;
+pub(crate) mod test;
 
 pub use crate::app_version::AppVersionExtra;
 pub use crate::logger::{ChannelPair, InitParams};
@@ -69,7 +68,15 @@ pub use bd_proto_v1::MemoryPressureLevel;
 pub use bd_resource_utilization::Target as ResourceUtilizationTarget;
 pub use bd_session_replay::Target as SessionReplayTarget;
 pub use builder::LoggerBuilder;
-pub use logger::{Block, CaptureSession, Logger, LoggerHandle, ReportProcessingSession, TestHooks};
+pub use logger::{
+  Block,
+  CaptureSession,
+  Logger,
+  LoggerHandle,
+  ReportProcessingSession,
+  StartupReplayEligibility,
+  TestHooks,
+};
 pub use metadata::LogMetadata;
 
 #[cfg(test)]

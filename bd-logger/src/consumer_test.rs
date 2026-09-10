@@ -732,6 +732,7 @@ impl SetupMultiConsumer {
         None,
         PendingTriggerUploadsStore::new(&sdk_directory_clone),
         process_local_pending_flush_state_clone,
+        None,
       )
       .run()
       .await
@@ -2175,15 +2176,6 @@ async fn remote_streaming_activation_channel_closure_preserves_flush_completion(
     .await
     .unwrap();
 
-  for _ in 0 .. 100 {
-    if setup.flush_is_pending(&flush_id) {
-      break;
-    }
-
-    tokio::task::yield_now().await;
-  }
-  assert!(setup.flush_is_pending(&flush_id));
-
   let upload = setup.next_upload().await;
   assert!(setup.flush_is_pending(&flush_id));
 
@@ -2295,16 +2287,8 @@ async fn remote_streaming_activation_waits_for_channel_capacity_before_completin
     .await
     .unwrap();
 
-  for _ in 0 .. 100 {
-    if setup.flush_is_pending(&flush_id) {
-      break;
-    }
-
-    tokio::task::yield_now().await;
-  }
-  assert!(setup.flush_is_pending(&flush_id));
-
   let upload = setup.next_upload().await;
+  assert!(setup.flush_is_pending(&flush_id));
   upload
     .response_tx
     .send(UploadResponse {

@@ -36,11 +36,17 @@ struct Entry {
   id: u64,
   lane: RetentionLane,
   bytes: usize,
+  startup_previous: bool,
 }
 
 impl Entry {
-  const fn new(id: u64, lane: RetentionLane, bytes: usize) -> Self {
-    Self { id, lane, bytes }
+  const fn new(id: u64, lane: RetentionLane, bytes: usize, startup_previous: bool) -> Self {
+    Self {
+      id,
+      lane,
+      bytes,
+      startup_previous,
+    }
   }
 }
 
@@ -50,16 +56,32 @@ impl Entry {
 
 #[derive(Clone, Debug)]
 enum Operation {
-  Admit { lane: RetentionLane, bytes: usize },
+  Admit {
+    lane: RetentionLane,
+    bytes: usize,
+    previous_process: bool,
+  },
   UpdateLimits(EventBufferLimits),
-  TakeBatch { max_entries: usize },
+  TakeBatch {
+    max_entries: usize,
+  },
+  OpenGate,
   Close,
 }
 
 fn operation_strategy() -> impl Strategy<Value = Operation> {
   prop_oneof![
-    4 => (retention_lane_strategy(), 1_usize .. 65)
-      .prop_map(|(lane, bytes)| Operation::Admit { lane, bytes }),
+    3 => (retention_lane_strategy(), 1_usize .. 65)
+      .prop_map(|(lane, bytes)| Operation::Admit {
+        lane,
+        bytes,
+        previous_process: false,
+      }),
+    1 => (1_usize .. 65).prop_map(|bytes| Operation::Admit {
+      lane: RetentionLane::Protected,
+      bytes,
+      previous_process: true,
+    }),
     1 => (1_usize .. 65, 1_usize .. 65)
       .prop_map(|(log_limit_bytes, total_limit_bytes)| {
         Operation::UpdateLimits(EventBufferLimits {
@@ -68,6 +90,7 @@ fn operation_strategy() -> impl Strategy<Value = Operation> {
         })
       }),
     1 => (1_usize .. 65).prop_map(|max_entries| Operation::TakeBatch { max_entries }),
+    1 => Just(Operation::OpenGate),
     1 => Just(Operation::Close),
   ]
 }
@@ -105,11 +128,26 @@ impl TestSubject {
 
   fn apply(&mut self, operation: &Operation) {
     match operation {
-      Operation::Admit { lane, bytes } => {
-        let entry = Entry::new(self.next_id, *lane, *bytes);
+      Operation::Admit {
+        lane,
+        bytes,
+        previous_process,
+      } => {
+        let entry = Entry::new(
+          self.next_id,
+          *lane,
+          *bytes,
+          *previous_process && !self.reference.gate_open,
+        );
         self.next_id += 1;
         assert_eq!(
-          self.actual.admit(entry.lane, entry.bytes, entry.clone()),
+          self.actual.admit_with_evictions(
+            entry.lane,
+            *previous_process,
+            entry.bytes,
+            entry.clone(),
+            |_| {},
+          ),
           self.reference.admit(entry),
         );
       },
@@ -122,6 +160,9 @@ impl TestSubject {
           self.actual.take_batch(*max_entries),
           self.reference.take_batch(*max_entries),
         );
+      },
+      Operation::OpenGate => {
+        assert_eq!(self.actual.open_gate(), self.reference.open_gate());
       },
       Operation::Close => {
         self.actual.close();
@@ -141,6 +182,8 @@ struct ReferenceState {
   limits: EventBufferLimits,
   pending_limits: Option<EventBufferLimits>,
   closed: bool,
+  gate_open: bool,
+  startup_previous: Vec<Entry>,
   entries: Vec<Entry>,
 }
 
@@ -150,6 +193,8 @@ impl ReferenceState {
       limits,
       pending_limits: None,
       closed: false,
+      gate_open: false,
+      startup_previous: vec![],
       entries: vec![],
     }
   }
@@ -170,7 +215,7 @@ impl ReferenceState {
     }
 
     let Some(retained) = best_retained_entries(
-      &self.entries,
+      &self.retained_entries(),
       self.limits,
       Some(&entry),
       evictable_lanes(entry.lane),
@@ -178,18 +223,42 @@ impl ReferenceState {
     ) else {
       return AdmissionOutcome::RejectedFull;
     };
-    self.entries = retained;
-    self.entries.push(entry);
+    self.replace_retained_entries(retained);
+    if entry.startup_previous {
+      self.startup_previous.push(entry);
+    } else {
+      self.entries.push(entry);
+    }
     AdmissionOutcome::Admitted
   }
 
   fn take_batch(&mut self, max_entries: usize) -> Vec<Entry> {
-    let count = max_entries.min(self.entries.len());
-    self.entries.drain(.. count).collect()
+    if !self.gate_open {
+      return vec![];
+    }
+
+    let previous_count = max_entries.min(self.startup_previous.len());
+    let mut batch = self
+      .startup_previous
+      .drain(.. previous_count)
+      .collect::<Vec<_>>();
+    let remaining = max_entries - batch.len();
+    batch.extend(self.entries.drain(.. remaining.min(self.entries.len())));
+    batch
+  }
+
+  fn open_gate(&mut self) -> bool {
+    if self.gate_open {
+      false
+    } else {
+      self.gate_open = true;
+      true
+    }
   }
 
   fn close(&mut self) {
     self.closed = true;
+    self.startup_previous.clear();
     self.entries.clear();
   }
 
@@ -200,14 +269,36 @@ impl ReferenceState {
     self.limits = limits;
     // A limit change has no incoming lane. It always removes low entries before high entries and
     // never removes protected entries, even if they alone exceed the new total limit.
-    self.entries = best_retained_entries(
-      &self.entries,
+    let retained = best_retained_entries(
+      &self.retained_entries(),
       self.limits,
       None,
       &[RetentionLane::Low, RetentionLane::High],
       TotalBudget::PreserveProtected,
     )
     .expect("removing every evictable entry always produces a valid retained set");
+    self.replace_retained_entries(retained);
+  }
+
+  fn retained_entries(&self) -> Vec<Entry> {
+    self
+      .entries
+      .iter()
+      .chain(&self.startup_previous)
+      .cloned()
+      .collect()
+  }
+
+  fn replace_retained_entries(&mut self, entries: Vec<Entry>) {
+    self.startup_previous = entries
+      .iter()
+      .filter(|entry| entry.startup_previous)
+      .cloned()
+      .collect();
+    self.entries = entries
+      .into_iter()
+      .filter(|entry| !entry.startup_previous)
+      .collect();
   }
 }
 

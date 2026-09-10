@@ -32,6 +32,7 @@ pub trait StatsHelper {
     action_id: &str,
     labels: BTreeMap<String, String>,
   );
+  fn assert_histogram_observed(&self, value: f64, name: &str, labels: BTreeMap<String, String>);
 }
 
 #[async_trait::async_trait]
@@ -108,6 +109,23 @@ impl StatsHelper for Collector {
     {
       MetricData::Histogram(h) => match *h.inner.lock() {
         HistogramInner::Inline(ref v) => v.clone(),
+        HistogramInner::DDSketch(_) => panic!("Unexpected histogram type"),
+      },
+      MetricData::Counter(_) => panic!("Unexpected metric type"),
+    };
+
+    assert!(histogram_values.contains(&value));
+  }
+
+  fn assert_histogram_observed(&self, value: f64, name: &str, labels: BTreeMap<String, String>) {
+    let histogram_values = match self
+      .find_histogram(&NameType::Global(name.to_string()), &labels)
+      .unwrap_or_else(|| panic!("Histogram not found: {name} {labels:?}"))
+      .snap()
+      .unwrap()
+    {
+      MetricData::Histogram(h) => match *h.inner.lock() {
+        HistogramInner::Inline(ref values) => values.clone(),
         HistogramInner::DDSketch(_) => panic!("Unexpected histogram type"),
       },
       MetricData::Counter(_) => panic!("Unexpected metric type"),

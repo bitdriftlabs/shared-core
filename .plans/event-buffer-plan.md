@@ -22,8 +22,9 @@ and state ingress channels while retaining one async consumer.
 - The buffer begins with separate bootstrap log and overall in-memory budgets. Both become
   runtime-configurable after configuration arrives; configuration changes apply on the next
   admission rather than walking the queue immediately.
-- Startup replay remains unchanged until the final milestone. The final gate uses a 500 ms
-  strawman base delay plus up to 1 s for a crash hint, both runtime-configurable.
+- Startup replay remains unchanged until the final milestone. The final gate uses a construction-time
+  enum: no delay for `NoPriorCrash`, 1 s for `MayHavePriorCrash`, and 50 ms for `Unknown`.
+  The latter two total delays are independently runtime-configurable.
 
 ## Milestone roadmap
 
@@ -31,9 +32,9 @@ and state ingress channels while retaining one async consumer.
 2. [x] **Session persistence.** Replace ALB-carried session writes with a coalescing `bd_session`
    flusher.
 3. [x] **EventBuffer.** Build and test the bounded three-queue component without changing logger ingress.
-4. [ ] **Ingress migration.** Route logger/state inputs through EventBuffer while preserving
+4. [x] **Ingress migration.** Route logger/state inputs through EventBuffer while preserving
    `PreConfigBuffer` startup behavior.
-5. [ ] **Startup replay.** Replace `PreConfigBuffer` with the delayed replay gate and prior-process
+5. [x] **Startup replay.** Replace `PreConfigBuffer` with the delayed replay gate and prior-process
    ordering lane.
 
 The milestone checklists appear after the detailed design reference. Each milestone is independently
@@ -103,8 +104,8 @@ state, and EventBuffer carries only immutable session IDs. A blocking flush is t
 that waits for that flusher.
 
 **Direct control paths.** Configuration stays on its existing path because applying it can build or
-replace pipeline state and has no producer-admission order. `CrashPending` is only a drain-gate
-extension hint. Shutdown, `Notify`, timers, lifecycle/status, the sleep-mode watch, and the tracing
+replace pipeline state and has no producer-admission order. Report-processing requests do not change
+the construction-time replay classification or deadline. Shutdown, `Notify`, timers, lifecycle/status, the sleep-mode watch, and the tracing
 flag are scheduling or local-state signals, not retained work.
 
 **Consumer-owned downstream work.** Stats, upload, buffer flushes, and workflow side effects stay
@@ -132,7 +133,9 @@ on their existing downstream channels. They are consequences of an entry, never 
   `PreviousRunSessionID` continues to take `occurred_at` from the crash report, while `_logged_at`
   is the pinned timestamp-provider value.
 - State/control operations that affect workflows or persistence remain protected EventBuffer
-  entries. Crash-pending and shutdown remain direct control signals, not buffer entries.
+  entries. Report discovery and shutdown remain direct control signals: prior reports must be
+  discovered before startup-gate release so they can join the protected replay lane. Current-session
+  reports use the crash monitor's watcher path rather than the callback scan path.
 - `set_feature_flag_exposure` resolves its session ID through `bd_session`, then captures provider
   data plus an admission timestamp before EventBuffer admission; provider capture uses the same
   held thread-local guard as logs. The consumer combines those immutable inputs with the current
@@ -373,7 +376,7 @@ behaviors deliberately rather than moving only `LoggerHandle::log`.
   batch, with per-report admission outcomes rather than all-or-nothing success. Current-run reports
   use captured provider, field, and session context. Previous-run reports remain protected, use
   persisted prior state and session when available, and pin their timestamp-provider `_logged_at`
-  value at EventBuffer admission. `CrashPending` remains an out-of-band gate-extension signal.
+  value at EventBuffer admission. Report processing does not extend the replay delay.
 - **Configuration:** Keep updates outside EventBuffer: they have no producer admission order and
   may perform pipeline construction. Readiness is the explicit startup-gate release condition.
 - **Workflow-injected logs and interceptors:** Keep both on the single consumer. Generated logs
@@ -506,28 +509,47 @@ After Milestone 4 is stable, replace `PreConfigBuffer` with EventBuffer startup 
 the soft drain gate below. This delivers delayed replay and crash-log reordering without coupling
 those startup semantics to the ingress migration.
 
-EventBuffer starts with its drain gate `Holding`. Once configuration has created the processing
-pipeline, it reads the replay-delay runtime configuration and starts the base replay timer. The
-strawman default is a 500 ms configuration-relative base delay. The gate opens only after that
-deadline has passed. A platform crash-pending hint while the gate is holding can add up to a
-further 1 s crash delay, for a 1.5 s maximum under the strawman. Both the base delay and maximum
-crash delay are runtime-configurable. Holding continues to capture and prioritize events but does
-not deliver them.
+EventBuffer starts with its drain gate `Holding`. The platform supplies an immutable
+`StartupReplayEligibility` when constructing the logger: `NoPriorCrash` skips the replay timer,
+`MayHavePriorCrash` selects a 1 s total delay, and `Unknown` selects a 50 ms total delay. Existing
+callers default to `Unknown`. Both nonzero categories have independent runtime flags; their delays
+are alternatives, never additive. The timer starts when ALB starts, before configuration readiness.
+Holding continues to capture and prioritize events but does not deliver them.
 
-Before configuration is ready, `CrashPending` is retained as a pending extension hint and a
-high-watermark crossing is retained as an early-release request; neither can deliver work without
-a pipeline. At configuration readiness, apply the pending hint to the runtime-configured deadline,
-record the current `(log_limit, total_limit)` pair through `EventBuffer::set_pending_limits`, and
+The pipeline must be ready before any release, even when there is no replay delay. While the gate
+is holding, runtime updates can extend the selected deadline relative to ALB startup, including
+after the original timer elapsed while waiting for configuration. They cannot shorten the deadline,
+and updates to the other category have no effect. EventBuffer owns the selected runtime watch and
+rereads it before timer-driven release so an available increase cannot release ingress at the old
+deadline. Report-processing
+requests never alter the classification or extend the deadline.
+
+Before configuration is ready, a high-watermark crossing is retained as an early-release request;
+it cannot deliver work without a pipeline. After configuration application completes, first
+record the current `(log_limit, total_limit)` pair through `EventBuffer::set_pending_limits`, then
+mark the startup gate ready, and
 retain the same runtime watch for later budget changes. The pair becomes effective on the next
 EventBuffer admission. If the buffer is already at the high watermark calculated from the runtime
-overall budget, release immediately with reason `high_watermark`; otherwise arm the configured
-timer.
+overall budget, release immediately with reason `high_watermark`; otherwise wait for any remaining
+selected delay.
+`FlushState` before the startup gate is ready completes immediately as a no-op and is not queued:
+there is no retained downstream work for it to flush. EventBuffer linearizes that decision against
+configuration making the startup gate ready, so later flushes use normal ordered-barrier behavior.
 
 Configuration construction, including restoration of already-persisted workflow actions, remains
 outside the EventBuffer ordering domain and keeps its current startup behavior while the gate is
 holding. `InitLifecycle::LogProcessingStarted` and the SDK "running" status move to the first
-gate release, immediately before the first EventBuffer batch is delivered; creating the pipeline
-alone is not reported as log processing.
+gate release, before processing the accompanying EventBuffer batch; creating the pipeline alone
+is not reported as log processing. `next_batch` returns the opening reason and hold duration exactly
+once, including when there are no queued entries, so lifecycle reporting never waits for ingress.
+
+EventBuffer owns readiness, the deadline, monotonic extensions, and release causes. Only its
+`next_batch` consumer transitions the gate to open. Producers retain flush barriers or watermark
+requests and wake the ordinary consumer; there is no separate release-request waiter. The consumer
+waits on its notification, selected delay watch, or deadline without a background task. Because ALB
+does not poll `next_batch` while awaiting report discovery, those reports retain startup priority
+even if a producer requests release during discovery. Cancellation of `next_batch` preserves the
+deadline and release request, and shutdown drops retained work without opening the gate.
 
 Removing `PreConfigBuffer` at this point means startup events are retained in their original
 EventBuffer representation, so the same priority/eviction policy applies before and after
@@ -552,36 +574,44 @@ protected retention but is not reordered ahead of current-process work. This avo
 drain-time O(n) partition and retroactively changing workflow order after current-process events
 have started flowing.
 
-The gate is soft: a protected event that brings the buffer to at least 80% of the overall budget
-opens it early with reason `high_watermark`. Low-priority traffic alone does not shorten
-the startup window. If the consumer still cannot catch up, the normal hard-cap eviction policy
-applies; priority-event loss is measured rather than exceeding capacity.
+A protected event that brings the buffer to at least 80% of the overall budget requests early
+opening on the next consumption with reason `high_watermark`. Low-priority traffic alone does not shorten the startup
+window. If the consumer still cannot catch up, the normal hard-cap eviction policy applies;
+priority-event loss is measured rather than exceeding capacity.
 
-`CrashPending` may extend the deadline only while the gate is holding. A high-watermark release, a
-flush barrier, or normal timer release seals the ordering window; later hints and late
-previous-process logs cannot reopen it.
+A high-watermark release, a flush barrier, or normal timer release seals the ordering window;
+later runtime updates and late previous-process logs cannot reopen it. Arbitrarily stale crash
+reports have no reliable prior-session association; their presence cannot override the platform's
+construction-time classification.
 
-An admitted `FlushState(Block::Yes)` is also a gate barrier: it seals the gate, drains the
+An admitted `FlushState(Block::Yes)` after the startup gate is ready is also a gate barrier: it
+requests sealing on the next consumption, which drains the
 already-admitted startup-previous lane first, then drains through its ordered position before its
 completion resolves. It does not bypass older work. An admission-rejected blocking flush resolves
 immediately as a terminal drop and cannot act as a barrier. `FlushState(Block::No)` stays behind
 the gate, matching its existing fire-and-forget behavior. An admitted blocking flush may not remain
-pending solely because the soft startup delay has not elapsed.
+pending solely because the startup delay has not elapsed.
 
 ## Observability and validation
 
-- Preserve the existing log enqueue success/full/closed metrics for continuity until the channel
-  path is removed; add equivalent state metrics during the transition.
+Production metrics must stay off the producer fast path. The rollout set records gate release and
+the bounded outcome needed to calibrate its delay:
 
-Production rollout metrics are intentionally small and use only bounded, coarse dimensions:
+- Once per gate release, count the
+  release reason (`no_prior_crash`, timer, high watermark, or barrier), label it by startup
+  eligibility (`no_prior_crash`, `unknown`, or `may_have_prior_crash`), and record gate-hold
+  duration. This distinguishes the zero-delay, default-delay, and crash-recovery-delay cohorts
+  without a high-cardinality dimension.
+- Once per startup at most, record a previous-process crash-report batch observed after the gate
+  opened, labeled by the same eligibility. This gives a bounded rate for work that missed the
+  replay window even when normal post-gate capacity rejects it, without making the metric
+  proportional to a report's log expansion.
 
-- Count EventBuffer entry outcomes as admitted, evicted, rejected-full, rejected-oversized, or
-  closed. Do not break these down by event kind, log type, level, exact lane, or completion outcome.
-- Export queued bytes and entries split only into protected and evictable categories, plus the age
-  of the oldest retained entry to detect an unhealthy consumer.
-- Count drain-gate openings by timer, crash hint, high watermark, or barrier, and record gate-hold
-  duration.
-- Keep durable-write failures with the persistence owner rather than as an EventBuffer metric.
+We intentionally do not export queue depth, queued bytes, oldest-entry age, lock timing, or
+per-entry outcome counters. The late-work metric is a startup-level latch, not a per-entry
+counter. The omitted measurements are high-frequency gauges or counters, or require additional
+state, and can be enabled temporarily during a targeted investigation rather than becoming
+permanent client telemetry.
 
 Development instrumentation is temporary: it must be feature-gated or sampled, have a stated
 removal point before broad rollout, and not become a permanent metric merely because it aided
@@ -604,7 +634,8 @@ benchmarks and migration validation, not steady-state dashboards.
   opaque-entity pre-store coalescing/admission/recovery, memory-pressure persistence, flush
   ordering, both crash-report paths, provider reentrancy/threading, generated-log session
   inheritance, and bounded-batch fairness with a continuously non-empty EventBuffer.
-- In milestone 5, add prior-run metadata behavior, gate timer and crash extension,
+- In milestone 5, add prior-run metadata behavior, classification-selected timers, independent runtime
+  updates, report requests that leave the selected delay unchanged,
   high-watermark early replay, barrier release, previous-process startup-lane FIFO delivery, late
   previous-process no-reorder behavior, blocking-flush gate activation, nonblocking-flush gate
   retention, and
@@ -628,8 +659,9 @@ benchmarks and migration validation, not steady-state dashboards.
   configuration arrives.
 - Milestones 1 through 4 preserve current `PreConfigBuffer` startup behavior; milestone 5 is the
   only milestone that changes initialization replay and workflow ordering.
-- Milestone 5 introduces runtime settings for the 500 ms strawman base replay delay, 1 s maximum
-  crash-hint extension, `log_limit`, and `total_limit`. The bootstrap budgets and 80% high
+- Milestone 5 introduces runtime settings for the 50 ms uncertain-run replay delay, 1 s known-fatal
+  replay delay, `log_limit`, and `total_limit`. A positive no-prior-crash classification skips the
+  replay delay. The bootstrap budgets and 80% high
   watermark remain active before the first configuration arrives; later runtime updates become
   effective on the next EventBuffer admission using the budget-shrink behavior specified above.
 - Provider-capture failures preserve today's best-effort public behavior: the affected log is
@@ -656,7 +688,7 @@ previous-process logs against an isolated, in-memory historical engine while cur
 continued immediately through the live engine. This would prevent a late previous-process log
 from directly resetting or advancing the live engine's state.
 
-We are not selecting this as a replacement for the soft replay gate. A process boundary is not
+We are not selecting this as a replacement for the startup replay gate. A process boundary is not
 necessarily a session boundary: a prior-process log and a current-process log may belong to the
 same session. In that case the historical and live engines would advance independently, and there
 is no general correct merge for workflow runs, extraction state, tracing, generated logs, or

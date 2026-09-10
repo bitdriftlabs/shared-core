@@ -12,9 +12,10 @@ use bd_macros::ApproximateSize;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::{Counter as _, labels};
+use std::future::pending;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, watch};
 
 #[cfg(test)]
 #[path = "./event_buffer_prop_test.rs"]
@@ -24,8 +25,10 @@ mod prop_tests;
 mod tests;
 
 mod retention;
-
+mod startup_gate;
 use retention::EventBufferState;
+use startup_gate::StartupGate;
+pub use startup_gate::{StartupGateOpening, StartupGateReleaseReason};
 
 //
 // LoggerControl
@@ -195,6 +198,20 @@ impl EventBufferEntry {
     }
   }
 
+  fn is_previous_process(&self) -> bool {
+    matches!(
+      self,
+      Self::Ingress(LoggerIngressEvent {
+        context: EventContext::PreviousProcess { .. },
+        ..
+      })
+    )
+  }
+
+  fn is_blocking_flush(&self) -> bool {
+    matches!(self, Self::Control(LoggerControl::FlushState(Some(_))))
+  }
+
   fn take_completion(&mut self) -> Option<bd_completion::Sender<()>> {
     match self {
       Self::Ingress(event) => event.completion.take(),
@@ -226,7 +243,8 @@ pub struct EventBuffer {
 
 struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
-  notify: Notify,
+  // Wakes the consumer to recheck queued entries and startup release conditions.
+  consumer_notify: Notify,
   stats: Option<EventBufferStats>,
   #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
@@ -234,6 +252,7 @@ struct EventBufferInner {
 
 struct LoggerEventBufferState {
   retention: EventBufferState<EventBufferEntry>,
+  startup_gate: StartupGate,
 }
 
 impl EventBuffer {
@@ -279,8 +298,9 @@ impl EventBuffer {
       inner: Arc::new(EventBufferInner {
         state: PlatformMutex::new(LoggerEventBufferState {
           retention: EventBufferState::new(limits),
+          startup_gate: StartupGate::default(),
         }),
-        notify: Notify::new(),
+        consumer_notify: Notify::new(),
         stats,
         #[cfg(test)]
         test_hooks,
@@ -290,23 +310,81 @@ impl EventBuffer {
 
   pub fn set_pending_limits(&self, limits: EventBufferLimits) {
     self.inner.state.lock().retention.set_pending_limits(limits);
+    self.inner.consumer_notify.notify_one();
+  }
+
+  /// Marks the startup gate ready to release. Before this transition, blocking flushes
+  /// intentionally complete as no-ops. Marking the gate ready does not begin replay: a blocking
+  /// flush becomes an ordered barrier that may request early release.
+  pub fn mark_startup_gate_ready(&self) {
+    self.inner.state.lock().startup_gate.ready = true;
+    self.inner.consumer_notify.notify_one();
+  }
+
+  /// Admits a flush as an ordered control entry once the startup gate is ready. Before then there
+  /// is no useful work to flush, so a blocking flush completes immediately without queueing.
+  ///
+  /// The readiness check and admission share the `EventBuffer` mutex, making the flush
+  /// deterministically either an early no-op or a normal ordered entry.
+  #[must_use]
+  pub fn admit_flush(
+    &self,
+    completion: Option<bd_completion::Sender<()>>,
+  ) -> FlushAdmissionOutcome {
+    let entry = EventBufferEntry::Control(LoggerControl::FlushState(completion));
+    let lane = entry.lane();
+    let blocking_flush = entry.is_blocking_flush();
+    let (outcome, gate_requested, notify_consumer) = {
+      let mut state = self.inner.state.lock();
+      if !state.startup_gate.ready && !state.retention.is_closed() {
+        entry.complete();
+        return FlushAdmissionOutcome::SkippedBeforeStartupGateReady;
+      }
+      let outcome = state.retention.admit_with_evictions(
+        lane,
+        false,
+        entry.approximate_size_bytes(),
+        entry,
+        |evicted_lane| self.record_eviction(evicted_lane),
+      );
+      let gate_requested =
+        Self::request_startup_gate_release(&mut state.retention, outcome, lane, blocking_flush);
+      (outcome, gate_requested, state.retention.is_gate_open())
+    };
+    self.record_outcome(lane, outcome);
+    if outcome == AdmissionOutcome::Admitted && notify_consumer {
+      self.inner.consumer_notify.notify_one();
+    }
+    if gate_requested {
+      self.inner.consumer_notify.notify_one();
+    }
+    FlushAdmissionOutcome::Admission(outcome)
   }
 
   #[must_use]
   pub fn admit(&self, entry: EventBufferEntry) -> AdmissionOutcome {
     let lane = entry.lane();
-    let outcome = {
+    let previous_process = entry.is_previous_process();
+    let blocking_flush = entry.is_blocking_flush();
+    let (outcome, gate_requested, notify_consumer) = {
       let mut state = self.inner.state.lock();
-      state.retention.admit_with_evictions(
+      let outcome = state.retention.admit_with_evictions(
         lane,
+        previous_process,
         entry.approximate_size_bytes(),
         entry,
         |evicted_lane| self.record_eviction(evicted_lane),
-      )
+      );
+      let gate_requested =
+        Self::request_startup_gate_release(&mut state.retention, outcome, lane, blocking_flush);
+      (outcome, gate_requested, state.retention.is_gate_open())
     };
     self.record_outcome(lane, outcome);
-    if outcome == AdmissionOutcome::Admitted {
-      self.inner.notify.notify_one();
+    if outcome == AdmissionOutcome::Admitted && notify_consumer {
+      self.inner.consumer_notify.notify_one();
+    }
+    if gate_requested {
+      self.inner.consumer_notify.notify_one();
     }
     outcome
   }
@@ -319,57 +397,112 @@ impl EventBuffer {
     &self,
     entries: impl IntoIterator<Item = EventBufferEntry>,
   ) -> Vec<AdmissionOutcome> {
-    let outcomes = {
+    let (outcomes, gate_requested, notify_consumer) = {
       let mut state = self.inner.state.lock();
       #[cfg(test)]
       if let Some(test_hooks) = &self.inner.test_hooks {
         test_hooks.batch_admission_started();
       }
-      entries
+      let mut gate_requested = false;
+      let outcomes = entries
         .into_iter()
         .map(|entry| {
           let lane = entry.lane();
+          let previous_process = entry.is_previous_process();
+          let blocking_flush = entry.is_blocking_flush();
           let outcome = state.retention.admit_with_evictions(
             lane,
+            previous_process,
             entry.approximate_size_bytes(),
             entry,
             |evicted_lane| self.record_eviction(evicted_lane),
           );
           self.record_outcome(lane, outcome);
+          gate_requested |=
+            Self::request_startup_gate_release(&mut state.retention, outcome, lane, blocking_flush);
           outcome
         })
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+      (outcomes, gate_requested, state.retention.is_gate_open())
     };
-    if outcomes.contains(&AdmissionOutcome::Admitted) {
-      self.inner.notify.notify_one();
+    if outcomes.contains(&AdmissionOutcome::Admitted) && notify_consumer {
+      self.inner.consumer_notify.notify_one();
+    }
+    if gate_requested {
+      self.inner.consumer_notify.notify_one();
     }
     outcomes
   }
 
-  pub async fn next_batch(&self, max_entries: usize) -> Vec<EventBufferEntry> {
+  /// Starts the startup window when the consumer begins running. A missing delay means the
+  /// platform confirmed there is no prior crash. Configuration readiness is required either way.
+  pub fn start_startup_gate(&self, delay: Option<watch::Receiver<time::Duration>>) {
+    self.inner.state.lock().startup_gate.start(delay);
+  }
+
+  /// Returns eligible entries and, once per startup, the gate opening. An opening can accompany
+  /// an empty batch so consumers can report readiness without waiting for the first entry.
+  pub async fn next_batch(&self, max_entries: usize) -> EventBufferBatch {
     debug_assert!(max_entries > 0, "next_batch requires a non-zero batch size");
     if max_entries == 0 {
-      return vec![];
+      return EventBufferBatch {
+        entries: vec![],
+        startup_gate_opened: None,
+      };
     }
     loop {
-      let notified = self.inner.notify.notified();
+      let notified = self.inner.consumer_notify.notified();
       tokio::pin!(notified);
       notified.as_mut().enable();
-      let (batch, closed) = {
+      let (batch, closed, deadline, mut delay) = {
         let mut state = self.inner.state.lock();
+        let LoggerEventBufferState {
+          retention,
+          startup_gate,
+        } = &mut *state;
+        let startup_gate_opened = startup_gate.poll(retention);
+        let entries = retention.take_batch(max_entries);
+        let (deadline, delay) = if retention.is_gate_open() || retention.is_closed() {
+          (None, None)
+        } else {
+          startup_gate.wait_state()
+        };
         (
-          state.retention.take_batch(max_entries),
-          state.retention.is_closed(),
+          EventBufferBatch {
+            entries,
+            startup_gate_opened,
+          },
+          retention.is_closed(),
+          deadline,
+          delay,
         )
       };
-      if !batch.is_empty() || closed {
+      if !batch.entries.is_empty() || batch.startup_gate_opened.is_some() || closed {
         return batch;
       }
       #[cfg(test)]
       if let Some(test_hooks) = &self.inner.test_hooks {
         test_hooks.consumer_waiting();
       }
-      notified.await;
+      tokio::select! {
+        () = notified => {},
+        () = async {
+          if let Some(deadline) = deadline {
+            tokio::time::sleep_until(deadline).await;
+          } else {
+            pending::<()>().await;
+          }
+        } => {},
+        () = async {
+          if let Some(delay) = &mut delay {
+            if delay.changed().await.is_err() {
+              pending::<()>().await;
+            }
+          } else {
+            pending::<()>().await;
+          }
+        } => {},
+      }
     }
   }
 
@@ -378,7 +511,7 @@ impl EventBuffer {
       let mut state = self.inner.state.lock();
       state.retention.close();
     }
-    self.inner.notify.notify_waiters();
+    self.inner.consumer_notify.notify_waiters();
   }
 
   fn record_outcome(&self, lane: RetentionLane, outcome: AdmissionOutcome) {
@@ -391,6 +524,42 @@ impl EventBuffer {
     if let Some(stats) = &self.inner.stats {
       stats.record_eviction(lane);
     }
+  }
+
+  /// Opens the startup gate and starts replay. Once open, it cannot be closed again.
+  #[must_use]
+  #[cfg(test)]
+  fn open_startup_gate(&self) -> bool {
+    let opened = self.inner.state.lock().retention.open_gate();
+    if opened {
+      self.inner.consumer_notify.notify_waiters();
+    }
+    opened
+  }
+
+  #[must_use]
+  pub fn is_startup_gate_open(&self) -> bool {
+    self.inner.state.lock().retention.is_gate_open()
+  }
+
+  fn request_startup_gate_release(
+    retention: &mut EventBufferState<EventBufferEntry>,
+    outcome: AdmissionOutcome,
+    lane: RetentionLane,
+    blocking_flush: bool,
+  ) -> bool {
+    if outcome != AdmissionOutcome::Admitted {
+      return false;
+    }
+
+    let request = if blocking_flush {
+      Some(StartupGateReleaseRequest::BlockingFlush)
+    } else if lane == RetentionLane::Protected && retention.reaches_protected_high_watermark() {
+      Some(StartupGateReleaseRequest::ProtectedHighWatermark)
+    } else {
+      None
+    };
+    request.is_some_and(|request| retention.request_gate_release(request))
   }
 }
 
@@ -523,4 +692,31 @@ pub enum AdmissionOutcome {
   RejectedFull,
   RejectedOversized,
   Closed,
+}
+
+/// Result of admitting a flush into `EventBuffer`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlushAdmissionOutcome {
+  /// Configuration has not finished initializing the startup gate, so the flush completed as an
+  /// immediate no-op.
+  SkippedBeforeStartupGateReady,
+  /// The flush entered normal `EventBuffer` admission and has the recorded retention outcome.
+  Admission(AdmissionOutcome),
+}
+
+/// A protected admission that can release `EventBuffer`'s startup drain gate early.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StartupGateReleaseRequest {
+  ProtectedHighWatermark,
+  BlockingFlush,
+}
+
+//
+// EventBufferBatch
+//
+
+#[derive(Debug)]
+pub struct EventBufferBatch {
+  pub entries: Vec<EventBufferEntry>,
+  pub startup_gate_opened: Option<StartupGateOpening>,
 }

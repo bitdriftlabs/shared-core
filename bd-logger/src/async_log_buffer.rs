@@ -11,11 +11,15 @@ mod async_log_buffer_test;
 
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{LogReplay, LogReplayResult};
-use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
+use crate::logger::{
+  ReportProcessingRequest,
+  StartupReplayEligibility,
+  TestHooks,
+  with_thread_local_logger_guard,
+};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
-use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfigItem};
 use crate::{Block, battery, internal_report, network};
 use anyhow::anyhow;
 use bd_api::DataUpload;
@@ -33,9 +37,12 @@ use bd_event_buffer::{
   EventBufferEntry,
   EventBufferLimits,
   EventContext,
+  FlushAdmissionOutcome,
   LoggerIngressEvent,
   LoggerIngressPayload,
   ProviderSnapshot,
+  StartupGateOpening,
+  StartupGateReleaseReason,
 };
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
@@ -66,7 +73,7 @@ use bd_state::{
   Scope,
   string_value,
 };
-use bd_stats_common::{Counter as _, labels};
+use bd_stats_common::{Counter as _, Histogram as _, labels};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -75,9 +82,10 @@ use std::collections::{HashMap, VecDeque};
 use std::future::{Future, ready};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::time::Sleep;
 
 //
@@ -325,7 +333,15 @@ impl Sender {
       (None, None)
     };
 
-    self.try_send_control(LoggerControl::FlushState(completion_tx))?;
+    let event_buffer = match &self.inner {
+      SenderInner::EventBuffer { event_buffer, .. } => event_buffer,
+      #[cfg(test)]
+      SenderInner::TestEventBuffer { event_buffer } => event_buffer,
+    };
+    match event_buffer.admit_flush(completion_tx) {
+      FlushAdmissionOutcome::SkippedBeforeStartupGateReady => {},
+      FlushAdmissionOutcome::Admission(outcome) => admission_outcome(outcome)?,
+    }
 
     // Wait for the processing to be completed only if passed `blocking` argument is equal to
     // `true`.
@@ -428,7 +444,11 @@ fn current_process_admission_context_from_provider(
 }
 
 fn admit(event_buffer: &EventBuffer, entry: EventBufferEntry) -> Result<(), AdmissionError> {
-  match event_buffer.admit(entry) {
+  admission_outcome(event_buffer.admit(entry))
+}
+
+fn admission_outcome(outcome: AdmissionOutcome) -> Result<(), AdmissionError> {
+  match outcome {
     AdmissionOutcome::Admitted => Ok(()),
     AdmissionOutcome::RejectedFull | AdmissionOutcome::RejectedOversized => {
       Err(AdmissionError::FullSizeOverflow)
@@ -485,6 +505,7 @@ fn workflow_generated_log(
 pub struct AsyncLogBuffer<R: LogReplay> {
   event_buffer: EventBuffer,
   event_buffer_limit_watches: EventBufferLimitWatches,
+  startup_replay_delay: Option<watch::Receiver<time::Duration>>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
   data_upload_tx: mpsc::Sender<DataUpload>,
@@ -503,7 +524,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   replayer: R,
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
-  logging_state: LoggingState<PreConfigItem>,
+  logging_state: LoggingState,
   global_state_tracker: global_state::Tracker,
   global_state_reader: global_state::Reader,
   time_provider: Arc<dyn TimeProvider>,
@@ -511,6 +532,10 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
+  startup_replay_gate_stats: StartupReplayGateStats,
+  startup_replay_eligibility: StartupReplayEligibility,
+  late_previous_process_work_observed: bool,
+  test_hooks: Option<Arc<dyn TestHooks>>,
   last_session_id: Option<Arc<str>>,
 }
 
@@ -535,9 +560,51 @@ impl EventBufferLimitWatches {
   }
 }
 
+struct StartupReplayGateStats {
+  scope: StatsScope,
+}
+
+impl StartupReplayGateStats {
+  fn new(scope: &StatsScope) -> Self {
+    Self {
+      scope: scope.clone(),
+    }
+  }
+
+  fn record_opening(
+    &self,
+    eligibility: StartupReplayEligibility,
+    reason: StartupGateReleaseReason,
+    hold_duration: StdDuration,
+  ) {
+    let labels = labels!(
+      "reason" => reason.label(),
+      "eligibility" => eligibility.label(),
+    );
+    self
+      .scope
+      .counter_with_labels("startup_replay_gate_opened", labels.clone())
+      .inc();
+    self
+      .scope
+      .histogram_with_labels("startup_replay_gate_hold_duration_s", labels)
+      .observe(hold_duration.as_secs_f64());
+  }
+
+  fn record_late_previous_process_work(&self, eligibility: StartupReplayEligibility) {
+    self
+      .scope
+      .counter_with_labels(
+        "startup_replay_late_previous_process_work",
+        labels!("eligibility" => eligibility.label()),
+      )
+      .inc();
+  }
+}
+
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   pub(crate) fn new(
-    uninitialized_logging_context: UninitializedLoggingContext<PreConfigItem>,
+    uninitialized_logging_context: UninitializedLoggingContext,
     replayer: R,
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
@@ -558,23 +625,40 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     lifecycle_state: InitLifecycleState,
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
     data_upload_tx: mpsc::Sender<DataUpload>,
+    startup_replay_eligibility: StartupReplayEligibility,
   ) -> (Self, Sender) {
+    uninitialized_logging_context
+      .startup_replay_eligibility_initialized(startup_replay_eligibility);
+    let test_hooks = uninitialized_logging_context.test_hooks();
+
     // The old log and control channels had 1 MiB and 10 MiB byte budgets respectively. Keep
     // those bootstrap limits while moving both flows into one ordered ingress.
     let mut event_buffer_limit_watches = EventBufferLimitWatches::new(runtime_loader);
+    let startup_replay_delay = match startup_replay_eligibility {
+      StartupReplayEligibility::NoPriorCrash => None,
+      StartupReplayEligibility::MayHavePriorCrash => Some(
+        runtime_loader
+          .register_duration_watch::<runtime::event_buffer::StartupReplayCrashDelayFlag>()
+          .into_inner(),
+      ),
+      StartupReplayEligibility::Unknown => Some(
+        runtime_loader
+          .register_duration_watch::<runtime::event_buffer::StartupReplayDelayFlag>()
+          .into_inner(),
+      ),
+    };
     let event_buffer_scope = uninitialized_logging_context
       .stats
       .scope
       .scope("event_buffer");
     let event_buffer = EventBuffer::new_with_stats(
       EventBufferLimits {
-        log_limit_bytes: uninitialized_logging_context
-          .pre_config_log_buffer
-          .max_size(),
+        log_limit_bytes: uninitialized_logging_context.event_buffer_log_limit_bytes,
         total_limit_bytes: 10 * 1024 * 1024,
       },
       &event_buffer_scope,
     );
+    let startup_replay_gate_stats = StartupReplayGateStats::new(&event_buffer_scope);
     // The bootstrap limits cover admission before runtime configuration is available. Stage the
     // current runtime pair as well: this covers a persisted configuration that loaded before ALB
     // was built, while EventBuffer still applies it only at its next admission.
@@ -608,6 +692,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Self {
         event_buffer: event_buffer.clone(),
         event_buffer_limit_watches,
+        startup_replay_delay,
 
         config_update_rx,
         report_processor_rx,
@@ -655,6 +740,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         sdk_status_tracker,
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
+        startup_replay_gate_stats,
+        startup_replay_eligibility,
+        late_previous_process_work_observed: false,
+        test_hooks,
         last_session_id: None,
       },
       Sender::new(event_buffer, metadata_provider, session_strategy),
@@ -899,20 +988,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     state_store: &bd_state::Store,
   ) -> anyhow::Result<LogReplayResult> {
     let log_replay_result = match &mut self.logging_state {
-      LoggingState::Uninitialized(uninitialized_logging_context) => {
-        let result = uninitialized_logging_context
-          .pre_config_log_buffer
-          .push(PreConfigItem::Log(log));
-
-        uninitialized_logging_context
-          .stats
-          .pre_config_log_buffer
-          .record(&result);
-        if let Err(e) = result {
-          anyhow::bail!("failed to push log to a pre-config buffer: {e}");
-        }
-
-        LogReplayResult::default()
+      LoggingState::Uninitialized(_) => {
+        anyhow::bail!("EventBuffer delivered a log before the processing pipeline was initialized");
       },
       LoggingState::Initialized(initialized_logging_context) => self
         .replayer
@@ -952,98 +1029,24 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn update(
-    mut self,
-    config: ConfigUpdate,
-  ) -> (Self, Option<PreConfigBuffer<PreConfigItem>>) {
-    let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
+  async fn update(mut self, config: ConfigUpdate) -> Self {
+    let initialized_logging_context = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
-        let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
+        uninitialized_logging_context
           .updated(
             config,
             self.session_replay_capture_screenshot_handler.clone(),
           )
-          .await;
-        (initialized_logging_context, Some(pre_config_log_buffer))
+          .await
       },
       LoggingState::Initialized(mut initialized_logging_context) => {
         initialized_logging_context.update(config);
-        (initialized_logging_context, None)
+        initialized_logging_context
       },
     };
 
     self.logging_state = LoggingState::Initialized(initialized_logging_context);
-
-    (self, maybe_pre_config_log_buffer)
-  }
-
-  async fn maybe_replay_pre_config_buffer(
-    &mut self,
-    pre_config_buffer: PreConfigBuffer<PreConfigItem>,
-    state_store: &bd_state::Store,
-  ) {
-    if !matches!(self.logging_state, LoggingState::Initialized(_)) {
-      return;
-    }
-
-    let now = self.time_provider.now();
-
-    for item in pre_config_buffer.pop_all() {
-      match item {
-        PreConfigItem::Log(log) => {
-          self
-            .update_system_session_id(state_store, &log.session_id)
-            .await;
-          let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state
-          else {
-            return;
-          };
-          if let Err(e) = self
-            .replayer
-            .replay_log(
-              log,
-              &mut initialized_logging_context.processing_pipeline,
-              state_store,
-              now,
-            )
-            .await
-          {
-            log::debug!("failed to replay pre-config log: {e}");
-          }
-        },
-        PreConfigItem::StateOperation(operation) => match operation {
-          PendingStateOperation::SetFeatureFlagExposure {
-            name,
-            variant,
-            context,
-          } => {
-            let AdmissionContext {
-              session_id,
-              provider,
-              admitted_at,
-            } = context;
-            let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state
-            else {
-              return;
-            };
-            initialized_logging_context
-              .handle_state_insert(
-                state_store,
-                &self.metadata_collector,
-                &mut self.global_state_tracker,
-                &mut self.replayer,
-                Scope::FeatureFlagExposure,
-                name,
-                variant.unwrap_or_default(),
-                admitted_at,
-                &session_id,
-                provider,
-              )
-              .await;
-          },
-        },
-      }
-    }
+    self
   }
 
   pub async fn run(
@@ -1069,13 +1072,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     report_processor: impl ReportProcessor,
     mut shutdown: ComponentShutdown,
   ) -> Self {
-    // Processes incoming logs and reacts to workflows config updates.
-    //
-    // The first workflows config update makes the async log buffer disable
-    // pre-config log buffer and results in a replay all of the logs stored
-    // by the pre-config log buffer. All of that happens in a way where logs
-    // stored in pre-config log buffer are guaranteed to be replayed before
-    // the async log buffer goes back to processing incoming logs.
+    // EventBuffer protects ingress behind its startup gate while configuration is applied. Once
+    // ready, the gate releases after the platform-selected delay, or earlier on pressure or a
+    // blocking-flush barrier.
+    self
+      .event_buffer
+      .start_startup_gate(self.startup_replay_delay.take());
 
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
@@ -1098,28 +1100,30 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           self.refresh_event_buffer_limits();
         },
         Some(config) = self.config_update_rx.recv() => {
-          let (updated_self, maybe_pre_config_buffer)
-            = self.update(config).await;
-
-          self = updated_self;
-          if let Some(pre_config_buffer) = maybe_pre_config_buffer {
-            self.lifecycle_state.set(InitLifecycle::LogProcessingStarted);
-            self.sdk_status_tracker.record_running();
-            self
-              .maybe_replay_pre_config_buffer(pre_config_buffer, &state_store)
-              .await;
+          self = self.update(config).await;
+          // Publish limits before readiness. EventBuffer reads the current delay watch before
+          // opening, including when the startup deadline elapsed during configuration I/O.
+          self.refresh_event_buffer_limits();
+          self.event_buffer.mark_startup_gate_ready();
+          if let Some(test_hooks) = &self.test_hooks {
+            test_hooks.startup_gate_ready();
           }
         },
         Some(ReportProcessingRequest {
            session
         }) = self.report_processor_rx.recv() => {
+          // Report discovery stays outside EventBuffer. Previous-run reports are discovered before
+          // startup-gate release so their entries can join the protected replay lane.
           let reports = report_processor.process_all_pending_reports().await;
           self.admit_crash_reports(reports, &session);
         },
         // TODO(snowp): Benchmark batched reads. A batched implementation must cooperatively yield
         // between entries and return to this select! so Tokio and ALB's other branches progress.
         event_buffer_entries = self.event_buffer.next_batch(1) => {
-          for entry in event_buffer_entries {
+          if let Some(opening) = event_buffer_entries.startup_gate_opened {
+            self.record_startup_gate_opening(opening);
+          }
+          for entry in event_buffer_entries.entries {
             match entry {
               EventBufferEntry::Ingress(event) => {
                 let (context, payload, completion) = event.into_parts();
@@ -1154,7 +1158,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 }
               },
               EventBufferEntry::Control(async_log_buffer_message) => {
-                self.process_control(async_log_buffer_message, &state_store).await;
+                self
+                  .process_control(async_log_buffer_message, &state_store)
+                  .await;
               },
             }
           }
@@ -1188,8 +1194,24 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .set_pending_limits(self.event_buffer_limit_watches.read_mark_update());
   }
 
+  fn record_startup_gate_opening(&self, opening: StartupGateOpening) {
+    log::debug!("event buffer startup gate opened: {opening:?}");
+    self
+      .lifecycle_state
+      .set(InitLifecycle::LogProcessingStarted);
+    self.sdk_status_tracker.record_running();
+    self.startup_replay_gate_stats.record_opening(
+      self.startup_replay_eligibility,
+      opening.reason,
+      opening.hold_duration,
+    );
+    if let Some(test_hooks) = &self.test_hooks {
+      test_hooks.startup_replay_gate_opened();
+    }
+  }
+
   fn admit_crash_reports(
-    &self,
+    &mut self,
     reports: Vec<bd_crash_handler::CrashLog>,
     session: &crate::ReportProcessingSession,
   ) {
@@ -1208,10 +1230,24 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       )
       .collect::<Vec<_>>();
 
+    // Only next_batch opens the gate, on this consumer. It cannot open while report discovery
+    // is in progress, so the gate observation and this batch's admission cannot race an opening.
+    let late_previous_process_work = matches!(session, crate::ReportProcessingSession::PreviousRun)
+      && self.event_buffer.is_startup_gate_open()
+      && !entries.is_empty();
     for outcome in self.event_buffer.admit_batch(entries) {
       if outcome != AdmissionOutcome::Admitted {
         log::debug!("failed to admit crash report: {outcome:?}");
       }
+    }
+    if late_previous_process_work && !self.late_previous_process_work_observed {
+      // A report can produce many logs. Count only the first late batch so the metric is a
+      // per-startup rate rather than a function of report expansion.
+      self.late_previous_process_work_observed = true;
+      log::debug!("observed previous-process crash work after the startup replay gate opened");
+      self
+        .startup_replay_gate_stats
+        .record_late_previous_process_work(self.startup_replay_eligibility);
     }
   }
 
@@ -1372,31 +1408,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           provider,
         )
         .await;
-    } else if let LoggingState::Uninitialized(uninitialized_logging_context) =
-      &mut self.logging_state
-    {
-      // Not initialized: queue the operation for later replay.
-      let result =
-        uninitialized_logging_context
-          .pre_config_log_buffer
-          .push(PreConfigItem::StateOperation(
-            PendingStateOperation::SetFeatureFlagExposure {
-              name: flag,
-              variant,
-              context: AdmissionContext {
-                session_id,
-                provider,
-                admitted_at,
-              },
-            },
-          ));
-      uninitialized_logging_context
-        .stats
-        .pre_config_log_buffer
-        .record(&result);
-      if let Err(e) = result {
-        log::debug!("failed to enqueue state operation to pre-config buffer: {e}");
-      }
+    } else {
+      log::debug!("EventBuffer delivered feature-flag state before pipeline initialization");
     }
   }
 
