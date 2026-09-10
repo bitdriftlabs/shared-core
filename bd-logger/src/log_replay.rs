@@ -64,7 +64,7 @@ pub trait LogReplay {
     &mut self,
     log: Log,
     pipeline: &mut ProcessingPipeline,
-    state: &bd_state::Store,
+    state: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult>;
 
@@ -93,10 +93,10 @@ impl LogReplay for LoggerReplay {
     &mut self,
     log: Log,
     pipeline: &mut ProcessingPipeline,
-    state_store: &bd_state::Store,
+    state: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
-    pipeline.process_log(log, state_store, now).await
+    pipeline.process_log(log, state, now).await
   }
 
   async fn replay_state_change(
@@ -253,17 +253,16 @@ impl ProcessingPipeline {
   async fn process_log(
     &mut self,
     mut log: Log,
-    state: &bd_state::Store,
+    state: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     self.stats.logs_received.inc();
 
-    let state_reader = state.read().await;
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
-    self.filter_chain.process(&mut log, &state_reader);
+    self.filter_chain.process(&mut log, state);
     let mut log = EncodableLog::new(log, (*self.min_log_compression_size.read()).into());
 
-    match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
+    match self.tail_configs.maybe_stream_log(&mut log, state) {
       Ok(streamed) => {
         if streamed {
           self.stats.streamed_logs.inc();
@@ -279,13 +278,13 @@ impl ProcessingPipeline {
       log.log.log_level,
       &log.log.message,
       FieldsRef::new(&log.log.fields, &log.log.matching_fields),
-      &state_reader,
+      state,
     );
 
     let mut result = self.workflows_engine.process_event(
       WorkflowEvent::Log(&log.log),
       &matching_buffers,
-      &state_reader,
+      state,
       now,
     );
     self

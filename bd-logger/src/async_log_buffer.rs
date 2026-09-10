@@ -228,6 +228,24 @@ fn initial_field_state_updates(
 
   updates
 }
+
+/// Returns the state view used to evaluate logs from the previous process.
+///
+/// Custom and OOTB fields are process-scoped virtual fields, so they must come from the
+/// previous process snapshot. Other state remains sourced from the current process.
+fn previous_process_state(
+  current_state: &dyn StateReader,
+  previous_run_state: &bd_versioned_kv::ScopedMaps,
+) -> bd_versioned_kv::ScopedMaps {
+  let mut state = current_state.as_scoped_maps().clone();
+  state
+    .custom_fields
+    .clone_from(&previous_run_state.custom_fields);
+  state
+    .ootb_fields
+    .clone_from(&previous_run_state.ootb_fields);
+  state
+}
 #[derive(Clone)]
 pub struct Sender {
   inner: SenderInner,
@@ -881,6 +899,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     &mut self,
     log: LogLine,
     state_store: &bd_state::Store,
+    previous_run_state: &bd_versioned_kv::ScopedMaps,
     context: Option<EventContext>,
   ) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
@@ -888,7 +907,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     while let Some((log, context)) = logs.pop_front() {
       let source_context = context.clone();
       let source_attributes_overrides = log.attributes_overrides.clone();
-      let log_replay_result = self.process_log(log, state_store, context).await?;
+      let log_replay_result = self
+        .process_log(log, state_store, previous_run_state, context)
+        .await?;
       logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
         workflow_generated_log(
           log,
@@ -919,9 +940,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     &mut self,
     log: LogLine,
     state_store: &bd_state::Store,
+    previous_run_state: &bd_versioned_kv::ScopedMaps,
     context: Option<EventContext>,
   ) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
+    let previous_process = matches!(&context, Some(EventContext::PreviousProcess { .. }))
+      || matches!(
+        &log.attributes_overrides,
+        Some(LogAttributesOverrides::PreviousRunSessionID(_))
+      );
     let result = with_thread_local_logger_guard(|| {
       match context {
         Some(EventContext::CurrentProcess(context)) => Ok((
@@ -945,12 +972,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           ),
           None,
         )),
-        None
-          if matches!(
-            &log.attributes_overrides,
-            Some(LogAttributesOverrides::PreviousRunSessionID(_))
-          ) =>
-        {
+        None if previous_process => {
           // Since we're mimicing a log from the previous app start we want to use the previous
           // global state instead of calling into the providers at this point.
           Ok((
@@ -1038,7 +1060,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, state_store).await
+        if previous_process {
+          let current_state = state_store.read().await;
+          let previous_state = previous_process_state(&current_state, previous_run_state);
+          self.write_log(processed_log, &previous_state).await
+        } else {
+          let state = state_store.read().await;
+          self.write_log(processed_log, &state).await
+        }
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -1052,7 +1081,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn write_log(
     &mut self,
     log: Log,
-    state_store: &bd_state::Store,
+    state: &dyn StateReader,
   ) -> anyhow::Result<LogReplayResult> {
     let log_replay_result = match &mut self.logging_state {
       LoggingState::Uninitialized(_) => {
@@ -1063,7 +1092,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .replay_log(
           log,
           &mut initialized_logging_context.processing_pipeline,
-          state_store,
+          state,
           self.time_provider.now(),
         )
         .await
@@ -1149,11 +1178,23 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     state_store: bd_state::Store,
     report_processor: impl ReportProcessor,
   ) -> Self {
+    self
+      .run_with_previous_state(state_store, report_processor, Default::default())
+      .await
+  }
+
+  pub async fn run_with_previous_state(
+    self,
+    state_store: bd_state::Store,
+    report_processor: impl ReportProcessor,
+    previous_run_state: bd_versioned_kv::ScopedMaps,
+  ) -> Self {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(
+      .run_with_shutdown_and_previous_state(
         state_store,
         report_processor,
+        previous_run_state,
         shutdown_trigger.make_shutdown(),
       )
       .await
@@ -1162,9 +1203,26 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   // TODO(mattklein123): This seems to only be used for tests. Figure out how to clean this up
   // so we don't need this just for tests.
   pub async fn run_with_shutdown(
+    self,
+    state_store: bd_state::Store,
+    report_processor: impl ReportProcessor,
+    shutdown: ComponentShutdown,
+  ) -> Self {
+    self
+      .run_with_shutdown_and_previous_state(
+        state_store,
+        report_processor,
+        Default::default(),
+        shutdown,
+      )
+      .await
+  }
+
+  async fn run_with_shutdown_and_previous_state(
     mut self,
     state_store: bd_state::Store,
     report_processor: impl ReportProcessor,
+    previous_run_state: bd_versioned_kv::ScopedMaps,
     mut shutdown: ComponentShutdown,
   ) -> Self {
     // EventBuffer protects ingress behind its startup gate while configuration is applied. Once
@@ -1237,7 +1295,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       );
                     }
 
-                    if let Err(e) = self.process_all_logs(log, &state_store, Some(context)).await {
+                    if let Err(e) = self
+                      .process_all_logs(log, &state_store, &previous_run_state, Some(context))
+                      .await
+                    {
                       log::debug!("failed to process all logs: {e}");
                     }
                   },

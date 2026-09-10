@@ -285,7 +285,7 @@ pub struct StateEntry {
 
 /// A trait for reading state values. This pattern allows for non-async access to state values while
 /// the underlying store may be async.
-pub trait StateReader {
+pub trait StateReader: Sync {
   /// Gets a reference to the raw state value from the store.
   fn get(&self, scope: Scope, key: &str) -> Option<&StateValue>;
 
@@ -294,6 +294,35 @@ pub trait StateReader {
 
   /// Returns the underlying scoped maps.
   fn as_scoped_maps(&self) -> &ScopedMaps;
+}
+
+impl StateReader for ScopedMaps {
+  fn get(&self, scope: Scope, key: &str) -> Option<&StateValue> {
+    ScopedMaps::get(self, scope, key).map(|value| &value.value)
+  }
+
+  fn iter(&self) -> Box<dyn Iterator<Item = StateEntry> + '_> {
+    Box::new(
+      ScopedMaps::iter(self).filter_map(|(scope, key, timestamped_value)| {
+        let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
+          i128::from(timestamped_value.timestamp) * 1_000,
+        )
+        .ok()?;
+        timestamped_value.value.value_type.as_ref()?;
+
+        Some(StateEntry {
+          scope,
+          key: key.clone(),
+          value: timestamped_value.value.clone(),
+          timestamp,
+        })
+      }),
+    )
+  }
+
+  fn as_scoped_maps(&self) -> &ScopedMaps {
+    self
+  }
 }
 
 //

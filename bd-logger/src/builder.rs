@@ -549,6 +549,7 @@ impl LoggerBuilder {
         (None, None)
       };
 
+      let previous_run_state_for_log_buffer = previous_run_state.clone();
       let crash_monitor = Monitor::new(
         &self.params.sdk_directory,
         self.params.store.clone(),
@@ -652,7 +653,12 @@ impl LoggerBuilder {
           Ok(())
         },
         async move {
-          Box::pin(async_log_buffer.run(state_store, crash_monitor)).await;
+          Box::pin(async_log_buffer.run_with_previous_state(
+            state_store,
+            crash_monitor,
+            previous_run_state_for_log_buffer,
+          ))
+          .await;
           Ok(())
         },
         async move {
