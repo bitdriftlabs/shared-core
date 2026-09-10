@@ -179,90 +179,39 @@ fn persistent_field_value(value: DataValue) -> Value {
 /// unchanged values retain their original timestamps while fields absent at startup receive a
 /// tombstone that bounds their prior value's lifetime.
 fn initial_field_state_updates(
-  initial_fields: AnnotatedLogFields,
+  initial_ootb_fields: LogFields,
+  initial_custom_fields: LogFields,
   state: &dyn StateReader,
 ) -> Vec<(Scope, String, Option<Value>)> {
-  let mut custom_fields = BTreeMap::new();
-  let mut ootb_fields = BTreeMap::new();
-
-  for (key, field) in initial_fields {
-    let fields = match field.kind {
-      bd_log_primitives::LogFieldKind::Custom => &mut custom_fields,
-      bd_log_primitives::LogFieldKind::Ootb => &mut ootb_fields,
-    };
-    fields.insert(key.to_string(), persistent_field_value(field.value));
-  }
-
   let mut updates = Vec::new();
-  for (scope, desired_fields) in [
-    (Scope::OotbFields, ootb_fields),
-    (Scope::CustomFields, custom_fields),
+  for (scope, fields) in [
+    (Scope::OotbFields, initial_ootb_fields),
+    (Scope::CustomFields, initial_custom_fields),
   ] {
-    let existing_fields: BTreeMap<_, _> = state
-      .iter()
-      .filter(|entry| entry.scope == scope)
-      .map(|entry| (entry.key, entry.value))
+    let desired_fields: BTreeMap<_, _> = fields
+      .into_iter()
+      .map(|(key, value)| (key.to_string(), persistent_field_value(value)))
       .collect();
 
     updates.extend(
       desired_fields
         .iter()
-        .filter(|(key, value)| existing_fields.get(key.as_str()) != Some(*value))
+        .filter(|(key, value)| state.get(scope, key) != Some(*value))
         .map(|(key, value)| (scope, key.clone(), Some(value.clone()))),
     );
     updates.extend(
-      existing_fields
-        .into_keys()
-        .filter(|key| !desired_fields.contains_key(key))
-        .map(|key| (scope, key, None)),
+      state
+        .as_scoped_maps()
+        .iter_scope(scope)
+        .map(|(key, _)| key)
+        .filter(|key| !desired_fields.contains_key(key.as_str()))
+        .map(|key| (scope, key.clone(), None)),
     );
   }
 
   updates
 }
 
-/// Overlays the previous process's virtual fields on the current state reader.
-///
-/// Custom and OOTB fields are virtual log fields, not workflow state. Previous-process logs must
-/// see their snapshot values (or no value), while all real state scopes continue to use the live
-/// reader. Keeping this as an overlay avoids cloning the complete state map for every replayed
-/// previous-process log.
-struct PreviousProcessStateReader<'a> {
-  current_state: &'a dyn StateReader,
-  previous_run_state: &'a bd_versioned_kv::ScopedMaps,
-}
-
-fn previous_process_state<'a>(
-  current_state: &'a dyn StateReader,
-  previous_run_state: &'a bd_versioned_kv::ScopedMaps,
-) -> PreviousProcessStateReader<'a> {
-  PreviousProcessStateReader {
-    current_state,
-    previous_run_state,
-  }
-}
-
-impl StateReader for PreviousProcessStateReader<'_> {
-  fn get(&self, scope: Scope, key: &str) -> Option<&bd_state::Value> {
-    match scope {
-      Scope::CustomFields | Scope::OotbFields => self
-        .previous_run_state
-        .get(scope, key)
-        .map(|timestamped_value| &timestamped_value.value),
-      Scope::FeatureFlagExposure | Scope::GlobalState | Scope::System => {
-        self.current_state.get(scope, key)
-      },
-    }
-  }
-
-  fn iter(&self) -> Box<dyn Iterator<Item = bd_state::StateEntry> + '_> {
-    self.current_state.iter()
-  }
-
-  fn as_scoped_maps(&self) -> &bd_versioned_kv::ScopedMaps {
-    self.current_state.as_scoped_maps()
-  }
-}
 #[derive(Clone)]
 pub struct Sender {
   inner: SenderInner,
@@ -1078,9 +1027,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         };
 
         if previous_process {
-          let current_state = state_store.read().await;
-          let previous_state = previous_process_state(&current_state, previous_run_state);
-          self.write_log(processed_log, &previous_state).await
+          // A previous-process log is evaluated against the complete state snapshot captured at
+          // startup, including feature flags and system state from that process.
+          self.write_log(processed_log, previous_run_state).await
         } else {
           let state = state_store.read().await;
           self.write_log(processed_log, &state).await
@@ -1144,12 +1093,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   async fn persist_initial_log_fields(
     &mut self,
-    initial_fields: AnnotatedLogFields,
+    initial_ootb_fields: LogFields,
+    initial_custom_fields: LogFields,
     state_store: &bd_state::Store,
   ) {
     let updates = {
       let state = state_store.read().await;
-      initial_field_state_updates(initial_fields, &state)
+      initial_field_state_updates(initial_ootb_fields, initial_custom_fields, &state)
     };
 
     for (scope, key, value) in updates {
@@ -1261,9 +1211,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .event_buffer
       .start_startup_gate(self.startup_replay_delay.take());
 
-    let initial_fields = self.metadata_collector.initial_fields();
+    let (initial_ootb_fields, initial_custom_fields) =
+      self.metadata_collector.initial_persistent_fields();
     self
-      .persist_initial_log_fields(initial_fields, &state_store)
+      .persist_initial_log_fields(initial_ootb_fields, initial_custom_fields, &state_store)
       .await;
 
     let local_shutdown = shutdown.cancelled();
@@ -1482,11 +1433,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
-        if state_store
-          .read()
-          .await
-          .get(Scope::OotbFields, &key)
-          .is_some()
+        if self.metadata_collector.is_ootb_field(&key)
+          || state_store
+            .read()
+            .await
+            .get(Scope::OotbFields, &key)
+            .is_some()
         {
           log::debug!("ignoring custom log field {key:?} because an OOTB field owns it");
           return;
@@ -1534,11 +1486,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         }
       },
       LoggerControl::RemoveLogField(field_name) => {
-        if state_store
-          .read()
-          .await
-          .get(Scope::OotbFields, &field_name)
-          .is_some()
+        if self.metadata_collector.is_ootb_field(&field_name)
+          || state_store
+            .read()
+            .await
+            .get(Scope::OotbFields, &field_name)
+            .is_some()
         {
           log::debug!(
             "ignoring removal of custom log field {field_name:?} because an OOTB field owns it"

@@ -238,6 +238,19 @@ impl ScopedMaps {
       )
   }
 
+  /// Returns the entries in one scope without visiting the other scoped maps.
+  pub fn iter_scope(&self, scope: Scope) -> impl Iterator<Item = (&String, &TimestampedValue)> {
+    let map = match scope {
+      Scope::FeatureFlagExposure => &self.feature_flags,
+      Scope::GlobalState => &self.global_state,
+      Scope::System => &self.system,
+      Scope::CustomFields => &self.custom_fields,
+      Scope::OotbFields => &self.ootb_fields,
+    };
+
+    map.iter()
+  }
+
   fn values(&self) -> impl Iterator<Item = &TimestampedValue> {
     self
       .feature_flags

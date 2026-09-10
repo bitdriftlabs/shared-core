@@ -365,6 +365,90 @@ fn counter_label_extraction() {
 }
 
 #[test]
+fn scalar_state_tags_skip_unsupported_values_but_keep_untyped_values_empty() {
+  let (metrics_collector, collector) = make_metrics_collector();
+  let log = Log {
+    message: "message".into(),
+    session_id: "session_id".into(),
+    occurred_at: OffsetDateTime::now_utc(),
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    fields: LogFields::default(),
+    matching_fields: LogFields::default(),
+    capture_session: None,
+  };
+  let mut state_reader = bd_state::InMemoryStateReader::default();
+  state_reader.insert(
+    Scope::FeatureFlagExposure,
+    "binary",
+    bd_state::Value {
+      value_type: bd_state::Value_type::Data(DataValue::Bytes(vec![1, 2, 3].into()).into_proto())
+        .into(),
+      ..Default::default()
+    },
+  );
+  state_reader.insert(
+    Scope::FeatureFlagExposure,
+    "untyped",
+    bd_state::Value::default(),
+  );
+
+  let unsupported_action = ActionEmitMetric {
+    id: "unsupported".to_string(),
+    tags: [(
+      "state".to_string(),
+      TagValue::StateExtract(Scope::FeatureFlagExposure, "binary".to_string()),
+    )]
+    .into(),
+    multi_tag: None,
+    increment: crate::config::ValueIncrement::Fixed(1),
+    metric_type: MetricType::Counter,
+  };
+  let untyped_action = ActionEmitMetric {
+    id: "untyped".to_string(),
+    tags: [(
+      "state".to_string(),
+      TagValue::StateExtract(Scope::FeatureFlagExposure, "untyped".to_string()),
+    )]
+    .into(),
+    multi_tag: None,
+    increment: crate::config::ValueIncrement::Fixed(1),
+    metric_type: MetricType::Counter,
+  };
+  let action_counts = BTreeMap::from([
+    (
+      &unsupported_action,
+      EmitMetricActionCount {
+        emission_count: 1,
+        is_parallel: false,
+        parallel_source_workflow_index: None,
+      },
+    ),
+    (
+      &untyped_action,
+      EmitMetricActionCount {
+        emission_count: 1,
+        is_parallel: false,
+        parallel_source_workflow_index: None,
+      },
+    ),
+  ]);
+
+  metrics_collector.emit_metrics(&action_counts, WorkflowEvent::Log(&log), &state_reader);
+
+  collector.assert_workflow_counter_eq(1, "unsupported", BTreeMap::new());
+  assert!(
+    collector
+      .find_counter(
+        &NameType::ActionId("unsupported".to_string()),
+        &labels! { "state" => "" },
+      )
+      .is_none()
+  );
+  collector.assert_workflow_counter_eq(1, "untyped", labels! { "state" => "" });
+}
+
+#[test]
 fn metric_multi_tag_fans_out_over_matching_state_entries() {
   let (metrics_collector, collector) = make_metrics_collector();
 

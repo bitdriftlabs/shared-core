@@ -167,9 +167,13 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
     key: &str,
     state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
-    state_reader
-      .get(scope, key)
-      .map(|value| state_value_as_cow(value).unwrap_or(Cow::Borrowed("")))
+    state_reader.get(scope, key).and_then(|value| {
+      if value.value_type.is_none() {
+        Some(Cow::Borrowed(""))
+      } else {
+        state_value_as_cow(value)
+      }
+    })
   }
 
   fn extract_tags(

@@ -293,9 +293,18 @@ impl MetadataCollector {
     }
   }
 
+  /// Returns whether an OOTB field currently owns `key`.
+  pub(crate) fn is_ootb_field(&self, key: &str) -> bool {
+    self
+      .fields
+      .get(key)
+      .is_some_and(|field| field.kind == LogFieldKind::Ootb)
+  }
+
   /// Returns the persistent fields supplied during logger construction for state-store seeding.
-  pub(crate) fn initial_fields(&self) -> AnnotatedLogFields {
-    self.fields.clone()
+  pub(crate) fn initial_persistent_fields(&self) -> (LogFields, LogFields) {
+    let PartitionedFields { ootb, custom } = partition_fields(self.fields.clone());
+    (ootb, custom)
   }
 }
 
