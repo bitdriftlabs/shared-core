@@ -1437,7 +1437,8 @@ impl VersionedKVStore {
   ///
   /// All entries are written with the same timestamp. If a persistent journal encounters a system
   /// error, the store transitions to bounded in-memory mode and applies the entire batch there
-  /// when it fits. Capacity rejections leave the persistent store unchanged.
+  /// when it fits. Capacity rejections leave the persistent store unchanged, except for batches
+  /// containing only deletions: those also fall back so stale state cannot remain live.
   ///
   /// For persistent stores, this operation handles rotation and retries automatically if needed.
   /// If empty, this is a no-op that returns the current timestamp.
@@ -1451,6 +1452,10 @@ impl VersionedKVStore {
     &mut self,
     entries: Vec<(Scope, String, StateValue)>,
   ) -> Result<u64, UpdateError> {
+    let deletion_only = entries
+      .iter()
+      .all(|(_, _, value)| value.value_type.is_none());
+
     if let StoreBackend::Persistent(store) = &mut self.backend {
       match store.extend_entries(entries.clone()).await {
         Ok(PersistentOperation::Persisted(timestamp)) => return Ok(timestamp),
@@ -1462,6 +1467,12 @@ impl VersionedKVStore {
           return Ok(timestamp);
         },
         Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
+        Err(UpdateError::CapacityExceeded) if deletion_only => {
+          let error = anyhow::anyhow!(
+            "journal capacity prevented recording state deletions; retaining state in memory"
+          );
+          self.fallback_to_in_memory(&error);
+        },
         Err(error) => return Err(error),
       }
     }
