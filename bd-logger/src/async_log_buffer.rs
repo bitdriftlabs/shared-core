@@ -72,6 +72,7 @@ use bd_state::{
   MEMORY_PRESSURE_LEVEL_KEY,
   SYSTEM_SESSION_ID_KEY,
   Scope,
+  StateReader,
   Value,
   Value_type,
   string_value,
@@ -81,7 +82,7 @@ use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::future::{Future, ready};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -172,6 +173,61 @@ impl AdmissionCounters {
   }
 }
 
+/// Stores a log field without changing its type in the persistent state journal.
+fn persistent_field_value(value: DataValue) -> Value {
+  Value {
+    value_type: Value_type::Data(value.into_proto()).into(),
+    ..Default::default()
+  }
+}
+
+/// Returns the minimal state mutations that reconcile startup fields with persisted field state.
+///
+/// Fields historically lived only for one SDK process. Reconcile rather than clear-and-reseed so
+/// unchanged values retain their original timestamps while fields absent at startup receive a
+/// tombstone that bounds their prior value's lifetime.
+fn initial_field_state_updates(
+  initial_fields: AnnotatedLogFields,
+  state: &dyn StateReader,
+) -> Vec<(Scope, String, Value)> {
+  let mut custom_fields = BTreeMap::new();
+  let mut ootb_fields = BTreeMap::new();
+
+  for (key, field) in initial_fields {
+    let fields = match field.kind {
+      bd_log_primitives::LogFieldKind::Custom => &mut custom_fields,
+      bd_log_primitives::LogFieldKind::Ootb => &mut ootb_fields,
+    };
+    fields.insert(key.to_string(), persistent_field_value(field.value));
+  }
+
+  let mut updates = Vec::new();
+  for (scope, desired_fields) in [
+    (Scope::OotbFields, ootb_fields),
+    (Scope::CustomFields, custom_fields),
+  ] {
+    let existing_fields: BTreeMap<_, _> = state
+      .iter()
+      .filter(|entry| entry.scope == scope)
+      .map(|entry| (entry.key, entry.value))
+      .collect();
+
+    updates.extend(
+      desired_fields
+        .iter()
+        .filter(|(key, value)| existing_fields.get(key.as_str()) != Some(*value))
+        .map(|(key, value)| (scope, key.clone(), value.clone())),
+    );
+    updates.extend(
+      existing_fields
+        .into_keys()
+        .filter(|key| !desired_fields.contains_key(key))
+        .map(|key| (scope, key, Value::default())),
+    );
+  }
+
+  updates
+}
 #[derive(Clone)]
 pub struct Sender {
   inner: SenderInner,
@@ -1044,32 +1100,26 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     initial_fields: AnnotatedLogFields,
     state_store: &bd_state::Store,
   ) {
-    for (key, field) in initial_fields {
-      let scope = match field.kind {
-        bd_log_primitives::LogFieldKind::Custom => Scope::CustomFields,
-        bd_log_primitives::LogFieldKind::Ootb => Scope::OotbFields,
-      };
-      let value = persistent_field_value(field.value);
+    let updates = {
+      let state = state_store.read().await;
+      initial_field_state_updates(initial_fields, &state)
+    };
 
-      match state_store.insert(scope, key.to_string(), value).await {
-        Ok(_) if scope == Scope::OotbFields => {
-          if let Err(e) = state_store.remove(Scope::CustomFields, &key).await {
-            log::warn!("failed to remove shadowed custom log field {key:?}: {e}");
-          }
-        },
-        Ok(_) => {},
-        Err(e) => {
+    for (scope, key, value) in updates {
+      if let Err(e) = state_store.insert(scope, key.clone(), value.clone()).await {
+        if value.value_type.is_some() {
           // The state store retains live values after journal failures, so this is a capacity
-          // rejection. The initial field remains available from metadata.
+          // rejection. The initial field remains available from metadata. Clear a prior value so
+          // virtual field lookup falls back to that metadata instead of observing it.
           log::warn!(
             "initial {scope:?} log field {key:?} exceeds state capacity; using metadata value: {e}"
           );
-
-          // Do not let a stale virtual value disagree with the initial metadata field.
           if let Err(e) = state_store.remove(scope, &key).await {
             log::warn!("failed to clear stale {scope:?} log field {key:?}: {e}");
           }
-        },
+        } else {
+          log::warn!("failed to clear stale initial {scope:?} log field {key:?}: {e}");
+        }
       }
     }
   }
