@@ -252,7 +252,9 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
         continue;
       }
 
-      let state_value = state_value_as_cow(state_value(entry)).unwrap_or(Cow::Borrowed(""));
+      let Some(state_value) = state_value_as_cow(state_value(entry)) else {
+        continue;
+      };
       if !multi_tag.matches_value(state_value.as_ref()) {
         continue;
       }
