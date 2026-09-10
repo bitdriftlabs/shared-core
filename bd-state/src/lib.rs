@@ -298,12 +298,12 @@ pub trait StateReader: Sync {
 
 impl StateReader for ScopedMaps {
   fn get(&self, scope: Scope, key: &str) -> Option<&StateValue> {
-    ScopedMaps::get(self, scope, key).map(|value| &value.value)
+    Self::get(self, scope, key).map(|value| &value.value)
   }
 
   fn iter(&self) -> Box<dyn Iterator<Item = StateEntry> + '_> {
     Box::new(
-      ScopedMaps::iter(self).filter_map(|(scope, key, timestamped_value)| {
+      Self::iter(self).filter_map(|(scope, key, timestamped_value)| {
         let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
           i128::from(timestamped_value.timestamp) * 1_000,
         )

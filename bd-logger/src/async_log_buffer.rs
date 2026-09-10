@@ -189,7 +189,7 @@ fn persistent_field_value(value: DataValue) -> Value {
 fn initial_field_state_updates(
   initial_fields: AnnotatedLogFields,
   state: &dyn StateReader,
-) -> Vec<(Scope, String, Value)> {
+) -> Vec<(Scope, String, Option<Value>)> {
   let mut custom_fields = BTreeMap::new();
   let mut ootb_fields = BTreeMap::new();
 
@@ -216,13 +216,13 @@ fn initial_field_state_updates(
       desired_fields
         .iter()
         .filter(|(key, value)| existing_fields.get(key.as_str()) != Some(*value))
-        .map(|(key, value)| (scope, key.clone(), value.clone())),
+        .map(|(key, value)| (scope, key.clone(), Some(value.clone()))),
     );
     updates.extend(
       existing_fields
         .into_keys()
         .filter(|key| !desired_fields.contains_key(key))
-        .map(|key| (scope, key, Value::default())),
+        .map(|key| (scope, key, None)),
     );
   }
 
@@ -1160,21 +1160,28 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     };
 
     for (scope, key, value) in updates {
-      if let Err(e) = state_store.insert(scope, key.clone(), value.clone()).await {
-        if value.value_type.is_some() {
-          // The state store retains live values after journal failures, so this is a capacity
-          // rejection. The initial field remains available from metadata. Clear a prior value so
-          // virtual field lookup falls back to that metadata instead of observing it.
-          log::warn!(
-            "initial {scope:?} log field {key:?} exceeds state capacity; using metadata value: {e}"
-          );
-          if let Err(e) = state_store.remove(scope, &key).await {
-            log::warn!("failed to clear stale {scope:?} log field {key:?}: {e}");
-          }
-        } else {
-          log::warn!("failed to clear stale initial {scope:?} log field {key:?}: {e}");
-        }
+      match value {
+        Some(value) => Self::store_virtual_log_field(state_store, scope, &key, value).await,
+        None => Self::clear_virtual_log_field(state_store, scope, &key).await,
       }
+    }
+  }
+
+  async fn store_virtual_log_field(
+    state_store: &bd_state::Store,
+    scope: Scope,
+    key: &str,
+    value: Value,
+  ) {
+    if let Err(e) = state_store.insert(scope, key.to_string(), value).await {
+      log::warn!("state rejected {scope:?} log field {key:?}; using its inline value instead: {e}");
+      Self::clear_virtual_log_field(state_store, scope, key).await;
+    }
+  }
+
+  async fn clear_virtual_log_field(state_store: &bd_state::Store, scope: Scope, key: &str) {
+    if let Err(e) = state_store.remove(scope, key).await {
+      log::warn!("failed to clear {scope:?} log field {key:?}: {e}");
     }
   }
 
@@ -1476,32 +1483,25 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
-        let persistent_value = persistent_field_value(value.clone());
-        if let Err(e) = state_store
-          .insert(Scope::CustomFields, key.clone(), persistent_value)
-          .await
-        {
-          // Capacity limits only prevent the virtual-state overlay. Preserve the established
-          // inline-field behavior so the current process still emits and matches this field.
-          log::warn!("failed to persist custom log field ({key:?}): {e}");
-        }
+        Self::store_virtual_log_field(
+          state_store,
+          Scope::CustomFields,
+          &key,
+          persistent_field_value(value.clone()),
+        )
+        .await;
         if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value) {
           log::warn!("failed to add log field ({key:?}): {e}");
         }
       },
       LoggerControl::UpdateOotbLogField(key, value) => {
-        let persistent_value = persistent_field_value(value.clone());
-        if let Err(e) = state_store
-          .insert(Scope::OotbFields, key.clone(), persistent_value)
-          .await
-        {
-          log::warn!("failed to persist OOTB log field ({key:?}): {e}");
-          // A rejected replacement must not leave an older OOTB overlay above the inline field.
-          // `remove` falls back to bounded in-memory state when its durable tombstone cannot fit.
-          if let Err(e) = state_store.remove(Scope::OotbFields, &key).await {
-            log::warn!("failed to clear stale OOTB log field ({key:?}): {e}");
-          }
-        }
+        Self::store_virtual_log_field(
+          state_store,
+          Scope::OotbFields,
+          &key,
+          persistent_field_value(value.clone()),
+        )
+        .await;
 
         self
           .metadata_collector
@@ -1512,6 +1512,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         }
       },
       LoggerControl::RemoveLogField(field_name) => {
+        Self::clear_virtual_log_field(state_store, Scope::CustomFields, &field_name).await;
         self.metadata_collector.remove_field(field_name.into());
       },
       LoggerControl::SetMemoryPressureLevel { level } => {
