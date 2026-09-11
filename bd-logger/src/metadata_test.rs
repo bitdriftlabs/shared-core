@@ -437,13 +437,15 @@ fn expected_field_value(fields: &LogFields, key: &str) -> Option<String> {
 }
 
 #[test]
-fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
+fn metadata_from_fields_with_previous_global_state_uses_legacy_inline_fields() {
   let store = in_memory_store();
   let mut tracker = global_state::Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));
 
   // Setup global state
   let global_fields = [
     ("global_key".into(), "global_value".into()),
+    ("custom_key".into(), "legacy_custom_value".into()),
+    ("ootb_key".into(), "legacy_ootb_value".into()),
     ("shared_key".into(), "global_value".into()),
   ]
   .into();
@@ -463,7 +465,6 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
   .into();
 
   let reader = Reader::new(store);
-
   let metadata = MetadataCollector::metadata_from_fields_with_previous_global_state(
     input_fields,
     [].into(),
@@ -477,6 +478,16 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
   assert_eq!(
     "global_value",
     expected_field_value(&metadata.fields, "global_key").unwrap()
+  );
+
+  // Previous-process payloads continue to use the crash-global-state fields until elision.
+  assert_eq!(
+    "legacy_custom_value",
+    expected_field_value(&metadata.fields, "custom_key").unwrap()
+  );
+  assert_eq!(
+    "legacy_ootb_value",
+    expected_field_value(&metadata.fields, "ootb_key").unwrap()
   );
 
   // Unique local field should be present

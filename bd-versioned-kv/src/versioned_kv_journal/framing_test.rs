@@ -10,7 +10,7 @@
 use super::*;
 use crate::Scope;
 use crate::tests::make_string_value;
-use bd_proto::protos::state::payload::StateValue;
+use bd_proto::protos::state::state_payload::StateValue;
 
 #[test]
 fn varint_encoding() {

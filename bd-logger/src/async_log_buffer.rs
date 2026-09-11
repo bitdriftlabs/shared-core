@@ -18,7 +18,7 @@ use crate::logger::{
   with_thread_local_logger_guard,
 };
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
-use crate::metadata::MetadataCollector;
+use crate::metadata::{MetadataCollector, verify_custom_field_name};
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::{Block, battery, internal_report, network};
 use anyhow::anyhow;
@@ -48,6 +48,7 @@ use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  DataValue,
   Log,
   LogFieldValue,
   LogFields,
@@ -71,6 +72,9 @@ use bd_state::{
   MEMORY_PRESSURE_LEVEL_KEY,
   SYSTEM_SESSION_ID_KEY,
   Scope,
+  StateReader,
+  Value,
+  Value_type,
   string_value,
 };
 use bd_stats_common::{Counter as _, Histogram as _, labels};
@@ -78,7 +82,7 @@ use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::future::{Future, ready};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -159,6 +163,53 @@ impl AdmissionCounters {
       Err(AdmissionError::ContextCaptureFailed) => self.err_context_capture_failed.inc(),
     }
   }
+}
+
+/// Stores a log field without changing its type in the persistent state journal.
+fn persistent_field_value(value: DataValue) -> Value {
+  Value {
+    value_type: Value_type::Data(value.into_proto()).into(),
+    ..Default::default()
+  }
+}
+
+/// Returns the minimal state mutations that reconcile startup fields with persisted field state.
+///
+/// Fields historically lived only for one SDK process. Reconcile rather than clear-and-reseed so
+/// unchanged values retain their original timestamps while fields absent at startup receive a
+/// tombstone that bounds their prior value's lifetime.
+fn initial_field_state_updates(
+  initial_ootb_fields: LogFields,
+  initial_custom_fields: LogFields,
+  state: &dyn StateReader,
+) -> Vec<(Scope, String, Option<Value>)> {
+  let mut updates = Vec::new();
+  for (scope, fields) in [
+    (Scope::OotbFields, initial_ootb_fields),
+    (Scope::CustomFields, initial_custom_fields),
+  ] {
+    let desired_fields: BTreeMap<_, _> = fields
+      .into_iter()
+      .map(|(key, value)| (key.to_string(), persistent_field_value(value)))
+      .collect();
+
+    updates.extend(
+      desired_fields
+        .iter()
+        .filter(|(key, value)| state.get(scope, key) != Some(*value))
+        .map(|(key, value)| (scope, key.clone(), Some(value.clone()))),
+    );
+    updates.extend(
+      state
+        .as_scoped_maps()
+        .iter_scope(scope)
+        .map(|(key, _)| key)
+        .filter(|key| !desired_fields.contains_key(key.as_str()))
+        .map(|key| (scope, key.clone(), None)),
+    );
+  }
+
+  updates
 }
 
 #[derive(Clone)]
@@ -814,6 +865,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     &mut self,
     log: LogLine,
     state_store: &bd_state::Store,
+    previous_run_state: &bd_versioned_kv::ScopedMaps,
     context: Option<EventContext>,
   ) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
@@ -821,7 +873,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     while let Some((log, context)) = logs.pop_front() {
       let source_context = context.clone();
       let source_attributes_overrides = log.attributes_overrides.clone();
-      let log_replay_result = self.process_log(log, state_store, context).await?;
+      let log_replay_result = self
+        .process_log(log, state_store, previous_run_state, context)
+        .await?;
       logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
         workflow_generated_log(
           log,
@@ -852,9 +906,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     &mut self,
     log: LogLine,
     state_store: &bd_state::Store,
+    previous_run_state: &bd_versioned_kv::ScopedMaps,
     context: Option<EventContext>,
   ) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
+    let previous_process = matches!(&context, Some(EventContext::PreviousProcess { .. }))
+      || matches!(
+        &log.attributes_overrides,
+        Some(LogAttributesOverrides::PreviousRunSessionID(_))
+      );
     let result = with_thread_local_logger_guard(|| {
       match context {
         Some(EventContext::CurrentProcess(context)) => Ok((
@@ -878,12 +938,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           ),
           None,
         )),
-        None
-          if matches!(
-            &log.attributes_overrides,
-            Some(LogAttributesOverrides::PreviousRunSessionID(_))
-          ) =>
-        {
+        None if previous_process => {
           // Since we're mimicing a log from the previous app start we want to use the previous
           // global state instead of calling into the providers at this point.
           Ok((
@@ -971,7 +1026,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, state_store).await
+        if previous_process {
+          // A previous-process log is evaluated against the complete state snapshot captured at
+          // startup, including feature flags and system state from that process.
+          self.write_log(processed_log, previous_run_state).await
+        } else {
+          let state = state_store.read().await;
+          self.write_log(processed_log, &state).await
+        }
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -985,7 +1047,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn write_log(
     &mut self,
     log: Log,
-    state_store: &bd_state::Store,
+    state: &dyn StateReader,
   ) -> anyhow::Result<LogReplayResult> {
     let log_replay_result = match &mut self.logging_state {
       LoggingState::Uninitialized(_) => {
@@ -996,7 +1058,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .replay_log(
           log,
           &mut initialized_logging_context.processing_pipeline,
-          state_store,
+          state,
           self.time_provider.now(),
         )
         .await
@@ -1029,6 +1091,41 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
+  async fn persist_initial_log_fields(
+    &mut self,
+    initial_ootb_fields: LogFields,
+    initial_custom_fields: LogFields,
+    state_store: &bd_state::Store,
+  ) {
+    let updates = {
+      let state = state_store.read().await;
+      initial_field_state_updates(initial_ootb_fields, initial_custom_fields, &state)
+    };
+
+    for (scope, key, value) in updates {
+      match value {
+        Some(value) => {
+          if let Err(e) = state_store.insert(scope, key.clone(), value).await {
+            log::warn!("state rejected initial {scope:?} log field {key:?}; dropping it: {e}");
+            Self::clear_virtual_log_field(state_store, scope, &key).await;
+            if scope == Scope::CustomFields {
+              self.metadata_collector.remove_field(key.into());
+            } else {
+              self.metadata_collector.remove_ootb_field(key.into());
+            }
+          }
+        },
+        None => Self::clear_virtual_log_field(state_store, scope, &key).await,
+      }
+    }
+  }
+
+  async fn clear_virtual_log_field(state_store: &bd_state::Store, scope: Scope, key: &str) {
+    if let Err(e) = state_store.remove(scope, key).await {
+      log::warn!("failed to clear {scope:?} log field {key:?}: {e}");
+    }
+  }
+
   async fn update(mut self, config: ConfigUpdate) -> Self {
     let initialized_logging_context = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
@@ -1049,16 +1146,33 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self
   }
 
+  #[cfg(test)]
   pub async fn run(
     self,
     state_store: bd_state::Store,
     report_processor: impl ReportProcessor,
   ) -> Self {
-    let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(
+      .run_with_previous_state(
         state_store,
         report_processor,
+        Arc::new(bd_versioned_kv::ScopedMaps::default()),
+      )
+      .await
+  }
+
+  pub async fn run_with_previous_state(
+    self,
+    state_store: bd_state::Store,
+    report_processor: impl ReportProcessor,
+    previous_run_state: Arc<bd_versioned_kv::ScopedMaps>,
+  ) -> Self {
+    let shutdown_trigger = ComponentShutdownTrigger::default();
+    self
+      .run_with_shutdown_and_previous_state(
+        state_store,
+        report_processor,
+        previous_run_state,
         shutdown_trigger.make_shutdown(),
       )
       .await
@@ -1066,10 +1180,28 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   // TODO(mattklein123): This seems to only be used for tests. Figure out how to clean this up
   // so we don't need this just for tests.
+  #[cfg(test)]
   pub async fn run_with_shutdown(
+    self,
+    state_store: bd_state::Store,
+    report_processor: impl ReportProcessor,
+    shutdown: ComponentShutdown,
+  ) -> Self {
+    self
+      .run_with_shutdown_and_previous_state(
+        state_store,
+        report_processor,
+        Arc::new(bd_versioned_kv::ScopedMaps::default()),
+        shutdown,
+      )
+      .await
+  }
+
+  async fn run_with_shutdown_and_previous_state(
     mut self,
     state_store: bd_state::Store,
     report_processor: impl ReportProcessor,
+    previous_run_state: Arc<bd_versioned_kv::ScopedMaps>,
     mut shutdown: ComponentShutdown,
   ) -> Self {
     // EventBuffer protects ingress behind its startup gate while configuration is applied. Once
@@ -1078,6 +1210,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self
       .event_buffer
       .start_startup_gate(self.startup_replay_delay.take());
+
+    let (initial_ootb_fields, initial_custom_fields) =
+      self.metadata_collector.initial_persistent_fields();
+    self
+      .persist_initial_log_fields(initial_ootb_fields, initial_custom_fields, &state_store)
+      .await;
 
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
@@ -1139,7 +1277,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       );
                     }
 
-                    if let Err(e) = self.process_all_logs(log, &state_store, Some(context)).await {
+                    if let Err(e) = self
+                      .process_all_logs(log, &state_store, &previous_run_state, Some(context))
+                      .await
+                    {
                       log::debug!("failed to process all logs: {e}");
                     }
                   },
@@ -1295,14 +1436,76 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
+        if self.metadata_collector.is_ootb_field(&key)
+          || state_store
+            .read()
+            .await
+            .get(Scope::OotbFields, &key)
+            .is_some()
+        {
+          log::debug!("ignoring custom log field {key:?} because an OOTB field owns it");
+          return;
+        }
+
+        if let Err(e) = verify_custom_field_name(&key) {
+          log::warn!("failed to add log field ({key:?}): {e}");
+          return;
+        }
+
+        if let Err(e) = state_store
+          .insert(
+            Scope::CustomFields,
+            key.clone(),
+            persistent_field_value(value.clone()),
+          )
+          .await
+        {
+          log::warn!("state rejected custom log field ({key:?}); leaving it unchanged: {e}");
+          return;
+        }
         if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value) {
           log::warn!("failed to add log field ({key:?}): {e}");
         }
       },
       LoggerControl::UpdateOotbLogField(key, value) => {
-        self.metadata_collector.update_ootb_field(key.into(), value);
+        if let Err(e) = state_store
+          .insert(
+            Scope::OotbFields,
+            key.clone(),
+            persistent_field_value(value.clone()),
+          )
+          .await
+        {
+          log::warn!("state rejected OOTB log field ({key:?}); leaving it unchanged: {e}");
+          return;
+        }
+
+        self
+          .metadata_collector
+          .update_ootb_field(key.clone().into(), value);
+
+        if let Err(e) = state_store.remove(Scope::CustomFields, &key).await {
+          log::warn!("failed to remove shadowed custom log field ({key:?}): {e}");
+        }
       },
       LoggerControl::RemoveLogField(field_name) => {
+        if self.metadata_collector.is_ootb_field(&field_name)
+          || state_store
+            .read()
+            .await
+            .get(Scope::OotbFields, &field_name)
+            .is_some()
+        {
+          log::debug!(
+            "ignoring removal of custom log field {field_name:?} because an OOTB field owns it"
+          );
+          return;
+        }
+
+        if let Err(e) = state_store.remove(Scope::CustomFields, &field_name).await {
+          log::warn!("failed to remove custom log field ({field_name:?}): {e}");
+          return;
+        }
         self.metadata_collector.remove_field(field_name.into());
       },
       LoggerControl::SetMemoryPressureLevel { level } => {

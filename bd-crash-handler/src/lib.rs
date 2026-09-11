@@ -140,7 +140,7 @@ pub trait CrashReportHook: Send + Sync {
 #[derive(Clone)]
 pub struct Monitor {
   report_directory: PathBuf,
-  previous_run_state: bd_versioned_kv::ScopedMaps,
+  previous_run_state: Arc<bd_versioned_kv::ScopedMaps>,
   state: bd_state::Store,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
 
@@ -158,7 +158,7 @@ impl Monitor {
     session: Arc<bd_session::Strategy>,
     init_lifecycle: &InitLifecycleState,
     state: bd_state::Store,
-    previous_run_state: bd_versioned_kv::ScopedMaps,
+    previous_run_state: Arc<bd_versioned_kv::ScopedMaps>,
     emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
     crash_report_hook: Option<Arc<dyn CrashReportHook>>,
   ) -> Self {

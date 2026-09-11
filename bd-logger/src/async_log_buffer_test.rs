@@ -58,7 +58,14 @@ use bd_session::Strategy;
 use bd_session::test::no_timeout;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
-use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
+use bd_state::{
+  InMemoryStateReader,
+  MEMORY_PRESSURE_LEVEL_KEY,
+  PersistentStoreConfig,
+  SYSTEM_SESSION_ID_KEY,
+  Scope,
+  StateReader,
+};
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -176,6 +183,7 @@ struct Setup {
   replayer_log_notify: Arc<Notify>,
   replayer_logs: Arc<parking_lot::Mutex<Vec<String>>>,
   replayer_fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  replayer_feature_flags: Arc<parking_lot::Mutex<Vec<Option<String>>>>,
   shutdown: Option<ComponentShutdownTrigger>,
   store: Arc<bd_device::Store>,
   session_strategy: Arc<Strategy>,
@@ -213,6 +221,7 @@ impl Setup {
       replayer_log_notify: Arc::new(Notify::new()),
       replayer_logs: Arc::default(),
       replayer_fields: Arc::default(),
+      replayer_feature_flags: Arc::default(),
       shutdown: Some(ComponentShutdownTrigger::default()),
       _data_upload_rx: data_upload_rx,
       data_upload_tx,
@@ -254,6 +263,7 @@ impl Setup {
     self.replayer_log_notify = replayer.logs_notify.clone();
     self.replayer_logs = replayer.logs.clone();
     self.replayer_fields = replayer.fields.clone();
+    self.replayer_feature_flags = replayer.feature_flags.clone();
 
     let (_, report_rx) = tokio::sync::mpsc::channel(1);
 
@@ -1061,6 +1071,7 @@ struct TestReplay {
   logs_notify: Arc<Notify>,
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  feature_flags: Arc<parking_lot::Mutex<Vec<Option<String>>>>,
 }
 
 struct StaticReportProcessor(parking_lot::Mutex<Vec<bd_crash_handler::CrashLog>>);
@@ -1153,6 +1164,7 @@ impl TestReplay {
       logs_notify: Arc::new(Notify::new()),
       logs: Arc::new(parking_lot::Mutex::new(vec![])),
       fields: Arc::new(parking_lot::Mutex::new(vec![])),
+      feature_flags: Arc::new(parking_lot::Mutex::new(vec![])),
     }
   }
 }
@@ -1163,13 +1175,19 @@ impl LogReplay for TestReplay {
     &mut self,
     log: Log,
     _processing_pipeline: &mut ProcessingPipeline,
-    _state: &bd_state::Store,
+    _state: &dyn StateReader,
     _now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     if let Some(message) = log.message.as_str() {
       self.logs.lock().push(message.to_string());
     }
 
+    self.feature_flags.lock().push(
+      _state
+        .get(Scope::FeatureFlagExposure, "flag")
+        .filter(|value| value.has_string_value())
+        .map(|value| value.string_value().to_string()),
+    );
     self.fields.lock().push(log.fields);
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     self.logs_notify.notify_waiters();
@@ -1674,7 +1692,7 @@ async fn logs_are_replayed_in_order() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run(state_store, ()).await;
+    _ = Box::pin(buffer.run(state_store, ())).await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -2088,6 +2106,311 @@ async fn previous_run_log_does_not_override_system_session_id() {
 
   drop(test_store);
   task.join().unwrap();
+}
+
+#[test]
+fn initial_field_state_updates_skip_unchanged_values() {
+  let initial_custom_fields: LogFields = [("field".into(), "value".into())].into();
+  let mut state = InMemoryStateReader::new();
+  state.insert(
+    Scope::CustomFields,
+    "field",
+    super::persistent_field_value(DataValue::String("value".to_string())),
+  );
+
+  assert!(
+    super::initial_field_state_updates(LogFields::default(), initial_custom_fields, &state,)
+      .is_empty()
+  );
+}
+
+#[tokio::test]
+async fn ootb_ownership_prevents_custom_state_changes() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new().await;
+  let ootb_value = super::persistent_field_value(DataValue::String("ootb".to_string()));
+  let custom_value = super::persistent_field_value(DataValue::String("custom".to_string()));
+
+  assert_ok!(
+    state_store
+      .insert(Scope::OotbFields, "shared".to_string(), ootb_value.clone())
+      .await
+  );
+
+  buffer
+    .process_control(
+      LoggerControl::AddLogField(
+        "shared".to_string(),
+        DataValue::String("custom".to_string()),
+      ),
+      &state_store,
+    )
+    .await;
+
+  let state = state_store.read().await;
+  assert_eq!(state.get(Scope::OotbFields, "shared"), Some(&ootb_value));
+  assert!(state.get(Scope::CustomFields, "shared").is_none());
+  drop(state);
+  assert!(!buffer.metadata_collector.is_ootb_field("shared"));
+
+  // Preserve a legacy custom value while its OOTB counterpart owns the virtual field. This can
+  // occur after upgrading from a version that allowed both state entries to coexist.
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::CustomFields,
+        "shared".to_string(),
+        custom_value.clone()
+      )
+      .await
+  );
+  buffer
+    .process_control(
+      LoggerControl::RemoveLogField("shared".to_string()),
+      &state_store,
+    )
+    .await;
+
+  assert_eq!(
+    state_store.read().await.get(Scope::CustomFields, "shared"),
+    Some(&custom_value)
+  );
+}
+
+#[tokio::test]
+async fn metadata_ootb_ownership_prevents_custom_state_changes() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new().await;
+
+  buffer
+    .metadata_collector
+    .update_ootb_field("metadata_only".into(), "ootb".into());
+  buffer
+    .process_control(
+      LoggerControl::AddLogField(
+        "metadata_only".to_string(),
+        DataValue::String("custom".to_string()),
+      ),
+      &state_store,
+    )
+    .await;
+
+  assert!(
+    state_store
+      .read()
+      .await
+      .get(Scope::CustomFields, "metadata_only")
+      .is_none()
+  );
+
+  let custom_value = super::persistent_field_value(DataValue::String("custom".to_string()));
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::CustomFields,
+        "metadata_only".to_string(),
+        custom_value.clone(),
+      )
+      .await
+  );
+  buffer
+    .process_control(
+      LoggerControl::RemoveLogField("metadata_only".to_string()),
+      &state_store,
+    )
+    .await;
+
+  assert_eq!(
+    state_store
+      .read()
+      .await
+      .get(Scope::CustomFields, "metadata_only"),
+    Some(&custom_value)
+  );
+}
+
+#[tokio::test]
+async fn capacity_rejected_field_updates_preserve_state_and_metadata() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new_with_config(PersistentStoreConfig {
+    initial_buffer_size: 8 * 1024,
+    max_capacity_bytes: 8 * 1024,
+    high_water_mark_ratio: 0.8,
+  })
+  .await;
+  let custom_initial = DataValue::String("custom_initial".to_string());
+  let ootb_initial = DataValue::String("ootb_initial".to_string());
+
+  buffer
+    .process_control(
+      LoggerControl::AddLogField("custom".to_string(), custom_initial.clone()),
+      &state_store,
+    )
+    .await;
+  buffer
+    .process_control(
+      LoggerControl::UpdateOotbLogField("ootb".to_string(), ootb_initial.clone()),
+      &state_store,
+    )
+    .await;
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::System,
+        "unrelated".to_string(),
+        bd_state::string_value("x".repeat(6_200)),
+      )
+      .await
+  );
+
+  // These writes cannot fit alongside the surviving system state after compaction. Rejection
+  // must leave both the virtual state and the metadata source of emitted fields unchanged.
+  let rejected = DataValue::String("rejected".repeat(585));
+  buffer
+    .process_control(
+      LoggerControl::AddLogField("custom".to_string(), rejected.clone()),
+      &state_store,
+    )
+    .await;
+  buffer
+    .process_control(
+      LoggerControl::UpdateOotbLogField("ootb".to_string(), rejected),
+      &state_store,
+    )
+    .await;
+
+  let state = state_store.read().await;
+  assert_eq!(
+    state.get(Scope::CustomFields, "custom"),
+    Some(&super::persistent_field_value(custom_initial.clone()))
+  );
+  assert_eq!(
+    state.get(Scope::OotbFields, "ootb"),
+    Some(&super::persistent_field_value(ootb_initial.clone()))
+  );
+  drop(state);
+
+  let (ootb_fields, custom_fields) = buffer.metadata_collector.initial_persistent_fields();
+  assert_eq!(custom_fields.get("custom"), Some(&custom_initial));
+  assert_eq!(ootb_fields.get("ootb"), Some(&ootb_initial));
+}
+
+#[tokio::test]
+async fn capacity_rejected_initial_fields_are_dropped_from_metadata() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new_with_config(PersistentStoreConfig {
+    initial_buffer_size: 8 * 1024,
+    max_capacity_bytes: 8 * 1024,
+    high_water_mark_ratio: 0.8,
+  })
+  .await;
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::System,
+        "unrelated".to_string(),
+        bd_state::string_value("x".repeat(6_200)),
+      )
+      .await
+  );
+  let rejected = DataValue::String("rejected".repeat(585));
+  assert_ok!(
+    buffer
+      .metadata_collector
+      .add_field("initial_custom".into(), rejected.clone())
+  );
+  buffer
+    .metadata_collector
+    .update_ootb_field("initial_ootb".into(), rejected.clone());
+
+  // Startup has no previous inline value to retain, so an unpersistable field is dropped rather
+  // than emitted without a matching virtual state value.
+  buffer
+    .persist_initial_log_fields(
+      [("initial_ootb".into(), rejected.clone())].into(),
+      [("initial_custom".into(), rejected)].into(),
+      &state_store,
+    )
+    .await;
+
+  let state = state_store.read().await;
+  assert!(state.get(Scope::CustomFields, "initial_custom").is_none());
+  assert!(state.get(Scope::OotbFields, "initial_ootb").is_none());
+  drop(state);
+
+  let (ootb_fields, custom_fields) = buffer.metadata_collector.initial_persistent_fields();
+  assert!(!custom_fields.contains_key("initial_custom"));
+  assert!(!ootb_fields.contains_key("initial_ootb"));
+}
+
+#[tokio::test]
+async fn previous_process_logs_use_snapshot_state() {
+  let mut setup = Setup::new();
+  let (config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new().await;
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::FeatureFlagExposure,
+        "flag".to_string(),
+        bd_state::string_value("current"),
+      )
+      .await
+  );
+  let mut previous_run_state = bd_versioned_kv::ScopedMaps::default();
+  previous_run_state.insert(
+    Scope::FeatureFlagExposure,
+    "flag".to_string(),
+    bd_versioned_kv::TimestampedValue {
+      timestamp: 0,
+      value: bd_state::string_value("previous"),
+    },
+  );
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let task = std::thread::spawn(move || {
+    assert_ok!(config_update_tx.blocking_send(config_update));
+  });
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown_and_previous_state(
+    state_store.take_inner(),
+    (),
+    Arc::new(previous_run_state),
+    shutdown_trigger.make_shutdown(),
+  ));
+  wait_for_startup_gate_ready(&setup).await;
+
+  sender
+    .try_send_log(LogLine {
+      log_level: log_level::DEBUG,
+      log_type: LogType::NORMAL,
+      message: "previous".into(),
+      fields: AnnotatedLogFields::new(),
+      matching_fields: AnnotatedLogFields::new(),
+      attributes_overrides: Some(LogAttributesOverrides::PreviousRunSessionID(
+        OffsetDateTime::now_utc(),
+      )),
+      capture_session: None,
+    })
+    .unwrap();
+  wait_for_replayed_logs(&setup, 1).await;
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+  task.join().unwrap();
+
+  assert_eq!(
+    &[Some("previous".to_string())],
+    setup.replayer_feature_flags.lock().as_slice()
+  );
 }
 
 #[tokio::test]

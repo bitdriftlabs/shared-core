@@ -41,7 +41,7 @@ pub enum UpdateError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimestampedValue {
   /// The value stored in the key-value store.
-  pub value: state::payload::StateValue,
+  pub value: state::state_payload::StateValue,
 
   /// The timestamp (in microseconds since UNIX epoch) when this value was last written.
   pub timestamp: u64,
@@ -49,9 +49,9 @@ pub struct TimestampedValue {
 
 #[cfg(test)]
 #[must_use]
-pub fn make_string_value(s: &str) -> state::payload::StateValue {
-  state::payload::StateValue {
-    value_type: Some(state::payload::state_value::Value_type::StringValue(
+pub fn make_string_value(s: &str) -> state::state_payload::StateValue {
+  state::state_payload::StateValue {
+    value_type: Some(state::state_payload::state_value::Value_type::StringValue(
       s.to_string(),
     )),
     ..Default::default()

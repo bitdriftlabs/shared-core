@@ -15,6 +15,8 @@ pub enum Scope {
   FeatureFlagExposure = 1,
   GlobalState         = 2,
   System              = 3,
+  CustomFields        = 4,
+  OotbFields          = 5,
 }
 
 impl Scope {

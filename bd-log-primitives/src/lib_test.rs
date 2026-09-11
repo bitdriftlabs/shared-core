@@ -7,7 +7,16 @@
 
 #![allow(clippy::cast_possible_truncation, clippy::unwrap_used)]
 
-use crate::{DataValue, EncodableLog, Log, LogFieldValue, LogType, TypedLogLevel, log_level};
+use crate::{
+  DataValue,
+  EncodableLog,
+  Log,
+  LogFieldValue,
+  LogType,
+  TypedLogLevel,
+  data_to_string_value,
+  log_level,
+};
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::Field;
@@ -341,6 +350,29 @@ fn to_string_value_converts_numeric_types() {
       .to_string_value()
       .is_none()
   );
+}
+
+#[test]
+fn data_to_string_value_matches_data_value_semantics_without_conversion() {
+  for value in [
+    DataValue::String("hello".to_string()),
+    DataValue::I64(-42),
+    DataValue::U64(42),
+    DataValue::Double(NotNan::new(1.5).unwrap()),
+    DataValue::Boolean(true),
+    DataValue::Bytes(vec![1, 2, 3].into()),
+  ] {
+    let expected = value.to_string_value().map(Cow::into_owned);
+    let proto = value.into_proto();
+
+    assert_eq!(data_to_string_value(&proto).map(Cow::into_owned), expected);
+  }
+
+  let nan = Data {
+    data_type: Data_type::DoubleData(f64::NAN).into(),
+    ..Default::default()
+  };
+  assert!(data_to_string_value(&nan).is_none());
 }
 
 #[test]
