@@ -2366,7 +2366,6 @@ async fn previous_process_logs_use_snapshot_state() {
       )
       .await
   );
-
   let mut previous_run_state = bd_versioned_kv::ScopedMaps::default();
   previous_run_state.insert(
     Scope::FeatureFlagExposure,
@@ -2376,7 +2375,6 @@ async fn previous_process_logs_use_snapshot_state() {
       value: bd_state::string_value("previous"),
     },
   );
-
   let config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let task = std::thread::spawn(move || {
     assert_ok!(config_update_tx.blocking_send(config_update));

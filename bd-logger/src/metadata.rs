@@ -22,7 +22,6 @@ use bd_log_primitives::{
 };
 use bd_log_util::warn_every;
 use bd_proto::protos::logging::payload::LogType;
-use bd_state::{Scope, StateReader};
 use std::collections::BTreeSet;
 use std::collections::hash_map::Entry;
 use std::sync::{Arc, LazyLock};
@@ -105,33 +104,24 @@ impl MetadataCollector {
 
   /// Returns log metadata using the last active global state at the end of the last process run.
   ///
-  /// The previous-global-state map is a legacy fallback: state-backed custom and OOTB fields
-  /// already present in `previous_run_state` are not injected from it. Actual fields on the log
-  /// retain their ordinary precedence over that fallback map.
+  /// The previous-global-state map remains the inline source until field elision is enabled.
+  /// State-backed fields are passed separately to the replay pipeline for matcher evaluation;
+  /// this preserves the prior inline payload behavior without decoding persisted values.
   /// Does *not* invoke the field providers as these would incorrectly reflect the state of the
   /// current process.
   pub(crate) fn metadata_from_fields_with_previous_global_state(
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     global_state_reader: &global_state::Reader,
-    previous_run_state: &dyn StateReader,
     timestamp: time::OffsetDateTime,
   ) -> LogMetadata {
-    let fields = if let Some(previous_global_state_fields) =
-      global_state_reader.previous_global_state_fields()
-    {
-      previous_global_state_fields
-        .clone()
-        .into_iter()
-        .filter(|(key, _)| {
-          previous_run_state.get(Scope::OotbFields, key).is_none()
-            && previous_run_state.get(Scope::CustomFields, key).is_none()
-        })
-        .chain(fields.into_iter().map(|(k, v)| (k, v.value)))
-        .collect()
-    } else {
-      fields.into_iter().map(|(k, v)| (k, v.value)).collect()
-    };
+    let fields = global_state_reader
+      .previous_global_state_fields()
+      .cloned()
+      .unwrap_or_default()
+      .into_iter()
+      .chain(fields.into_iter().map(|(k, v)| (k, v.value)))
+      .collect();
 
     LogMetadata {
       timestamp,
