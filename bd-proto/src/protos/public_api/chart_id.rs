@@ -346,8 +346,57 @@ impl ChartIdentifier {
         }
     }
 
+    // .bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveEntitiesChart active_entities_chart = 11;
+
+    pub fn active_entities_chart(&self) -> &chart_identifier::ActiveEntitiesChart {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::ActiveEntitiesChart(ref v)) => v,
+            _ => <chart_identifier::ActiveEntitiesChart as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_active_entities_chart(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_active_entities_chart(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::ActiveEntitiesChart(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_active_entities_chart(&mut self, v: chart_identifier::ActiveEntitiesChart) {
+        self.type_ = ::std::option::Option::Some(chart_identifier::Type::ActiveEntitiesChart(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_active_entities_chart(&mut self) -> &mut chart_identifier::ActiveEntitiesChart {
+        if let ::std::option::Option::Some(chart_identifier::Type::ActiveEntitiesChart(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(chart_identifier::Type::ActiveEntitiesChart(chart_identifier::ActiveEntitiesChart::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::ActiveEntitiesChart(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_active_entities_chart(&mut self) -> chart_identifier::ActiveEntitiesChart {
+        if self.has_active_entities_chart() {
+            match self.type_.take() {
+                ::std::option::Option::Some(chart_identifier::Type::ActiveEntitiesChart(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            chart_identifier::ActiveEntitiesChart::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut fields = ::std::vec::Vec::with_capacity(7);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, chart_identifier::WorkflowChart>(
             "workflow",
@@ -391,6 +440,13 @@ impl ChartIdentifier {
             ChartIdentifier::mut_issue_stability_chart,
             ChartIdentifier::set_issue_stability_chart,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, chart_identifier::ActiveEntitiesChart>(
+            "active_entities_chart",
+            ChartIdentifier::has_active_entities_chart,
+            ChartIdentifier::active_entities_chart,
+            ChartIdentifier::mut_active_entities_chart,
+            ChartIdentifier::set_active_entities_chart,
+        ));
         oneofs.push(chart_identifier::Type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ChartIdentifier>(
             "ChartIdentifier",
@@ -427,6 +483,9 @@ impl ::protobuf::Message for ChartIdentifier {
                 },
                 74 => {
                     self.type_ = ::std::option::Option::Some(chart_identifier::Type::IssueStabilityChart(is.read_message()?));
+                },
+                90 => {
+                    self.type_ = ::std::option::Option::Some(chart_identifier::Type::ActiveEntitiesChart(is.read_message()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -466,6 +525,10 @@ impl ::protobuf::Message for ChartIdentifier {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &chart_identifier::Type::ActiveEntitiesChart(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -494,6 +557,9 @@ impl ::protobuf::Message for ChartIdentifier {
                 &chart_identifier::Type::IssueStabilityChart(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
                 },
+                &chart_identifier::Type::ActiveEntitiesChart(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(11, v, os)?;
+                },
             };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -513,6 +579,7 @@ impl ::protobuf::Message for ChartIdentifier {
     }
 
     fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
@@ -566,6 +633,8 @@ pub mod chart_identifier {
         WorkflowSessionCaptureChart(WorkflowSessionCaptureChart),
         // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.ChartIdentifier.issue_stability_chart)
         IssueStabilityChart(IssueStabilityChart),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.ChartIdentifier.active_entities_chart)
+        ActiveEntitiesChart(ActiveEntitiesChart),
     }
 
     impl ::protobuf::Oneof for Type {
@@ -1367,6 +1436,193 @@ pub mod chart_identifier {
         impl ActiveDevicesChartType {
             pub(in super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
                 ::protobuf::reflect::GeneratedEnumDescriptorData::new::<ActiveDevicesChartType>("ChartIdentifier.ActiveDevicesChart.ActiveDevicesChartType")
+            }
+        }
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveEntitiesChart)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct ActiveEntitiesChart {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveEntitiesChart.type)
+        pub type_: ::protobuf::EnumOrUnknown<active_entities_chart::ActiveEntitiesChartType>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveEntitiesChart.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a ActiveEntitiesChart {
+        fn default() -> &'a ActiveEntitiesChart {
+            <ActiveEntitiesChart as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl ActiveEntitiesChart {
+        pub fn new() -> ActiveEntitiesChart {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "type",
+                |m: &ActiveEntitiesChart| { &m.type_ },
+                |m: &mut ActiveEntitiesChart| { &mut m.type_ },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ActiveEntitiesChart>(
+                "ChartIdentifier.ActiveEntitiesChart",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for ActiveEntitiesChart {
+        const NAME: &'static str = "ActiveEntitiesChart";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.type_ = is.read_enum_or_unknown()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.type_ != ::protobuf::EnumOrUnknown::new(active_entities_chart::ActiveEntitiesChartType::LONG_TERM) {
+                my_size += ::protobuf::rt::int32_size(1, self.type_.value());
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.type_ != ::protobuf::EnumOrUnknown::new(active_entities_chart::ActiveEntitiesChartType::LONG_TERM) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.type_))?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> ActiveEntitiesChart {
+            ActiveEntitiesChart::new()
+        }
+
+        fn clear(&mut self) {
+            self.type_ = ::protobuf::EnumOrUnknown::new(active_entities_chart::ActiveEntitiesChartType::LONG_TERM);
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static ActiveEntitiesChart {
+            static instance: ActiveEntitiesChart = ActiveEntitiesChart {
+                type_: ::protobuf::EnumOrUnknown::from_i32(0),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for ActiveEntitiesChart {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ChartIdentifier.ActiveEntitiesChart").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for ActiveEntitiesChart {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for ActiveEntitiesChart {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `ActiveEntitiesChart`
+    pub mod active_entities_chart {
+        #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+        // @@protoc_insertion_point(enum:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveEntitiesChart.ActiveEntitiesChartType)
+        pub enum ActiveEntitiesChartType {
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveEntitiesChart.ActiveEntitiesChartType.LONG_TERM)
+            LONG_TERM = 0,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveEntitiesChart.ActiveEntitiesChartType.STICKINESS)
+            STICKINESS = 1,
+        }
+
+        impl ::protobuf::Enum for ActiveEntitiesChartType {
+            const NAME: &'static str = "ActiveEntitiesChartType";
+
+            fn value(&self) -> i32 {
+                *self as i32
+            }
+
+            fn from_i32(value: i32) -> ::std::option::Option<ActiveEntitiesChartType> {
+                match value {
+                    0 => ::std::option::Option::Some(ActiveEntitiesChartType::LONG_TERM),
+                    1 => ::std::option::Option::Some(ActiveEntitiesChartType::STICKINESS),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            fn from_str(str: &str) -> ::std::option::Option<ActiveEntitiesChartType> {
+                match str {
+                    "LONG_TERM" => ::std::option::Option::Some(ActiveEntitiesChartType::LONG_TERM),
+                    "STICKINESS" => ::std::option::Option::Some(ActiveEntitiesChartType::STICKINESS),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            const VALUES: &'static [ActiveEntitiesChartType] = &[
+                ActiveEntitiesChartType::LONG_TERM,
+                ActiveEntitiesChartType::STICKINESS,
+            ];
+        }
+
+        impl ::protobuf::EnumFull for ActiveEntitiesChartType {
+            fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().enum_by_package_relative_name("ChartIdentifier.ActiveEntitiesChart.ActiveEntitiesChartType").unwrap()).clone()
+            }
+
+            fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+                let index = *self as usize;
+                Self::enum_descriptor().value_by_index(index)
+            }
+        }
+
+        impl ::std::default::Default for ActiveEntitiesChartType {
+            fn default() -> Self {
+                ActiveEntitiesChartType::LONG_TERM
+            }
+        }
+
+        impl ActiveEntitiesChartType {
+            pub(in super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+                ::protobuf::reflect::GeneratedEnumDescriptorData::new::<ActiveEntitiesChartType>("ChartIdentifier.ActiveEntitiesChart.ActiveEntitiesChartType")
             }
         }
     }
@@ -2635,7 +2891,7 @@ impl SortOrder {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n.bitdrift/public/unary/charts/v1/chart_id.proto\x12\x1fbitdrift.public\
     .unary.charts.v1\x1a5bitdrift/public/shared/workflows/v1/time_series.pro\
-    to\x1a\x17validate/validate.proto\"\xb3\x0e\n\x0fChartIdentifier\x12\\\n\
+    to\x1a\x17validate/validate.proto\"\xfd\x10\n\x0fChartIdentifier\x12\\\n\
     \x08workflow\x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.Char\
     tIdentifier.WorkflowChartH\0R\x08workflow\x12i\n\x0csankey_chart\x18\x05\
     \x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentifier.Workflow\
@@ -2648,56 +2904,63 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     1.ChartIdentifier.WorkflowSessionCaptureChartH\0R\x1bworkflowSessionCapt\
     ureChart\x12z\n\x15issue_stability_chart\x18\t\x20\x01(\x0b2D.bitdrift.p\
     ublic.unary.charts.v1.ChartIdentifier.IssueStabilityChartH\0R\x13issueSt\
-    abilityChart\x1a\xc6\x01\n\rWorkflowChart\x12+\n\x0bworkflow_id\x18\x02\
-    \x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12.\n\rch\
-    art_rule_id\x18\x03\x20\x01(\tR\x0bchartRuleIdB\n\xfaB\x07r\x05\x10\x01\
-    \x18\xff\x01\x12?\n\x14aggregated_action_id\x18\x04\x20\x01(\tH\0R\x12ag\
-    gregatedActionIdB\x08\xfaB\x05r\x03\x18\xff\x01\x88\x01\x01B\x17\n\x15_a\
-    ggregated_action_id\x1at\n\x13WorkflowFunnelChart\x12+\n\x0bworkflow_id\
+    abilityChart\x12z\n\x15active_entities_chart\x18\x0b\x20\x01(\x0b2D.bitd\
+    rift.public.unary.charts.v1.ChartIdentifier.ActiveEntitiesChartH\0R\x13a\
+    ctiveEntitiesChart\x1a\xc6\x01\n\rWorkflowChart\x12+\n\x0bworkflow_id\
     \x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\
-    \x120\n\x0efunnel_rule_id\x18\x03\x20\x01(\tR\x0cfunnelRuleIdB\n\xfaB\
-    \x07r\x05\x10\x01\x18\xff\x01\x1a\xa3\x01\n\x1bWorkflowSessionCaptureCha\
-    rt\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\
-    \x05\x10\x01\x18\xff\x01\x12.\n\rflush_rule_id\x18\x03\x20\x01(\tR\x0bfl\
-    ushRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12'\n\taction_id\x18\x04\
-    \x20\x01(\tR\x08actionIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1ag\n\x13\
-    WorkflowSankeyChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowI\
-    dB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12#\n\x07rule_id\x18\x03\x20\x01\
-    (\tR\x06ruleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1a\xd3\x01\n\x12Act\
-    iveDevicesChart\x12x\n\x04type\x18\x01\x20\x01(\x0e2Z.bitdrift.public.un\
-    ary.charts.v1.ChartIdentifier.ActiveDevicesChart.ActiveDevicesChartTypeR\
-    \x04typeB\x08\xfaB\x05\x82\x01\x02\x10\x01\"C\n\x16ActiveDevicesChartTyp\
-    e\x12\n\n\x06NORMAL\x10\0\x12\r\n\tLONG_TERM\x10\x01\x12\x0e\n\nSTICKINE\
-    SS\x10\x02\x1a\x9e\x02\n\x13IssueStabilityChart\x12z\n\x04type\x18\x01\
-    \x20\x01(\x0e2\\.bitdrift.public.unary.charts.v1.ChartIdentifier.IssueSt\
-    abilityChart.IssueStabilityChartTypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\
-    \x10\x01\"\x8a\x01\n\x17IssueStabilityChartType\x12\n\n\x06GLOBAL\x10\0\
-    \x12\x1c\n\x18DETAILED_CRASH_FREE_RATE\x10\x01\x12$\n\x20DETAILED_CRASH_\
-    FREE_SESSION_RATE\x10\x02\x12\x1f\n\x1bDETAILED_CRASH_FREE_DEVICES\x10\
-    \x03B\x0b\n\x04type\x12\x03\xf8B\x01\"\xa4\x06\n\rLimitStrategy\x12Z\n\
-    \x0btop_k_limit\x18\x01\x20\x01(\x0b28.bitdrift.public.unary.charts.v1.L\
-    imitStrategy.TopKLimitH\0R\ttopKLimit\x12k\n\x10identifier_match\x18\x02\
-    \x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.LimitStrategy.Identifier\
-    MatchH\0R\x0fidentifierMatch\x12S\n\nsort_order\x18\x03\x20\x01(\x0e2*.b\
-    itdrift.public.unary.charts.v1.SortOrderR\tsortOrderB\x08\xfaB\x05\x82\
-    \x01\x02\x10\x01\x12^\n\nexclusions\x18\x04\x20\x01(\x0b2>.bitdrift.publ\
-    ic.unary.charts.v1.LimitStrategy.IdentifierMatchR\nexclusions\x1a)\n\tTo\
-    pKLimit\x12\x1c\n\x05top_k\x18\x01\x20\x01(\x04R\x04topKB\x07\xfaB\x042\
-    \x02\x20\0\x1a\xd7\x02\n\x0fIdentifierMatch\x12\x93\x01\n\x15dimension_i\
-    dentifiers\x18\x01\x20\x03(\x0b2R.bitdrift.public.unary.charts.v1.LimitS\
-    trategy.IdentifierMatch.DimensionIdentifierR\x14dimensionIdentifiersB\n\
-    \xfaB\x07\x92\x01\x04\x08\x01\x10d\x12!\n\x0creturn_other\x18\x02\x20\
-    \x01(\x08R\x0breturnOther\x1a\x8a\x01\n\x13DimensionIdentifier\x12\x1a\n\
-    \x02id\x18\x01\x20\x01(\tR\x02idB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\
-    \x12W\n\x06labels\x18\x02\x20\x03(\x0b2..bitdrift.public.shared.workflow\
-    s.v1.LabelPairR\x06labelsB\x0f\xfaB\x0c\x92\x01\t\x10\n\"\x05\x8a\x01\
-    \x02\x10\x01B\x10\n\x0elimit_strategy\"\x83\x01\n\x16HistogramConfigurat\
-    ion\x12/\n\npercentile\x18\x02\x20\x01(\x02R\npercentileB\x0f\xfaB\x0c\n\
-    \n\x1d\0\0\x80?-\0\0\0\0\x128\n\x0bpercentiles\x18\x03\x20\x03(\x02R\x0b\
-    percentilesB\x16\xfaB\x13\x92\x01\x10\x10\x14\"\x0c\n\n\x1d\0\0\x80?-\0\
-    \0\0\0\"2\n\nFunnelStep\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\
-    \x14\n\x05value\x18\x02\x20\x01(\x04R\x05value*\x1d\n\tSortOrder\x12\x07\
-    \n\x03MAX\x10\0\x12\x07\n\x03MIN\x10\x01b\x06proto3\
+    \x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\x0bchartRuleIdB\n\xfaB\x07r\
+    \x05\x10\x01\x18\xff\x01\x12?\n\x14aggregated_action_id\x18\x04\x20\x01(\
+    \tH\0R\x12aggregatedActionIdB\x08\xfaB\x05r\x03\x18\xff\x01\x88\x01\x01B\
+    \x17\n\x15_aggregated_action_id\x1at\n\x13WorkflowFunnelChart\x12+\n\x0b\
+    workflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\
+    \xff\x01\x120\n\x0efunnel_rule_id\x18\x03\x20\x01(\tR\x0cfunnelRuleIdB\n\
+    \xfaB\x07r\x05\x10\x01\x18\xff\x01\x1a\xa3\x01\n\x1bWorkflowSessionCaptu\
+    reChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\
+    \x07r\x05\x10\x01\x18\xff\x01\x12.\n\rflush_rule_id\x18\x03\x20\x01(\tR\
+    \x0bflushRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12'\n\taction_id\
+    \x18\x04\x20\x01(\tR\x08actionIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\
+    \x1ag\n\x13WorkflowSankeyChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\
+    \nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12#\n\x07rule_id\x18\
+    \x03\x20\x01(\tR\x06ruleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1a\xd3\
+    \x01\n\x12ActiveDevicesChart\x12x\n\x04type\x18\x01\x20\x01(\x0e2Z.bitdr\
+    ift.public.unary.charts.v1.ChartIdentifier.ActiveDevicesChart.ActiveDevi\
+    cesChartTypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\x10\x01\"C\n\x16ActiveDe\
+    vicesChartType\x12\n\n\x06NORMAL\x10\0\x12\r\n\tLONG_TERM\x10\x01\x12\
+    \x0e\n\nSTICKINESS\x10\x02\x1a\xcb\x01\n\x13ActiveEntitiesChart\x12z\n\
+    \x04type\x18\x01\x20\x01(\x0e2\\.bitdrift.public.unary.charts.v1.ChartId\
+    entifier.ActiveEntitiesChart.ActiveEntitiesChartTypeR\x04typeB\x08\xfaB\
+    \x05\x82\x01\x02\x10\x01\"8\n\x17ActiveEntitiesChartType\x12\r\n\tLONG_T\
+    ERM\x10\0\x12\x0e\n\nSTICKINESS\x10\x01\x1a\x9e\x02\n\x13IssueStabilityC\
+    hart\x12z\n\x04type\x18\x01\x20\x01(\x0e2\\.bitdrift.public.unary.charts\
+    .v1.ChartIdentifier.IssueStabilityChart.IssueStabilityChartTypeR\x04type\
+    B\x08\xfaB\x05\x82\x01\x02\x10\x01\"\x8a\x01\n\x17IssueStabilityChartTyp\
+    e\x12\n\n\x06GLOBAL\x10\0\x12\x1c\n\x18DETAILED_CRASH_FREE_RATE\x10\x01\
+    \x12$\n\x20DETAILED_CRASH_FREE_SESSION_RATE\x10\x02\x12\x1f\n\x1bDETAILE\
+    D_CRASH_FREE_DEVICES\x10\x03B\x0b\n\x04type\x12\x03\xf8B\x01\"\xa4\x06\n\
+    \rLimitStrategy\x12Z\n\x0btop_k_limit\x18\x01\x20\x01(\x0b28.bitdrift.pu\
+    blic.unary.charts.v1.LimitStrategy.TopKLimitH\0R\ttopKLimit\x12k\n\x10id\
+    entifier_match\x18\x02\x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.Li\
+    mitStrategy.IdentifierMatchH\0R\x0fidentifierMatch\x12S\n\nsort_order\
+    \x18\x03\x20\x01(\x0e2*.bitdrift.public.unary.charts.v1.SortOrderR\tsort\
+    OrderB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12^\n\nexclusions\x18\x04\x20\
+    \x01(\x0b2>.bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatc\
+    hR\nexclusions\x1a)\n\tTopKLimit\x12\x1c\n\x05top_k\x18\x01\x20\x01(\x04\
+    R\x04topKB\x07\xfaB\x042\x02\x20\0\x1a\xd7\x02\n\x0fIdentifierMatch\x12\
+    \x93\x01\n\x15dimension_identifiers\x18\x01\x20\x03(\x0b2R.bitdrift.publ\
+    ic.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionIdentifierR\
+    \x14dimensionIdentifiersB\n\xfaB\x07\x92\x01\x04\x08\x01\x10d\x12!\n\x0c\
+    return_other\x18\x02\x20\x01(\x08R\x0breturnOther\x1a\x8a\x01\n\x13Dimen\
+    sionIdentifier\x12\x1a\n\x02id\x18\x01\x20\x01(\tR\x02idB\n\xfaB\x07r\
+    \x05\x10\x01\x18\xff\x01\x12W\n\x06labels\x18\x02\x20\x03(\x0b2..bitdrif\
+    t.public.shared.workflows.v1.LabelPairR\x06labelsB\x0f\xfaB\x0c\x92\x01\
+    \t\x10\n\"\x05\x8a\x01\x02\x10\x01B\x10\n\x0elimit_strategy\"\x83\x01\n\
+    \x16HistogramConfiguration\x12/\n\npercentile\x18\x02\x20\x01(\x02R\nper\
+    centileB\x0f\xfaB\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\x128\n\x0bpercentiles\
+    \x18\x03\x20\x03(\x02R\x0bpercentilesB\x16\xfaB\x13\x92\x01\x10\x10\x14\
+    \"\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\"2\n\nFunnelStep\x12\x0e\n\x02id\x18\
+    \x01\x20\x01(\tR\x02id\x12\x14\n\x05value\x18\x02\x20\x01(\x04R\x05value\
+    *\x1d\n\tSortOrder\x12\x07\n\x03MAX\x10\0\x12\x07\n\x03MIN\x10\x01b\x06p\
+    roto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -2717,7 +2980,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(super::time_series::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(13);
+            let mut messages = ::std::vec::Vec::with_capacity(14);
             messages.push(ChartIdentifier::generated_message_descriptor_data());
             messages.push(LimitStrategy::generated_message_descriptor_data());
             messages.push(HistogramConfiguration::generated_message_descriptor_data());
@@ -2727,13 +2990,15 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(chart_identifier::WorkflowSessionCaptureChart::generated_message_descriptor_data());
             messages.push(chart_identifier::WorkflowSankeyChart::generated_message_descriptor_data());
             messages.push(chart_identifier::ActiveDevicesChart::generated_message_descriptor_data());
+            messages.push(chart_identifier::ActiveEntitiesChart::generated_message_descriptor_data());
             messages.push(chart_identifier::IssueStabilityChart::generated_message_descriptor_data());
             messages.push(limit_strategy::TopKLimit::generated_message_descriptor_data());
             messages.push(limit_strategy::IdentifierMatch::generated_message_descriptor_data());
             messages.push(limit_strategy::identifier_match::DimensionIdentifier::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(3);
+            let mut enums = ::std::vec::Vec::with_capacity(4);
             enums.push(SortOrder::generated_enum_descriptor_data());
             enums.push(chart_identifier::active_devices_chart::ActiveDevicesChartType::generated_enum_descriptor_data());
+            enums.push(chart_identifier::active_entities_chart::ActiveEntitiesChartType::generated_enum_descriptor_data());
             enums.push(chart_identifier::issue_stability_chart::IssueStabilityChartType::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),

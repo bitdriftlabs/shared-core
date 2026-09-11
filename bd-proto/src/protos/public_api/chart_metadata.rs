@@ -1088,6 +1088,8 @@ pub mod chart_metadata {
             pub top_k_algorithm: ::std::option::Option<::protobuf::EnumOrUnknown<time_series_metadata::TopKAlgorithm>>,
             // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartMetadata.MetricChartMetadata.TimeSeriesMetadata.connector_export_config)
             pub connector_export_config: ::std::vec::Vec<time_series_metadata::ConnectorExportConfig>,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartMetadata.MetricChartMetadata.TimeSeriesMetadata.time_series_id)
+            pub time_series_id: ::std::string::String,
             // special fields
             // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.ChartMetadata.MetricChartMetadata.TimeSeriesMetadata.special_fields)
             pub special_fields: ::protobuf::SpecialFields,
@@ -1105,7 +1107,7 @@ pub mod chart_metadata {
             }
 
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(6);
+                let mut fields = ::std::vec::Vec::with_capacity(7);
                 let mut oneofs = ::std::vec::Vec::with_capacity(0);
                 fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, time_series_metadata::Axis>(
                     "y_axis",
@@ -1136,6 +1138,11 @@ pub mod chart_metadata {
                     "connector_export_config",
                     |m: &TimeSeriesMetadata| { &m.connector_export_config },
                     |m: &mut TimeSeriesMetadata| { &mut m.connector_export_config },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "time_series_id",
+                    |m: &TimeSeriesMetadata| { &m.time_series_id },
+                    |m: &mut TimeSeriesMetadata| { &mut m.time_series_id },
                 ));
                 ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TimeSeriesMetadata>(
                     "ChartMetadata.MetricChartMetadata.TimeSeriesMetadata",
@@ -1173,6 +1180,9 @@ pub mod chart_metadata {
                         50 => {
                             self.connector_export_config.push(is.read_message()?);
                         },
+                        58 => {
+                            self.time_series_id = is.read_string()?;
+                        },
                         tag => {
                             ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                         },
@@ -1206,6 +1216,9 @@ pub mod chart_metadata {
                     let len = value.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 };
+                if !self.time_series_id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(7, &self.time_series_id);
+                }
                 my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
                 self.special_fields.cached_size().set(my_size as u32);
                 my_size
@@ -1230,6 +1243,9 @@ pub mod chart_metadata {
                 for v in &self.connector_export_config {
                     ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
                 };
+                if !self.time_series_id.is_empty() {
+                    os.write_string(7, &self.time_series_id)?;
+                }
                 os.write_unknown_fields(self.special_fields.unknown_fields())?;
                 ::std::result::Result::Ok(())
             }
@@ -1253,6 +1269,7 @@ pub mod chart_metadata {
                 self.limit_strategy.clear();
                 self.top_k_algorithm = ::std::option::Option::None;
                 self.connector_export_config.clear();
+                self.time_series_id.clear();
                 self.special_fields.clear();
             }
 
@@ -1264,6 +1281,7 @@ pub mod chart_metadata {
                     limit_strategy: ::protobuf::MessageField::none(),
                     top_k_algorithm: ::std::option::Option::None,
                     connector_export_config: ::std::vec::Vec::new(),
+                    time_series_id: ::std::string::String::new(),
                     special_fields: ::protobuf::SpecialFields::new(),
                 };
                 &instance
@@ -2983,7 +3001,7 @@ impl ::protobuf::reflect::ProtobufValue for UpsertWorkflowChartMetadataResponse 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n4bitdrift/public/unary/charts/v1/chart_metadata.proto\x12\x1fbitdrift.\
     public.unary.charts.v1\x1a.bitdrift/public/unary/charts/v1/chart_id.prot\
-    o\x1a\x17validate/validate.proto\"\xce\x1c\n\rChartMetadata\x12\x1e\n\
+    o\x1a\x17validate/validate.proto\"\xfe\x1c\n\rChartMetadata\x12\x1e\n\
     \x05title\x18\x01\x20\x01(\tR\x05titleB\x08\xfaB\x05r\x03\x18\xff\x01\
     \x12U\n\x07summary\x18\x02\x20\x01(\x0b26.bitdrift.public.unary.charts.v\
     1.ChartMetadata.SummaryH\x01R\x07summary\x88\x01\x01\x125\n\x0fno_data_m\
@@ -2997,7 +3015,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     MetadataH\0R\x12flushChartMetadata\x12x\n\x15sankey_chart_metadata\x18\
     \x07\x20\x01(\x0b2B.bitdrift.public.unary.charts.v1.ChartMetadata.Sankey\
     ChartMetadataH\0R\x13sankeyChartMetadata\x1a\x14\n\x12FlushChartMetadata\
-    \x1a\x15\n\x13SankeyChartMetadata\x1a\xdc\x14\n\x13MetricChartMetadata\
+    \x1a\x15\n\x13SankeyChartMetadata\x1a\x8c\x15\n\x13MetricChartMetadata\
     \x12\x93\x01\n\x18time_series_display_mode\x18\x01\x20\x01(\x0b2X.bitdri\
     ft.public.unary.charts.v1.ChartMetadata.MetricChartMetadata.TimeSeriesDi\
     splayModeH\0R\x15timeSeriesDisplayMode\x12\x83\x01\n\x12table_display_mo\
@@ -3008,7 +3026,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     tDisplayModeH\0R\x1chistogramBarChartDisplayMode\x12{\n\x08metadata\x18\
     \x04\x20\x03(\x0b2U.bitdrift.public.unary.charts.v1.ChartMetadata.Metric\
     ChartMetadata.TimeSeriesMetadataR\x08metadataB\x08\xfaB\x05\x92\x01\x02\
-    \x10d\x1a\xa2\x0f\n\x12TimeSeriesMetadata\x12q\n\x06y_axis\x18\x01\x20\
+    \x10d\x1a\xd2\x0f\n\x12TimeSeriesMetadata\x12q\n\x06y_axis\x18\x01\x20\
     \x01(\x0b2Z.bitdrift.public.unary.charts.v1.ChartMetadata.MetricChartMet\
     adata.TimeSeriesMetadata.AxisR\x05yAxis\x12\x1e\n\x05title\x18\x02\x20\
     \x01(\tR\x05titleB\x08\xfaB\x05r\x03\x18\xff\x01\x12S\n\nsort_order\x18\
@@ -3021,49 +3039,50 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x02\x10\x01\x88\x01\x01\x12\xad\x01\n\x17connector_export_config\x18\
     \x06\x20\x03(\x0b2k.bitdrift.public.unary.charts.v1.ChartMetadata.Metric\
     ChartMetadata.TimeSeriesMetadata.ConnectorExportConfigR\x15connectorExpo\
-    rtConfigB\x08\xfaB\x05\x92\x01\x02\x10\n\x1a\xee\x02\n\x04Axis\x12*\n\
-    \x0bdescription\x18\x01\x20\x01(\tR\x0bdescriptionB\x08\xfaB\x05r\x03\
-    \x18\xff\x01\x12}\n\x04unit\x18\x02\x20\x01(\x0e2_.bitdrift.public.unary\
-    .charts.v1.ChartMetadata.MetricChartMetadata.TimeSeriesMetadata.Axis.Uni\
-    tR\x04unitB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\xba\x01\n\x04Unit\x12\x0f\
-    \n\x0bUNSPECIFIED\x10\0\x12\x0e\n\nPERCENTAGE\x10\x01\x12\x10\n\x0cMILLI\
-    SECONDS\x10\x02\x12\r\n\tTIMESTAMP\x10\x03\x12\t\n\x05BYTES\x10\x04\x12\
-    \t\n\x05COUNT\x10\x05\x12\r\n\tKILOBYTES\x10\x06\x12\r\n\tMEGABYTES\x10\
-    \x08\x12\x0b\n\x07SECONDS\x10\t\x12\x0b\n\x07MINUTES\x10\n\x12\t\n\x05HO\
-    URS\x10\x0b\x12\x08\n\x04DAYS\x10\x0c\x12\r\n\tGIGABYTES\x10\r\x1a\xd7\
-    \x05\n\x15ConnectorExportConfig\x121\n\x0econnector_name\x18\x01\x20\x01\
-    (\tR\rconnectorNameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12\xdb\x01\n\"\
-    cloudwatch_connector_export_config\x18\x02\x20\x01(\x0b2\x8b\x01.bitdrif\
-    t.public.unary.charts.v1.ChartMetadata.MetricChartMetadata.TimeSeriesMet\
-    adata.ConnectorExportConfig.CloudwatchConnectorExportConfigH\0R\x1fcloud\
-    watchConnectorExportConfig\x1a\x95\x03\n\x1fCloudwatchConnectorExportCon\
-    fig\x12(\n\tnamespace\x18\x01\x20\x01(\tR\tnamespaceB\n\xfaB\x07r\x05\
-    \x10\x01\x18\xff\x01\x12+\n\x0bmetric_name\x18\x02\x20\x01(\tR\nmetricNa\
-    meB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12\xd6\x01\n\x10fixed_dimension\
-    s\x18\x03\x20\x03(\x0b2\xa0\x01.bitdrift.public.unary.charts.v1.ChartMet\
-    adata.MetricChartMetadata.TimeSeriesMetadata.ConnectorExportConfig.Cloud\
-    watchConnectorExportConfig.FixedDimensionsEntryR\x0ffixedDimensionsB\x08\
-    \xfaB\x05\x9a\x01\x02\x10\n\x1aB\n\x14FixedDimensionsEntry\x12\x10\n\x03\
-    key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\tR\
-    \x05value:\x028\x01B\x15\n\x0econnector_type\x12\x03\xf8B\x01\"\x88\x01\
-    \n\rTopKAlgorithm\x12\x1f\n\x1bTOP_K_ALGORITHM_UNSPECIFIED\x10\0\x12\x1c\
-    \n\x18TOP_K_ALGORITHM_AVERAGED\x10\x01\x12\x1b\n\x17TOP_K_ALGORITHM_2TIE\
-    RED\x10\x02\x12\x1b\n\x17TOP_K_ALGORITHM_3TIERED\x10\x03B\x11\n\x0f_limi\
-    t_strategyB\x12\n\x10_top_k_algorithm\x1a\x17\n\x15TimeSeriesDisplayMode\
-    \x1a\x12\n\x10TableDisplayMode\x1a\x1e\n\x1cHistogramBarChartDisplayMode\
-    B\x0e\n\x0cdisplay_mode\x1a\xb0\x01\n\x13FunnelChartMetadata\x12m\n\x05s\
-    teps\x18\x01\x20\x03(\x0b2M.bitdrift.public.unary.charts.v1.ChartMetadat\
-    a.FunnelChartMetadata.StepDetailR\x05stepsB\x08\xfaB\x05\x92\x01\x02\x10\
-    d\x1a*\n\nStepDetail\x12\x1c\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x08\
-    \xfaB\x05r\x03\x18\xff\x01\x1a5\n\x07Summary\x12*\n\x0bdescription\x18\
-    \x01\x20\x01(\tR\x0bdescriptionB\x08\xfaB\x05r\x03\x18\xf4\x03B\x14\n\rm\
-    etadata_type\x12\x03\xf8B\x01B\n\n\x08_summaryB\x12\n\x10_no_data_messag\
-    e\"\xc6\x01\n\"UpsertWorkflowChartMetadataRequest\x12(\n\x0bworkflow_id\
-    \x18\x01\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\x12\x20\n\x07ru\
-    le_id\x18\x02\x20\x01(\tR\x06ruleIdB\x07\xfaB\x04r\x02\x18d\x12T\n\x08me\
-    tadata\x18\x03\x20\x01(\x0b2..bitdrift.public.unary.charts.v1.ChartMetad\
-    ataR\x08metadataB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"%\n#UpsertWorkflowCh\
-    artMetadataResponseb\x06proto3\
+    rtConfigB\x08\xfaB\x05\x92\x01\x02\x10\n\x12.\n\x0etime_series_id\x18\
+    \x07\x20\x01(\tR\x0ctimeSeriesIdB\x08\xfaB\x05r\x03\x18\xff\x01\x1a\xee\
+    \x02\n\x04Axis\x12*\n\x0bdescription\x18\x01\x20\x01(\tR\x0bdescriptionB\
+    \x08\xfaB\x05r\x03\x18\xff\x01\x12}\n\x04unit\x18\x02\x20\x01(\x0e2_.bit\
+    drift.public.unary.charts.v1.ChartMetadata.MetricChartMetadata.TimeSerie\
+    sMetadata.Axis.UnitR\x04unitB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\xba\x01\
+    \n\x04Unit\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\x0e\n\nPERCENTAGE\x10\x01\
+    \x12\x10\n\x0cMILLISECONDS\x10\x02\x12\r\n\tTIMESTAMP\x10\x03\x12\t\n\
+    \x05BYTES\x10\x04\x12\t\n\x05COUNT\x10\x05\x12\r\n\tKILOBYTES\x10\x06\
+    \x12\r\n\tMEGABYTES\x10\x08\x12\x0b\n\x07SECONDS\x10\t\x12\x0b\n\x07MINU\
+    TES\x10\n\x12\t\n\x05HOURS\x10\x0b\x12\x08\n\x04DAYS\x10\x0c\x12\r\n\tGI\
+    GABYTES\x10\r\x1a\xd7\x05\n\x15ConnectorExportConfig\x121\n\x0econnector\
+    _name\x18\x01\x20\x01(\tR\rconnectorNameB\n\xfaB\x07r\x05\x10\x01\x18\
+    \xff\x01\x12\xdb\x01\n\"cloudwatch_connector_export_config\x18\x02\x20\
+    \x01(\x0b2\x8b\x01.bitdrift.public.unary.charts.v1.ChartMetadata.MetricC\
+    hartMetadata.TimeSeriesMetadata.ConnectorExportConfig.CloudwatchConnecto\
+    rExportConfigH\0R\x1fcloudwatchConnectorExportConfig\x1a\x95\x03\n\x1fCl\
+    oudwatchConnectorExportConfig\x12(\n\tnamespace\x18\x01\x20\x01(\tR\tnam\
+    espaceB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12+\n\x0bmetric_name\x18\
+    \x02\x20\x01(\tR\nmetricNameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12\
+    \xd6\x01\n\x10fixed_dimensions\x18\x03\x20\x03(\x0b2\xa0\x01.bitdrift.pu\
+    blic.unary.charts.v1.ChartMetadata.MetricChartMetadata.TimeSeriesMetadat\
+    a.ConnectorExportConfig.CloudwatchConnectorExportConfig.FixedDimensionsE\
+    ntryR\x0ffixedDimensionsB\x08\xfaB\x05\x9a\x01\x02\x10\n\x1aB\n\x14Fixed\
+    DimensionsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\
+    \x05value\x18\x02\x20\x01(\tR\x05value:\x028\x01B\x15\n\x0econnector_typ\
+    e\x12\x03\xf8B\x01\"\x88\x01\n\rTopKAlgorithm\x12\x1f\n\x1bTOP_K_ALGORIT\
+    HM_UNSPECIFIED\x10\0\x12\x1c\n\x18TOP_K_ALGORITHM_AVERAGED\x10\x01\x12\
+    \x1b\n\x17TOP_K_ALGORITHM_2TIERED\x10\x02\x12\x1b\n\x17TOP_K_ALGORITHM_3\
+    TIERED\x10\x03B\x11\n\x0f_limit_strategyB\x12\n\x10_top_k_algorithm\x1a\
+    \x17\n\x15TimeSeriesDisplayMode\x1a\x12\n\x10TableDisplayMode\x1a\x1e\n\
+    \x1cHistogramBarChartDisplayModeB\x0e\n\x0cdisplay_mode\x1a\xb0\x01\n\
+    \x13FunnelChartMetadata\x12m\n\x05steps\x18\x01\x20\x03(\x0b2M.bitdrift.\
+    public.unary.charts.v1.ChartMetadata.FunnelChartMetadata.StepDetailR\x05\
+    stepsB\x08\xfaB\x05\x92\x01\x02\x10d\x1a*\n\nStepDetail\x12\x1c\n\x04nam\
+    e\x18\x01\x20\x01(\tR\x04nameB\x08\xfaB\x05r\x03\x18\xff\x01\x1a5\n\x07S\
+    ummary\x12*\n\x0bdescription\x18\x01\x20\x01(\tR\x0bdescriptionB\x08\xfa\
+    B\x05r\x03\x18\xf4\x03B\x14\n\rmetadata_type\x12\x03\xf8B\x01B\n\n\x08_s\
+    ummaryB\x12\n\x10_no_data_message\"\xc6\x01\n\"UpsertWorkflowChartMetada\
+    taRequest\x12(\n\x0bworkflow_id\x18\x01\x20\x01(\tR\nworkflowIdB\x07\xfa\
+    B\x04r\x02\x18d\x12\x20\n\x07rule_id\x18\x02\x20\x01(\tR\x06ruleIdB\x07\
+    \xfaB\x04r\x02\x18d\x12T\n\x08metadata\x18\x03\x20\x01(\x0b2..bitdrift.p\
+    ublic.unary.charts.v1.ChartMetadataR\x08metadataB\x08\xfaB\x05\x8a\x01\
+    \x02\x10\x01\"%\n#UpsertWorkflowChartMetadataResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
