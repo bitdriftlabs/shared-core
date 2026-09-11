@@ -2385,7 +2385,7 @@ async fn previous_process_logs_use_snapshot_state() {
   let handle = tokio::task::spawn(buffer.run_with_shutdown_and_previous_state(
     state_store.take_inner(),
     (),
-    previous_run_state,
+    Arc::new(previous_run_state),
     shutdown_trigger.make_shutdown(),
   ));
   wait_for_startup_gate_ready(&setup).await;

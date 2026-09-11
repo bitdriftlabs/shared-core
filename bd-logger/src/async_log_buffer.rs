@@ -1158,7 +1158,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .run_with_previous_state(
         state_store,
         report_processor,
-        bd_versioned_kv::ScopedMaps::default(),
+        Arc::new(bd_versioned_kv::ScopedMaps::default()),
       )
       .await
   }
@@ -1167,7 +1167,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self,
     state_store: bd_state::Store,
     report_processor: impl ReportProcessor,
-    previous_run_state: bd_versioned_kv::ScopedMaps,
+    previous_run_state: Arc<bd_versioned_kv::ScopedMaps>,
   ) -> Self {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
@@ -1193,7 +1193,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .run_with_shutdown_and_previous_state(
         state_store,
         report_processor,
-        bd_versioned_kv::ScopedMaps::default(),
+        Arc::new(bd_versioned_kv::ScopedMaps::default()),
         shutdown,
       )
       .await
@@ -1203,7 +1203,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     mut self,
     state_store: bd_state::Store,
     report_processor: impl ReportProcessor,
-    previous_run_state: bd_versioned_kv::ScopedMaps,
+    previous_run_state: Arc<bd_versioned_kv::ScopedMaps>,
     mut shutdown: ComponentShutdown,
   ) -> Self {
     // EventBuffer protects ingress behind its startup gate while configuration is applied. Once

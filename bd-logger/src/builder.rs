@@ -489,6 +489,8 @@ impl LoggerBuilder {
         result.previous_state,
         result.retention_registry,
       );
+      // The crash monitor and log buffer only read this immutable startup snapshot.
+      let previous_run_state = Arc::new(previous_run_state);
 
       let pending_entity_id = pending_entity_id.lock().take();
       initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
