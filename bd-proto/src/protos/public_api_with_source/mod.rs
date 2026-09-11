@@ -32,6 +32,7 @@ pub mod timeline;
 pub mod teams {
   pub use super::admin::teams::*;
 }
+pub mod usage;
 pub mod workflow;
 pub mod workflow_metadata;
 
