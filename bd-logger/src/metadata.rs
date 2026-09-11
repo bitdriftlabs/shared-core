@@ -22,6 +22,7 @@ use bd_log_primitives::{
 };
 use bd_log_util::warn_every;
 use bd_proto::protos::logging::payload::LogType;
+use bd_state::{Scope, StateReader};
 use std::collections::BTreeSet;
 use std::collections::hash_map::Entry;
 use std::sync::{Arc, LazyLock};
@@ -103,15 +104,17 @@ impl MetadataCollector {
   }
 
   /// Returns log metadata using the last active global state at the end of the last process run.
-  /// Log fields take precedence over persisted global state fields to allow the caller to
-  /// override values in global state, e.g. when the crash handler knows that the event happened
-  /// in the background.
+  ///
+  /// The previous-global-state map is a legacy fallback: state-backed custom and OOTB fields
+  /// already present in `previous_run_state` are not injected from it. Actual fields on the log
+  /// retain their ordinary precedence over that fallback map.
   /// Does *not* invoke the field providers as these would incorrectly reflect the state of the
   /// current process.
   pub(crate) fn metadata_from_fields_with_previous_global_state(
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     global_state_reader: &global_state::Reader,
+    previous_run_state: &dyn StateReader,
     timestamp: time::OffsetDateTime,
   ) -> LogMetadata {
     let fields = if let Some(previous_global_state_fields) =
@@ -120,6 +123,10 @@ impl MetadataCollector {
       previous_global_state_fields
         .clone()
         .into_iter()
+        .filter(|(key, _)| {
+          previous_run_state.get(Scope::OotbFields, key).is_none()
+            && previous_run_state.get(Scope::CustomFields, key).is_none()
+        })
         .chain(fields.into_iter().map(|(k, v)| (k, v.value)))
         .collect()
     } else {

@@ -11,6 +11,7 @@ use bd_crash_handler::global_state::{self, Reader};
 use bd_log_primitives::{AnnotatedLogField, DataValue, LogFields};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::Watch;
+use bd_state::{InMemoryStateReader, Scope};
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::session::in_memory_store;
 use itertools::Itertools as _;
@@ -437,13 +438,15 @@ fn expected_field_value(fields: &LogFields, key: &str) -> Option<String> {
 }
 
 #[test]
-fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
+fn metadata_from_fields_with_previous_global_state_uses_state_backed_fields_before_fallback() {
   let store = in_memory_store();
   let mut tracker = global_state::Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));
 
   // Setup global state
   let global_fields = [
     ("global_key".into(), "global_value".into()),
+    ("custom_key".into(), "legacy_custom_value".into()),
+    ("ootb_key".into(), "legacy_ootb_value".into()),
     ("shared_key".into(), "global_value".into()),
   ]
   .into();
@@ -463,11 +466,23 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
   .into();
 
   let reader = Reader::new(store);
+  let mut previous_run_state = InMemoryStateReader::new();
+  previous_run_state.insert(
+    Scope::CustomFields,
+    "custom_key",
+    bd_state::string_value("state_custom_value"),
+  );
+  previous_run_state.insert(
+    Scope::OotbFields,
+    "ootb_key",
+    bd_state::string_value("state_ootb_value"),
+  );
 
   let metadata = MetadataCollector::metadata_from_fields_with_previous_global_state(
     input_fields,
     [].into(),
     &reader,
+    &previous_run_state,
     time::OffsetDateTime::UNIX_EPOCH,
   );
 
@@ -478,6 +493,11 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
     "global_value",
     expected_field_value(&metadata.fields, "global_key").unwrap()
   );
+
+  // State-backed fields are resolved virtually, so the previous-global-state fallback must not
+  // inject a duplicate inline value for either scope.
+  assert!(!metadata.fields.contains_key("custom_key"));
+  assert!(!metadata.fields.contains_key("ootb_key"));
 
   // Unique local field should be present
   assert_eq!(

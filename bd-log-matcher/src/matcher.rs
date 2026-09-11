@@ -290,7 +290,7 @@ impl Tree {
         Leaf::VersionValue(input, criteria) => input
           .get(message, fields, state)
           .is_some_and(|input| criteria.evaluate(input.as_ref())),
-        Leaf::IsSetValue(input) => input.get(message, fields, state).is_some(),
+        Leaf::IsSetValue(input) => input.is_set(message, fields, state),
         Leaf::JsonPathValue {
           field_key,
           path,
@@ -597,6 +597,21 @@ fn log_field_as_f64(field: &DataValue) -> Option<f64> {
 }
 
 impl InputType {
+  fn is_set(
+    &self,
+    message: &LogMessage,
+    fields: FieldsRef<'_>,
+    state: &dyn bd_state::StateReader,
+  ) -> bool {
+    match self {
+      Self::Message => message.as_str().is_some(),
+      // Preserve log-field string semantics: binary values are not a matchable field value.
+      Self::Field(field_key) => field_value_with_state(fields, state, field_key).is_some(),
+      // State presence is independent of whether a value can be represented as a matcher string.
+      Self::State(scope, key) => state.get(*scope, key).is_some(),
+    }
+  }
+
   fn get<'a>(
     &self,
     message: &'a LogMessage,
@@ -606,9 +621,13 @@ impl InputType {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
       Self::Field(field_key) => field_value_with_state(fields, state, field_key),
-      Self::State(scope, flag_key) => state
-        .get(*scope, flag_key)
-        .and_then(|value| ResolvedFieldValue::State(value).as_cow()),
+      Self::State(scope, flag_key) => state.get(*scope, flag_key).and_then(|value| {
+        if value.value_type.is_none() {
+          Some(Cow::Borrowed(""))
+        } else {
+          ResolvedFieldValue::State(value).as_cow()
+        }
+      }),
     }
   }
 

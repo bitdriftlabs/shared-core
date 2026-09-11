@@ -1749,6 +1749,24 @@ fn state_match_is_set() {
       idx, input.matches, actual
     );
   }
+
+  let mut untyped_state = bd_state::InMemoryStateReader::default();
+  untyped_state.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "untyped",
+    bd_state::Value::default(),
+  );
+  assert!(
+    TestMatcher::new(&make_state_is_set_matcher("untyped"))
+      .unwrap()
+      .match_log_with_state(
+        TypedLogLevel::Debug,
+        LogType::NORMAL,
+        "foo",
+        [],
+        &untyped_state,
+      )
+  );
 }
 
 fn simple_log_matcher(match_type: base_log_matcher::Match_type) -> LogMatcher {
