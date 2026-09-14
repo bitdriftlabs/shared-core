@@ -1065,6 +1065,17 @@ pub mod platform_events {
   bool_feature_flag!(ListenerEnabledFlag, "platform_events.enabled", true);
 }
 
+pub mod session {
+  // Limits durable session-start announcements awaiting server acknowledgement. Zero disables
+  // queueing while retaining the local current session. The default bounds fresh and offline
+  // clients; a runtime update can tune it for a specific deployment.
+  int_feature_flag!(
+    MaxPendingStartedSessions,
+    "session.max_pending_started_sessions",
+    100
+  );
+}
+
 pub mod artifact_upload {
   int_feature_flag!(MaxPendingEntries, "artifact_upload.max_pending_entries", 10);
 

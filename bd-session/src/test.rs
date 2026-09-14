@@ -8,6 +8,7 @@
 use crate::{PersistenceWorker, Strategy, StrategyWithWorker, configuration};
 use std::path::Path;
 use std::sync::Arc;
+use tokio::sync::watch;
 
 /// Creates a no-timeout session configuration for integration tests.
 pub fn no_timeout(sdk_directory: impl AsRef<Path>) -> StrategyWithWorker {
@@ -27,6 +28,7 @@ pub async fn flush(strategy: Arc<Strategy>, worker: PersistenceWorker) {
     async move {
       let _ignored = shutdown_rx.await;
     },
+    watch::channel(100).1,
     || {},
   ));
 

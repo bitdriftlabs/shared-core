@@ -806,12 +806,16 @@ impl Logger {
   }
 
   pub fn shutdown(&self, blocking: bool) {
-    let shutdown_trigger = self.shutdown_state.lock().take();
+    log::debug!("logger shutdown requested: blocking={blocking}");
+    let Some(shutdown_trigger) = self.shutdown_state.lock().take() else {
+      log::debug!("logger shutdown was already requested");
+      return;
+    };
 
-    if let Some(shutdown_trigger) = shutdown_trigger
-      && blocking
-    {
+    if blocking {
+      log::debug!("logger shutdown waiting for runtime components");
       shutdown_trigger.shutdown_blocking();
+      log::debug!("logger shutdown completed");
     }
   }
 
