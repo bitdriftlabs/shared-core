@@ -56,7 +56,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
 use bd_session::test::no_timeout;
-use bd_shutdown::ComponentShutdownTrigger;
+use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_state::test::TestStore;
 use bd_state::{
   InMemoryStateReader,
@@ -79,13 +79,27 @@ use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use futures_util::poll;
-use std::future;
+use std::future::{self, Future};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::{Notify, mpsc};
 use tokio_test::assert_ok;
+
+fn run_with_shutdown<R: LogReplay + Send + 'static>(
+  buffer: AsyncLogBuffer<R>,
+  state_store: bd_state::Store,
+  report_processor: impl ReportProcessor,
+  shutdown: ComponentShutdown,
+) -> impl Future<Output = AsyncLogBuffer<R>> {
+  buffer.run_with_shutdown_and_previous_state(
+    state_store,
+    report_processor,
+    Arc::new(bd_versioned_kv::ScopedMaps::default()),
+    shutdown,
+  )
+}
 
 //
 // StartupGateReady
@@ -456,7 +470,8 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
 
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -490,7 +505,8 @@ async fn empty_startup_gate_opening_marks_log_processing_running() {
   );
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::spawn(buffer.run_with_shutdown(
+  let handle = tokio::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -532,7 +548,8 @@ async fn shutdown_before_configuration_does_not_open_the_startup_gate() {
   let event_buffer = buffer.event_buffer.clone();
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::spawn(buffer.run_with_shutdown(
+  let handle = tokio::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -577,7 +594,8 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
 
     let state_store = TestStore::new().await;
     let shutdown_trigger = ComponentShutdownTrigger::default();
-    let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    let handle = tokio::task::spawn(run_with_shutdown(
+      buffer,
       state_store.take_inner(),
       (),
       shutdown_trigger.make_shutdown(),
@@ -635,7 +653,8 @@ async fn report_processing_does_not_change_the_selected_startup_delay() {
     let processed = Arc::new(Notify::new());
     let state_store = TestStore::new().await;
     let shutdown_trigger = ComponentShutdownTrigger::default();
-    let handle = tokio::spawn(buffer.run_with_shutdown(
+    let handle = tokio::spawn(run_with_shutdown(
+      buffer,
       state_store.take_inner(),
       ReportProcessingSignal(processed.clone()),
       shutdown_trigger.make_shutdown(),
@@ -691,7 +710,8 @@ async fn flush_during_report_discovery_preserves_previous_process_replay_priorit
   let resume = Arc::new(Notify::new());
   let state_store = TestStore::new().await;
   let shutdown = ComponentShutdownTrigger::default();
-  let handle = tokio::spawn(buffer.run_with_shutdown(
+  let handle = tokio::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     PausedReportProcessor {
       entered: entered.clone(),
@@ -782,7 +802,8 @@ async fn startup_gate_ready_blocking_flush_releases_after_older_work() {
 
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -833,7 +854,8 @@ async fn startup_gate_ready_nonblocking_flush_does_not_release() {
   let event_buffer = buffer.event_buffer.clone();
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -878,7 +900,8 @@ async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressu
   }
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -1053,7 +1076,8 @@ async fn startup_gate_replays_previous_process_entries_before_current_entries() 
 
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -1692,7 +1716,12 @@ async fn logs_are_replayed_in_order() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = Box::pin(buffer.run(state_store, ())).await;
+    _ = Box::pin(buffer.run_with_previous_state(
+      state_store,
+      (),
+      Arc::new(bd_versioned_kv::ScopedMaps::default()),
+    ))
+    .await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -1753,8 +1782,12 @@ async fn creates_workflows_engine_in_response_to_config_update() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
+    state_store,
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -1792,8 +1825,12 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
+    state_store,
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -1818,7 +1855,8 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -1886,7 +1924,8 @@ async fn logs_resource_utilization_log() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -1923,8 +1962,12 @@ async fn updates_system_session_id_for_new_sessions() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
+    state_store,
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
   wait_for_startup_gate_ready(&setup).await;
 
   let first_session_id = setup.session_strategy.session_id().unwrap();
@@ -1983,7 +2026,8 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
 
   let test_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     (*test_store).clone(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -2035,8 +2079,12 @@ async fn previous_run_log_does_not_override_system_session_id() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
+    state_store,
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
   wait_for_startup_gate_ready(&setup).await;
 
   let current_session_id = setup.session_strategy.session_id().unwrap();
@@ -2439,7 +2487,8 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
   let state_store = TestStore::new().await;
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -2506,7 +2555,8 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
 
   let shutdown_trigger_2 = ComponentShutdownTrigger::default();
   let state_store_2 = TestStore::new().await;
-  let handle_2 = tokio::task::spawn(buffer_2.run_with_shutdown(
+  let handle_2 = tokio::task::spawn(run_with_shutdown(
+    buffer_2,
     state_store_2.take_inner(),
     (),
     shutdown_trigger_2.make_shutdown(),

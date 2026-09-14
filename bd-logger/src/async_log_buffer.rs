@@ -1146,21 +1146,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self
   }
 
-  #[cfg(test)]
-  pub async fn run(
-    self,
-    state_store: bd_state::Store,
-    report_processor: impl ReportProcessor,
-  ) -> Self {
-    self
-      .run_with_previous_state(
-        state_store,
-        report_processor,
-        Arc::new(bd_versioned_kv::ScopedMaps::default()),
-      )
-      .await
-  }
-
   pub async fn run_with_previous_state(
     self,
     state_store: bd_state::Store,
@@ -1174,25 +1159,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         report_processor,
         previous_run_state,
         shutdown_trigger.make_shutdown(),
-      )
-      .await
-  }
-
-  // TODO(mattklein123): This seems to only be used for tests. Figure out how to clean this up
-  // so we don't need this just for tests.
-  #[cfg(test)]
-  pub async fn run_with_shutdown(
-    self,
-    state_store: bd_state::Store,
-    report_processor: impl ReportProcessor,
-    shutdown: ComponentShutdown,
-  ) -> Self {
-    self
-      .run_with_shutdown_and_previous_state(
-        state_store,
-        report_processor,
-        Arc::new(bd_versioned_kv::ScopedMaps::default()),
-        shutdown,
       )
       .await
   }
