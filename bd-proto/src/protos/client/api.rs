@@ -5724,6 +5724,8 @@ pub struct UploadArtifactRequest {
     pub feature_flags: ::std::vec::Vec<super::feature_flag::FeatureFlag>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.workflow_report_handoff)
     pub workflow_report_handoff: ::protobuf::MessageField<super::workflow::WorkflowReportHandoff>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.command_id)
+    pub command_id: ::std::option::Option<::std::string::String>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -5741,7 +5743,7 @@ impl UploadArtifactRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(9);
+        let mut fields = ::std::vec::Vec::with_capacity(10);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "upload_uuid",
@@ -5787,6 +5789,11 @@ impl UploadArtifactRequest {
             "workflow_report_handoff",
             |m: &UploadArtifactRequest| { &m.workflow_report_handoff },
             |m: &mut UploadArtifactRequest| { &mut m.workflow_report_handoff },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "command_id",
+            |m: &UploadArtifactRequest| { &m.command_id },
+            |m: &mut UploadArtifactRequest| { &mut m.command_id },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadArtifactRequest>(
             "UploadArtifactRequest",
@@ -5845,6 +5852,9 @@ impl ::protobuf::Message for UploadArtifactRequest {
                 74 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.workflow_report_handoff)?;
                 },
+                82 => {
+                    self.command_id = ::std::option::Option::Some(is.read_string()?);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -5891,6 +5901,9 @@ impl ::protobuf::Message for UploadArtifactRequest {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if let Some(v) = self.command_id.as_ref() {
+            my_size += ::protobuf::rt::string_size(10, &v);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -5931,6 +5944,9 @@ impl ::protobuf::Message for UploadArtifactRequest {
         if let Some(v) = self.workflow_report_handoff.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
         }
+        if let Some(v) = self.command_id.as_ref() {
+            os.write_string(10, v)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -5957,6 +5973,7 @@ impl ::protobuf::Message for UploadArtifactRequest {
         self.session_id.clear();
         self.feature_flags.clear();
         self.workflow_report_handoff.clear();
+        self.command_id = ::std::option::Option::None;
         self.special_fields.clear();
     }
 
@@ -8828,6 +8845,1522 @@ impl ::protobuf::reflect::ProtobufValue for FlushBuffers {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeviceCommandRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandRequest.command_id)
+    pub command_id: ::std::string::String,
+    // message oneof groups
+    pub command_type: ::std::option::Option<device_command_request::Command_type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeviceCommandRequest {
+    fn default() -> &'a DeviceCommandRequest {
+        <DeviceCommandRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeviceCommandRequest {
+    pub fn new() -> DeviceCommandRequest {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandRequest.DumpDeviceBufferCommand dump_device_buffer = 2;
+
+    pub fn dump_device_buffer(&self) -> &device_command_request::DumpDeviceBufferCommand {
+        match self.command_type {
+            ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(ref v)) => v,
+            _ => <device_command_request::DumpDeviceBufferCommand as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_dump_device_buffer(&mut self) {
+        self.command_type = ::std::option::Option::None;
+    }
+
+    pub fn has_dump_device_buffer(&self) -> bool {
+        match self.command_type {
+            ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_dump_device_buffer(&mut self, v: device_command_request::DumpDeviceBufferCommand) {
+        self.command_type = ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_dump_device_buffer(&mut self) -> &mut device_command_request::DumpDeviceBufferCommand {
+        if let ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(_)) = self.command_type {
+        } else {
+            self.command_type = ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(device_command_request::DumpDeviceBufferCommand::new()));
+        }
+        match self.command_type {
+            ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_dump_device_buffer(&mut self) -> device_command_request::DumpDeviceBufferCommand {
+        if self.has_dump_device_buffer() {
+            match self.command_type.take() {
+                ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            device_command_request::DumpDeviceBufferCommand::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandRequest.TakeScreenshotCommand take_screenshot = 3;
+
+    pub fn take_screenshot(&self) -> &device_command_request::TakeScreenshotCommand {
+        match self.command_type {
+            ::std::option::Option::Some(device_command_request::Command_type::TakeScreenshot(ref v)) => v,
+            _ => <device_command_request::TakeScreenshotCommand as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_take_screenshot(&mut self) {
+        self.command_type = ::std::option::Option::None;
+    }
+
+    pub fn has_take_screenshot(&self) -> bool {
+        match self.command_type {
+            ::std::option::Option::Some(device_command_request::Command_type::TakeScreenshot(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_take_screenshot(&mut self, v: device_command_request::TakeScreenshotCommand) {
+        self.command_type = ::std::option::Option::Some(device_command_request::Command_type::TakeScreenshot(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_take_screenshot(&mut self) -> &mut device_command_request::TakeScreenshotCommand {
+        if let ::std::option::Option::Some(device_command_request::Command_type::TakeScreenshot(_)) = self.command_type {
+        } else {
+            self.command_type = ::std::option::Option::Some(device_command_request::Command_type::TakeScreenshot(device_command_request::TakeScreenshotCommand::new()));
+        }
+        match self.command_type {
+            ::std::option::Option::Some(device_command_request::Command_type::TakeScreenshot(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_take_screenshot(&mut self) -> device_command_request::TakeScreenshotCommand {
+        if self.has_take_screenshot() {
+            match self.command_type.take() {
+                ::std::option::Option::Some(device_command_request::Command_type::TakeScreenshot(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            device_command_request::TakeScreenshotCommand::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "command_id",
+            |m: &DeviceCommandRequest| { &m.command_id },
+            |m: &mut DeviceCommandRequest| { &mut m.command_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, device_command_request::DumpDeviceBufferCommand>(
+            "dump_device_buffer",
+            DeviceCommandRequest::has_dump_device_buffer,
+            DeviceCommandRequest::dump_device_buffer,
+            DeviceCommandRequest::mut_dump_device_buffer,
+            DeviceCommandRequest::set_dump_device_buffer,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, device_command_request::TakeScreenshotCommand>(
+            "take_screenshot",
+            DeviceCommandRequest::has_take_screenshot,
+            DeviceCommandRequest::take_screenshot,
+            DeviceCommandRequest::mut_take_screenshot,
+            DeviceCommandRequest::set_take_screenshot,
+        ));
+        oneofs.push(device_command_request::Command_type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandRequest>(
+            "DeviceCommandRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeviceCommandRequest {
+    const NAME: &'static str = "DeviceCommandRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.command_id = is.read_string()?;
+                },
+                18 => {
+                    self.command_type = ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(is.read_message()?));
+                },
+                26 => {
+                    self.command_type = ::std::option::Option::Some(device_command_request::Command_type::TakeScreenshot(is.read_message()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.command_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.command_id);
+        }
+        if let ::std::option::Option::Some(ref v) = self.command_type {
+            match v {
+                &device_command_request::Command_type::DumpDeviceBuffer(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &device_command_request::Command_type::TakeScreenshot(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.command_id.is_empty() {
+            os.write_string(1, &self.command_id)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.command_type {
+            match v {
+                &device_command_request::Command_type::DumpDeviceBuffer(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+                &device_command_request::Command_type::TakeScreenshot(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeviceCommandRequest {
+        DeviceCommandRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.command_id.clear();
+        self.command_type = ::std::option::Option::None;
+        self.command_type = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeviceCommandRequest {
+        static instance: DeviceCommandRequest = DeviceCommandRequest {
+            command_id: ::std::string::String::new(),
+            command_type: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeviceCommandRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeviceCommandRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeviceCommandRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeviceCommandRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DeviceCommandRequest`
+pub mod device_command_request {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.DeviceCommandRequest.command_type)
+    pub enum Command_type {
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandRequest.dump_device_buffer)
+        DumpDeviceBuffer(DumpDeviceBufferCommand),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandRequest.take_screenshot)
+        TakeScreenshot(TakeScreenshotCommand),
+    }
+
+    impl ::protobuf::Oneof for Command_type {
+    }
+
+    impl ::protobuf::OneofFull for Command_type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::DeviceCommandRequest as ::protobuf::MessageFull>::descriptor().oneof_by_name("command_type").unwrap()).clone()
+        }
+    }
+
+    impl Command_type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Command_type>("command_type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandRequest.DumpDeviceBufferCommand)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct DumpDeviceBufferCommand {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandRequest.DumpDeviceBufferCommand.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a DumpDeviceBufferCommand {
+        fn default() -> &'a DumpDeviceBufferCommand {
+            <DumpDeviceBufferCommand as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl DumpDeviceBufferCommand {
+        pub fn new() -> DumpDeviceBufferCommand {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DumpDeviceBufferCommand>(
+                "DeviceCommandRequest.DumpDeviceBufferCommand",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for DumpDeviceBufferCommand {
+        const NAME: &'static str = "DumpDeviceBufferCommand";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> DumpDeviceBufferCommand {
+            DumpDeviceBufferCommand::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static DumpDeviceBufferCommand {
+            static instance: DumpDeviceBufferCommand = DumpDeviceBufferCommand {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for DumpDeviceBufferCommand {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandRequest.DumpDeviceBufferCommand").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for DumpDeviceBufferCommand {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for DumpDeviceBufferCommand {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandRequest.TakeScreenshotCommand)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct TakeScreenshotCommand {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandRequest.TakeScreenshotCommand.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a TakeScreenshotCommand {
+        fn default() -> &'a TakeScreenshotCommand {
+            <TakeScreenshotCommand as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl TakeScreenshotCommand {
+        pub fn new() -> TakeScreenshotCommand {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TakeScreenshotCommand>(
+                "DeviceCommandRequest.TakeScreenshotCommand",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for TakeScreenshotCommand {
+        const NAME: &'static str = "TakeScreenshotCommand";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> TakeScreenshotCommand {
+            TakeScreenshotCommand::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static TakeScreenshotCommand {
+            static instance: TakeScreenshotCommand = TakeScreenshotCommand {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for TakeScreenshotCommand {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandRequest.TakeScreenshotCommand").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for TakeScreenshotCommand {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for TakeScreenshotCommand {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandResultContext)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeviceCommandResultContext {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandResultContext.fields)
+    pub fields: ::std::collections::HashMap<::std::string::String, super::payload::Data>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandResultContext.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeviceCommandResultContext {
+    fn default() -> &'a DeviceCommandResultContext {
+        <DeviceCommandResultContext as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeviceCommandResultContext {
+    pub fn new() -> DeviceCommandResultContext {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
+            "fields",
+            |m: &DeviceCommandResultContext| { &m.fields },
+            |m: &mut DeviceCommandResultContext| { &mut m.fields },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandResultContext>(
+            "DeviceCommandResultContext",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeviceCommandResultContext {
+    const NAME: &'static str = "DeviceCommandResultContext";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    let len = is.read_raw_varint32()?;
+                    let old_limit = is.push_limit(len as u64)?;
+                    let mut key = ::std::default::Default::default();
+                    let mut value = ::std::default::Default::default();
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => key = is.read_string()?,
+                            18 => value = is.read_message()?,
+                            _ => ::protobuf::rt::skip_field_for_tag(tag, is)?,
+                        };
+                    }
+                    is.pop_limit(old_limit);
+                    self.fields.insert(key, value);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for (k, v) in &self.fields {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            let len = v.compute_size();
+            entry_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for (k, v) in &self.fields {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            let len = v.cached_size() as u64;
+            entry_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            os.write_raw_varint32(10)?; // Tag.
+            os.write_raw_varint32(entry_size as u32)?;
+            os.write_string(1, &k)?;
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeviceCommandResultContext {
+        DeviceCommandResultContext::new()
+    }
+
+    fn clear(&mut self) {
+        self.fields.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeviceCommandResultContext {
+        static instance: ::protobuf::rt::Lazy<DeviceCommandResultContext> = ::protobuf::rt::Lazy::new();
+        instance.get(DeviceCommandResultContext::new)
+    }
+}
+
+impl ::protobuf::MessageFull for DeviceCommandResultContext {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeviceCommandResultContext").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeviceCommandResultContext {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeviceCommandResultContext {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeviceCommandUpdate {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.command_id)
+    pub command_id: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.update_sequence_number)
+    pub update_sequence_number: u64,
+    // message oneof groups
+    pub update_type: ::std::option::Option<device_command_update::Update_type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeviceCommandUpdate {
+    fn default() -> &'a DeviceCommandUpdate {
+        <DeviceCommandUpdate as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeviceCommandUpdate {
+    pub fn new() -> DeviceCommandUpdate {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Accepted accepted = 3;
+
+    pub fn accepted(&self) -> &device_command_update::Accepted {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Accepted(ref v)) => v,
+            _ => <device_command_update::Accepted as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_accepted(&mut self) {
+        self.update_type = ::std::option::Option::None;
+    }
+
+    pub fn has_accepted(&self) -> bool {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Accepted(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_accepted(&mut self, v: device_command_update::Accepted) {
+        self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Accepted(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_accepted(&mut self) -> &mut device_command_update::Accepted {
+        if let ::std::option::Option::Some(device_command_update::Update_type::Accepted(_)) = self.update_type {
+        } else {
+            self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Accepted(device_command_update::Accepted::new()));
+        }
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Accepted(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_accepted(&mut self) -> device_command_update::Accepted {
+        if self.has_accepted() {
+            match self.update_type.take() {
+                ::std::option::Option::Some(device_command_update::Update_type::Accepted(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            device_command_update::Accepted::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed completed = 4;
+
+    pub fn completed(&self) -> &device_command_update::Completed {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Completed(ref v)) => v,
+            _ => <device_command_update::Completed as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_completed(&mut self) {
+        self.update_type = ::std::option::Option::None;
+    }
+
+    pub fn has_completed(&self) -> bool {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Completed(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_completed(&mut self, v: device_command_update::Completed) {
+        self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Completed(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_completed(&mut self) -> &mut device_command_update::Completed {
+        if let ::std::option::Option::Some(device_command_update::Update_type::Completed(_)) = self.update_type {
+        } else {
+            self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Completed(device_command_update::Completed::new()));
+        }
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Completed(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_completed(&mut self) -> device_command_update::Completed {
+        if self.has_completed() {
+            match self.update_type.take() {
+                ::std::option::Option::Some(device_command_update::Update_type::Completed(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            device_command_update::Completed::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed failed = 5;
+
+    pub fn failed(&self) -> &device_command_update::Failed {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Failed(ref v)) => v,
+            _ => <device_command_update::Failed as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_failed(&mut self) {
+        self.update_type = ::std::option::Option::None;
+    }
+
+    pub fn has_failed(&self) -> bool {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Failed(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_failed(&mut self, v: device_command_update::Failed) {
+        self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Failed(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_failed(&mut self) -> &mut device_command_update::Failed {
+        if let ::std::option::Option::Some(device_command_update::Update_type::Failed(_)) = self.update_type {
+        } else {
+            self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Failed(device_command_update::Failed::new()));
+        }
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Failed(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_failed(&mut self) -> device_command_update::Failed {
+        if self.has_failed() {
+            match self.update_type.take() {
+                ::std::option::Option::Some(device_command_update::Update_type::Failed(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            device_command_update::Failed::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "command_id",
+            |m: &DeviceCommandUpdate| { &m.command_id },
+            |m: &mut DeviceCommandUpdate| { &mut m.command_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "update_sequence_number",
+            |m: &DeviceCommandUpdate| { &m.update_sequence_number },
+            |m: &mut DeviceCommandUpdate| { &mut m.update_sequence_number },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, device_command_update::Accepted>(
+            "accepted",
+            DeviceCommandUpdate::has_accepted,
+            DeviceCommandUpdate::accepted,
+            DeviceCommandUpdate::mut_accepted,
+            DeviceCommandUpdate::set_accepted,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, device_command_update::Completed>(
+            "completed",
+            DeviceCommandUpdate::has_completed,
+            DeviceCommandUpdate::completed,
+            DeviceCommandUpdate::mut_completed,
+            DeviceCommandUpdate::set_completed,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, device_command_update::Failed>(
+            "failed",
+            DeviceCommandUpdate::has_failed,
+            DeviceCommandUpdate::failed,
+            DeviceCommandUpdate::mut_failed,
+            DeviceCommandUpdate::set_failed,
+        ));
+        oneofs.push(device_command_update::Update_type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandUpdate>(
+            "DeviceCommandUpdate",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeviceCommandUpdate {
+    const NAME: &'static str = "DeviceCommandUpdate";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.command_id = is.read_string()?;
+                },
+                16 => {
+                    self.update_sequence_number = is.read_uint64()?;
+                },
+                26 => {
+                    self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Accepted(is.read_message()?));
+                },
+                34 => {
+                    self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Completed(is.read_message()?));
+                },
+                42 => {
+                    self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Failed(is.read_message()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.command_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.command_id);
+        }
+        if self.update_sequence_number != 0 {
+            my_size += ::protobuf::rt::uint64_size(2, self.update_sequence_number);
+        }
+        if let ::std::option::Option::Some(ref v) = self.update_type {
+            match v {
+                &device_command_update::Update_type::Accepted(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &device_command_update::Update_type::Completed(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &device_command_update::Update_type::Failed(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.command_id.is_empty() {
+            os.write_string(1, &self.command_id)?;
+        }
+        if self.update_sequence_number != 0 {
+            os.write_uint64(2, self.update_sequence_number)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.update_type {
+            match v {
+                &device_command_update::Update_type::Accepted(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+                &device_command_update::Update_type::Completed(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                },
+                &device_command_update::Update_type::Failed(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeviceCommandUpdate {
+        DeviceCommandUpdate::new()
+    }
+
+    fn clear(&mut self) {
+        self.command_id.clear();
+        self.update_sequence_number = 0;
+        self.update_type = ::std::option::Option::None;
+        self.update_type = ::std::option::Option::None;
+        self.update_type = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeviceCommandUpdate {
+        static instance: DeviceCommandUpdate = DeviceCommandUpdate {
+            command_id: ::std::string::String::new(),
+            update_sequence_number: 0,
+            update_type: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeviceCommandUpdate {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeviceCommandUpdate").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeviceCommandUpdate {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeviceCommandUpdate {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DeviceCommandUpdate`
+pub mod device_command_update {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.update_type)
+    pub enum Update_type {
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.accepted)
+        Accepted(Accepted),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.completed)
+        Completed(Completed),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.failed)
+        Failed(Failed),
+    }
+
+    impl ::protobuf::Oneof for Update_type {
+    }
+
+    impl ::protobuf::OneofFull for Update_type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::DeviceCommandUpdate as ::protobuf::MessageFull>::descriptor().oneof_by_name("update_type").unwrap()).clone()
+        }
+    }
+
+    impl Update_type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Update_type>("update_type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Accepted)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Accepted {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Accepted.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Accepted {
+        fn default() -> &'a Accepted {
+            <Accepted as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Accepted {
+        pub fn new() -> Accepted {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Accepted>(
+                "DeviceCommandUpdate.Accepted",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Accepted {
+        const NAME: &'static str = "Accepted";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Accepted {
+            Accepted::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Accepted {
+            static instance: Accepted = Accepted {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Accepted {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Accepted").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Accepted {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Accepted {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Completed {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.context)
+        pub context: ::protobuf::MessageField<super::DeviceCommandResultContext>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Completed {
+        fn default() -> &'a Completed {
+            <Completed as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Completed {
+        pub fn new() -> Completed {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::DeviceCommandResultContext>(
+                "context",
+                |m: &Completed| { &m.context },
+                |m: &mut Completed| { &mut m.context },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Completed>(
+                "DeviceCommandUpdate.Completed",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Completed {
+        const NAME: &'static str = "Completed";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.context)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.context.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.context.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Completed {
+            Completed::new()
+        }
+
+        fn clear(&mut self) {
+            self.context.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Completed {
+            static instance: Completed = Completed {
+                context: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Completed {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Completed").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Completed {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Completed {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Failed {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed.context)
+        pub context: ::protobuf::MessageField<super::DeviceCommandResultContext>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Failed {
+        fn default() -> &'a Failed {
+            <Failed as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Failed {
+        pub fn new() -> Failed {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::DeviceCommandResultContext>(
+                "context",
+                |m: &Failed| { &m.context },
+                |m: &mut Failed| { &mut m.context },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Failed>(
+                "DeviceCommandUpdate.Failed",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Failed {
+        const NAME: &'static str = "Failed";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.context)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.context.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.context.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Failed {
+            Failed::new()
+        }
+
+        fn clear(&mut self) {
+            self.context.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Failed {
+            static instance: Failed = Failed {
+                context: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Failed {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Failed").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Failed {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Failed {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeviceCommandUpdateAck {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck.command_id)
+    pub command_id: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck.update_sequence_number)
+    pub update_sequence_number: u64,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeviceCommandUpdateAck {
+    fn default() -> &'a DeviceCommandUpdateAck {
+        <DeviceCommandUpdateAck as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeviceCommandUpdateAck {
+    pub fn new() -> DeviceCommandUpdateAck {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "command_id",
+            |m: &DeviceCommandUpdateAck| { &m.command_id },
+            |m: &mut DeviceCommandUpdateAck| { &mut m.command_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "update_sequence_number",
+            |m: &DeviceCommandUpdateAck| { &m.update_sequence_number },
+            |m: &mut DeviceCommandUpdateAck| { &mut m.update_sequence_number },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandUpdateAck>(
+            "DeviceCommandUpdateAck",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeviceCommandUpdateAck {
+    const NAME: &'static str = "DeviceCommandUpdateAck";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.command_id = is.read_string()?;
+                },
+                16 => {
+                    self.update_sequence_number = is.read_uint64()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.command_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.command_id);
+        }
+        if self.update_sequence_number != 0 {
+            my_size += ::protobuf::rt::uint64_size(2, self.update_sequence_number);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.command_id.is_empty() {
+            os.write_string(1, &self.command_id)?;
+        }
+        if self.update_sequence_number != 0 {
+            os.write_uint64(2, self.update_sequence_number)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeviceCommandUpdateAck {
+        DeviceCommandUpdateAck::new()
+    }
+
+    fn clear(&mut self) {
+        self.command_id.clear();
+        self.update_sequence_number = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeviceCommandUpdateAck {
+        static instance: DeviceCommandUpdateAck = DeviceCommandUpdateAck {
+            command_id: ::std::string::String::new(),
+            update_sequence_number: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeviceCommandUpdateAck {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeviceCommandUpdateAck").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeviceCommandUpdateAck {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeviceCommandUpdateAck {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyPathUploadResponse)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct SankeyPathUploadResponse {
@@ -11512,7 +13045,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     entResponse.UploadImmediatelyH\0R\x11uploadImmediately\x12[\n\x04drop\
     \x18\x04\x20\x01(\x0b2E.bitdrift_public.protobuf.client.v1.UploadArtifac\
     tIntentResponse.DropH\0R\x04drop\x1a\x13\n\x11UploadImmediately\x1a\x06\
-    \n\x04DropB\n\n\x08decision\"\xd0\x05\n\x15UploadArtifactRequest\x12(\n\
+    \n\x04DropB\n\n\x08decision\"\x8d\x06\n\x15UploadArtifactRequest\x12(\n\
     \x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\
     \x01\x12\x20\n\x07type_id\x18\x02\x20\x01(\tR\x06typeIdB\x07\xfaB\x04r\
     \x02\x10\x01\x12\x1a\n\x08contents\x18\x03\x20\x01(\x0cR\x08contents\x12\
@@ -11525,137 +13058,166 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     drift_public.protobuf.client.v1.FeatureFlagR\x0cfeatureFlags\x12x\n\x17w\
     orkflow_report_handoff\x18\t\x20\x01(\x0b2;.bitdrift_public.protobuf.wor\
     kflow.v1.WorkflowReportHandoffH\0R\x15workflowReportHandoff\x88\x01\x01\
-    \x1ak\n\x12StateMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
-    y\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.loggin\
-    g.v1.DataR\x05value:\x028\x01B\x1a\n\x18_workflow_report_handoff\"X\n\
-    \x16UploadArtifactResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nup\
-    loadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\
-    \tR\x05error\"\xf6\x04\n\x11HandshakeResponse\x12m\n\x0fstream_settings\
-    \x18\x01\x20\x01(\x0b2D.bitdrift_public.protobuf.client.v1.HandshakeResp\
-    onse.StreamSettingsR\x0estreamSettings\x12>\n\x1bconfiguration_update_st\
-    atus\x18\x02\x20\x01(\rR\x19configurationUpdateStatus\x12A\n\x1bopaque_c\
-    lient_state_to_echo\x18\x03\x20\x01(\x0cH\0R\x17opaqueClientStateToEcho\
-    \x88\x01\x01\x12g\n\x14client_state_updates\x18\x04\x20\x03(\x0b25.bitdr\
-    ift_public.protobuf.client.v1.ClientStateUpdateR\x12clientStateUpdates\
-    \x12g\n\ranalytics_ack\x18\x05\x20\x01(\x0b2B.bitdrift_public.protobuf.c\
-    lient.v1.HandshakeResponse.AnalyticsAckR\x0canalyticsAck\x1a+\n\x0cAnaly\
-    ticsAck\x12\x1b\n\treport_id\x18\x01\x20\x01(\tR\x08reportId\x1aP\n\x0eS\
-    treamSettings\x12>\n\rping_interval\x18\x01\x20\x01(\x0b2\x19.google.pro\
-    tobuf.DurationR\x0cpingIntervalB\x1e\n\x1c_opaque_client_state_to_echo\"\
-    I\n\x0bRateLimited\x12:\n\x0bretry_after\x18\x01\x20\x01(\x0b2\x19.googl\
-    e.protobuf.DurationR\nretryAfter\"\xca\x01\n\x11LogUploadResponse\x12(\n\
-    \x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\
-    \x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\x12!\n\x0clogs_drop\
-    ped\x18\x03\x20\x01(\rR\x0blogsDropped\x12R\n\x0crate_limited\x18\x04\
-    \x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.RateLimitedR\x0brateL\
-    imited\"\x91\x0b\n\x12StatsUploadRequest\x12(\n\x0bupload_uuid\x18\x01\
-    \x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12e\n\x08snapshot\
-    \x18\x02\x20\x03(\x0b2?.bitdrift_public.protobuf.client.v1.StatsUploadRe\
-    quest.SnapshotR\x08snapshotB\x08\xfaB\x05\x92\x01\x02\x08\x01\x123\n\x07\
-    sent_at\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x06sentAt\
-    \x12h\n\rupload_reason\x18\x04\x20\x01(\x0e2C.bitdrift_public.protobuf.c\
-    lient.v1.StatsUploadRequest.UploadReasonR\x0cuploadReason\x1a\xbe\x07\n\
-    \x08Snapshot\x12K\n\x07metrics\x18\x01\x20\x01(\x0b2/.bitdrift_public.pr\
-    otobuf.client.v1.MetricsListH\0R\x07metrics\x12l\n\naggregated\x18\x02\
-    \x20\x01(\x0b2J.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Sn\
-    apshot.AggregatedH\x01R\naggregated\x12\x86\x01\n\x13metric_id_overflows\
-    \x18\x03\x20\x03(\x0b2V.bitdrift_public.protobuf.client.v1.StatsUploadRe\
-    quest.Snapshot.MetricIdOverflowsEntryR\x11metricIdOverflows\x12\x86\x01\
-    \n\x13workflow_debug_data\x18\x04\x20\x03(\x0b2V.bitdrift_public.protobu\
-    f.client.v1.StatsUploadRequest.Snapshot.WorkflowDebugDataEntryR\x11workf\
-    lowDebugData\x12\x1f\n\x0bretry_count\x18\x05\x20\x01(\rR\nretryCount\
-    \x122\n\x15client_stats_sequence\x18\x06\x20\x01(\x04R\x13clientStatsSeq\
-    uence\x1a\x90\x01\n\nAggregated\x12G\n\x0cperiod_start\x18\x04\x20\x01(\
-    \x0b2\x1a.google.protobuf.TimestampR\x0bperiodStartB\x08\xfaB\x05\x8a\
-    \x01\x02\x10\x01\x129\n\nperiod_end\x18\x05\x20\x01(\x0b2\x1a.google.pro\
-    tobuf.TimestampR\tperiodEnd\x1aD\n\x16MetricIdOverflowsEntry\x12\x10\n\
-    \x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\
-    \x04R\x05value:\x028\x01\x1a\x8c\x01\n\x16WorkflowDebugDataEntry\x12\x10\
-    \n\x03key\x18\x01\x20\x01(\tR\x03key\x12\\\n\x05value\x18\x02\x20\x01(\
-    \x0b2F.bitdrift_public.protobuf.client.v1.DebugDataRequest.WorkflowDebug\
-    DataR\x05value:\x028\x01B\x14\n\rsnapshot_type\x12\x03\xf8B\x01B\x12\n\
-    \x0boccurred_at\x12\x03\xf8B\x01\"\x89\x01\n\x0cUploadReason\x12\x1d\n\
-    \x19UPLOAD_REASON_UNSPECIFIED\x10\0\x12\x1a\n\x16UPLOAD_REASON_PERIODIC\
-    \x10\x01\x12!\n\x1dUPLOAD_REASON_EVENT_TRIGGERED\x10\x02\x12\x1b\n\x17UP\
-    LOAD_REASON_HANDSHAKE\x10\x03\"~\n\x13StatsUploadResponse\x12(\n\x0buplo\
-    ad_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\
-    \x14\n\x05error\x18\x02\x20\x01(\tR\x05error\x12'\n\x0fmetrics_dropped\
-    \x18\x03\x20\x01(\rR\x0emetricsDropped\"\x0e\n\x0cPongResponse\"\x8a\x07\
-    \n\x13ConfigurationUpdate\x12#\n\rversion_nonce\x18\x01\x20\x01(\tR\x0cv\
-    ersionNonce\x12v\n\x12state_of_the_world\x18\x02\x20\x01(\x0b2G.bitdrift\
-    _public.protobuf.client.v1.ConfigurationUpdate.StateOfTheWorldH\0R\x0fst\
-    ateOfTheWorld\x12g\n\x14client_state_updates\x18\x03\x20\x03(\x0b25.bitd\
-    rift_public.protobuf.client.v1.ClientStateUpdateR\x12clientStateUpdates\
-    \x1a\xdd\x04\n\x0fStateOfTheWorld\x12b\n\x12buffer_config_list\x18\x03\
-    \x20\x01(\x0b24.bitdrift_public.protobuf.config.v1.BufferConfigListR\x10\
-    bufferConfigList\x12u\n\x17workflows_configuration\x18\x04\x20\x01(\x0b2\
-    <.bitdrift_public.protobuf.workflow.v1.WorkflowsConfigurationR\x16workfl\
-    owsConfiguration\x12k\n\x14bdtail_configuration\x18\x06\x20\x01(\x0b28.b\
-    itdrift_public.protobuf.bdtail.v1.BdTailConfigurationsR\x13bdtailConfigu\
-    ration\x12m\n\x15filters_configuration\x18\x08\x20\x01(\x0b28.bitdrift_p\
-    ublic.protobuf.filter.v1.FiltersConfigurationR\x14filtersConfiguration\
-    \x12e\n\x0fdebug_workflows\x18\t\x20\x01(\x0b2<.bitdrift_public.protobuf\
-    .workflow.v1.WorkflowsConfigurationR\x0edebugWorkflowsJ\x04\x08\x02\x10\
-    \x03J\x04\x08\x07\x10\x08R\x08mll_listR\x16insights_configurationB\r\n\
-    \x0bupdate_type\"{\n\rRuntimeUpdate\x12#\n\rversion_nonce\x18\x01\x20\
-    \x01(\tR\x0cversionNonce\x12E\n\x07runtime\x18\x02\x20\x01(\x0b2+.bitdri\
-    ft_public.protobuf.client.v1.RuntimeR\x07runtime\"\xa7\x01\n\rErrorShutd\
-    own\x12\x1f\n\x0bgrpc_status\x18\x01\x20\x01(\x05R\ngrpcStatus\x12!\n\
-    \x0cgrpc_message\x18\x02\x20\x01(\tR\x0bgrpcMessage\x12R\n\x0crate_limit\
-    ed\x18\x03\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.RateLimited\
-    R\x0brateLimited\"\xa6\x01\n\x0cFlushBuffers\x12$\n\x0ebuffer_id_list\
-    \x18\x01\x20\x03(\tR\x0cbufferIdList\x12p\n\tstreaming\x18\x02\x20\x01(\
-    \x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushB\
-    uffers.StreamingR\tstreaming\"Z\n\x18SankeyPathUploadResponse\x12(\n\x0b\
-    upload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\
-    \x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\xcb\x02\n\x14SankeyIn\
-    tentResponse\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\
-    \xfaB\x04r\x02\x10\x01\x12{\n\x12upload_immediately\x18\x03\x20\x01(\x0b\
-    2J.bitdrift_public.protobuf.client.v1.SankeyIntentResponse.UploadImmedia\
-    telyH\0R\x11uploadImmediately\x12S\n\x04drop\x18\x04\x20\x01(\x0b2=.bitd\
-    rift_public.protobuf.client.v1.SankeyIntentResponse.DropH\0R\x04drop\x1a\
-    \x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08decisionJ\x04\x08\
-    \x02\x10\x03R\x08decision\"\xb5\x08\n\x10DebugDataRequest\x12{\n\x13work\
-    flow_debug_data\x18\x01\x20\x03(\x0b2K.bitdrift_public.protobuf.client.v\
-    1.DebugDataRequest.WorkflowDebugDataEntryR\x11workflowDebugData\x1a\x87\
-    \x02\n\x1bWorkflowTransitionDebugData\x12+\n\x10transition_index\x18\x01\
-    \x20\x01(\rH\0R\x0ftransitionIndex\x12/\n\x12timeout_transition\x18\x02\
-    \x20\x01(\x08H\0R\x11timeoutTransition\x12)\n\x10transition_count\x18\
-    \x03\x20\x01(\x04R\x0ftransitionCount\x12L\n\x14last_transition_time\x18\
-    \x04\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x12lastTransitionTimeB\
-    \x11\n\x0ftransition_type\x1a\x8c\x01\n\x16WorkflowStateDebugData\x12r\n\
-    \x0btransitions\x18\x01\x20\x03(\x0b2P.bitdrift_public.protobuf.client.v\
-    1.DebugDataRequest.WorkflowTransitionDebugDataR\x0btransitions\x1a\xfb\
-    \x02\n\x11WorkflowDebugData\x12j\n\x06states\x18\x01\x20\x03(\x0b2R.bitd\
-    rift_public.protobuf.client.v1.DebugDataRequest.WorkflowDebugData.States\
-    EntryR\x06states\x12q\n\x0bstart_reset\x18\x02\x20\x01(\x0b2P.bitdrift_p\
-    ublic.protobuf.client.v1.DebugDataRequest.WorkflowTransitionDebugDataR\n\
-    startReset\x1a\x86\x01\n\x0bStatesEntry\x12\x10\n\x03key\x18\x01\x20\x01\
-    (\tR\x03key\x12a\n\x05value\x18\x02\x20\x01(\x0b2K.bitdrift_public.proto\
-    buf.client.v1.DebugDataRequest.WorkflowStateDebugDataR\x05value:\x028\
-    \x01\x1a\x8c\x01\n\x16WorkflowDebugDataEntry\x12\x10\n\x03key\x18\x01\
-    \x20\x01(\tR\x03key\x12\\\n\x05value\x18\x02\x20\x01(\x0b2F.bitdrift_pub\
-    lic.protobuf.client.v1.DebugDataRequest.WorkflowDebugDataR\x05value:\x02\
-    8\x01\"\x15\n\x13StateUpdateResponse\"\x86\x0b\n\x0bApiResponse\x12U\n\t\
-    handshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.Hand\
-    shakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25.b\
-    itdrift_public.protobuf.client.v1.LogUploadResponseH\0R\tlogUpload\x12i\
-    \n\x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_public.protobuf.\
-    client.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\\\n\x0cstat\
-    s_upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.Stats\
-    UploadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20.\
-    bitdrift_public.protobuf.client.v1.PongResponseH\0R\x04pong\x12l\n\x14co\
-    nfiguration_update\x18\x04\x20\x01(\x0b27.bitdrift_public.protobuf.clien\
-    t.v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\n\x0eruntime_up\
-    date\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.RuntimeUp\
-    dateH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.\
-    bitdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\
-    \n\rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.protobuf.client.v\
-    1.FlushBuffersH\0R\x0cflushBuffers\x12r\n\x15sankey_diagram_upload\x18\
-    \x0c\x20\x01(\x0b2<.bitdrift_public.protobuf.client.v1.SankeyPathUploadR\
-    esponseH\0R\x13sankeyDiagramUpload\x12p\n\x16sankey_intent_response\x18\
-    \r\x20\x01(\x0b28.bitdrift_public.protobuf.client.v1.SankeyIntentRespons\
-    eH\0R\x14sankeyIntentResponse\x12e\n\x0fartifact_upload\x18\x0e\x20\x01(\
+    \x12,\n\ncommand_id\x18\n\x20\x01(\tH\x01R\tcommandIdB\x08\xfaB\x05r\x03\
+    \xb0\x01\x01\x88\x01\x01\x1ak\n\x12StateMetadataEntry\x12\x10\n\x03key\
+    \x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdr\
+    ift_public.protobuf.logging.v1.DataR\x05value:\x028\x01B\x1a\n\x18_workf\
+    low_report_handoffB\r\n\x0b_command_id\"X\n\x16UploadArtifactResponse\
+    \x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\
+    \x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\xf6\x04\n\
+    \x11HandshakeResponse\x12m\n\x0fstream_settings\x18\x01\x20\x01(\x0b2D.b\
+    itdrift_public.protobuf.client.v1.HandshakeResponse.StreamSettingsR\x0es\
+    treamSettings\x12>\n\x1bconfiguration_update_status\x18\x02\x20\x01(\rR\
+    \x19configurationUpdateStatus\x12A\n\x1bopaque_client_state_to_echo\x18\
+    \x03\x20\x01(\x0cH\0R\x17opaqueClientStateToEcho\x88\x01\x01\x12g\n\x14c\
+    lient_state_updates\x18\x04\x20\x03(\x0b25.bitdrift_public.protobuf.clie\
+    nt.v1.ClientStateUpdateR\x12clientStateUpdates\x12g\n\ranalytics_ack\x18\
+    \x05\x20\x01(\x0b2B.bitdrift_public.protobuf.client.v1.HandshakeResponse\
+    .AnalyticsAckR\x0canalyticsAck\x1a+\n\x0cAnalyticsAck\x12\x1b\n\treport_\
+    id\x18\x01\x20\x01(\tR\x08reportId\x1aP\n\x0eStreamSettings\x12>\n\rping\
+    _interval\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x0cpingInt\
+    ervalB\x1e\n\x1c_opaque_client_state_to_echo\"I\n\x0bRateLimited\x12:\n\
+    \x0bretry_after\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\nret\
+    ryAfter\"\xca\x01\n\x11LogUploadResponse\x12(\n\x0bupload_uuid\x18\x01\
+    \x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\
+    \x18\x02\x20\x01(\tR\x05error\x12!\n\x0clogs_dropped\x18\x03\x20\x01(\rR\
+    \x0blogsDropped\x12R\n\x0crate_limited\x18\x04\x20\x01(\x0b2/.bitdrift_p\
+    ublic.protobuf.client.v1.RateLimitedR\x0brateLimited\"\x91\x0b\n\x12Stat\
+    sUploadRequest\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\
+    \x07\xfaB\x04r\x02\x10\x01\x12e\n\x08snapshot\x18\x02\x20\x03(\x0b2?.bit\
+    drift_public.protobuf.client.v1.StatsUploadRequest.SnapshotR\x08snapshot\
+    B\x08\xfaB\x05\x92\x01\x02\x08\x01\x123\n\x07sent_at\x18\x03\x20\x01(\
+    \x0b2\x1a.google.protobuf.TimestampR\x06sentAt\x12h\n\rupload_reason\x18\
+    \x04\x20\x01(\x0e2C.bitdrift_public.protobuf.client.v1.StatsUploadReques\
+    t.UploadReasonR\x0cuploadReason\x1a\xbe\x07\n\x08Snapshot\x12K\n\x07metr\
+    ics\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.MetricsLis\
+    tH\0R\x07metrics\x12l\n\naggregated\x18\x02\x20\x01(\x0b2J.bitdrift_publ\
+    ic.protobuf.client.v1.StatsUploadRequest.Snapshot.AggregatedH\x01R\naggr\
+    egated\x12\x86\x01\n\x13metric_id_overflows\x18\x03\x20\x03(\x0b2V.bitdr\
+    ift_public.protobuf.client.v1.StatsUploadRequest.Snapshot.MetricIdOverfl\
+    owsEntryR\x11metricIdOverflows\x12\x86\x01\n\x13workflow_debug_data\x18\
+    \x04\x20\x03(\x0b2V.bitdrift_public.protobuf.client.v1.StatsUploadReques\
+    t.Snapshot.WorkflowDebugDataEntryR\x11workflowDebugData\x12\x1f\n\x0bret\
+    ry_count\x18\x05\x20\x01(\rR\nretryCount\x122\n\x15client_stats_sequence\
+    \x18\x06\x20\x01(\x04R\x13clientStatsSequence\x1a\x90\x01\n\nAggregated\
+    \x12G\n\x0cperiod_start\x18\x04\x20\x01(\x0b2\x1a.google.protobuf.Timest\
+    ampR\x0bperiodStartB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x129\n\nperiod_end\
+    \x18\x05\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tperiodEnd\x1aD\n\
+    \x16MetricIdOverflowsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
+    \x12\x14\n\x05value\x18\x02\x20\x01(\x04R\x05value:\x028\x01\x1a\x8c\x01\
+    \n\x16WorkflowDebugDataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
+    \x12\\\n\x05value\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.client\
+    .v1.DebugDataRequest.WorkflowDebugDataR\x05value:\x028\x01B\x14\n\rsnaps\
+    hot_type\x12\x03\xf8B\x01B\x12\n\x0boccurred_at\x12\x03\xf8B\x01\"\x89\
+    \x01\n\x0cUploadReason\x12\x1d\n\x19UPLOAD_REASON_UNSPECIFIED\x10\0\x12\
+    \x1a\n\x16UPLOAD_REASON_PERIODIC\x10\x01\x12!\n\x1dUPLOAD_REASON_EVENT_T\
+    RIGGERED\x10\x02\x12\x1b\n\x17UPLOAD_REASON_HANDSHAKE\x10\x03\"~\n\x13St\
+    atsUploadResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\
+    \x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05err\
+    or\x12'\n\x0fmetrics_dropped\x18\x03\x20\x01(\rR\x0emetricsDropped\"\x0e\
+    \n\x0cPongResponse\"\x8a\x07\n\x13ConfigurationUpdate\x12#\n\rversion_no\
+    nce\x18\x01\x20\x01(\tR\x0cversionNonce\x12v\n\x12state_of_the_world\x18\
+    \x02\x20\x01(\x0b2G.bitdrift_public.protobuf.client.v1.ConfigurationUpda\
+    te.StateOfTheWorldH\0R\x0fstateOfTheWorld\x12g\n\x14client_state_updates\
+    \x18\x03\x20\x03(\x0b25.bitdrift_public.protobuf.client.v1.ClientStateUp\
+    dateR\x12clientStateUpdates\x1a\xdd\x04\n\x0fStateOfTheWorld\x12b\n\x12b\
+    uffer_config_list\x18\x03\x20\x01(\x0b24.bitdrift_public.protobuf.config\
+    .v1.BufferConfigListR\x10bufferConfigList\x12u\n\x17workflows_configurat\
+    ion\x18\x04\x20\x01(\x0b2<.bitdrift_public.protobuf.workflow.v1.Workflow\
+    sConfigurationR\x16workflowsConfiguration\x12k\n\x14bdtail_configuration\
+    \x18\x06\x20\x01(\x0b28.bitdrift_public.protobuf.bdtail.v1.BdTailConfigu\
+    rationsR\x13bdtailConfiguration\x12m\n\x15filters_configuration\x18\x08\
+    \x20\x01(\x0b28.bitdrift_public.protobuf.filter.v1.FiltersConfigurationR\
+    \x14filtersConfiguration\x12e\n\x0fdebug_workflows\x18\t\x20\x01(\x0b2<.\
+    bitdrift_public.protobuf.workflow.v1.WorkflowsConfigurationR\x0edebugWor\
+    kflowsJ\x04\x08\x02\x10\x03J\x04\x08\x07\x10\x08R\x08mll_listR\x16insigh\
+    ts_configurationB\r\n\x0bupdate_type\"{\n\rRuntimeUpdate\x12#\n\rversion\
+    _nonce\x18\x01\x20\x01(\tR\x0cversionNonce\x12E\n\x07runtime\x18\x02\x20\
+    \x01(\x0b2+.bitdrift_public.protobuf.client.v1.RuntimeR\x07runtime\"\xa7\
+    \x01\n\rErrorShutdown\x12\x1f\n\x0bgrpc_status\x18\x01\x20\x01(\x05R\ngr\
+    pcStatus\x12!\n\x0cgrpc_message\x18\x02\x20\x01(\tR\x0bgrpcMessage\x12R\
+    \n\x0crate_limited\x18\x03\x20\x01(\x0b2/.bitdrift_public.protobuf.clien\
+    t.v1.RateLimitedR\x0brateLimited\"\xa6\x01\n\x0cFlushBuffers\x12$\n\x0eb\
+    uffer_id_list\x18\x01\x20\x03(\tR\x0cbufferIdList\x12p\n\tstreaming\x18\
+    \x02\x20\x01(\x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.Action\
+    .ActionFlushBuffers.StreamingR\tstreaming\"\x86\x03\n\x14DeviceCommandRe\
+    quest\x12'\n\ncommand_id\x18\x01\x20\x01(\tR\tcommandIdB\x08\xfaB\x05r\
+    \x03\xb0\x01\x01\x12\x80\x01\n\x12dump_device_buffer\x18\x02\x20\x01(\
+    \x0b2P.bitdrift_public.protobuf.client.v1.DeviceCommandRequest.DumpDevic\
+    eBufferCommandH\0R\x10dumpDeviceBuffer\x12y\n\x0ftake_screenshot\x18\x03\
+    \x20\x01(\x0b2N.bitdrift_public.protobuf.client.v1.DeviceCommandRequest.\
+    TakeScreenshotCommandH\0R\x0etakeScreenshot\x1a\x19\n\x17DumpDeviceBuffe\
+    rCommand\x1a\x17\n\x15TakeScreenshotCommandB\x13\n\x0ccommand_type\x12\
+    \x03\xf8B\x01\"\xf0\x01\n\x1aDeviceCommandResultContext\x12l\n\x06fields\
+    \x18\x01\x20\x03(\x0b2J.bitdrift_public.protobuf.client.v1.DeviceCommand\
+    ResultContext.FieldsEntryR\x06fieldsB\x08\xfaB\x05\x9a\x01\x02\x10d\x1ad\
+    \n\x0bFieldsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05\
+    value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\
+    \x05value:\x028\x01\"\xfc\x04\n\x13DeviceCommandUpdate\x12'\n\ncommand_i\
+    d\x18\x01\x20\x01(\tR\tcommandIdB\x08\xfaB\x05r\x03\xb0\x01\x01\x124\n\
+    \x16update_sequence_number\x18\x02\x20\x01(\x04R\x14updateSequenceNumber\
+    \x12^\n\x08accepted\x18\x03\x20\x01(\x0b2@.bitdrift_public.protobuf.clie\
+    nt.v1.DeviceCommandUpdate.AcceptedH\0R\x08accepted\x12a\n\tcompleted\x18\
+    \x04\x20\x01(\x0b2A.bitdrift_public.protobuf.client.v1.DeviceCommandUpda\
+    te.CompletedH\0R\tcompleted\x12X\n\x06failed\x18\x05\x20\x01(\x0b2>.bitd\
+    rift_public.protobuf.client.v1.DeviceCommandUpdate.FailedH\0R\x06failed\
+    \x1a\n\n\x08Accepted\x1ae\n\tCompleted\x12X\n\x07context\x18\x01\x20\x01\
+    (\x0b2>.bitdrift_public.protobuf.client.v1.DeviceCommandResultContextR\
+    \x07context\x1ab\n\x06Failed\x12X\n\x07context\x18\x01\x20\x01(\x0b2>.bi\
+    tdrift_public.protobuf.client.v1.DeviceCommandResultContextR\x07contextB\
+    \x12\n\x0bupdate_type\x12\x03\xf8B\x01\"w\n\x16DeviceCommandUpdateAck\
+    \x12'\n\ncommand_id\x18\x01\x20\x01(\tR\tcommandIdB\x08\xfaB\x05r\x03\
+    \xb0\x01\x01\x124\n\x16update_sequence_number\x18\x02\x20\x01(\x04R\x14u\
+    pdateSequenceNumber\"Z\n\x18SankeyPathUploadResponse\x12(\n\x0bupload_uu\
+    id\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\
+    \x05error\x18\x02\x20\x01(\tR\x05error\"\xcb\x02\n\x14SankeyIntentRespon\
+    se\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\
+    \x02\x10\x01\x12{\n\x12upload_immediately\x18\x03\x20\x01(\x0b2J.bitdrif\
+    t_public.protobuf.client.v1.SankeyIntentResponse.UploadImmediatelyH\0R\
+    \x11uploadImmediately\x12S\n\x04drop\x18\x04\x20\x01(\x0b2=.bitdrift_pub\
+    lic.protobuf.client.v1.SankeyIntentResponse.DropH\0R\x04drop\x1a\x13\n\
+    \x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08decisionJ\x04\x08\x02\
+    \x10\x03R\x08decision\"\xb5\x08\n\x10DebugDataRequest\x12{\n\x13workflow\
+    _debug_data\x18\x01\x20\x03(\x0b2K.bitdrift_public.protobuf.client.v1.De\
+    bugDataRequest.WorkflowDebugDataEntryR\x11workflowDebugData\x1a\x87\x02\
+    \n\x1bWorkflowTransitionDebugData\x12+\n\x10transition_index\x18\x01\x20\
+    \x01(\rH\0R\x0ftransitionIndex\x12/\n\x12timeout_transition\x18\x02\x20\
+    \x01(\x08H\0R\x11timeoutTransition\x12)\n\x10transition_count\x18\x03\
+    \x20\x01(\x04R\x0ftransitionCount\x12L\n\x14last_transition_time\x18\x04\
+    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x12lastTransitionTimeB\x11\
+    \n\x0ftransition_type\x1a\x8c\x01\n\x16WorkflowStateDebugData\x12r\n\x0b\
+    transitions\x18\x01\x20\x03(\x0b2P.bitdrift_public.protobuf.client.v1.De\
+    bugDataRequest.WorkflowTransitionDebugDataR\x0btransitions\x1a\xfb\x02\n\
+    \x11WorkflowDebugData\x12j\n\x06states\x18\x01\x20\x03(\x0b2R.bitdrift_p\
+    ublic.protobuf.client.v1.DebugDataRequest.WorkflowDebugData.StatesEntryR\
+    \x06states\x12q\n\x0bstart_reset\x18\x02\x20\x01(\x0b2P.bitdrift_public.\
+    protobuf.client.v1.DebugDataRequest.WorkflowTransitionDebugDataR\nstartR\
+    eset\x1a\x86\x01\n\x0bStatesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\
+    \x03key\x12a\n\x05value\x18\x02\x20\x01(\x0b2K.bitdrift_public.protobuf.\
+    client.v1.DebugDataRequest.WorkflowStateDebugDataR\x05value:\x028\x01\
+    \x1a\x8c\x01\n\x16WorkflowDebugDataEntry\x12\x10\n\x03key\x18\x01\x20\
+    \x01(\tR\x03key\x12\\\n\x05value\x18\x02\x20\x01(\x0b2F.bitdrift_public.\
+    protobuf.client.v1.DebugDataRequest.WorkflowDebugDataR\x05value:\x028\
+    \x01\"\x15\n\x13StateUpdateResponse\"\x86\x0b\n\x0bApiResponse\x12U\n\th\
+    andshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.Hands\
+    hakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25.bi\
+    tdrift_public.protobuf.client.v1.LogUploadResponseH\0R\tlogUpload\x12i\n\
+    \x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_public.protobuf.cl\
+    ient.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\\\n\x0cstats_\
+    upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.StatsUp\
+    loadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20.bi\
+    tdrift_public.protobuf.client.v1.PongResponseH\0R\x04pong\x12l\n\x14conf\
+    iguration_update\x18\x04\x20\x01(\x0b27.bitdrift_public.protobuf.client.\
+    v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\n\x0eruntime_upda\
+    te\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.RuntimeUpda\
+    teH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.bi\
+    tdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\n\
+    \rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.protobuf.client.v1.\
+    FlushBuffersH\0R\x0cflushBuffers\x12r\n\x15sankey_diagram_upload\x18\x0c\
+    \x20\x01(\x0b2<.bitdrift_public.protobuf.client.v1.SankeyPathUploadRespo\
+    nseH\0R\x13sankeyDiagramUpload\x12p\n\x16sankey_intent_response\x18\r\
+    \x20\x01(\x0b28.bitdrift_public.protobuf.client.v1.SankeyIntentResponseH\
+    \0R\x14sankeyIntentResponse\x12e\n\x0fartifact_upload\x18\x0e\x20\x01(\
     \x0b2:.bitdrift_public.protobuf.client.v1.UploadArtifactResponseH\0R\x0e\
     artifactUpload\x12k\n\x0fartifact_intent\x18\x0f\x20\x01(\x0b2@.bitdrift\
     _public.protobuf.client.v1.UploadArtifactIntentResponseH\0R\x0eartifactI\
@@ -11695,7 +13257,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(55);
+            let mut messages = ::std::vec::Vec::with_capacity(64);
             messages.push(ClientKillFile::generated_message_descriptor_data());
             messages.push(ClientStateUpdate::generated_message_descriptor_data());
             messages.push(StateUpdateRequest::generated_message_descriptor_data());
@@ -11722,6 +13284,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(RuntimeUpdate::generated_message_descriptor_data());
             messages.push(ErrorShutdown::generated_message_descriptor_data());
             messages.push(FlushBuffers::generated_message_descriptor_data());
+            messages.push(DeviceCommandRequest::generated_message_descriptor_data());
+            messages.push(DeviceCommandResultContext::generated_message_descriptor_data());
+            messages.push(DeviceCommandUpdate::generated_message_descriptor_data());
+            messages.push(DeviceCommandUpdateAck::generated_message_descriptor_data());
             messages.push(SankeyPathUploadResponse::generated_message_descriptor_data());
             messages.push(SankeyIntentResponse::generated_message_descriptor_data());
             messages.push(DebugDataRequest::generated_message_descriptor_data());
@@ -11746,6 +13312,11 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(stats_upload_request::Snapshot::generated_message_descriptor_data());
             messages.push(stats_upload_request::snapshot::Aggregated::generated_message_descriptor_data());
             messages.push(configuration_update::StateOfTheWorld::generated_message_descriptor_data());
+            messages.push(device_command_request::DumpDeviceBufferCommand::generated_message_descriptor_data());
+            messages.push(device_command_request::TakeScreenshotCommand::generated_message_descriptor_data());
+            messages.push(device_command_update::Accepted::generated_message_descriptor_data());
+            messages.push(device_command_update::Completed::generated_message_descriptor_data());
+            messages.push(device_command_update::Failed::generated_message_descriptor_data());
             messages.push(sankey_intent_response::UploadImmediately::generated_message_descriptor_data());
             messages.push(sankey_intent_response::Drop::generated_message_descriptor_data());
             messages.push(debug_data_request::WorkflowTransitionDebugData::generated_message_descriptor_data());
