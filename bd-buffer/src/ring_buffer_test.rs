@@ -8,6 +8,7 @@
 use crate::buffer::{
   AllowOverwrite,
   BlockWhenReservingIntoConcurrentRead,
+  NonVolatileFileHeader,
   NonVolatileRingBuffer,
   PerRecordCrc32Check,
   RingBuffer as BufferRingBuffer,
@@ -18,7 +19,7 @@ use crate::{AbslCode, Error};
 use assert_matches::assert_matches;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
-use bd_log_primitives::{EncodableLog, Log, log_level};
+use bd_log_primitives::{EncodableLog, Log, LossyIntToU32, log_level};
 use bd_proto::protos::config::v1::config::buffer_config::BufferSizes;
 use bd_proto::protos::config::v1::config::{BufferConfig, BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
@@ -128,6 +129,50 @@ async fn test_new_consumer_allows_bulk_one_off_reads_on_overwrite_buffers() {
     drained_consumer.start_read(false),
     Err(Error::AbslStatus(code, message))
       if code == AbslCode::Unavailable && message == "no data to read"
+  );
+}
+
+#[tokio::test]
+async fn locked_consumer_snapshot_does_not_consume_records() {
+  let dir = tmp_dir();
+  let (buffer, _) = RingBuffer::new(
+    "test",
+    100,
+    dir.path().join(PathBuf::from("buffer")),
+    1000,
+    true,
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    None,
+    None,
+    test_retention_handle().await,
+  )
+  .unwrap();
+
+  let mut producer = buffer.new_thread_local_producer().unwrap();
+  producer.write(b"one").unwrap();
+  producer.write(b"twenty").unwrap();
+
+  let mut consumer = buffer.new_consumer().unwrap();
+  assert_eq!(
+    consumer.remaining_payload_stats().unwrap(),
+    crate::ring_buffer::RemainingPayloadStats {
+      payload_bytes: 9,
+      record_count: 2,
+    }
+  );
+  assert_eq!(consumer.start_read(false).unwrap(), b"one");
+  assert_eq!(consumer.start_read(false).unwrap(), b"twenty");
+  consumer.finish_reads(2).unwrap();
+  assert_eq!(
+    consumer.remaining_payload_stats().unwrap(),
+    crate::ring_buffer::RemainingPayloadStats {
+      payload_bytes: 0,
+      record_count: 0,
+    }
   );
 }
 
@@ -386,7 +431,7 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
   let buffer = NonVolatileRingBuffer::new(
     "trigger".to_string(),
     directory.path().join("trigger"),
-    buffer_size,
+    buffer_size + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy(),
     AllowOverwrite::Yes,
     BlockWhenReservingIntoConcurrentRead::No,
     PerRecordCrc32Check::No,

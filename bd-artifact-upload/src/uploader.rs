@@ -19,6 +19,7 @@ use bd_client_common::file::{
   async_write_checksummed_data,
   read_checksummed_data,
   read_compressed_protobuf,
+  write_checksummed_data,
   write_compressed_protobuf,
 };
 use bd_client_common::file_system::FileSystem;
@@ -43,6 +44,7 @@ use std::sync::{Arc, LazyLock};
 #[cfg(test)]
 use tests::TestHooks;
 use time::OffsetDateTime;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -121,12 +123,17 @@ struct NewUpload {
   timestamp: Option<OffsetDateTime>,
   session_id: String,
   feature_flags: Vec<SnappedFeatureFlag>,
+  command_id: Option<String>,
   #[approximate_size(skip)]
   persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  #[approximate_size(skip)]
+  completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
 }
 
 #[derive(Debug)]
 pub enum UploadSource {
+  // Bytes are copied directly to the durable report directory with a checksum before upload.
+  Bytes(Vec<u8>),
   // When a file handle is provided the uploader will copy the contents of the file to disk and
   // append a CRC checksum to the end of the file to allow for integrity checking when we later
   // read.
@@ -151,6 +158,7 @@ impl std::fmt::Display for NewUpload {
 impl ApproximateSize for UploadSource {
   fn approximate_size_children_bytes(&self) -> usize {
     match self {
+      Self::Bytes(bytes) => bytes.capacity(),
       // File descriptors own no heap storage attributable to this queue entry. PathBuf exposes
       // the capacity of its owned path buffer, so account for its retained allocation directly.
       Self::File(_) => 0,
@@ -207,11 +215,65 @@ pub trait Client: Send + Sync {
     feature_flags: Vec<SnappedFeatureFlag>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError>;
+
+  fn enqueue_command_upload(
+    &self,
+    source: UploadSource,
+    type_id: String,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
+    command_id: String,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+  ) -> std::result::Result<Uuid, EnqueueError>;
 }
 
 pub struct UploadClient {
   upload_tx: bd_bounded_buffer::Sender<NewUpload>,
   counter_stats: SendCounters,
+}
+
+impl UploadClient {
+  fn enqueue(
+    &self,
+    source: UploadSource,
+    type_id: String,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
+    command_id: Option<String>,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+  ) -> std::result::Result<Uuid, EnqueueError> {
+    let uuid = uuid::Uuid::new_v4();
+
+    let result = self
+      .upload_tx
+      .try_send(NewUpload {
+        uuid,
+        source,
+        type_id,
+        state,
+        timestamp,
+        session_id,
+        feature_flags,
+        command_id,
+        persisted_tx,
+        completion_tx,
+      })
+      .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
+
+    self.counter_stats.record(&result);
+    result.map_err(|e| match e {
+      bd_bounded_buffer::TrySendError::FullSizeOverflow => EnqueueError::QueueFull,
+      bd_bounded_buffer::TrySendError::Closed => EnqueueError::Closed,
+    })?;
+
+    Ok(uuid)
+  }
 }
 
 impl Client for UploadClient {
@@ -226,29 +288,42 @@ impl Client for UploadClient {
     feature_flags: Vec<SnappedFeatureFlag>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
-    let uuid = uuid::Uuid::new_v4();
+    self.enqueue(
+      source,
+      type_id,
+      state,
+      timestamp,
+      session_id,
+      feature_flags,
+      None,
+      persisted_tx,
+      None,
+    )
+  }
 
-    let result = self
-      .upload_tx
-      .try_send(NewUpload {
-        uuid,
-        source,
-        type_id,
-        state,
-        timestamp,
-        session_id,
-        feature_flags,
-        persisted_tx,
-      })
-      .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
-
-    self.counter_stats.record(&result);
-    result.map_err(|e| match e {
-      bd_bounded_buffer::TrySendError::FullSizeOverflow => EnqueueError::QueueFull,
-      bd_bounded_buffer::TrySendError::Closed => EnqueueError::Closed,
-    })?;
-
-    Ok(uuid)
+  fn enqueue_command_upload(
+    &self,
+    source: UploadSource,
+    type_id: String,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
+    command_id: String,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+  ) -> std::result::Result<Uuid, EnqueueError> {
+    self.enqueue(
+      source,
+      type_id,
+      state,
+      timestamp,
+      session_id,
+      feature_flags,
+      Some(command_id),
+      persisted_tx,
+      completion_tx,
+    )
   }
 }
 
@@ -256,7 +331,7 @@ impl Client for UploadClient {
 enum Error {
   #[error("Task is shutting down")]
   Shutdown,
-  #[error("Unhandled error: $1")]
+  #[error("Unhandled error: {0:#}")]
   Unhandled(anyhow::Error),
 }
 
@@ -288,6 +363,7 @@ pub struct Uploader {
   file_system: Arc<dyn FileSystem>,
 
   index: VecDeque<Artifact>,
+  upload_completions: HashMap<String, oneshot::Sender<std::result::Result<(), String>>>,
 
   max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
   backoff_policy: RuntimeBackoffPolicy<
@@ -335,6 +411,7 @@ impl Uploader {
       time_provider,
       file_system,
       index: VecDeque::default(),
+      upload_completions: HashMap::default(),
       max_entries: runtime.register_int_watch(),
       backoff_policy: RuntimeBackoffPolicy::new(runtime),
       upload_task_handle: None,
@@ -393,11 +470,11 @@ impl Uploader {
             "failed to read file for artifact {}, deleting and removing from index",
             next.name
           );
-          self.file_system.delete_file(&file_path).await?;
-          self.index.pop_front();
-          self.write_index().await;
-
-          return Ok(());
+          let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
+          self
+            .discard_upload(entry, "artifact upload file could not be read".to_string())
+            .await;
+          continue;
         };
 
         // For client reports we copy the file into a new file with a CRC checksum appended to allow
@@ -413,12 +490,14 @@ impl Uploader {
               "failed to validate CRC checksum for artifact {}, deleting and removing from index",
               next.name
             );
-
-            self.file_system.delete_file(&file_path).await?;
-            self.index.pop_front();
-            self.write_index().await;
-
-            return Ok(());
+            let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
+            self
+              .discard_upload(
+                entry,
+                "artifact upload file failed integrity validation".to_string(),
+              )
+              .await;
+            continue;
           };
           contents
         };
@@ -433,6 +512,7 @@ impl Uploader {
           self.backoff_policy.backoff_mark_update(),
           next.metadata.clone(),
           next.feature_flags.clone(),
+          next.command_id.clone(),
         )));
       }
 
@@ -456,7 +536,9 @@ impl Uploader {
             timestamp,
             session_id,
             feature_flags,
+            command_id,
             persisted_tx,
+            completion_tx,
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
           self
@@ -468,7 +550,9 @@ impl Uploader {
               session_id,
               timestamp,
               feature_flags,
+              command_id,
               persisted_tx,
+              completion_tx,
             )
             .await;
         }
@@ -476,14 +560,21 @@ impl Uploader {
             self.handle_intent_negotiation_decision(intent_decision??).await?;
         }
         result = maybe_await(&mut self.upload_task_handle) => {
-            result??;
+            match result? {
+              Ok(()) => {
+                #[allow(unused)]
+                let name = self.handle_upload_complete().await?;
+                self.complete_upload(&name, Ok(()));
 
-            #[allow(unused)]
-            let name = self.handle_upload_complete().await?;
-
-            #[cfg(test)]
-            if let Some(hooks) = &self.test_hooks {
-                hooks.upload_complete_tx.send(name).await.unwrap();
+                #[cfg(test)]
+                if let Some(hooks) = &self.test_hooks {
+                    hooks.upload_complete_tx.send(name).await.unwrap();
+                }
+              },
+              Err(error) => {
+                let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
+                self.discard_upload(entry, error.to_string()).await;
+              },
             }
         }
 
@@ -587,22 +678,13 @@ impl Uploader {
     match decision {
       IntentDecision::Drop => {
         self.stats.dropped_intent.inc();
-        let entry = &self.index.pop_front().ok_or(InvariantError::Invariant)?;
-
-        if let Err(e) = self
-          .file_system
-          .delete_file(&REPORT_DIRECTORY.join(&entry.name))
-          .await
-        {
-          log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
-        }
-
-        // Even if we failed to delete the artifact still try to clean up the index. There's a good
-        // chance this will fail too but might make it less likely that we try to re-upload this
-        // file.
-
-        self.index.pop_front();
-        self.write_index().await;
+        let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
+        self
+          .discard_upload(
+            entry,
+            "artifact upload was rejected during intent negotiation".to_string(),
+          )
+          .await;
       },
       IntentDecision::UploadImmediately => {
         self.stats.accepted_intent.inc();
@@ -630,6 +712,28 @@ impl Uploader {
     Ok(entry.name)
   }
 
+  async fn discard_upload(&mut self, entry: Artifact, error: String) {
+    if let Err(delete_error) = self
+      .file_system
+      .delete_file(&REPORT_DIRECTORY.join(&entry.name))
+      .await
+    {
+      log::warn!(
+        "failed to delete artifact {:?}: {}",
+        entry.name,
+        delete_error
+      );
+    }
+    self.write_index().await;
+    self.complete_upload(&entry.name, Err(error));
+  }
+
+  fn complete_upload(&mut self, artifact_id: &str, result: std::result::Result<(), String>) {
+    if let Some(completion_tx) = self.upload_completions.remove(artifact_id) {
+      let _ = completion_tx.send(result);
+    }
+  }
+
   fn stop_current_upload(&mut self) {
     if let Some(task) = self.upload_task_handle.take() {
       task.abort();
@@ -648,7 +752,9 @@ impl Uploader {
     session_id: String,
     timestamp: Option<OffsetDateTime>,
     feature_flags: Vec<SnappedFeatureFlag>,
+    command_id: Option<String>,
     mut persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) {
     // Previously we would always drop the oldest entry when we hit capacity, but for state
     // snapshots this would result in us dropping uploads that we know we need to hydrate logs
@@ -673,12 +779,13 @@ impl Uploader {
           self.stop_current_upload();
         }
         if let Some(entry) = self.index.remove(index_to_drop) {
-          let file_path = REPORT_DIRECTORY.join(&entry.name);
-          if let Err(e) = self.file_system.delete_file(&file_path).await {
-            log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
-          }
+          self
+            .discard_upload(
+              entry,
+              "artifact upload was evicted from the upload queue".to_string(),
+            )
+            .await;
         }
-        self.write_index().await;
       } else {
         self.stats.dropped.inc();
         if let Some(tx) = persisted_tx.take() {
@@ -692,6 +799,27 @@ impl Uploader {
 
     let target_path = REPORT_DIRECTORY.join(&uuid);
     let (write_result, storage_format) = match source {
+      UploadSource::Bytes(bytes) => {
+        let mut target_file = match self.file_system.create_file(&target_path).await {
+          Ok(file) => file,
+          Err(e) => {
+            log::warn!("failed to create file for artifact: {uuid} on disk: {e}");
+            if let Some(tx) = persisted_tx.take() {
+              let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
+                "failed to create file for artifact {uuid}: {e}"
+              ))));
+            }
+            return;
+          },
+        };
+        (
+          target_file
+            .write_all(&write_checksummed_data(&bytes))
+            .await
+            .map_err(Into::into),
+          StorageFormat::CHECKSUMMED,
+        )
+      },
       UploadSource::File(file) => {
         let target_file = match self.file_system.create_file(&target_path).await {
           Ok(file) => file,
@@ -805,12 +933,16 @@ impl Uploader {
           },
         )
         .collect(),
+      command_id,
       ..Default::default()
     });
 
     self.write_index().await;
     if let Some(tx) = persisted_tx {
       let _ = tx.send(Ok(()));
+    }
+    if let Some(completion_tx) = completion_tx {
+      self.upload_completions.insert(uuid.clone(), completion_tx);
     }
 
     #[cfg(test)]
@@ -851,6 +983,7 @@ impl Uploader {
     mut retry_policy: ExponentialBackoff,
     state_metadata: HashMap<String, Data>,
     feature_flags: Vec<FeatureFlag>,
+    command_id: Option<String>,
   ) -> Result<()> {
     let path = REPORT_DIRECTORY.join(&name);
     log::debug!("uploading artifact: {}", path.display());
@@ -872,6 +1005,7 @@ impl Uploader {
           session_id: session_id.clone(),
           state_metadata: state_metadata.clone(),
           feature_flags: feature_flags.clone(),
+          command_id: command_id.clone(),
           ..Default::default()
         },
       );
@@ -881,9 +1015,17 @@ impl Uploader {
         .await
         .map_err(|_| Error::Shutdown)?;
 
-      if response.await.is_ok_and(|r| r.success) {
-        log::debug!("upload of artifact: {name} succeeded");
-        break;
+      match response.await {
+        Ok(response) if response.success => {
+          log::debug!("upload of artifact: {name} succeeded");
+          break;
+        },
+        Ok(_) if command_id.is_some() => {
+          return Err(Error::Unhandled(anyhow::anyhow!(
+            "command artifact upload was rejected by the server"
+          )));
+        },
+        Ok(_) | Err(_) => {},
       }
 
       let delay = retry_policy.next_backoff();

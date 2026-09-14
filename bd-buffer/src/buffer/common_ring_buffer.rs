@@ -159,6 +159,8 @@ pub struct LockedData<ExtraLockedData> {
 
   // Callbacks used by concrete buffers for customizing some behavior.
   on_total_data_loss_cb: Box<dyn Fn(&mut ExtraLockedData) + Send>,
+  on_record_committed_cb: fn(&mut ExtraLockedData, u32) -> Result<()>,
+  on_record_retired_cb: fn(&mut ExtraLockedData, u32) -> Result<()>,
   on_record_evicted_cb: BoxedEvictedCallback,
   has_read_reservation_cb: Box<dyn Fn(&ExtraLockedData) -> bool + Send>,
   has_write_reservation_cb: Box<dyn Fn(&ExtraLockedData) -> bool + Send>,
@@ -486,6 +488,8 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         let next_read_start = guard.next_read_start().ok_or(InvariantError::Invariant)?;
         guard.zero_extra_data(next_read_start);
         guard.advance_next_read(next_read_actual_size, Cursor::No)?;
+        let on_record_retired_cb = guard.on_record_retired_cb;
+        on_record_retired_cb(&mut guard.extra_locked_data, next_read_size)?;
 
         if record_end <= guard.memory().len() {
           guard.emit_evicted_record(&guard.const_memory()[record_start .. record_end]);
@@ -638,6 +642,10 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
       conditions.data_available.notify_all();
     }
 
+    let record_size = reservation.size - self.extra_bytes_per_record;
+    let on_record_committed_cb = self.on_record_committed_cb;
+    on_record_committed_cb(&mut self.extra_locked_data, record_size)?;
+
     if let Some(stat) = &self.stats.total_bytes_written {
       stat.inc_by(reservation.size.into());
     }
@@ -718,6 +726,21 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     conditions.next_read_complete.notify_all();
 
     let record_size = reservation.size - guard.extra_bytes_per_record;
+    let on_record_retired_cb = guard.on_record_retired_cb;
+    if on_record_retired_cb(&mut guard.extra_locked_data, record_size).is_err() {
+      // A corrupt in-bounds record length can advance the read pointer before durable accounting
+      // rejects it. The remaining buffer state is no longer trustworthy.
+      guard.on_total_data_loss();
+      let message = if guard.pending_total_data_loss_reset {
+        "pending total data loss reset"
+      } else {
+        "no data to read"
+      };
+      return Err(Error::AbslStatus(
+        AbslCode::Unavailable,
+        message.to_string(),
+      ));
+    }
     if let Some(stat) = &guard.stats.total_bytes_read {
       stat.inc_by(reservation.size.into());
     }
@@ -1015,6 +1038,8 @@ impl<ExtraLockedData> CommonRingBuffer<ExtraLockedData> {
     allow_overwrite: AllowOverwrite,
     stats: Arc<RingBufferStats>,
     on_total_data_loss_cb: impl Fn(&mut ExtraLockedData) + Send + 'static,
+    on_record_committed_cb: fn(&mut ExtraLockedData, u32) -> Result<()>,
+    on_record_retired_cb: fn(&mut ExtraLockedData, u32) -> Result<()>,
     on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
     has_read_reservation_cb: impl Fn(&ExtraLockedData) -> bool + Send + 'static,
     has_write_reservation_cb: impl Fn(&ExtraLockedData) -> bool + Send + 'static,
@@ -1040,6 +1065,8 @@ impl<ExtraLockedData> CommonRingBuffer<ExtraLockedData> {
         extra_locked_data,
         allow_overwrite,
         on_total_data_loss_cb: Box::new(on_total_data_loss_cb),
+        on_record_committed_cb,
+        on_record_retired_cb,
         on_record_evicted_cb: Box::new(on_record_evicted_cb),
         has_read_reservation_cb: Box::new(has_read_reservation_cb),
         has_write_reservation_cb: Box::new(has_write_reservation_cb),

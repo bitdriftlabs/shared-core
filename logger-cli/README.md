@@ -58,6 +58,11 @@ Run `logger-cli start --help` or
 
 The `start` command runs until stopped with `Ctrl-C`.
 
+Logger CLI always fulfills remote screenshot device commands with a deterministic 1x1 JPEG. This
+makes it suitable as the simulated device for end-to-end screenshot testing: after the command
+reaches `Succeeded`, its attachment is available through the device-command attachment endpoint
+as `image/jpeg`.
+
 ## MCP Server
 
 An alternative way to interact with the logger CLI is via a small MCP server that allows an LLM agent to understand how to interact with the CLI.

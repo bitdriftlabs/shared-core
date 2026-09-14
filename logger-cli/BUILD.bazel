@@ -17,6 +17,7 @@ rust_library_with_test(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    compile_data = ["src/testdata/fake_screenshot.jpg"],
     crate_features = ["default"],
     crate_name = "logger_cli",
     crate_root = "src/lib.rs",

@@ -80,6 +80,9 @@ pub enum DataUpload {
 
   /// A request to upload debug data.
   DebugData(DebugDataRequest),
+
+  /// A command status update that must remain pending until the server acknowledges its sequence.
+  DeviceCommandUpdate(upload::TrackedDeviceCommandUpdate),
 }
 
 //
@@ -166,6 +169,42 @@ impl From<&TriggerUploadStreaming> for action_flush_buffers::Streaming {
 }
 
 //
+// TriggerUploadCompletion
+//
+
+/// The final result of a trigger upload requested by a remote device command.
+#[derive(Debug)]
+pub enum TriggerUploadCompletion {
+  Completed {
+    uploaded_log_count: u64,
+    output_truncated: bool,
+  },
+  Failed,
+}
+
+//
+// DeviceCommandUploadMetadata
+//
+
+/// Immutable progress metadata attached to every uploaded buffer-dump batch for a device command.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceCommandUploadMetadata {
+  pub command_id: String,
+  pub total_result_bytes: u64,
+}
+
+//
+// DeviceCommandUploadAdmission
+//
+
+/// Frozen device-command upload total that must be acknowledged before batch workers start.
+#[derive(Debug)]
+pub struct DeviceCommandUploadAdmission {
+  pub total_result_bytes: u64,
+  pub start_upload_tx: tokio::sync::oneshot::Sender<()>,
+}
+
+//
 // TriggerUpload
 //
 
@@ -187,6 +226,15 @@ pub struct TriggerUpload {
 
   // Session identifier active when the logical trigger was scheduled.
   pub session_id: String,
+
+  // BDTail stream that should receive the records from a device command buffer dump.
+  pub command_stream_id: Option<String>,
+
+  // Immutable remote-command progress metadata restored from the durable trigger registry.
+  pub device_command_upload: Option<DeviceCommandUploadMetadata>,
+
+  completion_tx: Option<tokio::sync::oneshot::Sender<TriggerUploadCompletion>>,
+  device_command_admission_tx: Option<tokio::sync::oneshot::Sender<DeviceCommandUploadAdmission>>,
 }
 
 impl TriggerUpload {
@@ -203,6 +251,10 @@ impl TriggerUpload {
       source,
       request_trigger_uuid: None,
       session_id,
+      command_stream_id: None,
+      device_command_upload: None,
+      completion_tx: None,
+      device_command_admission_tx: None,
     }
   }
 
@@ -220,7 +272,98 @@ impl TriggerUpload {
       source,
       request_trigger_uuid: Some(request_trigger_uuid),
       session_id,
+      command_stream_id: None,
+      device_command_upload: None,
+      completion_tx: None,
+      device_command_admission_tx: None,
     }
+  }
+
+  #[must_use]
+  pub fn new_with_completion(
+    buffer_ids: Vec<String>,
+    source: TriggerUploadSource,
+    session_id: String,
+  ) -> (
+    Self,
+    tokio::sync::oneshot::Receiver<TriggerUploadCompletion>,
+  ) {
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+    (
+      Self {
+        buffer_ids,
+        streaming: None,
+        source,
+        request_trigger_uuid: None,
+        session_id,
+        command_stream_id: None,
+        device_command_upload: None,
+        completion_tx: Some(completion_tx),
+        device_command_admission_tx: None,
+      },
+      completion_rx,
+    )
+  }
+
+  #[must_use]
+  pub fn new_device_command_with_completion(
+    buffer_ids: Vec<String>,
+    command_id: String,
+    session_id: String,
+  ) -> (
+    Self,
+    tokio::sync::oneshot::Receiver<DeviceCommandUploadAdmission>,
+    tokio::sync::oneshot::Receiver<TriggerUploadCompletion>,
+  ) {
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+    let (device_command_admission_tx, device_command_admission_rx) =
+      tokio::sync::oneshot::channel();
+    (
+      Self {
+        buffer_ids,
+        streaming: None,
+        source: TriggerUploadSource::RemoteCommand(command_id.clone()),
+        request_trigger_uuid: None,
+        session_id,
+        command_stream_id: Some(command_id),
+        device_command_upload: None,
+        completion_tx: Some(completion_tx),
+        device_command_admission_tx: Some(device_command_admission_tx),
+      },
+      device_command_admission_rx,
+      completion_rx,
+    )
+  }
+
+  #[must_use]
+  pub fn new_recovered_device_command(
+    buffer_ids: Vec<String>,
+    metadata: DeviceCommandUploadMetadata,
+    session_id: String,
+  ) -> Self {
+    Self {
+      buffer_ids,
+      streaming: None,
+      source: TriggerUploadSource::RemoteCommand(metadata.command_id.clone()),
+      request_trigger_uuid: None,
+      session_id,
+      command_stream_id: Some(metadata.command_id.clone()),
+      device_command_upload: Some(metadata),
+      completion_tx: None,
+      device_command_admission_tx: None,
+    }
+  }
+
+  pub fn take_completion_tx(
+    &mut self,
+  ) -> Option<tokio::sync::oneshot::Sender<TriggerUploadCompletion>> {
+    self.completion_tx.take()
+  }
+
+  pub fn take_device_command_admission_tx(
+    &mut self,
+  ) -> Option<tokio::sync::oneshot::Sender<DeviceCommandUploadAdmission>> {
+    self.device_command_admission_tx.take()
   }
 }
 

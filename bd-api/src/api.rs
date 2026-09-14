@@ -66,6 +66,7 @@ use bd_proto::protos::client::api::{
   HandshakeRequest,
   PingRequest,
   StateUpdateRequest,
+  api_request,
   handshake_request,
   handshake_response,
 };
@@ -320,6 +321,17 @@ impl StreamState {
         self.send_request(req).await
       },
       DataUpload::DebugData(request) => self.send_request(request).await,
+      DataUpload::DeviceCommandUpdate(update) => {
+        let request = self
+          .upload_state_tracker
+          .track_device_command_update(update)?;
+        self
+          .send_request(ApiRequest {
+            request_type: Some(api_request::Request_type::DeviceCommandUpdate(request)),
+            ..Default::default()
+          })
+          .await
+      },
     }
   }
 }
@@ -1139,6 +1151,8 @@ impl Api {
         // checking to see if the stream lived for longer than 1 minute, and if so reset the
         // backoff. If the process restarts everything starts over again anyway.
         self.last_disconnect_reason = Some(stream_closure_info.reason);
+        // TODO: Restore persisted device-command execution and update state before reconnecting.
+        // Command durable resilience will be handled in a follow up.
         if stream_closure_info.retry_after.is_none()
           && Instant::now() - handshake_established > Duration::minutes(1)
         {
@@ -1322,9 +1336,31 @@ impl Api {
               .acknowledge_state_update(&session_update);
           }
         },
-        // The device-command runtime that sends and tracks these updates is introduced
-        // separately. Accept the schema variant until that runtime is present.
-        Some(Response_type::DeviceCommandUpdateAck(_)) => {},
+        Some(Response_type::DeviceCommandUpdateAck(acknowledgement)) => {
+          log::debug!(
+            "received device command acknowledgement for {} sequence {}: {:?}",
+            acknowledgement.command_id,
+            acknowledgement.update_sequence_number,
+            acknowledgement.error,
+          );
+
+          if let Some(update) = stream_state
+            .upload_state_tracker
+            .resolve_device_command_update(&acknowledgement)?
+          {
+            log::debug!(
+              "retrying device command update for {} sequence {} after acknowledgement error",
+              update.command_id,
+              update.update_sequence_number,
+            );
+            stream_state
+              .send_request(ApiRequest {
+                request_type: Some(api_request::Request_type::DeviceCommandUpdate(update)),
+                ..Default::default()
+              })
+              .await?;
+          }
+        },
         None => {
           debug_assert!(false, "not handled");
         },

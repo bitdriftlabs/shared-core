@@ -17,6 +17,7 @@ use fs2::FileExt;
 use intrusive_collections::offset_of;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::sync::Arc;
 use tempfile::TempDir;
 
 struct Helper {
@@ -24,6 +25,7 @@ struct Helper {
   allow_overwrite: AllowOverwrite,
   cursor: Cursor,
   temp_dir: TempDir,
+  buffer: Option<Arc<RingBufferImpl>>,
   #[allow(clippy::struct_field_names)]
   helper: Option<CommonHelper>,
   stats: StatsTestHelper,
@@ -49,7 +51,8 @@ impl Helper {
       allow_overwrite,
       cursor,
       temp_dir,
-      helper: Some(CommonHelper::new(buffer, cursor)),
+      helper: Some(CommonHelper::new(buffer.clone(), cursor)),
+      buffer: Some(buffer),
       stats,
     }
   }
@@ -60,6 +63,11 @@ impl Helper {
 
   fn close(&mut self) {
     self.helper = None;
+    self.buffer = None;
+  }
+
+  fn buffer(&self) -> &Arc<RingBufferImpl> {
+    self.buffer.as_ref().unwrap()
   }
 
   fn file_to_vector(&self) -> Vec<u8> {
@@ -74,25 +82,41 @@ impl Helper {
     file.write_all(buffer).unwrap();
   }
 
+  fn unread_counters(&self) -> (u64, u64) {
+    let buffer = self.file_to_vector();
+    let unread_payload_bytes_offset = offset_of!(FileHeader, unread_payload_bytes);
+    let unread_record_count_offset = offset_of!(FileHeader, unread_record_count);
+    let unread_payload_bytes = u64::from_ne_bytes(
+      buffer[unread_payload_bytes_offset .. unread_payload_bytes_offset + 8]
+        .try_into()
+        .unwrap(),
+    );
+    let unread_record_count = u64::from_ne_bytes(
+      buffer[unread_record_count_offset .. unread_record_count_offset + 8]
+        .try_into()
+        .unwrap(),
+    );
+    (unread_payload_bytes, unread_record_count)
+  }
+
   fn open(&mut self) -> Result<()> {
-    self.helper = Some(CommonHelper::new(
-      RingBufferImpl::new(
-        "test".to_string(),
-        self.temp_dir.path().join("buffer"),
-        self.size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
-        self.allow_overwrite,
-        super::BlockWhenReservingIntoConcurrentRead::No,
-        super::PerRecordCrc32Check::Yes,
-        self.stats.stats.clone(),
-        |_| {},
-      )?,
-      self.cursor,
-    ));
+    let buffer = RingBufferImpl::new(
+      "test".to_string(),
+      self.temp_dir.path().join("buffer"),
+      self.size + std::mem::size_of::<FileHeader>().to_u32_lossy(),
+      self.allow_overwrite,
+      super::BlockWhenReservingIntoConcurrentRead::No,
+      super::PerRecordCrc32Check::Yes,
+      self.stats.stats.clone(),
+      |_| {},
+    )?;
+    self.helper = Some(CommonHelper::new(buffer.clone(), self.cursor));
+    self.buffer = Some(buffer);
     Ok(())
   }
 
   fn reopen(&mut self) {
-    self.helper = None;
+    self.close();
     self.open().unwrap();
   }
 }
@@ -119,6 +143,49 @@ fn reopen_file() {
   helper.helper().reserve_and_commit("aaaaaa");
   helper.reopen();
   helper.helper().read_and_verify("aaaaaa");
+}
+
+#[test]
+fn unread_counters_survive_restart_after_partial_consumption() {
+  let mut helper = Helper::new(30, AllowOverwrite::Yes, Cursor::No);
+  helper.helper().reserve_and_commit("aaaaaa");
+  helper.helper().reserve_and_commit("bbb");
+  helper.helper().read_and_verify("aaaaaa");
+  helper.close();
+
+  assert_eq!(helper.unread_counters(), (3, 1));
+  helper.open().unwrap();
+  helper.helper().consumer.take();
+  let locked_consumer = helper
+    .buffer()
+    .clone()
+    .register_locked_cursor_consumer()
+    .unwrap();
+  assert_eq!(
+    helper.buffer().locked_cursor_remaining_stats().unwrap(),
+    (3, 1)
+  );
+  drop(locked_consumer);
+}
+
+#[test]
+fn unread_counters_retire_overwritten_records() {
+  let mut helper = Helper::new(30, AllowOverwrite::Yes, Cursor::No);
+  helper.helper().reserve_and_commit("aaaaaa");
+  helper.helper().reserve_and_commit("bbbbbb");
+  helper.helper().reserve_and_commit("cccccc");
+  helper.helper().consumer.take();
+  let locked_consumer = helper
+    .buffer()
+    .clone()
+    .register_locked_cursor_consumer()
+    .unwrap();
+
+  assert_eq!(
+    helper.buffer().locked_cursor_remaining_stats().unwrap(),
+    (12, 2)
+  );
+  drop(locked_consumer);
 }
 
 // Verify that a correct-length existing file is physically allocated before it is memory mapped.
@@ -178,8 +245,8 @@ fn corrupted_file_header() {
   let mut buffer = helper.file_to_vector();
   assert_eq!(buffer.len(), 30 + std::mem::size_of::<FileHeader>());
 
-  // Corrupt next write start.
-  buffer[offset_of!(FileHeader, next_write_start)] = 0xFF;
+  // Corrupt the persisted unread record count.
+  buffer[offset_of!(FileHeader, unread_record_count)] = 0xFF;
   helper.vector_to_file(&buffer);
 
   assert_matches!(
@@ -256,6 +323,35 @@ fn corrupted_record_size_within_buffer() {
       if code == AbslCode::Unavailable && message == "no data to read"
   );
   assert_eq!(1, helper.stats.stats.total_data_loss.get_value());
+}
+
+// A corrupted in-bounds record size can pass the range check but exceed the persisted unread
+// payload total. Drop the buffer rather than retaining a stale consumer reservation.
+#[test]
+fn corrupted_record_size_exceeds_unread_payload_bytes() {
+  let mut helper = Helper::new(30, AllowOverwrite::Yes, Cursor::No);
+  helper.helper().reserve_and_commit("aa"); // 0-9
+  helper.helper().reserve_and_commit("bb"); // 10-19
+  helper.helper().reserve_and_commit("cc"); // 20-29
+  helper.close();
+
+  let mut buffer = helper.file_to_vector();
+  let new_size: u32 = 12;
+  let start = std::mem::size_of::<FileHeader>() + 14;
+  buffer[start .. start + 4].copy_from_slice(&new_size.to_ne_bytes());
+  helper.vector_to_file(&buffer);
+
+  helper.open().unwrap();
+  helper.helper().read_and_verify("aa");
+  assert_matches!(
+    helper.helper().consumer().start_read(false),
+    Err(Error::AbslStatus(code, message))
+      if code == AbslCode::Unavailable && message == "no data to read"
+  );
+  assert_eq!(1, helper.stats.stats.total_data_loss.get_value());
+
+  helper.helper().reserve_and_commit("dd");
+  helper.helper().read_and_verify("dd");
 }
 
 // Corrupt a record size so that the corrupted size points outside the buffer.

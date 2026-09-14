@@ -38,6 +38,21 @@ impl LogUpload {
   pub fn trigger_uuid(&self) -> Option<&str> {
     self.0.trigger_uuids.first().map(String::as_str)
   }
+
+  #[must_use]
+  pub fn command_id(&self) -> Option<&str> {
+    self.0.command_id.as_deref()
+  }
+
+  #[must_use]
+  pub fn proto_log_payload_bytes(&self) -> u64 {
+    self
+      .0
+      .proto_logs
+      .iter()
+      .map(|log| u64::try_from(log.len()).unwrap_or(u64::MAX))
+      .sum()
+  }
 }
 
 #[derive(Debug)]

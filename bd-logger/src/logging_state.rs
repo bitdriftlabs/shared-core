@@ -23,7 +23,6 @@ use bd_log_filter::FilterChain;
 use bd_log_primitives::tiny_set::TinySet;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
-use bd_session_replay::CaptureScreenshotHandler;
 use bd_stats_common::{Counter as _, labels};
 use bd_versioned_kv::Scope as StateScope;
 use bd_workflows::config::WorkflowsConfiguration;
@@ -159,18 +158,13 @@ impl UninitializedLoggingContext {
     }
   }
 
-  pub(crate) async fn updated(
-    self,
-    config: ConfigUpdate,
-    capture_screenshot_handler: CaptureScreenshotHandler,
-  ) -> InitializedLoggingContext {
+  pub(crate) async fn updated(self, config: ConfigUpdate) -> InitializedLoggingContext {
     let processing_pipeline = ProcessingPipeline::new(
       self.data_upload_tx,
       self.flush_buffers_tx,
       self.flush_stats_trigger,
       self.trigger_upload_tx,
       self.remote_flush_streaming_rx,
-      capture_screenshot_handler,
       config,
       &self.sdk_directory,
       &self.runtime,

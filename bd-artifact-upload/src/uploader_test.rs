@@ -798,6 +798,229 @@ async fn intent_drop() {
 }
 
 #[tokio::test]
+async fn command_upload_intent_drop_completes_with_failure() {
+  let mut setup = Setup::new(1).await;
+  let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::File(setup.make_file(b"screenshot")),
+      "screenshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      None,
+      Some(completion_tx),
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    intent.response_tx.send(IntentResponse {
+      uuid: intent.uuid,
+      decision: bd_api::upload::IntentDecision::Drop,
+    }).unwrap();
+  });
+
+  assert_matches!(completion_rx.await.unwrap(), Err(error) if error.contains("intent negotiation"));
+}
+
+#[tokio::test]
+async fn command_upload_rejection_completes_with_failure_without_stopping_uploader() {
+  let mut setup = Setup::new(2).await;
+  let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::File(setup.make_file(b"screenshot")),
+      "screenshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      None,
+      Some(completion_tx),
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    intent.response_tx.send(IntentResponse {
+      uuid: intent.uuid,
+      decision: bd_api::upload::IntentDecision::UploadImmediately,
+    }).unwrap();
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    upload.response_tx.send(UploadResponse {
+      uuid: upload.uuid,
+      success: false,
+    }).unwrap();
+  });
+  assert_matches!(completion_rx.await.unwrap(), Err(error) if error.contains("rejected"));
+
+  let follow_up_id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::File(setup.make_file(b"report")),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      None,
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    follow_up_id.to_string()
+  );
+}
+
+#[tokio::test]
+async fn evicted_command_upload_completes_with_failure() {
+  let mut setup = Setup::new(1).await;
+  let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::File(setup.make_file(b"screenshot")),
+      "screenshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      None,
+      Some(completion_tx),
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.artifact_id, id.to_string());
+  });
+
+  let follow_up_id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::File(setup.make_file(b"report")),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      None,
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    follow_up_id.to_string()
+  );
+
+  assert_matches!(completion_rx.await.unwrap(), Err(error) if error.contains("evicted"));
+}
+
+#[tokio::test]
+async fn corrupt_command_upload_completes_with_failure() {
+  let mut setup = Setup::new(1).await;
+  let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::File(setup.make_file(b"screenshot")),
+      "screenshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      None,
+      Some(completion_tx),
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    setup
+      .filesystem
+      .write_file(&super::REPORT_DIRECTORY.join(id.to_string()), b"corrupt")
+      .await
+      .unwrap();
+    intent.response_tx.send(IntentResponse {
+      uuid: intent.uuid,
+      decision: bd_api::upload::IntentDecision::UploadImmediately,
+    }).unwrap();
+  });
+
+  assert_matches!(completion_rx.await.unwrap(), Err(error) if error.contains("integrity"));
+}
+
+#[tokio::test]
+async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
+  let mut setup = Setup::new(1).await;
+  let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::File(setup.make_file(b"screenshot")),
+      "screenshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      None,
+      Some(completion_tx),
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    intent.response_tx.send(IntentResponse {
+      uuid: intent.uuid,
+      decision: bd_api::upload::IntentDecision::UploadImmediately,
+    }).unwrap();
+  });
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.artifact_id, id.to_string());
+    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.artifact_id, id.to_string());
+    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
+    upload.response_tx.send(UploadResponse {
+      uuid: upload.uuid,
+      success: true,
+    }).unwrap();
+  });
+  completion_rx.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn upload_retries() {
   let mut setup = Setup::new(1).await;
 

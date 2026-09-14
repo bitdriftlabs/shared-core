@@ -11,7 +11,7 @@ mod service_test;
 
 use crate::service::ratelimit::RequestSized;
 use bd_api::upload::{LogBatch, TrackedLogBatch};
-use bd_api::{DataUpload, RuntimeBackoffPolicy};
+use bd_api::{DataUpload, DeviceCommandUploadMetadata, RuntimeBackoffPolicy};
 use bd_backoff::InfiniteBackoff;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadRequest;
@@ -74,6 +74,7 @@ pub struct UploadRequest {
   log_upload: Arc<LogBatch>,
   ackless: bool,
   request_trigger_uuid: Option<String>,
+  device_command_upload: Option<DeviceCommandUploadMetadata>,
 }
 
 impl UploadRequest {
@@ -87,6 +88,7 @@ impl UploadRequest {
       log_upload: Arc::new(log_upload),
       ackless,
       request_trigger_uuid: None,
+      device_command_upload: None,
     }
   }
 
@@ -95,6 +97,15 @@ impl UploadRequest {
     // Only intent-negotiated trigger uploads carry the outward-facing trigger UUID. All other
     // uploads keep this unset so the API contract stays explicit.
     self.request_trigger_uuid = request_trigger_uuid;
+    self
+  }
+
+  #[must_use]
+  pub(crate) fn with_device_command_upload(
+    mut self,
+    device_command_upload: Option<DeviceCommandUploadMetadata>,
+  ) -> Self {
+    self.device_command_upload = device_command_upload;
     self
   }
 }
@@ -161,6 +172,9 @@ impl tower::Service<UploadRequest> for Uploader {
       buffer_uuid: request.log_upload.buffer_id.clone(),
       trigger_uuids: request.request_trigger_uuid.iter().cloned().collect(),
       ackless: request.ackless,
+      command_id: request
+        .device_command_upload
+        .map(|metadata| metadata.command_id),
       ..Default::default()
     };
     let (upload, response_rx) = if request.ackless {

@@ -826,12 +826,6 @@ pub mod session_replay {
     "session_replay.screens.interval_ms",
     3.seconds()
   );
-
-  bool_feature_flag!(
-    ScreenshotsEnabledFlag,
-    "session_replay.screenshots.enabled",
-    false
-  );
 }
 
 pub mod network_quality {

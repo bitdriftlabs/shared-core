@@ -743,19 +743,19 @@ pub mod workflow_command_selector {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n;bitdrift_public/protobuf/workflow/v1/workflow_command.proto\x12$bitdr\
-    ift_public.protobuf.workflow.v1\x1a\x17validate/validate.proto\"\xc4\x04\
+    ift_public.protobuf.workflow.v1\x1a\x17validate/validate.proto\"\xc3\x04\
     \n\x17WorkflowCommandSelector\x12w\n\x0fbuiltin_command\x18\x01\x20\x01(\
     \x0b2L.bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.Buil\
     tinCommandH\0R\x0ebuiltinCommand\x12\x80\x01\n\x12registered_command\x18\
     \x02\x20\x01(\x0b2O.bitdrift_public.protobuf.workflow.v1.WorkflowCommand\
-    Selector.RegisteredCommandH\0R\x11registeredCommand\x1aQ\n\x11Registered\
-    Command\x12<\n\x15registered_command_id\x18\x01\x20\x01(\tR\x13registere\
-    dCommandIdB\x08\xfaB\x05r\x03\xb0\x01\x01\x1a\xc0\x01\n\x0eBuiltinComman\
-    d\x12\x86\x01\n\x0ftake_screenshot\x18\x01\x20\x01(\x0b2[.bitdrift_publi\
-    c.protobuf.workflow.v1.WorkflowCommandSelector.BuiltinCommand.TakeScreen\
-    shotH\0R\x0etakeScreenshot\x1a\x10\n\x0eTakeScreenshotB\x13\n\x0ccommand\
-    _type\x12\x03\xf8B\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01b\x06p\
-    roto3\
+    Selector.RegisteredCommandH\0R\x11registeredCommand\x1aP\n\x11Registered\
+    Command\x12;\n\x15registered_command_id\x18\x01\x20\x01(\tR\x13registere\
+    dCommandIdB\x07\xfaB\x04r\x02\x10\x01\x1a\xc0\x01\n\x0eBuiltinCommand\
+    \x12\x86\x01\n\x0ftake_screenshot\x18\x01\x20\x01(\x0b2[.bitdrift_public\
+    .protobuf.workflow.v1.WorkflowCommandSelector.BuiltinCommand.TakeScreens\
+    hotH\0R\x0etakeScreenshot\x1a\x10\n\x0eTakeScreenshotB\x13\n\x0ccommand_\
+    type\x12\x03\xf8B\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01b\x06pr\
+    oto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

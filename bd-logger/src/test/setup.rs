@@ -13,6 +13,7 @@ use crate::{
   LogLevel,
   LogMessage,
   Logger,
+  RegisteredDeviceCommandHandler,
   ReportProcessingSession,
   TestHooks,
 };
@@ -48,6 +49,7 @@ use bd_test_helpers::test_api_server::{
 use bd_time::TimeProvider;
 use bd_time::test::TestTicker;
 use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver as StdReceiver, Sender as StdSender, channel as std_channel};
 use tempfile::TempDir;
@@ -106,8 +108,6 @@ impl TestHooks for SetupTestHooks {
 
 impl bd_session_replay::Target for MockSessionReplayTarget {
   fn capture_screen(&self) {}
-
-  fn capture_screenshot(&self) {}
 }
 
 //
@@ -133,6 +133,8 @@ pub struct SetupOptions {
   pub extra_runtime_values: Vec<(&'static str, ValueKind)>,
   pub handshake_response_plans: Vec<HandshakeResponsePlan>,
   pub stats_upload_response_plans: Vec<StatsUploadResponsePlan>,
+  pub device_command_handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
+  pub session_replay_target: Option<Box<dyn bd_session_replay::Target + Send + Sync>>,
   pub initial_stream_setup: InitialStreamSetup,
 }
 
@@ -148,6 +150,8 @@ impl Default for SetupOptions {
       extra_runtime_values: vec![],
       handshake_response_plans: vec![],
       stats_upload_response_plans: vec![],
+      device_command_handlers: HashMap::new(),
+      session_replay_target: None,
       initial_stream_setup: InitialStreamSetup::Initialize,
     }
   }
@@ -207,7 +211,7 @@ impl Setup {
     Self::new_with_options(options)
   }
 
-  pub fn new_with_options(options: SetupOptions) -> Self {
+  pub fn new_with_options(mut options: SetupOptions) -> Self {
     let mut server = bd_test_helpers::test_api_server::start_server(false, None);
     if matches!(
       options.initial_stream_setup,
@@ -242,7 +246,10 @@ impl Setup {
     let (startup_replay_gate_opened_tx, startup_replay_gate_opened_rx) = std_channel();
     let (workflow_event_processed_tx, workflow_event_processed_rx) =
       std::sync::mpsc::sync_channel(1);
-    let session_replay_target = Box::new(MockSessionReplayTarget);
+    let session_replay_target = options
+      .session_replay_target
+      .take()
+      .unwrap_or_else(|| Box::new(MockSessionReplayTarget));
 
     let (flush_tick_tx, flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
@@ -250,7 +257,7 @@ impl Setup {
       .session_strategy
       .unwrap_or_else(|| no_timeout(options.sdk_directory.path()));
 
-    let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
+    let mut logger_builder = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
       target_domain: format!("http://localhost:{}", server.port),
@@ -276,9 +283,11 @@ impl Setup {
       remote_streaming_trigger_upload_completed_tx,
       startup_replay_gate_opened_tx,
       workflow_event_processed_tx,
-    })))
-    .build_dedicated_thread()
-    .unwrap();
+    })));
+    for (registered_command_id, handler) in options.device_command_handlers {
+      logger_builder = logger_builder.with_device_command_handler(registered_command_id, handler);
+    }
+    let (logger, _, flush_trigger) = logger_builder.build_dedicated_thread().unwrap();
 
     let logger_handle = logger.new_logger_handle();
     let current_api_stream = matches!(options.initial_stream_setup, InitialStreamSetup::Initialize)
@@ -411,10 +420,6 @@ impl Setup {
       (
         bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
         ValueKind::Bool(false),
-      ),
-      (
-        bd_runtime::runtime::session_replay::ScreenshotsEnabledFlag::path(),
-        ValueKind::Bool(true),
       ),
       (
         bd_runtime::runtime::session_replay::PeriodicScreensEnabledFlag::path(),

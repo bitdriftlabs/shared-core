@@ -21,6 +21,7 @@ mod buffer_selector;
 pub mod builder;
 mod client_config;
 mod consumer;
+mod device_command;
 mod device_id;
 mod directory_lock;
 mod flush_registry;
@@ -41,6 +42,12 @@ pub use state_upload::{SnapshotRef, StateUploadHandle};
 pub(crate) mod test;
 
 pub use crate::app_version::AppVersionExtra;
+pub use crate::device_command::{
+  DeviceCommandAttachment,
+  DeviceCommandInvocation,
+  DeviceCommandResult,
+  RegisteredDeviceCommandHandler,
+};
 pub use crate::logger::{ChannelPair, InitParams};
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 use bd_buffer::AbslCode;
@@ -66,7 +73,11 @@ pub use bd_log_primitives::{
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1 as bd_proto_v1;
 pub use bd_proto_v1::MemoryPressureLevel;
 pub use bd_resource_utilization::Target as ResourceUtilizationTarget;
-pub use bd_session_replay::Target as SessionReplayTarget;
+pub use bd_session_replay::{
+  DeviceCommandScreenshotCompletion,
+  RemoteScreenshotCaptureHandler,
+  Target as SessionReplayTarget,
+};
 pub use builder::LoggerBuilder;
 pub use logger::{
   Block,

@@ -54,7 +54,7 @@ impl MyFuzzTest {
   pub fn new(test_case: MyFuzzTestCase) -> Self {
     // Clamp/validate inputs to reasonable ranges
     let buffer_size = ((test_case.buffer_size % 1_048_576) + 1024) as usize;
-    
+
     Self {
       test_case,
       state: HashMap::default(),
@@ -78,10 +78,10 @@ impl MyFuzzTest {
         OperationType::Insert { key, value } => {
           // Execute operation on real system
           let result = system.insert(&key, value).await;
-          
+
           // Update shadow state
           self.state.insert(key, value);
-          
+
           // Validate invariants
           self.verify_invariants(&system);
         },
@@ -156,13 +156,13 @@ Add explicit edge cases to increase coverage of interesting values:
 impl<'a> Arbitrary<'a> for ArbitraryValue {
   fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
     let variant: u8 = u.arbitrary()?;
-    
+
     // 10% chance of edge case, 90% chance of normal arbitrary value
     if variant.is_multiple_of(10) {
       let edge_case: ValueEdgeCase = u.arbitrary()?;
       return Ok(Self(edge_case.to_value()));
     }
-    
+
     // Generate normal arbitrary value
     // ...
   }
@@ -276,12 +276,12 @@ OperationType::ReopenWithCorruption { corruption, target } => {
   store.sync();
   let path = store.file_path();
   drop(store);
-  
+
   // Apply corruption to file
   let mut data = std::fs::read(&path)?;
   apply_corruption(&mut data, &corruption, &target);
   std::fs::write(&path, data)?;
-  
+
   // Reopen and verify error handling
   let result = System::open(path).await;
   // Verify system handles corruption gracefully
@@ -291,6 +291,21 @@ OperationType::ReopenWithCorruption { corruption, target } => {
 ## Running Fuzz Tests
 
 ### Run a specific fuzz target:
+```bash
+mkdir -p .tmp/fuzz/my_fuzz_test
+cp -R shared-core/fuzz/corpus/my_fuzz_test/. .tmp/fuzz/my_fuzz_test/
+
+./bazelw run --config=fuzz //shared-core/fuzz:my_fuzz_test -- \
+  -max_total_time=300 \
+  "$PWD/.tmp/fuzz/my_fuzz_test"
+```
+
+Pass libFuzzer flags after `--`. Use an absolute corpus path because Bazel runs the binary from its
+runfiles directory. Keep generated corpus additions in `.tmp/fuzz/`; minimize and review any
+candidate before moving it into the checked-in `shared-core/fuzz/corpus/` directory.
+
+The legacy Cargo runner remains available when its automatic corpus merge workflow is needed:
+
 ```bash
 fuzz/scripts/run_fuzzer.sh my_fuzz_test
 ```
@@ -313,10 +328,11 @@ See existing fuzz tests for reference:
 
 When a fuzz test finds a crash:
 
-1. The failing input is saved to `fuzz/artifacts/my_fuzz_test/crash-<hash>`
+1. The failing input is saved under `.tmp/fuzz/my_fuzz_test/`.
 2. Reproduce locally:
    ```bash
-   cargo +nightly fuzz run my_fuzz_test fuzz/artifacts/my_fuzz_test/crash-<hash>
+  ./bazelw run --config=fuzz //shared-core/fuzz:my_fuzz_test -- \
+    "$PWD/.tmp/fuzz/my_fuzz_test/crash-<hash>"
    ```
 3. Add the failing case to the corpus after fixing the bug to prevent regression
 

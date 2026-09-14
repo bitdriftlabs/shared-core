@@ -48,7 +48,6 @@ hyper = { version = "1", features = ["client", "http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "http2", "server", "service"] }
 idna = { version = "1" }
 indexmap = { version = "2", features = ["serde"] }
-itertools = { version = "0.13" }
 lalrpop-util = { version = "0.22" }
 libc = { version = "0.2" }
 libsqlite3-sys = { version = "0.37", default-features = false, features = ["bundled", "pkg-config", "unlock_notify", "vcpkg"] }
@@ -116,7 +115,6 @@ hyper = { version = "1", features = ["client", "http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "http2", "server", "service"] }
 idna = { version = "1" }
 indexmap = { version = "2", features = ["serde"] }
-itertools = { version = "0.13" }
 lalrpop-util = { version = "0.22" }
 libc = { version = "0.2" }
 libsqlite3-sys = { version = "0.37", default-features = false, features = ["bundled", "pkg-config", "unlock_notify", "vcpkg"] }
@@ -141,7 +139,7 @@ slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
 sqlx-core = { version = "0.9", features = ["_rt-tokio", "_tls-rustls-aws-lc-rs", "any", "json", "migrate", "offline", "time"] }
 sqlx-sqlite = { version = "0.9", default-features = false, features = ["any", "bundled", "deserialize", "json", "load-extension", "migrate", "offline", "time", "unlock-notify"] }
-syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "full", "visit-mut"] }
+syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 sync_wrapper = { version = "1", default-features = false, features = ["futures"] }
 thiserror = { version = "2" }

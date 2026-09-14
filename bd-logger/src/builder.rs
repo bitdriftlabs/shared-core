@@ -19,7 +19,12 @@ use crate::log_replay::LoggerReplay;
 use crate::logger::{Logger, PendingEntityIdUpdate, TestHooks};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
-use crate::{InitParams, LogAttributesOverrides, StartupReplayEligibility};
+use crate::{
+  InitParams,
+  LogAttributesOverrides,
+  RegisteredDeviceCommandHandler,
+  StartupReplayEligibility,
+};
 use bd_api::{
   AggregatedNetworkQualityProvider,
   DataUpload,
@@ -59,6 +64,7 @@ use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::{Future, try_join};
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
@@ -186,6 +192,7 @@ pub struct LoggerBuilder {
   internal_logger: bool,
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
+  device_command_handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
   test_hooks: Option<Arc<dyn TestHooks>>,
   startup_replay_eligibility: StartupReplayEligibility,
 }
@@ -193,7 +200,7 @@ pub struct LoggerBuilder {
 impl LoggerBuilder {
   /// Creates a new logger builder with the provided parameters.
   #[must_use]
-  pub const fn new(params: InitParams) -> Self {
+  pub fn new(params: InitParams) -> Self {
     Self {
       params,
       component_shutdown_handle: None,
@@ -201,6 +208,7 @@ impl LoggerBuilder {
       internal_logger: false,
       time_provider: None,
       crash_report_hook: None,
+      device_command_handlers: HashMap::new(),
       test_hooks: None,
       startup_replay_eligibility: StartupReplayEligibility::Unknown,
     }
@@ -262,6 +270,19 @@ impl LoggerBuilder {
     hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
   ) -> Self {
     self.crash_report_hook = hook;
+    self
+  }
+
+  /// Registers a platform handler for a custom device command definition.
+  #[must_use]
+  pub fn with_device_command_handler(
+    mut self,
+    registered_command_id: String,
+    handler: Arc<dyn RegisteredDeviceCommandHandler>,
+  ) -> Self {
+    self
+      .device_command_handlers
+      .insert(registered_command_id, handler);
     self
   }
 
@@ -376,44 +397,45 @@ impl LoggerBuilder {
     let pending_trigger_uploads = PendingTriggerUploadsStore::new(&self.params.sdk_directory);
     let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
 
-    let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
-      UninitializedLoggingContext::new(
-        &self.params.sdk_directory,
+    let (async_log_buffer, async_log_buffer_communication_tx, remote_screenshot_capture_handler) =
+      AsyncLogBuffer::<LoggerReplay>::new(
+        UninitializedLoggingContext::new(
+          &self.params.sdk_directory,
+          &runtime_loader,
+          scope.clone(),
+          stats,
+          trigger_upload_tx.clone(),
+          remote_flush_streaming_rx,
+          data_upload_tx.clone(),
+          flush_buffers_tx,
+          flusher_trigger.clone(),
+          1024 * 1024,
+          is_tracing_active.clone(),
+          process_local_pending_flush_state.clone(),
+          self.test_hooks.clone(),
+        ),
+        LoggerReplay,
+        session_strategy.clone(),
+        self.params.metadata_provider.clone(),
+        self.params.initial_ootb_fields,
+        self.params.initial_custom_fields,
+        self.params.resource_utilization_target,
+        self.params.session_replay_target,
+        self.params.events_listener_target,
+        config_update_rx,
+        report_proc_rx,
+        shutdown_handle.clone(),
         &runtime_loader,
-        scope.clone(),
-        stats,
-        trigger_upload_tx.clone(),
-        remote_flush_streaming_rx,
+        log_network_quality_provider,
+        aggregated_network_quality_provider,
+        self.params.device.id(),
+        &self.params.store,
+        time_provider.clone(),
+        init_lifecycle.clone(),
+        sdk_status_tracker.clone(),
         data_upload_tx.clone(),
-        flush_buffers_tx,
-        flusher_trigger.clone(),
-        1024 * 1024,
-        is_tracing_active.clone(),
-        process_local_pending_flush_state.clone(),
-        self.test_hooks.clone(),
-      ),
-      LoggerReplay,
-      session_strategy.clone(),
-      self.params.metadata_provider.clone(),
-      self.params.initial_ootb_fields,
-      self.params.initial_custom_fields,
-      self.params.resource_utilization_target,
-      self.params.session_replay_target,
-      self.params.events_listener_target,
-      config_update_rx,
-      report_proc_rx,
-      shutdown_handle.clone(),
-      &runtime_loader,
-      log_network_quality_provider,
-      aggregated_network_quality_provider,
-      self.params.device.id(),
-      &self.params.store,
-      time_provider.clone(),
-      init_lifecycle.clone(),
-      sdk_status_tracker.clone(),
-      data_upload_tx.clone(),
-      self.startup_replay_eligibility,
-    );
+        self.startup_replay_eligibility,
+      );
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
@@ -604,6 +626,12 @@ impl LoggerBuilder {
         LoggerUpdate::new(
           buffer_manager.clone(),
           config_update_tx,
+          data_upload_tx_clone.clone(),
+          trigger_upload_tx.clone(),
+          session_strategy.clone(),
+          artifact_client,
+          self.device_command_handlers,
+          remote_screenshot_capture_handler,
           &scope.scope("config"),
         ),
         time_provider.clone(),

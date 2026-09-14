@@ -30,7 +30,6 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::M
 use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::Snapshot;
-use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::{Counter as _, Histogram as _, labels};
 use parking_lot::Mutex;
@@ -332,14 +331,6 @@ impl LoggerHandle {
 
   pub fn log_session_replay_screen(&self, fields: AnnotatedLogFields, duration: time::Duration) {
     self.log_session_replay("Screen captured", fields, duration);
-  }
-
-  pub fn log_session_replay_screenshot(
-    &self,
-    fields: AnnotatedLogFields,
-    duration: time::Duration,
-  ) {
-    self.log_session_replay(SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE, fields, duration);
   }
 
   fn log_session_replay(

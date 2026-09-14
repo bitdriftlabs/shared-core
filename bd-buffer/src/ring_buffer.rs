@@ -608,12 +608,30 @@ pub struct Consumer {
   cursor_consumer: Box<dyn RingBufferCursorConsumer>,
   _lock_handle: Box<dyn LockHandle>,
 
-  // TODO(mattklein123): This is not actually required in the new code but some tests seem to
-  // depend on this. Clean this up during the old code purge.
-  _buffer: Arc<RingBuffer>,
+  // The consumer holds the aggregate producer lock, so the non-volatile buffer is stable while
+  // callers take the read-only snapshot used by device-command upload progress.
+  buffer: Arc<RingBuffer>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RemainingPayloadStats {
+  pub payload_bytes: u64,
+  pub record_count: u64,
 }
 
 impl Consumer {
+  pub fn remaining_payload_stats(&self) -> Result<RemainingPayloadStats> {
+    let (payload_bytes, record_count) = self
+      .buffer
+      .buffer
+      .non_volatile_buffer()
+      .locked_cursor_remaining_stats()?;
+    Ok(RemainingPayloadStats {
+      payload_bytes,
+      record_count,
+    })
+  }
+
   pub fn start_read(&mut self, block: bool) -> Result<Vec<u8>> {
     self.cursor_consumer.start_read(block).map(<[u8]>::to_vec)
   }
@@ -832,7 +850,7 @@ impl RingBuffer {
         .clone()
         .register_locked_cursor_consumer()?,
       _lock_handle: lock_handle,
-      _buffer: self.clone(),
+      buffer: self.clone(),
     })
   }
 

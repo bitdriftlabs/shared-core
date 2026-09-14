@@ -24,7 +24,6 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_runtime::runtime::{ConfigLoader, IntWatch};
-use bd_session_replay::CaptureScreenshotHandler;
 use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
@@ -149,7 +148,6 @@ pub struct ProcessingPipeline {
   // buffers.
   buffers_to_flush_rx: Receiver<BuffersToFlush>,
   remote_flush_streaming_rx: Receiver<RemoteFlushStreamingRequest>,
-  capture_screenshot_handler: CaptureScreenshotHandler,
   is_tracing_active: Arc<AtomicBool>,
   test_hooks: Option<Arc<dyn TestHooks>>,
 
@@ -163,7 +161,6 @@ impl ProcessingPipeline {
     flush_stats_trigger: FlushTrigger,
     trigger_upload_tx: Sender<TriggerUpload>,
     remote_flush_streaming_rx: Receiver<RemoteFlushStreamingRequest>,
-    capture_screenshot_handler: CaptureScreenshotHandler,
 
     config: ConfigUpdate,
 
@@ -226,8 +223,6 @@ impl ProcessingPipeline {
       trigger_upload_tx,
       buffers_to_flush_rx,
       remote_flush_streaming_rx,
-
-      capture_screenshot_handler,
       is_tracing_active,
       test_hooks,
 
@@ -306,11 +301,7 @@ impl ProcessingPipeline {
       log.log.capture_session
     );
 
-    Self::handle_common_pre_buffer_write(
-      &self.capture_screenshot_handler,
-      &result.triggered_flush_buffers_action_ids,
-      result.capture_screenshot,
-    );
+    Self::handle_common_pre_buffer_write(&result.triggered_flush_buffers_action_ids);
 
     Self::write_to_buffers(
       &mut self.buffer_producers,
@@ -348,16 +339,10 @@ impl ProcessingPipeline {
   }
 
   fn handle_common_pre_buffer_write(
-    capture_screenshot_handler: &CaptureScreenshotHandler,
     triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, FlushBufferId>>,
-    capture_screenshot: bool,
   ) {
     if !triggered_flush_buffers_action_ids.is_empty() {
       log::debug!("triggered flush buffer action IDs: {triggered_flush_buffers_action_ids:?}");
-    }
-
-    if capture_screenshot {
-      capture_screenshot_handler.capture_screenshot();
     }
   }
 
@@ -396,11 +381,7 @@ impl ProcessingPipeline {
 
     log::debug!("processed {state_change:?} state change");
 
-    Self::handle_common_pre_buffer_write(
-      &self.capture_screenshot_handler,
-      &result.triggered_flush_buffers_action_ids,
-      result.capture_screenshot,
-    );
+    Self::handle_common_pre_buffer_write(&result.triggered_flush_buffers_action_ids);
 
     // In order to work with session capture we need there to be a log that can be emitted with the
     // action ID for the flush action. Since state changes typically don't have associated logs, we

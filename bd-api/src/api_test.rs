@@ -8,7 +8,7 @@
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream, TestHooks};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::reconnect::ReconnectState;
-use crate::upload::Tracked;
+use crate::upload::{Tracked, TrackedDeviceCommandUpdate};
 use crate::{
   DataUpload,
   SimpleNetworkQualityProvider,
@@ -42,6 +42,8 @@ use bd_proto::protos::client::api::{
   ClientKillFile,
   ClientStateUpdate,
   ConfigurationUpdate,
+  DeviceCommandUpdate,
+  DeviceCommandUpdateAck,
   ErrorShutdown,
   FlushBuffers,
   HandshakeRequest,
@@ -52,6 +54,7 @@ use bd_proto::protos::client::api::{
   StatsUploadRequest,
   StatsUploadResponse,
   client_state_update,
+  device_command_update,
 };
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::data::Data_type;
@@ -1721,6 +1724,89 @@ async fn flush_buffers_response_forwards_streaming_to_trigger_upload() {
     trigger_upload.source,
     TriggerUploadSource::RemoteCommand(ref id) if !id.is_empty()
   );
+}
+
+#[tokio::test]
+async fn device_command_updates_retry_until_acknowledged() {
+  let mut setup = Setup::new().await;
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup.handshake_response(0, None, None).await;
+
+  let updates = vec![
+    DeviceCommandUpdate {
+      command_id: "0d822f57-92e8-4c43-a65b-e566d385e522".to_string(),
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(
+        device_command_update::Accepted::default(),
+      )),
+      ..Default::default()
+    },
+    DeviceCommandUpdate {
+      command_id: "0d822f57-92e8-4c43-a65b-e566d385e522".to_string(),
+      update_sequence_number: 2,
+      update_type: Some(device_command_update::Update_type::Completed(
+        device_command_update::Completed::default(),
+      )),
+      ..Default::default()
+    },
+    DeviceCommandUpdate {
+      command_id: "7e8d820f-69d2-4ba9-a6da-03b842c84800".to_string(),
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Failed(
+        device_command_update::Failed::default(),
+      )),
+      ..Default::default()
+    },
+  ];
+
+  for (index, update) in updates.into_iter().enumerate() {
+    let (tracked, response_rx) =
+      TrackedDeviceCommandUpdate::new(update.command_id.clone(), update.clone());
+    setup
+      .data_tx
+      .send(DataUpload::DeviceCommandUpdate(tracked))
+      .await
+      .unwrap();
+
+    assert_matches!(
+      setup.next_request(1.seconds()).await.unwrap().request_type,
+      Some(Request_type::DeviceCommandUpdate(request)) if request == update
+    );
+
+    if index == 0 {
+      setup
+        .send_response(ApiResponse {
+          response_type: Some(Response_type::DeviceCommandUpdateAck(
+            DeviceCommandUpdateAck {
+              command_id: update.command_id.clone(),
+              update_sequence_number: update.update_sequence_number,
+              error: "retry".to_string(),
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        })
+        .await;
+      assert_matches!(
+        setup.next_request(1.seconds()).await.unwrap().request_type,
+        Some(Request_type::DeviceCommandUpdate(request)) if request == update
+      );
+    }
+
+    setup
+      .send_response(ApiResponse {
+        response_type: Some(Response_type::DeviceCommandUpdateAck(
+          DeviceCommandUpdateAck {
+            command_id: update.command_id,
+            update_sequence_number: update.update_sequence_number,
+            ..Default::default()
+          },
+        )),
+        ..Default::default()
+      })
+      .await;
+    assert!(response_rx.await.is_ok());
+  }
 }
 
 #[tokio::test(start_paused = true)]

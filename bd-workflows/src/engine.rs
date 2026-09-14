@@ -809,7 +809,6 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
         triggered_flushes_buffer_ids: TinySet::default(),
         triggered_flush_buffers_action_ids: BTreeSet::default(),
-        capture_screenshot: false,
         is_tracing_active: self.state.is_tracing_active(),
         logs_to_inject: TinyMap::default(),
         workflow_debug_state: vec![],
@@ -1039,7 +1038,6 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         .triggered_flush_buffers_action_ids,
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
-      capture_screenshot: false,
       is_tracing_active: self.state.is_tracing_active(),
       logs_to_inject: logs_to_inject
         .into_iter()
@@ -1182,9 +1180,6 @@ pub struct WorkflowsEngineResult<'a> {
   pub triggered_flush_buffers_action_ids: BTreeSet<Cow<'a, FlushBufferId>>,
   // The identifier of trigger buffers that should be flushed.
   pub triggered_flushes_buffer_ids: TinySet<Cow<'static, str>>,
-
-  // Compatibility field for existing consumers. Workflows no longer request screenshots.
-  pub capture_screenshot: bool,
 
   // Whether tracing is currently active for this session.
   pub is_tracing_active: bool,
