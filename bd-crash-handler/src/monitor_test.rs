@@ -322,7 +322,7 @@ impl Setup {
       session,
       &InitLifecycleState::new(),
       (*state).clone(),
-      previous_run_state,
+      Arc::new(previous_run_state),
       emit_log,
       crash_report_hook,
     );

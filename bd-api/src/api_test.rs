@@ -55,6 +55,7 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::state::scope::StateScope;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_state::StateReader;
@@ -723,6 +724,12 @@ fn make_server_pushed_feature_flag_update(flag: &str, value: &str) -> ClientStat
     ..Default::default()
   });
   update
+}
+
+#[test]
+fn server_state_updates_exclude_sdk_owned_log_field_scopes() {
+  assert_eq!(Api::map_state_scope(StateScope::CUSTOM_FIELDS.into()), None);
+  assert_eq!(Api::map_state_scope(StateScope::OOTB_FIELDS.into()), None);
 }
 
 fn make_server_pushed_feature_flag_clear(flag: &str) -> ClientStateUpdate {

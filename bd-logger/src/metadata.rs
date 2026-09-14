@@ -103,9 +103,10 @@ impl MetadataCollector {
   }
 
   /// Returns log metadata using the last active global state at the end of the last process run.
-  /// Log fields take precedence over persisted global state fields to allow the caller to
-  /// override values in global state, e.g. when the crash handler knows that the event happened
-  /// in the background.
+  ///
+  /// The previous-global-state map remains the inline source until field elision is enabled.
+  /// State-backed fields are passed separately to the replay pipeline for matcher evaluation;
+  /// this preserves the prior inline payload behavior without decoding persisted values.
   /// Does *not* invoke the field providers as these would incorrectly reflect the state of the
   /// current process.
   pub(crate) fn metadata_from_fields_with_previous_global_state(
@@ -114,17 +115,13 @@ impl MetadataCollector {
     global_state_reader: &global_state::Reader,
     timestamp: time::OffsetDateTime,
   ) -> LogMetadata {
-    let fields = if let Some(previous_global_state_fields) =
-      global_state_reader.previous_global_state_fields()
-    {
-      previous_global_state_fields
-        .clone()
-        .into_iter()
-        .chain(fields.into_iter().map(|(k, v)| (k, v.value)))
-        .collect()
-    } else {
-      fields.into_iter().map(|(k, v)| (k, v.value)).collect()
-    };
+    let fields = global_state_reader
+      .previous_global_state_fields()
+      .cloned()
+      .unwrap_or_default()
+      .into_iter()
+      .chain(fields.into_iter().map(|(k, v)| (k, v.value)))
+      .collect();
 
     LogMetadata {
       timestamp,
@@ -284,6 +281,28 @@ impl MetadataCollector {
       entry.remove();
     }
   }
+
+  pub(crate) fn remove_ootb_field(&mut self, field_key: LogFieldKey) {
+    if let Entry::Occupied(entry) = self.fields.entry(field_key)
+      && entry.get().kind == LogFieldKind::Ootb
+    {
+      entry.remove();
+    }
+  }
+
+  /// Returns whether an OOTB field currently owns `key`.
+  pub(crate) fn is_ootb_field(&self, key: &str) -> bool {
+    self
+      .fields
+      .get(key)
+      .is_some_and(|field| field.kind == LogFieldKind::Ootb)
+  }
+
+  /// Returns the persistent fields supplied during logger construction for state-store seeding.
+  pub(crate) fn initial_persistent_fields(&self) -> (LogFields, LogFields) {
+    let PartitionedFields { ootb, custom } = partition_fields(self.fields.clone());
+    (ootb, custom)
+  }
 }
 
 fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
@@ -309,7 +328,7 @@ fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
   PartitionedFields { ootb, custom }
 }
 
-fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
+pub fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
   if RESERVED_FIELD_NAMES.contains(key) {
     anyhow::bail!(
       "Custom global field with {key:?} name is not allowed as the name is reserved for SDK \

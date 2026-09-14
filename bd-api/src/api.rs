@@ -587,6 +587,8 @@ impl Api {
       StateScope::FEATURE_FLAG => Some(bd_state::Scope::FeatureFlagExposure),
       StateScope::GLOBAL_STATE => Some(bd_state::Scope::GlobalState),
       StateScope::SYSTEM => Some(bd_state::Scope::System),
+      // Log-field scopes are owned by the SDK metadata collector. Server-pushed state updates
+      // must not overwrite their virtual matcher/extractor view independently of live metadata.
       StateScope::CUSTOM_FIELDS | StateScope::OOTB_FIELDS | StateScope::UNSPECIFIED => None,
     }
   }

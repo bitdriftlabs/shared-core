@@ -425,6 +425,69 @@ async fn system_scope_persists_on_restart() {
 }
 
 #[tokio::test]
+async fn log_field_scopes_persist_on_restart() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
+
+  {
+    let store = Store::persistent(
+      temp_dir.path(),
+      PersistentStoreConfig::default(),
+      time_provider.clone(),
+      &runtime_loader,
+      &Collector::default().scope("test"),
+    )
+    .await
+    .unwrap()
+    .store;
+
+    for (scope, key, value) in [
+      (Scope::CustomFields, "custom_key", "custom_value"),
+      (Scope::OotbFields, "ootb_key", "ootb_value"),
+    ] {
+      store
+        .insert(scope, key.to_string(), crate::string_value(value))
+        .await
+        .unwrap()
+        .unwrap();
+    }
+  }
+
+  let result = Store::persistent(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider,
+    &runtime_loader,
+    &Collector::default().scope("test"),
+  )
+  .await
+  .unwrap();
+
+  for (scope, key, value) in [
+    (Scope::CustomFields, "custom_key", "custom_value"),
+    (Scope::OotbFields, "ootb_key", "ootb_value"),
+  ] {
+    assert!(
+      result
+        .previous_state
+        .get(scope, key)
+        .is_some_and(|entry| entry.value.has_string_value() && entry.value.string_value() == value)
+    );
+    assert!(
+      result
+        .store
+        .read()
+        .await
+        .get(scope, key)
+        .is_some_and(|entry| entry.has_string_value() && entry.string_value() == value)
+    );
+  }
+}
+
+#[tokio::test]
 async fn session_id_persists_while_ephemeral_scopes_clear() {
   let temp_dir = tempfile::tempdir().unwrap();
   let time_provider = Arc::new(bd_time::TestTimeProvider::new(

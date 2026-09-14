@@ -88,6 +88,17 @@ impl FilterChain {
     (Self { filters }, failures_count)
   }
 
+  /// Applies matching filters and their inline-log transforms.
+  ///
+  /// Matchers may read state-backed custom and OOTB fields through `state`, but transforms never
+  /// materialize, redact, replace, or remove those values. Later state-aware consumers resolve
+  /// the same state again, so transforms apply only to fields concretely present on `log`.
+  ///
+  /// TODO(snowp): Before eliding these fields from logs, preserve filter semantics with a per-log
+  /// state overlay. The overlay must carry rewritten and removed state values through every
+  /// downstream consumer, including buffer/workflow matching and tailing, without mutating the
+  /// global state. Snapshot uploads need the corresponding resolved values, not the current
+  /// state, because a snapshot can outlive the filter configuration that transformed its log.
   pub fn process(&self, log: &mut Log, state: &dyn bd_state::StateReader) {
     for filter in &self.filters {
       let fields_ref = FieldsRef::new(&log.fields, &log.matching_fields);

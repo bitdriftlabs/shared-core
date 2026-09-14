@@ -317,6 +317,25 @@ pub enum DataValue {
   Array(LogArrayData),
 }
 
+/// Views a protobuf log value as the string representation supported by string matchers.
+///
+/// This is the borrowed counterpart to `DataValue::to_string_value`. It avoids constructing a
+/// `DataValue` when callers already hold a decoded protobuf `Data`.
+#[must_use]
+pub fn data_to_string_value(data: &Data) -> Option<Cow<'_, str>> {
+  match data.data_type.as_ref()? {
+    Data_type::StringData(value) => Some(Cow::Borrowed(value)),
+    Data_type::IntData(value) => Some(Cow::Owned(value.to_string())),
+    Data_type::SintData(value) => Some(Cow::Owned(value.to_string())),
+    Data_type::DoubleData(value) if !value.is_nan() => Some(Cow::Owned(value.to_string())),
+    Data_type::BinaryData(_)
+    | Data_type::BoolData(_)
+    | Data_type::MapData(_)
+    | Data_type::ArrayData(_)
+    | Data_type::DoubleData(_) => None,
+  }
+}
+
 impl DataValue {
   /// Creates a new `DataValue` instance from a static string slice. This is slightly more
   /// efficient than using `SharedString` as it avoids heap allocation.

@@ -8,7 +8,7 @@
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
 use bd_api::TriggerUploadStreaming;
-use bd_log_matcher::matcher::Tree;
+use bd_log_matcher::matcher::{Tree, field_value_with_state};
 use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::save_field::SaveField;
 use bd_proto::protos::workflow::save_field::save_field::Save_field_type;
@@ -1161,7 +1161,7 @@ impl TagValue {
     state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
     match self {
-      Self::FieldExtract(field_key) => fields.field_value(field_key),
+      Self::FieldExtract(field_key) => field_value_with_state(fields, state_reader, field_key),
       Self::StateExtract(scope, key) => state_reader.get(*scope, key).and_then(|value| {
         if value.value_type.is_none() {
           Some(Cow::Borrowed(""))

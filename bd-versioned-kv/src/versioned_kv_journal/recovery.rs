@@ -10,7 +10,7 @@ use crate::versioned_kv_journal::framing::{Frame, decode_raw_frame};
 use crate::versioned_kv_journal::journal::{HEADER_SIZE, VERSION};
 use crate::{MAX_COMPRESSED_STATE_SNAPSHOT_BYTES, Scope};
 use ahash::{AHashMap, AHashSet};
-use bd_proto::protos::state::payload::StateValue;
+use bd_proto::protos::state::state_payload::StateValue;
 use flate2::{Decompress, FlushDecompress, Status};
 use protobuf::Message;
 use std::io::{ErrorKind, Read};
@@ -347,8 +347,9 @@ pub fn extract_non_empty_string_values_from_compressed_journal(
     if frame.scope == scope && frame.key == key {
       let value = StateValue::parse_from_bytes(frame.payload)
         .map_err(|error| anyhow::anyhow!("Invalid state value at offset {offset}: {error}"))?;
-      if let Some(bd_proto::protos::state::payload::state_value::Value_type::StringValue(value)) =
-        value.value_type
+      if let Some(bd_proto::protos::state::state_payload::state_value::Value_type::StringValue(
+        value,
+      )) = value.value_type
         && !value.is_empty()
         && seen_values.insert(value.clone())
       {

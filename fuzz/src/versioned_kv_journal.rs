@@ -7,8 +7,8 @@
 
 use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
-use bd_proto::protos::state::payload::StateValue;
-use bd_proto::protos::state::payload::state_value::Value_type;
+use bd_proto::protos::state::state_payload::StateValue;
+use bd_proto::protos::state::state_payload::state_value::Value_type;
 use bd_time::{TestTimeProvider, TimeProvider as _};
 use bd_versioned_kv::{
   DataLoss,

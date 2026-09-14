@@ -7,7 +7,7 @@
 
 use crate::generate_log::generate_log_action;
 use crate::workflow::TraversalExtractions;
-use bd_log_primitives::{FieldsRef, Log, LogFieldKey, LogFields, log_level};
+use bd_log_primitives::{DataValue, FieldsRef, Log, LogFieldKey, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_proto_util::serialization::TimestampMicros;
@@ -25,6 +25,7 @@ struct Helper {
   extractions: TraversalExtractions,
   captured_fields: LogFields,
   matching_fields: LogFields,
+  state_reader: bd_state::InMemoryStateReader,
 }
 
 impl Helper {
@@ -36,6 +37,7 @@ impl Helper {
       extractions,
       captured_fields,
       matching_fields,
+      state_reader: bd_state::InMemoryStateReader::default(),
     }
   }
 
@@ -64,6 +66,7 @@ impl Helper {
         &self.extractions,
         action,
         FieldsRef::new(&self.captured_fields, &self.matching_fields),
+        &self.state_reader,
       )
     );
   }
@@ -84,6 +87,18 @@ impl Helper {
 
   fn add_field(&mut self, key: LogFieldKey, value: &str) {
     self.captured_fields.insert(key, value.into());
+  }
+
+  fn add_ootb_field(&mut self, key: &str, value: &str) {
+    self.state_reader.insert(
+      bd_state::Scope::OotbFields,
+      key,
+      bd_state::Value {
+        value_type: bd_state::Value_type::Data(DataValue::String(value.to_string()).into_proto())
+          .into(),
+        ..Default::default()
+      },
+    );
   }
 }
 
@@ -203,6 +218,14 @@ fn generate_log_with_field_from_current_log() {
     LogType::NORMAL,
     &action,
   );
+
+  helper.add_ootb_field("id2", "20");
+  helper.expect_log(
+    "hello world",
+    &[("add_both_bad", "NaN"), ("add_1_bad", "NaN"), ("add", "22")],
+    LogType::NORMAL,
+    &action,
+  );
 }
 
 #[test]
@@ -255,6 +278,7 @@ fn generate_log_with_uuid() {
     &helper.extractions,
     &action,
     FieldsRef::new(&helper.captured_fields, &helper.matching_fields),
+    &helper.state_reader,
   )
   .unwrap();
 

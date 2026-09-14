@@ -27,13 +27,18 @@ pub struct TestStore {
 impl TestStore {
   #[must_use]
   pub async fn new() -> Self {
+    Self::new_with_config(crate::PersistentStoreConfig::default()).await
+  }
+
+  #[must_use]
+  pub async fn new_with_config(config: crate::PersistentStoreConfig) -> Self {
     let temp_dir = tempfile::tempdir().unwrap();
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
     ));
     let store = crate::Store::persistent(
       temp_dir.path(),
-      crate::PersistentStoreConfig::default(),
+      config,
       time_provider.clone(),
       &bd_runtime::runtime::ConfigLoader::new(temp_dir.path()),
       &bd_client_stats_store::Collector::default().scope("test"),

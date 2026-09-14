@@ -132,6 +132,11 @@ fn read_index(setup: &Setup) -> PendingAggregationIndex {
   read_compressed_protobuf(&fs::read(setup.pending_aggregation_index_file_path()).unwrap()).unwrap()
 }
 
+fn try_read_index(setup: &Setup) -> Option<PendingAggregationIndex> {
+  let contents = fs::read(setup.pending_aggregation_index_file_path()).ok()?;
+  read_compressed_protobuf(&contents).ok()
+}
+
 #[test]
 fn inline_startup_upload_success_is_acked_and_reported_on_next_connection() {
   let directory = TempDir::new().unwrap();
@@ -957,15 +962,14 @@ fn snapshot_rotation_drop_is_reported_on_the_next_handshake() {
   let _initial_handshake = setup.server.blocking_next_handshake_request().unwrap();
 
   setup.trigger_periodic_stats_flush();
-  wait_for!(setup.pending_aggregation_index_file_path().exists());
-  wait_for!(read_index(&setup).pending_files.len() == 1);
+  wait_for!(try_read_index(&setup).is_some_and(|index| index.pending_files.len() == 1));
   setup.trigger_periodic_stats_flush();
-  wait_for!(
-    read_index(&setup)
+  wait_for!(try_read_index(&setup).is_some_and(|index| {
+    index
       .unreported_stats_pipeline_analytics
       .as_ref()
       .is_some_and(|analytics| analytics.stats_files_dropped_due_to_rotation == 1)
-  );
+  }));
 
   setup.restart_stream(false);
   let (_, handshake) = setup.server.blocking_next_handshake_request().unwrap();

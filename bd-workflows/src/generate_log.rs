@@ -14,10 +14,12 @@ use action::ActionGenerateLog;
 use action::action_generate_log::ValueReference;
 use action::action_generate_log::generated_field::Generated_field_value_type;
 use action::action_generate_log::value_reference::Value_reference_type;
+use bd_log_matcher::matcher::field_value_with_state;
 use bd_log_primitives::{DataValue, FieldsRef, Log, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::workflow::action;
 use bd_proto::protos::workflow::workflow::workflow::action::action_generate_log::ValueReferencePair;
+use bd_state::StateReader;
 use protobuf::Enum;
 use std::borrow::Cow;
 use std::fmt::Display;
@@ -49,12 +51,14 @@ fn resolve_reference<'a>(
   extractions: &'a TraversalExtractions,
   reference: &'a ValueReference,
   current_log_fields: FieldsRef<'a>,
+  state_reader: &'a dyn StateReader,
 ) -> Option<StringOrFloat<'a>> {
   match reference.value_reference_type.as_ref()? {
     Value_reference_type::Fixed(value) => Some(StringOrFloat::String(value.into())),
-    Value_reference_type::FieldFromCurrentLog(field_name) => current_log_fields
-      .field_value(field_name)
-      .map(StringOrFloat::String),
+    Value_reference_type::FieldFromCurrentLog(field_name) => {
+      field_value_with_state(current_log_fields, state_reader, field_name)
+        .map(StringOrFloat::String)
+    },
     Value_reference_type::SavedFieldId(saved_field_id) => extractions
       .fields
       .get(saved_field_id)
@@ -72,6 +76,7 @@ fn pair_to_floats(
   extractions: &TraversalExtractions,
   pair: &ValueReferencePair,
   current_log_fields: FieldsRef<'_>,
+  state_reader: &dyn StateReader,
 ) -> (f64, f64) {
   fn to_float(string_or_float: Option<StringOrFloat<'_>>) -> f64 {
     match string_or_float {
@@ -85,11 +90,13 @@ fn pair_to_floats(
     extractions,
     &pair.lhs,
     current_log_fields,
+    state_reader,
   ));
   let rhs = to_float(resolve_reference(
     extractions,
     &pair.rhs,
     current_log_fields,
+    state_reader,
   ));
   (lhs, rhs)
 }
@@ -98,28 +105,29 @@ pub fn generate_log_action(
   extractions: &TraversalExtractions,
   action: &ActionGenerateLog,
   current_log_fields: FieldsRef<'_>,
+  state_reader: &dyn StateReader,
 ) -> Option<Log> {
   let message = action.message.clone();
   let mut fields = LogFields::default();
   for field in &action.fields {
     let value = match field.generated_field_value_type.as_ref()? {
       Generated_field_value_type::Single(reference) => {
-        resolve_reference(extractions, reference, current_log_fields)
+        resolve_reference(extractions, reference, current_log_fields, state_reader)
       },
       Generated_field_value_type::Subtract(pair) => {
-        let (lhs, rhs) = pair_to_floats(extractions, pair, current_log_fields);
+        let (lhs, rhs) = pair_to_floats(extractions, pair, current_log_fields, state_reader);
         Some(StringOrFloat::Float(lhs - rhs))
       },
       Generated_field_value_type::Add(pair) => {
-        let (lhs, rhs) = pair_to_floats(extractions, pair, current_log_fields);
+        let (lhs, rhs) = pair_to_floats(extractions, pair, current_log_fields, state_reader);
         Some(StringOrFloat::Float(lhs + rhs))
       },
       Generated_field_value_type::Multiply(pair) => {
-        let (lhs, rhs) = pair_to_floats(extractions, pair, current_log_fields);
+        let (lhs, rhs) = pair_to_floats(extractions, pair, current_log_fields, state_reader);
         Some(StringOrFloat::Float(lhs * rhs))
       },
       Generated_field_value_type::Divide(pair) => {
-        let (lhs, rhs) = pair_to_floats(extractions, pair, current_log_fields);
+        let (lhs, rhs) = pair_to_floats(extractions, pair, current_log_fields, state_reader);
         Some(StringOrFloat::Float(lhs / rhs))
       },
     };

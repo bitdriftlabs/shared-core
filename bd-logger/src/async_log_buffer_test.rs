@@ -56,9 +56,16 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
 use bd_session::test::no_timeout;
-use bd_shutdown::ComponentShutdownTrigger;
+use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_state::test::TestStore;
-use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
+use bd_state::{
+  InMemoryStateReader,
+  MEMORY_PRESSURE_LEVEL_KEY,
+  PersistentStoreConfig,
+  SYSTEM_SESSION_ID_KEY,
+  Scope,
+  StateReader,
+};
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -72,13 +79,27 @@ use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use futures_util::poll;
-use std::future;
+use std::future::{self, Future};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::{Notify, mpsc};
 use tokio_test::assert_ok;
+
+fn run_with_shutdown<R: LogReplay + Send + 'static>(
+  buffer: AsyncLogBuffer<R>,
+  state_store: bd_state::Store,
+  report_processor: impl ReportProcessor,
+  shutdown: ComponentShutdown,
+) -> impl Future<Output = AsyncLogBuffer<R>> {
+  buffer.run_with_shutdown_and_previous_state(
+    state_store,
+    report_processor,
+    Arc::new(bd_versioned_kv::ScopedMaps::default()),
+    shutdown,
+  )
+}
 
 //
 // StartupGateReady
@@ -176,6 +197,7 @@ struct Setup {
   replayer_log_notify: Arc<Notify>,
   replayer_logs: Arc<parking_lot::Mutex<Vec<String>>>,
   replayer_fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  replayer_feature_flags: Arc<parking_lot::Mutex<Vec<Option<String>>>>,
   shutdown: Option<ComponentShutdownTrigger>,
   store: Arc<bd_device::Store>,
   session_strategy: Arc<Strategy>,
@@ -213,6 +235,7 @@ impl Setup {
       replayer_log_notify: Arc::new(Notify::new()),
       replayer_logs: Arc::default(),
       replayer_fields: Arc::default(),
+      replayer_feature_flags: Arc::default(),
       shutdown: Some(ComponentShutdownTrigger::default()),
       _data_upload_rx: data_upload_rx,
       data_upload_tx,
@@ -254,6 +277,7 @@ impl Setup {
     self.replayer_log_notify = replayer.logs_notify.clone();
     self.replayer_logs = replayer.logs.clone();
     self.replayer_fields = replayer.fields.clone();
+    self.replayer_feature_flags = replayer.feature_flags.clone();
 
     let (_, report_rx) = tokio::sync::mpsc::channel(1);
 
@@ -446,7 +470,8 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
 
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -480,7 +505,8 @@ async fn empty_startup_gate_opening_marks_log_processing_running() {
   );
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::spawn(buffer.run_with_shutdown(
+  let handle = tokio::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -522,7 +548,8 @@ async fn shutdown_before_configuration_does_not_open_the_startup_gate() {
   let event_buffer = buffer.event_buffer.clone();
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::spawn(buffer.run_with_shutdown(
+  let handle = tokio::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -567,7 +594,8 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
 
     let state_store = TestStore::new().await;
     let shutdown_trigger = ComponentShutdownTrigger::default();
-    let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    let handle = tokio::task::spawn(run_with_shutdown(
+      buffer,
       state_store.take_inner(),
       (),
       shutdown_trigger.make_shutdown(),
@@ -625,7 +653,8 @@ async fn report_processing_does_not_change_the_selected_startup_delay() {
     let processed = Arc::new(Notify::new());
     let state_store = TestStore::new().await;
     let shutdown_trigger = ComponentShutdownTrigger::default();
-    let handle = tokio::spawn(buffer.run_with_shutdown(
+    let handle = tokio::spawn(run_with_shutdown(
+      buffer,
       state_store.take_inner(),
       ReportProcessingSignal(processed.clone()),
       shutdown_trigger.make_shutdown(),
@@ -681,7 +710,8 @@ async fn flush_during_report_discovery_preserves_previous_process_replay_priorit
   let resume = Arc::new(Notify::new());
   let state_store = TestStore::new().await;
   let shutdown = ComponentShutdownTrigger::default();
-  let handle = tokio::spawn(buffer.run_with_shutdown(
+  let handle = tokio::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     PausedReportProcessor {
       entered: entered.clone(),
@@ -772,7 +802,8 @@ async fn startup_gate_ready_blocking_flush_releases_after_older_work() {
 
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -823,7 +854,8 @@ async fn startup_gate_ready_nonblocking_flush_does_not_release() {
   let event_buffer = buffer.event_buffer.clone();
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -868,7 +900,8 @@ async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressu
   }
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -1043,7 +1076,8 @@ async fn startup_gate_replays_previous_process_entries_before_current_entries() 
 
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -1061,6 +1095,7 @@ struct TestReplay {
   logs_notify: Arc<Notify>,
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  feature_flags: Arc<parking_lot::Mutex<Vec<Option<String>>>>,
 }
 
 struct StaticReportProcessor(parking_lot::Mutex<Vec<bd_crash_handler::CrashLog>>);
@@ -1153,6 +1188,7 @@ impl TestReplay {
       logs_notify: Arc::new(Notify::new()),
       logs: Arc::new(parking_lot::Mutex::new(vec![])),
       fields: Arc::new(parking_lot::Mutex::new(vec![])),
+      feature_flags: Arc::new(parking_lot::Mutex::new(vec![])),
     }
   }
 }
@@ -1163,13 +1199,19 @@ impl LogReplay for TestReplay {
     &mut self,
     log: Log,
     _processing_pipeline: &mut ProcessingPipeline,
-    _state: &bd_state::Store,
+    _state: &dyn StateReader,
     _now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     if let Some(message) = log.message.as_str() {
       self.logs.lock().push(message.to_string());
     }
 
+    self.feature_flags.lock().push(
+      _state
+        .get(Scope::FeatureFlagExposure, "flag")
+        .filter(|value| value.has_string_value())
+        .map(|value| value.string_value().to_string()),
+    );
     self.fields.lock().push(log.fields);
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     self.logs_notify.notify_waiters();
@@ -1674,7 +1716,12 @@ async fn logs_are_replayed_in_order() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run(state_store, ()).await;
+    _ = Box::pin(buffer.run_with_previous_state(
+      state_store,
+      (),
+      Arc::new(bd_versioned_kv::ScopedMaps::default()),
+    ))
+    .await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -1735,8 +1782,12 @@ async fn creates_workflows_engine_in_response_to_config_update() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
+    state_store,
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -1774,8 +1825,12 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
+    state_store,
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
   1.seconds().sleep().await;
   shutdown_trigger.shutdown().await;
   buffer = handle.await.unwrap();
@@ -1800,7 +1855,8 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -1868,7 +1924,8 @@ async fn logs_resource_utilization_log() {
   // Timeout as otherwise buffer's workflows engine continues to try
   // to periodically flush its state to disk which hold us stuck here.
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -1905,8 +1962,12 @@ async fn updates_system_session_id_for_new_sessions() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
+    state_store,
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
   wait_for_startup_gate_ready(&setup).await;
 
   let first_session_id = setup.session_strategy.session_id().unwrap();
@@ -1965,7 +2026,8 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
 
   let test_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     (*test_store).clone(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -2017,8 +2079,12 @@ async fn previous_run_log_does_not_override_system_session_id() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
+    state_store,
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
   wait_for_startup_gate_ready(&setup).await;
 
   let current_session_id = setup.session_strategy.session_id().unwrap();
@@ -2090,6 +2156,311 @@ async fn previous_run_log_does_not_override_system_session_id() {
   task.join().unwrap();
 }
 
+#[test]
+fn initial_field_state_updates_skip_unchanged_values() {
+  let initial_custom_fields: LogFields = [("field".into(), "value".into())].into();
+  let mut state = InMemoryStateReader::new();
+  state.insert(
+    Scope::CustomFields,
+    "field",
+    super::persistent_field_value(DataValue::String("value".to_string())),
+  );
+
+  assert!(
+    super::initial_field_state_updates(LogFields::default(), initial_custom_fields, &state,)
+      .is_empty()
+  );
+}
+
+#[tokio::test]
+async fn ootb_ownership_prevents_custom_state_changes() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new().await;
+  let ootb_value = super::persistent_field_value(DataValue::String("ootb".to_string()));
+  let custom_value = super::persistent_field_value(DataValue::String("custom".to_string()));
+
+  assert_ok!(
+    state_store
+      .insert(Scope::OotbFields, "shared".to_string(), ootb_value.clone())
+      .await
+  );
+
+  buffer
+    .process_control(
+      LoggerControl::AddLogField(
+        "shared".to_string(),
+        DataValue::String("custom".to_string()),
+      ),
+      &state_store,
+    )
+    .await;
+
+  let state = state_store.read().await;
+  assert_eq!(state.get(Scope::OotbFields, "shared"), Some(&ootb_value));
+  assert!(state.get(Scope::CustomFields, "shared").is_none());
+  drop(state);
+  assert!(!buffer.metadata_collector.is_ootb_field("shared"));
+
+  // Preserve a legacy custom value while its OOTB counterpart owns the virtual field. This can
+  // occur after upgrading from a version that allowed both state entries to coexist.
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::CustomFields,
+        "shared".to_string(),
+        custom_value.clone()
+      )
+      .await
+  );
+  buffer
+    .process_control(
+      LoggerControl::RemoveLogField("shared".to_string()),
+      &state_store,
+    )
+    .await;
+
+  assert_eq!(
+    state_store.read().await.get(Scope::CustomFields, "shared"),
+    Some(&custom_value)
+  );
+}
+
+#[tokio::test]
+async fn metadata_ootb_ownership_prevents_custom_state_changes() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new().await;
+
+  buffer
+    .metadata_collector
+    .update_ootb_field("metadata_only".into(), "ootb".into());
+  buffer
+    .process_control(
+      LoggerControl::AddLogField(
+        "metadata_only".to_string(),
+        DataValue::String("custom".to_string()),
+      ),
+      &state_store,
+    )
+    .await;
+
+  assert!(
+    state_store
+      .read()
+      .await
+      .get(Scope::CustomFields, "metadata_only")
+      .is_none()
+  );
+
+  let custom_value = super::persistent_field_value(DataValue::String("custom".to_string()));
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::CustomFields,
+        "metadata_only".to_string(),
+        custom_value.clone(),
+      )
+      .await
+  );
+  buffer
+    .process_control(
+      LoggerControl::RemoveLogField("metadata_only".to_string()),
+      &state_store,
+    )
+    .await;
+
+  assert_eq!(
+    state_store
+      .read()
+      .await
+      .get(Scope::CustomFields, "metadata_only"),
+    Some(&custom_value)
+  );
+}
+
+#[tokio::test]
+async fn capacity_rejected_field_updates_preserve_state_and_metadata() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new_with_config(PersistentStoreConfig {
+    initial_buffer_size: 8 * 1024,
+    max_capacity_bytes: 8 * 1024,
+    high_water_mark_ratio: 0.8,
+  })
+  .await;
+  let custom_initial = DataValue::String("custom_initial".to_string());
+  let ootb_initial = DataValue::String("ootb_initial".to_string());
+
+  buffer
+    .process_control(
+      LoggerControl::AddLogField("custom".to_string(), custom_initial.clone()),
+      &state_store,
+    )
+    .await;
+  buffer
+    .process_control(
+      LoggerControl::UpdateOotbLogField("ootb".to_string(), ootb_initial.clone()),
+      &state_store,
+    )
+    .await;
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::System,
+        "unrelated".to_string(),
+        bd_state::string_value("x".repeat(6_200)),
+      )
+      .await
+  );
+
+  // These writes cannot fit alongside the surviving system state after compaction. Rejection
+  // must leave both the virtual state and the metadata source of emitted fields unchanged.
+  let rejected = DataValue::String("rejected".repeat(585));
+  buffer
+    .process_control(
+      LoggerControl::AddLogField("custom".to_string(), rejected.clone()),
+      &state_store,
+    )
+    .await;
+  buffer
+    .process_control(
+      LoggerControl::UpdateOotbLogField("ootb".to_string(), rejected),
+      &state_store,
+    )
+    .await;
+
+  let state = state_store.read().await;
+  assert_eq!(
+    state.get(Scope::CustomFields, "custom"),
+    Some(&super::persistent_field_value(custom_initial.clone()))
+  );
+  assert_eq!(
+    state.get(Scope::OotbFields, "ootb"),
+    Some(&super::persistent_field_value(ootb_initial.clone()))
+  );
+  drop(state);
+
+  let (ootb_fields, custom_fields) = buffer.metadata_collector.initial_persistent_fields();
+  assert_eq!(custom_fields.get("custom"), Some(&custom_initial));
+  assert_eq!(ootb_fields.get("ootb"), Some(&ootb_initial));
+}
+
+#[tokio::test]
+async fn capacity_rejected_initial_fields_are_dropped_from_metadata() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new_with_config(PersistentStoreConfig {
+    initial_buffer_size: 8 * 1024,
+    max_capacity_bytes: 8 * 1024,
+    high_water_mark_ratio: 0.8,
+  })
+  .await;
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::System,
+        "unrelated".to_string(),
+        bd_state::string_value("x".repeat(6_200)),
+      )
+      .await
+  );
+  let rejected = DataValue::String("rejected".repeat(585));
+  assert_ok!(
+    buffer
+      .metadata_collector
+      .add_field("initial_custom".into(), rejected.clone())
+  );
+  buffer
+    .metadata_collector
+    .update_ootb_field("initial_ootb".into(), rejected.clone());
+
+  // Startup has no previous inline value to retain, so an unpersistable field is dropped rather
+  // than emitted without a matching virtual state value.
+  buffer
+    .persist_initial_log_fields(
+      [("initial_ootb".into(), rejected.clone())].into(),
+      [("initial_custom".into(), rejected)].into(),
+      &state_store,
+    )
+    .await;
+
+  let state = state_store.read().await;
+  assert!(state.get(Scope::CustomFields, "initial_custom").is_none());
+  assert!(state.get(Scope::OotbFields, "initial_ootb").is_none());
+  drop(state);
+
+  let (ootb_fields, custom_fields) = buffer.metadata_collector.initial_persistent_fields();
+  assert!(!custom_fields.contains_key("initial_custom"));
+  assert!(!ootb_fields.contains_key("initial_ootb"));
+}
+
+#[tokio::test]
+async fn previous_process_logs_use_snapshot_state() {
+  let mut setup = Setup::new();
+  let (config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new().await;
+  assert_ok!(
+    state_store
+      .insert(
+        Scope::FeatureFlagExposure,
+        "flag".to_string(),
+        bd_state::string_value("current"),
+      )
+      .await
+  );
+  let mut previous_run_state = bd_versioned_kv::ScopedMaps::default();
+  previous_run_state.insert(
+    Scope::FeatureFlagExposure,
+    "flag".to_string(),
+    bd_versioned_kv::TimestampedValue {
+      timestamp: 0,
+      value: bd_state::string_value("previous"),
+    },
+  );
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let task = std::thread::spawn(move || {
+    assert_ok!(config_update_tx.blocking_send(config_update));
+  });
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown_and_previous_state(
+    state_store.take_inner(),
+    (),
+    Arc::new(previous_run_state),
+    shutdown_trigger.make_shutdown(),
+  ));
+  wait_for_startup_gate_ready(&setup).await;
+
+  sender
+    .try_send_log(LogLine {
+      log_level: log_level::DEBUG,
+      log_type: LogType::NORMAL,
+      message: "previous".into(),
+      fields: AnnotatedLogFields::new(),
+      matching_fields: AnnotatedLogFields::new(),
+      attributes_overrides: Some(LogAttributesOverrides::PreviousRunSessionID(
+        OffsetDateTime::now_utc(),
+      )),
+      capture_session: None,
+    })
+    .unwrap();
+  wait_for_replayed_logs(&setup, 1).await;
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+  task.join().unwrap();
+
+  assert_eq!(
+    &[Some("previous".to_string())],
+    setup.replayer_feature_flags.lock().as_slice()
+  );
+}
+
 #[tokio::test]
 async fn processes_log_with_global_state_in_attributes_overrides() {
   let mut setup = Setup::new();
@@ -2116,7 +2487,8 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
   let state_store = TestStore::new().await;
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+  let handle = tokio::task::spawn(run_with_shutdown(
+    buffer,
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
@@ -2183,7 +2555,8 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
 
   let shutdown_trigger_2 = ComponentShutdownTrigger::default();
   let state_store_2 = TestStore::new().await;
-  let handle_2 = tokio::task::spawn(buffer_2.run_with_shutdown(
+  let handle_2 = tokio::task::spawn(run_with_shutdown(
+    buffer_2,
     state_store_2.take_inner(),
     (),
     shutdown_trigger_2.make_shutdown(),

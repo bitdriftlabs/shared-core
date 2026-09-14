@@ -40,9 +40,9 @@ pub fn decompress_zlib(data: &[u8]) -> anyhow::Result<Vec<u8>> {
   Ok(decompressed)
 }
 
-pub fn make_string_value(s: &str) -> state::payload::StateValue {
-  state::payload::StateValue {
-    value_type: Some(state::payload::state_value::Value_type::StringValue(
+pub fn make_string_value(s: &str) -> state::state_payload::StateValue {
+  state::state_payload::StateValue {
+    value_type: Some(state::state_payload::state_value::Value_type::StringValue(
       s.to_string(),
     )),
     ..Default::default()
