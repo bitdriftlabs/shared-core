@@ -114,8 +114,9 @@ impl Listener {
   /// however, and must unregister those callbacks before the platform frees its logger handle.
   pub fn shutdown(&mut self) {
     if self.target_is_active {
-      log::debug!("events listener stop on shutdown");
+      log::debug!("events listener stopping active platform target");
       self.target.stop();
+      log::debug!("events listener stopped active platform target");
       self.target_is_active = false;
     }
   }

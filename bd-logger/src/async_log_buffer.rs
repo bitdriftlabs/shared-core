@@ -1177,15 +1177,25 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         () = self.resource_utilization_reporter.run() => {},
         () = self.session_replay_recorder.run() => {},
         () = self.events_listener.run() => {},
-        () = &mut local_shutdown => break,
-        () = &mut self_shutdown => break,
+        () = &mut local_shutdown => {
+          log::debug!("async log buffer received component shutdown");
+          break;
+        },
+        () = &mut self_shutdown => {
+          log::debug!("async log buffer received internal shutdown");
+          break;
+        },
       }
     }
 
     // The listener future is cancelled when this loop exits, so it cannot run its own shutdown
     // path. Stop platform callbacks while the logger and its platform handle are still alive.
+    log::debug!("async log buffer stopping events listener");
     self.events_listener.shutdown();
+    log::debug!("async log buffer stopped events listener");
+    log::debug!("async log buffer closing event buffer");
     self.event_buffer.close();
+    log::debug!("async log buffer shutdown completed");
     self
   }
 

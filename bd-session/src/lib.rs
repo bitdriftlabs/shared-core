@@ -48,6 +48,7 @@ use std::cell::Cell;
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use thread_local::ThreadLocal;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -133,6 +134,7 @@ pub struct Strategy {
   state: PlatformMutex<Option<LoadedState>>,
   persistence_tx: mpsc::Sender<PersistenceRequest>,
   update_tx: watch::Sender<u64>,
+  max_pending_started_sessions: AtomicU32,
   callback_in_progress: Box<ThreadLocal<Cell<bool>>>,
 }
 
@@ -144,6 +146,7 @@ pub struct Strategy {
 pub struct PersistenceWorker {
   strategy: Arc<Strategy>,
   receiver: mpsc::Receiver<PersistenceRequest>,
+  next_logged_pending_started_session_count: usize,
 }
 
 /// A session strategy paired with its single persistence worker.
@@ -202,6 +205,7 @@ impl Strategy {
       state: PlatformMutex::new(None),
       persistence_tx,
       update_tx,
+      max_pending_started_sessions: AtomicU32::new(100),
       callback_in_progress: Box::new(ThreadLocal::new()),
     });
     StrategyWithWorker {
@@ -209,6 +213,7 @@ impl Strategy {
       persistence_worker: PersistenceWorker {
         strategy,
         receiver: persistence_rx,
+        next_logged_pending_started_session_count: 1_000,
       },
     }
   }
@@ -239,7 +244,11 @@ impl Strategy {
     let (current_session_id, effects) = {
       let mut guard = self.state.lock();
       if let Some(state) = guard.as_mut() {
-        let effects = self.configuration.on_session_id(state);
+        let mut effects = self.configuration.on_session_id(state);
+        if self.apply_pending_started_sessions_limit(state) > 0 {
+          effects.persist = true;
+          effects.notify_update = true;
+        }
 
         let current_session_id = Self::loaded_session_id(state)?;
         (current_session_id, effects)
@@ -282,6 +291,33 @@ impl Strategy {
 
     self.apply_effects(effects);
     Ok(())
+  }
+
+  /// Caps durable session-start announcements while retaining the newest entries.
+  ///
+  /// A limit of zero disables queueing, but does not prevent local session rotation.
+  pub fn set_max_pending_started_sessions(&self, max_pending_started_sessions: u32) {
+    self
+      .max_pending_started_sessions
+      .store(max_pending_started_sessions, Ordering::Relaxed);
+
+    let dropped = {
+      let mut state = self.state.lock();
+      state
+        .as_mut()
+        .map_or(0, |state| self.apply_pending_started_sessions_limit(state))
+    };
+    if dropped > 0 {
+      log::debug!(
+        "trimmed pending started-session queue after limit update: dropped={dropped}, \
+         retained={max_pending_started_sessions}"
+      );
+      self.apply_effects(TransitionEffects {
+        persist: true,
+        notify_update: true,
+        callback: None,
+      });
+    }
   }
 
   fn ensure_not_in_callback(&self, operation: &str) -> anyhow::Result<()> {
@@ -503,13 +539,17 @@ impl Strategy {
         pending_started_sessions.len()
       );
 
-      return self
+      let mut transition = self
         .initialize_after_inactivity_timeout_enabled(persisted.clone(), pending_started_sessions);
+      self.apply_pending_started_sessions_limit_to_transition(&mut transition);
+      return transition;
     }
 
-    self
+    let mut transition = self
       .configuration
-      .initialize(persisted, pending_started_sessions)
+      .initialize(persisted, pending_started_sessions);
+    self.apply_pending_started_sessions_limit_to_transition(&mut transition);
+    transition
   }
 
   fn initialize_after_inactivity_timeout_enabled(
@@ -587,12 +627,13 @@ impl Strategy {
       pending_started_sessions.len()
     );
 
-    let initialization = self.configuration.start_new_session(
+    let mut initialization = self.configuration.start_new_session(
       session_id,
       state.as_ref(),
       persisted,
       pending_started_sessions,
     );
+    self.apply_pending_started_sessions_limit_to_transition(&mut initialization);
 
     log::debug!(
       "computed explicit session rotation: configuration={}, current_session_id={}, persist={}, \
@@ -638,7 +679,46 @@ impl Strategy {
     self.run_callback(effects.callback);
   }
 
-  async fn persist_current_state(&self, on_persistence_failure: &(dyn Fn() + Send + Sync)) {
+  fn apply_pending_started_sessions_limit_to_transition(&self, transition: &mut Transition) {
+    if self.apply_pending_started_sessions_limit(&mut transition.state) > 0 {
+      transition.effects.persist = true;
+      transition.effects.notify_update = true;
+    }
+  }
+
+  /// Retains the newest durable starts so state-update requests stay bounded with the queue.
+  ///
+  /// Returning the number removed lets runtime-limit updates make one useful diagnostic entry
+  /// without logging once per ordinary session rotation at the cap.
+  fn apply_pending_started_sessions_limit(&self, state: &mut LoadedState) -> usize {
+    let max_pending_started_sessions =
+      self.max_pending_started_sessions.load(Ordering::Relaxed) as usize;
+    let dropped = state
+      .pending_started_sessions
+      .len()
+      .saturating_sub(max_pending_started_sessions);
+    if dropped == 0 {
+      return 0;
+    }
+
+    state.pending_started_sessions.drain(.. dropped);
+    state.persistence_pending = true;
+    dropped
+  }
+
+  fn pending_started_session_count(&self) -> usize {
+    self
+      .state
+      .lock()
+      .as_ref()
+      .map_or(0, |state| state.pending_started_sessions.len())
+  }
+
+  async fn persist_current_state(
+    &self,
+    on_persistence_failure: &(dyn Fn() + Send + Sync),
+    log_progress: bool,
+  ) {
     let Some(snapshot) = self.state.lock().as_mut().and_then(|state| {
       state.persistence_pending.then(|| {
         state.persistence_pending = false;
@@ -648,12 +728,20 @@ impl Strategy {
       return;
     };
 
+    let pending_started_session_count = snapshot.pending_started_sessions.len();
+    if log_progress {
+      log::debug!(
+        "session persistence snapshot started: \
+         pending_started_sessions={pending_started_session_count}"
+      );
+    }
+
     log::debug!(
       "persisting coalesced session snapshot: configuration={}, current_session_id={}, \
        pending_started_sessions={}",
       self.type_name(),
       snapshot.persisted.current_session_id,
-      snapshot.pending_started_sessions.len()
+      pending_started_session_count
     );
 
     let result = async {
@@ -673,6 +761,11 @@ impl Strategy {
       }
       on_persistence_failure();
       log::warn!("failed to persist coalesced session snapshot: {e}");
+    } else if log_progress {
+      log::debug!(
+        "session persistence snapshot completed: \
+         pending_started_sessions={pending_started_session_count}"
+      );
     }
   }
 
@@ -706,31 +799,77 @@ impl Strategy {
 }
 
 impl PersistenceWorker {
-  /// Runs the dedicated coalescing writer until `shutdown` resolves.
+  fn should_log_progress(&mut self) -> bool {
+    let pending_started_session_count = self.strategy.pending_started_session_count();
+    if pending_started_session_count < self.next_logged_pending_started_session_count {
+      return false;
+    }
+
+    self.next_logged_pending_started_session_count =
+      (pending_started_session_count / 1_000 + 1) * 1_000;
+    true
+  }
+
+  /// Runs the dedicated coalescing writer until `shutdown` resolves while applying live updates
+  /// to the pending-session limit.
   pub async fn run<F>(
     mut self,
     shutdown: F,
+    mut max_pending_started_sessions: watch::Receiver<u32>,
     on_persistence_failure: impl Fn() + Send + Sync + 'static,
   ) where
     F: Future<Output = ()> + Send,
   {
+    self
+      .strategy
+      .set_max_pending_started_sessions(*max_pending_started_sessions.borrow());
     tokio::pin!(shutdown);
+    let mut runtime_updates_open = true;
     loop {
       tokio::select! {
+        changed = max_pending_started_sessions.changed(), if runtime_updates_open => {
+          match changed {
+            Ok(()) => {
+              let max_pending_started_sessions =
+                *max_pending_started_sessions.borrow_and_update();
+              self
+                .strategy
+                .set_max_pending_started_sessions(max_pending_started_sessions);
+            },
+            Err(_) => {
+              // The loader is gone, so retain its last applied value without spinning on the
+              // permanently-closed watch while persistence and shutdown continue.
+              runtime_updates_open = false;
+            },
+          }
+        },
         Some(request) = self.receiver.recv() => {
           match request {
             PersistenceRequest::Persist => {
-              self.strategy.persist_current_state(&on_persistence_failure).await;
+              let log_progress = self.should_log_progress();
+              self
+                .strategy
+                .persist_current_state(&on_persistence_failure, log_progress)
+                .await;
             },
             PersistenceRequest::Flush(completion_tx) => {
               // A mutation may have coalesced behind this barrier while it occupied the channel.
-              self.strategy.persist_current_state(&on_persistence_failure).await;
+              let log_progress = self.should_log_progress();
+              self
+                .strategy
+                .persist_current_state(&on_persistence_failure, log_progress)
+                .await;
               let _ignored = completion_tx.send(());
             },
           }
         },
         () = &mut shutdown => {
-          self.strategy.persist_current_state(&on_persistence_failure).await;
+          log::debug!("session persistence worker received shutdown");
+          let log_progress = self.should_log_progress();
+          self
+            .strategy
+            .persist_current_state(&on_persistence_failure, log_progress)
+            .await;
           while let Ok(request) = self.receiver.try_recv() {
             match request {
               PersistenceRequest::Persist => {},
@@ -739,6 +878,7 @@ impl PersistenceWorker {
               },
             }
           }
+          log::debug!("session persistence worker stopped");
           return;
         },
       }

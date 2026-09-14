@@ -15,6 +15,7 @@ use pretty_assertions::assert_eq;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::{Duration, OffsetDateTime};
+use tokio::sync::watch;
 
 //
 // TestCallbacks
@@ -70,6 +71,7 @@ async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
     async move {
       let _ignored = shutdown_rx.await;
     },
+    watch::channel(100).1,
     || {},
   ));
 
@@ -113,6 +115,7 @@ async fn flush_request_waits_for_persistence_worker() {
     async move {
       let _ignored = shutdown_rx.await;
     },
+    watch::channel(100).1,
     || {},
   ));
 
@@ -141,6 +144,7 @@ async fn flush_retries_persistence_after_a_failed_write() {
     async move {
       let _ignored = shutdown_rx.await;
     },
+    watch::channel(100).1,
     || {},
   ));
 
@@ -212,6 +216,46 @@ async fn acknowledge_state_update_ignores_non_prefix_updates() {
     vec!["session-1", "session-2"],
     started_session_ids(still_pending.request())
   );
+}
+
+#[tokio::test]
+async fn pending_started_session_limit_keeps_the_newest_entries() {
+  let sdk_directory = TempDir::new().unwrap();
+  let StrategyWithWorker { strategy, .. } = no_timeout_strategy(&sdk_directory, "session-1");
+  strategy.set_max_pending_started_sessions(2);
+
+  strategy.session_id().unwrap();
+  strategy
+    .start_new_session(Some("session-2".into()))
+    .unwrap();
+  strategy
+    .start_new_session(Some("session-3".into()))
+    .unwrap();
+
+  let pending = strategy.pending_state_update().unwrap();
+  assert_eq!(
+    vec!["session-2", "session-3"],
+    started_session_ids(pending.request())
+  );
+}
+
+#[tokio::test]
+async fn zero_pending_started_session_limit_disables_queueing() {
+  let sdk_directory = TempDir::new().unwrap();
+  let StrategyWithWorker { strategy, .. } = no_timeout_strategy(&sdk_directory, "session-1");
+  strategy.set_max_pending_started_sessions(0);
+
+  let session_id = strategy.session_id().unwrap();
+  strategy
+    .start_new_session(Some("session-2".into()))
+    .unwrap();
+
+  assert!(strategy.pending_state_update().is_none());
+  assert_eq!(
+    vec!["session-2"],
+    started_session_ids(strategy.handshake_state_update().request())
+  );
+  assert_ne!(session_id, strategy.session_id().unwrap());
 }
 
 #[tokio::test]

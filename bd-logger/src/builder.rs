@@ -318,6 +318,9 @@ impl LoggerBuilder {
     );
     let max_dynamic_stats =
       bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(&runtime_loader).into_inner();
+    let max_pending_started_sessions =
+      bd_runtime::runtime::session::MaxPendingStartedSessions::register(&runtime_loader)
+        .into_inner();
     let collector = Collector::new(Some(max_dynamic_stats));
 
     let scope = collector.scope("");
@@ -645,41 +648,58 @@ impl LoggerBuilder {
             () = api.start() => { Ok(()) },
             () = api_shutdown.cancelled() => { Ok(()) }
           }
+          .inspect(|()| log::debug!("logger API task stopped"))
         },
-        async move { buffer_uploader.run().await },
+        async move {
+          buffer_uploader
+            .run()
+            .await
+            .inspect(|()| log::debug!("logger buffer uploader stopped"))
+        },
         async move {
           config_writer.run().await;
+          log::debug!("logger crash config writer stopped");
           Ok(())
         },
         async move {
           async_log_buffer.run(state_store, crash_monitor).await;
+          log::debug!("logger async log buffer stopped");
           Ok(())
         },
         async move {
           buffer_manager.process_flushes(flush_buffers_rx).await;
+          log::debug!("logger buffer manager stopped");
           Ok(())
         },
         async move {
           stats_flusher.periodic_flush().await;
+          log::debug!("logger stats flusher stopped");
           Ok(())
         },
         async move {
           artifact_uploader.run().await;
+          log::debug!("logger artifact uploader stopped");
           Ok(())
         },
         async move {
           if let Some(worker) = state_upload_worker {
             worker.run().await;
           }
+          log::debug!("logger state upload worker stopped");
           Ok(())
         },
         async move {
           let mut shutdown = session_persistence_shutdown_handle.make_shutdown();
           session_persistence_worker
-            .run(shutdown.cancelled(), move || {
-              session_persistence_failures.inc();
-            })
+            .run(
+              shutdown.cancelled(),
+              max_pending_started_sessions,
+              move || {
+                session_persistence_failures.inc();
+              },
+            )
             .await;
+          log::debug!("logger session persistence worker stopped");
           Ok(())
         }
       )
@@ -727,7 +747,9 @@ impl LoggerBuilder {
           .enable_all()
           .build()?
           .block_on(async {
+            log::debug!("logger runtime started");
             handle_unexpected(f.await, "logger top level run loop");
+            log::debug!("logger runtime stopped");
           });
         Ok::<_, anyhow::Error>(())
       })?;
