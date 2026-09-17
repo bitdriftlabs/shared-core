@@ -235,12 +235,15 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       },
     };
     if !response.status().is_success() {
+      let response_status = response.status();
+      let response_headers = response.headers().clone();
       return Err(
         Status::new(
           Code::Internal,
-          format!("Non-200 response code: {}", response.status()),
+          format!("Non-200 response code: {response_status}"),
           None,
         )
+        .with_response_context(response_status, response_headers)
         .into(),
       );
     }
@@ -248,7 +251,11 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     // We treat any trailer only response as an error, even with the response status is OK. This
     // seems fine for now.
     if response.headers().contains_key(GRPC_STATUS) {
-      return Err(Status::from_headers(response.headers()).into());
+      return Err(
+        Status::from_headers(response.headers())
+          .with_response_context(response.status(), response.headers().clone())
+          .into(),
+      );
     }
 
     Ok(response)

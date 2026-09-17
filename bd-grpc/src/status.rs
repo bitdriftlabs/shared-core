@@ -15,14 +15,19 @@ use axum::response::Response;
 use bd_grpc_codec::code::Code;
 use http::header::CONTENT_TYPE;
 use http::{Extensions, HeaderMap, HeaderValue, StatusCode};
+use std::sync::Arc;
 
 // https://connectrpc.com/docs/protocol#error-codes
 #[must_use]
-pub const fn code_to_connect_http_status(code: Code) -> StatusCode {
+pub fn code_to_connect_http_status(code: Code) -> StatusCode {
   match code {
     Code::Ok => StatusCode::OK,
-    Code::Unknown | Code::Internal => StatusCode::INTERNAL_SERVER_ERROR,
-    Code::InvalidArgument | Code::FailedPrecondition => StatusCode::BAD_REQUEST,
+    Code::Cancelled => StatusCode::from_u16(499).unwrap_or(StatusCode::BAD_REQUEST),
+    Code::Unknown | Code::Internal | Code::DataLoss => StatusCode::INTERNAL_SERVER_ERROR,
+    Code::InvalidArgument | Code::FailedPrecondition | Code::OutOfRange => StatusCode::BAD_REQUEST,
+    Code::DeadlineExceeded => StatusCode::GATEWAY_TIMEOUT,
+    Code::AlreadyExists | Code::Aborted => StatusCode::CONFLICT,
+    Code::Unimplemented => StatusCode::NOT_IMPLEMENTED,
     Code::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
     Code::Unauthenticated => StatusCode::UNAUTHORIZED,
     Code::NotFound => StatusCode::NOT_FOUND,
@@ -36,13 +41,20 @@ pub const fn code_to_connect_http_status(code: Code) -> StatusCode {
 pub const fn code_to_connect_code_string(code: Code) -> &'static str {
   match code {
     Code::Ok => "ok",
+    Code::Cancelled => "canceled",
     Code::Unknown => "unknown",
     Code::InvalidArgument => "invalid_argument",
+    Code::DeadlineExceeded => "deadline_exceeded",
     Code::FailedPrecondition => "failed_precondition",
+    Code::Aborted => "aborted",
+    Code::OutOfRange => "out_of_range",
+    Code::Unimplemented => "unimplemented",
     Code::Internal => "internal",
     Code::Unavailable => "unavailable",
+    Code::DataLoss => "data_loss",
     Code::Unauthenticated => "unauthenticated",
     Code::NotFound => "not_found",
+    Code::AlreadyExists => "already_exists",
     Code::PermissionDenied => "permission_denied",
     Code::ResourceExhausted => "resource_exhausted",
   }
@@ -125,6 +137,8 @@ pub struct Status {
   code: Code,
   message: Option<String>,
   original_error: Option<String>,
+  response_status: Option<StatusCode>,
+  response_headers: Option<Arc<HeaderMap>>,
 }
 
 impl PartialEq for Status {
@@ -150,6 +164,8 @@ impl Status {
       code,
       message: Some(message.into()),
       original_error,
+      response_status: None,
+      response_headers: None,
     }
   }
 
@@ -171,6 +187,28 @@ impl Status {
   #[must_use]
   pub fn trace_error_message(&self) -> Option<&str> {
     self.original_error_message().or_else(|| self.message())
+  }
+
+  /// Attaches the HTTP response metadata that accompanied this status.
+  #[must_use]
+  pub fn with_response_context(
+    mut self,
+    response_status: StatusCode,
+    response_headers: HeaderMap,
+  ) -> Self {
+    self.response_status = Some(response_status);
+    self.response_headers = Some(Arc::new(response_headers));
+    self
+  }
+
+  #[must_use]
+  pub const fn response_status(&self) -> Option<StatusCode> {
+    self.response_status
+  }
+
+  #[must_use]
+  pub fn response_headers(&self) -> Option<&HeaderMap> {
+    self.response_headers.as_deref()
   }
 
   #[must_use]
@@ -196,6 +234,8 @@ impl Status {
       code,
       message,
       original_error: None,
+      response_status: None,
+      response_headers: None,
     }
   }
 

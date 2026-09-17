@@ -4,6 +4,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
+use crate::code::Code;
 use crate::{Compression, DEFAULT_MAX_MESSAGE_BYTES, Decoder, Decompression, Encoder, OptimizeFor};
 use protobuf::Message;
 use protobuf::well_known_types::any::Any;
@@ -13,6 +14,34 @@ use rstest::rstest;
 #[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers_core::test_global_init();
+}
+
+#[rstest]
+#[case("0", Code::Ok)]
+#[case("1", Code::Cancelled)]
+#[case("2", Code::Unknown)]
+#[case("3", Code::InvalidArgument)]
+#[case("4", Code::DeadlineExceeded)]
+#[case("5", Code::NotFound)]
+#[case("6", Code::AlreadyExists)]
+#[case("7", Code::PermissionDenied)]
+#[case("8", Code::ResourceExhausted)]
+#[case("9", Code::FailedPrecondition)]
+#[case("10", Code::Aborted)]
+#[case("11", Code::OutOfRange)]
+#[case("12", Code::Unimplemented)]
+#[case("13", Code::Internal)]
+#[case("14", Code::Unavailable)]
+#[case("15", Code::DataLoss)]
+#[case("16", Code::Unauthenticated)]
+fn grpc_status_codes_round_trip(#[case] wire_code: &str, #[case] expected: Code) {
+  assert_eq!(Code::from_str(wire_code), expected);
+  assert_eq!(expected.to_int().to_string(), wire_code);
+}
+
+#[test]
+fn invalid_grpc_status_code_maps_to_unknown() {
+  assert_eq!(Code::from_str("17"), Code::Unknown);
 }
 
 #[rstest]

@@ -47,7 +47,7 @@ use bd_stats_common::DynCounter;
 use bytes::{BufMut, Bytes, BytesMut};
 use connect_protocol::{ConnectProtocolType, EndOfStreamResponse, ErrorResponse, ToContentType};
 use http::header::{CONTENT_ENCODING, CONTENT_TYPE};
-use http::{Extensions, HeaderMap};
+use http::{Extensions, HeaderMap, StatusCode};
 use http_body::Frame;
 use http_body_util::{BodyExt, LengthLimitError, StreamBody};
 use protobuf::{Message, MessageFull};
@@ -531,11 +531,14 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
               return Ok(None);
             }
 
+            let mut response_headers = self.headers.clone();
+            response_headers.extend(trailers.clone());
             let status = Status::from_wire(
               code,
               grpc_message
                 .map(|value| Status::decode_grpc_message(value.to_str().unwrap_or_default())),
-            );
+            )
+            .with_response_context(StatusCode::OK, response_headers);
             return Err(Error::Grpc(status));
           }
 
