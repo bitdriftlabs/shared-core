@@ -431,6 +431,70 @@ async fn cooldown_defer_keeps_pending_for_retry() {
   );
 }
 
+#[tokio::test(start_paused = true)]
+async fn cooldown_retry_enqueues_snapshot_without_another_upload_notification() {
+  let setup = Setup::new().await;
+  let (enqueue_tx, mut enqueue_rx) = tokio::sync::mpsc::unbounded_channel();
+  let mut mock_client = bd_artifact_upload::MockClient::new();
+  mock_client
+    .expect_enqueue_upload()
+    .times(1)
+    .returning(move |_, _, _, _, _, _, persisted_tx| {
+      enqueue_tx.send(()).unwrap();
+      if let Some(tx) = persisted_tx {
+        tx.send(Ok(())).unwrap();
+      }
+      Ok(Uuid::new_v4())
+    });
+
+  let stats = bd_client_stats_store::Collector::default().scope("test");
+  let (handle, worker) = StateUploadHandle::new(
+    Some(setup.state_dir.clone()),
+    setup.store.clone(),
+    Some(setup.retention_registry.clone()),
+    Some(setup.state_store.clone()),
+    1_000,
+    setup.time_provider.clone(),
+    Arc::new(mock_client),
+    &stats,
+  )
+  .await;
+
+  // Create the initial snapshot that starts the cooldown, then make a new state change that
+  // cannot be snapshotted yet.
+  worker.create_snapshot_if_needed(100).await.unwrap();
+  setup.clear_snapshot_files();
+  setup.time_provider.advance(time::Duration::milliseconds(1));
+  insert_state_change(&setup.state_store, "deferred_key").await;
+  let batch_timestamp = setup.now_micros();
+
+  let worker_task = tokio::spawn(worker.run());
+  handle.notify_upload_needed(batch_timestamp, batch_timestamp);
+
+  // The initial notification defers due to cooldown, but persists the pending range. This is the
+  // lifecycle gate that proves the worker has registered its retry timer before time advances.
+  tokio::task::yield_now().await;
+  assert!(
+    setup
+      .store
+      .get(&PENDING_UPLOAD_RANGE_KEY)
+      .and_then(|proto| pending_range_from_proto(&proto))
+      .is_some()
+  );
+  assert!(enqueue_rx.try_recv().is_err());
+
+  // No further notify_upload_needed call or state insertion occurs. The retry tick alone must
+  // create and enqueue the snapshot once the cooldown has elapsed.
+  setup
+    .time_provider
+    .advance(time::Duration::milliseconds(1_000));
+  tokio::time::advance(BACKPRESSURE_RETRY_INTERVAL).await;
+  assert!(enqueue_rx.recv().await.is_some());
+
+  drop(handle);
+  worker_task.abort();
+}
+
 #[tokio::test]
 async fn enqueue_backpressure_keeps_pending_range() {
   let setup = Setup::new().await;
