@@ -1322,6 +1322,9 @@ impl Api {
               .acknowledge_state_update(&session_update);
           }
         },
+        // The device-command runtime that sends and tracks these updates is introduced
+        // separately. Accept the schema variant until that runtime is present.
+        Some(Response_type::DeviceCommandUpdateAck(_)) => {},
         None => {
           debug_assert!(false, "not handled");
         },

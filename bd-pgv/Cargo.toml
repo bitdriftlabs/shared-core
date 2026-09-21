@@ -12,6 +12,7 @@ doctest = false
 bd-workspace-hack.workspace = true
 log.workspace               = true
 protobuf.workspace          = true
+protobuf-codegen.workspace  = true
 thiserror.workspace         = true
 uuid.workspace              = true
 

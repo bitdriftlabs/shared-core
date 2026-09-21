@@ -178,6 +178,8 @@ pub mod artifact_upload_index {
         pub storage_format: ::protobuf::EnumOrUnknown<super::StorageFormat>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.workflow_report_handoff)
         pub workflow_report_handoff: ::protobuf::MessageField<super::super::workflow::WorkflowReportHandoff>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.command_id)
+        pub command_id: ::std::option::Option<::std::string::String>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -195,7 +197,7 @@ pub mod artifact_upload_index {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(9);
+            let mut fields = ::std::vec::Vec::with_capacity(10);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "name",
@@ -241,6 +243,11 @@ pub mod artifact_upload_index {
                 "workflow_report_handoff",
                 |m: &Artifact| { &m.workflow_report_handoff },
                 |m: &mut Artifact| { &mut m.workflow_report_handoff },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "command_id",
+                |m: &Artifact| { &m.command_id },
+                |m: &mut Artifact| { &mut m.command_id },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
                 "ArtifactUploadIndex.Artifact",
@@ -299,6 +306,9 @@ pub mod artifact_upload_index {
                     82 => {
                         ::protobuf::rt::read_singular_message_into_field(is, &mut self.workflow_report_handoff)?;
                     },
+                    90 => {
+                        self.command_id = ::std::option::Option::Some(is.read_string()?);
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -345,6 +355,9 @@ pub mod artifact_upload_index {
                 let len = v.compute_size();
                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
             }
+            if let Some(v) = self.command_id.as_ref() {
+                my_size += ::protobuf::rt::string_size(11, &v);
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -385,6 +398,9 @@ pub mod artifact_upload_index {
             if let Some(v) = self.workflow_report_handoff.as_ref() {
                 ::protobuf::rt::write_message_field_with_cached_size(10, v, os)?;
             }
+            if let Some(v) = self.command_id.as_ref() {
+                os.write_string(11, v)?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -411,6 +427,7 @@ pub mod artifact_upload_index {
             self.type_id = ::std::option::Option::None;
             self.storage_format = ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED);
             self.workflow_report_handoff.clear();
+            self.command_id = ::std::option::Option::None;
             self.special_fields.clear();
         }
 
@@ -505,9 +522,9 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     c.protobuf.client.v1\x1a5bitdrift_public/protobuf/client/v1/feature_flag\
     .proto\x1a1bitdrift_public/protobuf/logging/v1/payload.proto\x1a3bitdrif\
     t_public/protobuf/workflow/v1/workflow.proto\x1a\x1fgoogle/protobuf/time\
-    stamp.proto\"\xe5\x06\n\x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\
+    stamp.proto\"\x98\x07\n\x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\
     \x01\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.ArtifactUploadInd\
-    ex.ArtifactR\x08artifact\x1a\xef\x05\n\x08Artifact\x12\x12\n\x04name\x18\
+    ex.ArtifactR\x08artifact\x1a\xa2\x06\n\x08Artifact\x12\x12\n\x04name\x18\
     \x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\x01(\x0b2\x1a.google\
     .protobuf.TimestampR\x04time\x12<\n\x1apending_intent_negotiation\x18\
     \x03\x20\x01(\x08R\x18pendingIntentNegotiation\x12j\n\x08metadata\x18\
@@ -519,11 +536,12 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     mat\x18\t\x20\x01(\x0e21.bitdrift_public.protobuf.client.v1.StorageForma\
     tR\rstorageFormat\x12x\n\x17workflow_report_handoff\x18\n\x20\x01(\x0b2;\
     .bitdrift_public.protobuf.workflow.v1.WorkflowReportHandoffH\x01R\x15wor\
-    kflowReportHandoff\x88\x01\x01\x1af\n\rMetadataEntry\x12\x10\n\x03key\
-    \x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdr\
-    ift_public.protobuf.logging.v1.DataR\x05value:\x028\x01B\n\n\x08_type_id\
-    B\x1a\n\x18_workflow_report_handoff*)\n\rStorageFormat\x12\x0f\n\x0bCHEC\
-    KSUMMED\x10\0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
+    kflowReportHandoff\x88\x01\x01\x12\"\n\ncommand_id\x18\x0b\x20\x01(\tH\
+    \x02R\tcommandId\x88\x01\x01\x1af\n\rMetadataEntry\x12\x10\n\x03key\x18\
+    \x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_\
+    public.protobuf.logging.v1.DataR\x05value:\x028\x01B\n\n\x08_type_idB\
+    \x1a\n\x18_workflow_report_handoffB\r\n\x0b_command_id*)\n\rStorageForma\
+    t\x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

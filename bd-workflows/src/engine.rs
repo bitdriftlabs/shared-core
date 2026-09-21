@@ -910,7 +910,6 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       mut flush_buffers_actions,
       emit_metric_action_counts,
       emit_sankey_diagrams_actions,
-      capture_screenshot,
     } = prepared_actions;
 
     if let Some(capture_session) = event.capture_session()
@@ -1040,7 +1039,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         .triggered_flush_buffers_action_ids,
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
-      capture_screenshot,
+      capture_screenshot: false,
       is_tracing_active: self.state.is_tracing_active(),
       logs_to_inject: logs_to_inject
         .into_iter()
@@ -1087,7 +1086,6 @@ struct PreparedActions<'a> {
   flush_buffers_actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
   emit_metric_action_counts: BTreeMap<&'a ActionEmitMetric, EmitMetricActionCount>,
   emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>>,
-  capture_screenshot: bool,
 }
 
 impl<'a> PreparedActions<'a> {
@@ -1158,9 +1156,6 @@ impl<'a> PreparedActions<'a> {
           // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
           self.emit_sankey_diagrams_actions.insert(action);
         },
-        TriggeredAction::TakeScreenshot => {
-          self.capture_screenshot = true;
-        },
         TriggeredAction::StartTracing => {},
       }
     }
@@ -1188,7 +1183,7 @@ pub struct WorkflowsEngineResult<'a> {
   // The identifier of trigger buffers that should be flushed.
   pub triggered_flushes_buffer_ids: TinySet<Cow<'static, str>>,
 
-  // Whether a screenshot should be taken in response to processing the log.
+  // Compatibility field for existing consumers. Workflows no longer request screenshots.
   pub capture_screenshot: bool,
 
   // Whether tracing is currently active for this session.
@@ -1218,7 +1213,6 @@ pub type AllWorkflowsDebugState = Vec<(String, WorkflowDebugStateMap)>;
 struct PrecedingEventCarryover {
   triggered_flush_buffers_action_ids: BTreeSet<FlushBufferId>,
   triggered_flushes_buffer_ids: TinySet<Cow<'static, str>>,
-  capture_screenshot: bool,
   logs_to_inject: TinyMap<String, Log>,
   workflow_debug_state: AllWorkflowsDebugState,
   has_debug_workflows: bool,
@@ -1233,7 +1227,6 @@ impl PrecedingEventCarryover {
         .map(Cow::into_owned)
         .collect(),
       triggered_flushes_buffer_ids: result.triggered_flushes_buffer_ids,
-      capture_screenshot: result.capture_screenshot,
       logs_to_inject: result
         .logs_to_inject
         .into_iter()
@@ -1254,7 +1247,6 @@ impl PrecedingEventCarryover {
     followup
       .triggered_flushes_buffer_ids
       .extend(self.triggered_flushes_buffer_ids);
-    followup.capture_screenshot |= self.capture_screenshot;
     followup.logs_to_inject.extend(
       self
         .logs_to_inject

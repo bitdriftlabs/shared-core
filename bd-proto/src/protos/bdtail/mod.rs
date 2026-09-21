@@ -10,4 +10,5 @@ source_info_gated_mod! {
 }
 
 use super::log_matcher::log_matcher;
+use super::workflow::workflow_command;
 use bd_pgv::generated::protos::validate;

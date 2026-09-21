@@ -15,7 +15,7 @@ use rmcp::model::{
   InitializeResult,
   ProtocolVersion,
   ServerCapabilities,
-  ServerInfo,
+  ServerConfig,
 };
 use rmcp::service::RequestContext;
 use rmcp::transport::stdio;
@@ -212,8 +212,8 @@ impl Tool {
 #[allow(clippy::unused_async_trait_impl)]
 #[tool_handler]
 impl ServerHandler for Tool {
-  fn get_info(&self) -> ServerInfo {
-    ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+  fn get_info(&self) -> ServerConfig {
+    ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
       .with_protocol_version(ProtocolVersion::V_2024_11_05)
       .with_instructions(
         "A tool that allows interacting with the dev logger CLI. For example, this can be used to \

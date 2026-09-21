@@ -47,7 +47,6 @@ use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_session::test::no_timeout;
 use bd_session::{Strategy, configuration};
-use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_stats_common::{Counter as _, labels};
 use bd_test_helpers::config_helper::{
   self,
@@ -87,7 +86,6 @@ use bd_test_helpers::workflow::{
   make_save_timestamp_extraction,
   make_start_tracing_action,
   make_state_change_rule,
-  make_take_screenshot_action,
   metric_tag,
   metric_value,
   state,
@@ -888,74 +886,6 @@ fn blocking_state_flush_persists_workflow_state() {
   // Confirm that workflows state is persisted to disk after the state flush completes.
   assert!(setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
-}
-
-#[test]
-fn session_replay_actions() {
-  let mut setup = Setup::new();
-  setup.send_runtime_update();
-  setup.wait_for_capture_screen();
-
-  let b = state("B");
-  let a = state("A").declare_transition_with_actions(
-    &b,
-    rule!(message_equals("take a screenshot")),
-    &[make_take_screenshot_action()],
-  );
-
-  // Send a configuration that takes a screenshot on "foo" message.
-  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
-    "",
-    ConfigurationUpdateParts {
-      buffer_config: vec![config_helper::default_buffer_config(
-        Type::TRIGGER,
-        make_buffer_matcher_matching_everything().into(),
-      )],
-      workflows: vec![WorkflowBuilder::new("workflow", &[&a, &b]).build()],
-      ..Default::default()
-    },
-  ));
-  assert!(maybe_nack.is_none());
-
-  // Emit a log that should not result in taking a screenshot.
-  setup.log_then_flush(
-    log_level::DEBUG,
-    LogType::NORMAL,
-    "bar".into(),
-    [].into(),
-    [].into(),
-  );
-  setup.wait_for_workflow_event_processing();
-  setup.assert_no_capture_screenshot();
-
-  // Emit a log that should result in taking a screenshot.
-  setup.log_then_flush(
-    log_level::DEBUG,
-    LogType::NORMAL,
-    "take a screenshot".into(),
-    [].into(),
-    [].into(),
-  );
-  setup.wait_for_capture_screenshot();
-
-  // Simulate a capture of a screenshot.
-  setup.log_then_flush(
-    log_level::DEBUG,
-    LogType::REPLAY,
-    SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
-    [].into(),
-    [].into(),
-  );
-
-  // Emit a log that should result in taking a screenshot.
-  setup.log_then_flush(
-    log_level::DEBUG,
-    LogType::NORMAL,
-    "take a screenshot".into(),
-    [].into(),
-    [].into(),
-  );
-  setup.wait_for_capture_screenshot();
 }
 
 #[test]

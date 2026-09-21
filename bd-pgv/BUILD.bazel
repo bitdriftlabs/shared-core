@@ -1,7 +1,20 @@
 load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("//tools/lint:linters.bzl", "rust_binary")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
+
+rust_binary(
+    name = "generate-protos",
+    srcs = [
+        "src/bin/generate_protos.rs",
+        "src/proto_codegen.rs",
+    ],
+    crate_name = "generate_protos",
+    crate_root = "src/bin/generate_protos.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True),
+)
 
 rust_library_with_test(
     name = "bd-pgv",

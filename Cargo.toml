@@ -151,7 +151,7 @@ parking_lot        = "0.12.5"
 pretty_assertions  = "1.4.1"
 prometheus         = "0.14.0"
 proptest           = "1.11.0"
-rmcp               = { version = "3.2.0", features = ["transport-io"] }
+rmcp               = { version = "3.4.0", features = ["transport-io"] }
 thread_local       = "1.1.10"
 tracing            = "0.1.44"
 tracing-log        = "0.2.0"
