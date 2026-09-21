@@ -1666,7 +1666,6 @@ dependencies = [
  "protobuf 4.0.0-alpha.0",
  "rand 0.9.5",
  "rand_chacha 0.9.0",
- "regex",
  "regex-automata",
  "regex-syntax",
  "reqwest",
