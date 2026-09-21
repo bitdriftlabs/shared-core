@@ -1399,6 +1399,7 @@ dependencies = [
  "bd-bonjson",
  "bd-client-common",
  "bd-client-stats-store",
+ "bd-proto",
  "bd-runtime",
  "bd-time",
  "bd-versioned-kv",
