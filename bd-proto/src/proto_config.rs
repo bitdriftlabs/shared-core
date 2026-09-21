@@ -92,6 +92,7 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
       inputs: &[
         "../api/src/bitdrift_public/protobuf/workflow/v1/workflow.proto",
         "../api/src/bitdrift_public/protobuf/workflow/v1/save_field.proto",
+        "../api/src/bitdrift_public/protobuf/workflow/v1/workflow_command.proto",
       ],
       includes: PROTO_INCLUDES,
       use_tokio_bytes: false,

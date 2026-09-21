@@ -11,7 +11,8 @@ protos:
 		cd bd-proto && cargo run --features codegen --bin generate-protos; \
 	elif [ -x ../bazelw ]; then \
 		echo "Generating protos with the monorepo Bazel target"; \
-		../bazelw run //shared-core/bd-proto:generate-protos; \
+		../bazelw run //shared-core/bd-proto:generate-protos && \
+		../bazelw run //shared-core/bd-pgv:generate-protos; \
 	else \
 		echo "Generating protos with the in-repo Cargo binary"; \
 		cd bd-proto && cargo run --features codegen --bin generate-protos; \
@@ -19,7 +20,7 @@ protos:
 
 .PHONY: check-protos
 check-protos: protos
-	git diff --exit-code -- bd-proto/src/protos bd-proto/src/flatbuffers
+	git diff --exit-code -- bd-proto/src/protos bd-proto/src/flatbuffers bd-pgv/src/generated
 
 .PHONY: setup
 setup:

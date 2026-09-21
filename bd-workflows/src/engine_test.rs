@@ -60,7 +60,6 @@ use bd_test_helpers::workflow::{
   make_save_field_extraction,
   make_save_timestamp_extraction,
   make_start_tracing_action,
-  make_take_screenshot_action,
   metric_tag,
   metric_value,
   state,
@@ -3390,29 +3389,6 @@ async fn sankey_action_persistence_limit() {
 
   assert_eq!(10, engine.hooks.lock().sankey_uploads.len());
   assert_eq!(10, engine.hooks.lock().received_sankey_upload_intents.len());
-}
-
-#[tokio::test]
-async fn take_screenshot_action() {
-  let b = state("B");
-  let a = state("A").declare_transition_with_actions(
-    &b,
-    rule!(message_equals("foo")),
-    &[make_take_screenshot_action()],
-  );
-
-  let workflow = WorkflowBuilder::new("1", &[&a, &b]).make_config();
-  let setup = Setup::new();
-
-  let mut engine = setup
-    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
-      vec![workflow],
-    ))
-    .await;
-
-  let result = engine.process_log(TestLog::new("foo"));
-
-  assert!(result.capture_screenshot);
 }
 
 #[tokio::test]

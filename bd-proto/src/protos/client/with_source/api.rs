@@ -2957,6 +2957,10 @@ pub struct LogUploadRequest {
     ///  the upload succeeded or failed.
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.LogUploadRequest.ackless)
     pub ackless: bool,
+    ///  Optional buffer-dump command whose persisted log bytes this upload contributes to. The outer
+    ///  upload_uuid is this batch's stable idempotency key.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.LogUploadRequest.command_id)
+    pub command_id: ::std::option::Option<::std::string::String>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.LogUploadRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -2974,7 +2978,7 @@ impl LogUploadRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut fields = ::std::vec::Vec::with_capacity(7);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "upload_uuid",
@@ -3005,6 +3009,11 @@ impl LogUploadRequest {
             "ackless",
             |m: &LogUploadRequest| { &m.ackless },
             |m: &mut LogUploadRequest| { &mut m.ackless },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "command_id",
+            |m: &LogUploadRequest| { &m.command_id },
+            |m: &mut LogUploadRequest| { &mut m.command_id },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<LogUploadRequest>(
             "LogUploadRequest",
@@ -3042,6 +3051,9 @@ impl ::protobuf::Message for LogUploadRequest {
                 32 => {
                     self.ackless = is.read_bool()?;
                 },
+                66 => {
+                    self.command_id = ::std::option::Option::Some(is.read_string()?);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -3072,6 +3084,9 @@ impl ::protobuf::Message for LogUploadRequest {
         if self.ackless != false {
             my_size += 1 + 1;
         }
+        if let Some(v) = self.command_id.as_ref() {
+            my_size += ::protobuf::rt::string_size(8, &v);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -3096,6 +3111,9 @@ impl ::protobuf::Message for LogUploadRequest {
         if self.ackless != false {
             os.write_bool(4, self.ackless)?;
         }
+        if let Some(v) = self.command_id.as_ref() {
+            os.write_string(8, v)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -3119,6 +3137,7 @@ impl ::protobuf::Message for LogUploadRequest {
         self.buffer_uuid.clear();
         self.trigger_uuids.clear();
         self.ackless = false;
+        self.command_id = ::std::option::Option::None;
         self.special_fields.clear();
     }
 
@@ -3130,6 +3149,7 @@ impl ::protobuf::Message for LogUploadRequest {
             buffer_uuid: ::std::string::String::new(),
             trigger_uuids: ::std::vec::Vec::new(),
             ackless: false,
+            command_id: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -4233,8 +4253,57 @@ impl ApiRequest {
         }
     }
 
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate device_command_update = 16;
+
+    pub fn device_command_update(&self) -> &DeviceCommandUpdate {
+        match self.request_type {
+            ::std::option::Option::Some(api_request::Request_type::DeviceCommandUpdate(ref v)) => v,
+            _ => <DeviceCommandUpdate as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_device_command_update(&mut self) {
+        self.request_type = ::std::option::Option::None;
+    }
+
+    pub fn has_device_command_update(&self) -> bool {
+        match self.request_type {
+            ::std::option::Option::Some(api_request::Request_type::DeviceCommandUpdate(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_device_command_update(&mut self, v: DeviceCommandUpdate) {
+        self.request_type = ::std::option::Option::Some(api_request::Request_type::DeviceCommandUpdate(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_device_command_update(&mut self) -> &mut DeviceCommandUpdate {
+        if let ::std::option::Option::Some(api_request::Request_type::DeviceCommandUpdate(_)) = self.request_type {
+        } else {
+            self.request_type = ::std::option::Option::Some(api_request::Request_type::DeviceCommandUpdate(DeviceCommandUpdate::new()));
+        }
+        match self.request_type {
+            ::std::option::Option::Some(api_request::Request_type::DeviceCommandUpdate(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_device_command_update(&mut self) -> DeviceCommandUpdate {
+        if self.has_device_command_update() {
+            match self.request_type.take() {
+                ::std::option::Option::Some(api_request::Request_type::DeviceCommandUpdate(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            DeviceCommandUpdate::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(13);
+        let mut fields = ::std::vec::Vec::with_capacity(14);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, HandshakeRequest>(
             "handshake",
@@ -4327,6 +4396,13 @@ impl ApiRequest {
             ApiRequest::mut_state_update,
             ApiRequest::set_state_update,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, DeviceCommandUpdate>(
+            "device_command_update",
+            ApiRequest::has_device_command_update,
+            ApiRequest::device_command_update,
+            ApiRequest::mut_device_command_update,
+            ApiRequest::set_device_command_update,
+        ));
         oneofs.push(api_request::Request_type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ApiRequest>(
             "ApiRequest",
@@ -4384,6 +4460,9 @@ impl ::protobuf::Message for ApiRequest {
                 },
                 122 => {
                     self.request_type = ::std::option::Option::Some(api_request::Request_type::StateUpdate(is.read_message()?));
+                },
+                130 => {
+                    self.request_type = ::std::option::Option::Some(api_request::Request_type::DeviceCommandUpdate(is.read_message()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -4451,6 +4530,10 @@ impl ::protobuf::Message for ApiRequest {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &api_request::Request_type::DeviceCommandUpdate(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 2 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -4500,6 +4583,9 @@ impl ::protobuf::Message for ApiRequest {
                 &api_request::Request_type::StateUpdate(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(15, v, os)?;
                 },
+                &api_request::Request_type::DeviceCommandUpdate(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(16, v, os)?;
+                },
             };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -4519,6 +4605,7 @@ impl ::protobuf::Message for ApiRequest {
     }
 
     fn clear(&mut self) {
+        self.request_type = ::std::option::Option::None;
         self.request_type = ::std::option::Option::None;
         self.request_type = ::std::option::Option::None;
         self.request_type = ::std::option::Option::None;
@@ -4593,6 +4680,8 @@ pub mod api_request {
         DebugData(super::DebugDataRequest),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiRequest.state_update)
         StateUpdate(super::StateUpdateRequest),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiRequest.device_command_update)
+        DeviceCommandUpdate(super::DeviceCommandUpdate),
     }
 
     impl ::protobuf::Oneof for Request_type {
@@ -5859,6 +5948,10 @@ pub struct UploadArtifactRequest {
     ///  Only populated for issue-report artifacts; other artifact types must leave this unset.
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.workflow_report_handoff)
     pub workflow_report_handoff: ::protobuf::MessageField<super::workflow::WorkflowReportHandoff>,
+    ///  The remote command that produced this artifact. Only command-correlated artifact uploads set
+    ///  this field; workflow command artifacts remain session artifacts and leave it unset.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.command_id)
+    pub command_id: ::std::option::Option<::std::string::String>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -5876,7 +5969,7 @@ impl UploadArtifactRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(9);
+        let mut fields = ::std::vec::Vec::with_capacity(10);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "upload_uuid",
@@ -5922,6 +6015,11 @@ impl UploadArtifactRequest {
             "workflow_report_handoff",
             |m: &UploadArtifactRequest| { &m.workflow_report_handoff },
             |m: &mut UploadArtifactRequest| { &mut m.workflow_report_handoff },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "command_id",
+            |m: &UploadArtifactRequest| { &m.command_id },
+            |m: &mut UploadArtifactRequest| { &mut m.command_id },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UploadArtifactRequest>(
             "UploadArtifactRequest",
@@ -5980,6 +6078,9 @@ impl ::protobuf::Message for UploadArtifactRequest {
                 74 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.workflow_report_handoff)?;
                 },
+                82 => {
+                    self.command_id = ::std::option::Option::Some(is.read_string()?);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -6026,6 +6127,9 @@ impl ::protobuf::Message for UploadArtifactRequest {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if let Some(v) = self.command_id.as_ref() {
+            my_size += ::protobuf::rt::string_size(10, &v);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -6066,6 +6170,9 @@ impl ::protobuf::Message for UploadArtifactRequest {
         if let Some(v) = self.workflow_report_handoff.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
         }
+        if let Some(v) = self.command_id.as_ref() {
+            os.write_string(10, v)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -6092,6 +6199,7 @@ impl ::protobuf::Message for UploadArtifactRequest {
         self.session_id.clear();
         self.feature_flags.clear();
         self.workflow_report_handoff.clear();
+        self.command_id = ::std::option::Option::None;
         self.special_fields.clear();
     }
 
@@ -9053,6 +9161,1818 @@ impl ::protobuf::reflect::ProtobufValue for FlushBuffers {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+///  Structured data supplied with a terminal device command result. Artifact bytes are uploaded
+///  separately through `UploadArtifactRequest` and must not be included in this context.
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandResultContext)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeviceCommandResultContext {
+    // message fields
+    ///  Command- or transport-supplied fields describing the terminal result. Binary values are
+    ///  rejected; artifacts must use `UploadArtifactRequest`.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandResultContext.fields)
+    pub fields: ::std::collections::HashMap<::std::string::String, super::payload::Data>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandResultContext.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeviceCommandResultContext {
+    fn default() -> &'a DeviceCommandResultContext {
+        <DeviceCommandResultContext as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeviceCommandResultContext {
+    pub fn new() -> DeviceCommandResultContext {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
+            "fields",
+            |m: &DeviceCommandResultContext| { &m.fields },
+            |m: &mut DeviceCommandResultContext| { &mut m.fields },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandResultContext>(
+            "DeviceCommandResultContext",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeviceCommandResultContext {
+    const NAME: &'static str = "DeviceCommandResultContext";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    let len = is.read_raw_varint32()?;
+                    let old_limit = is.push_limit(len as u64)?;
+                    let mut key = ::std::default::Default::default();
+                    let mut value = ::std::default::Default::default();
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => key = is.read_string()?,
+                            18 => value = is.read_message()?,
+                            _ => ::protobuf::rt::skip_field_for_tag(tag, is)?,
+                        };
+                    }
+                    is.pop_limit(old_limit);
+                    self.fields.insert(key, value);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for (k, v) in &self.fields {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            let len = v.compute_size();
+            entry_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for (k, v) in &self.fields {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            let len = v.cached_size() as u64;
+            entry_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            os.write_raw_varint32(10)?; // Tag.
+            os.write_raw_varint32(entry_size as u32)?;
+            os.write_string(1, &k)?;
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeviceCommandResultContext {
+        DeviceCommandResultContext::new()
+    }
+
+    fn clear(&mut self) {
+        self.fields.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeviceCommandResultContext {
+        static instance: ::protobuf::rt::Lazy<DeviceCommandResultContext> = ::protobuf::rt::Lazy::new();
+        instance.get(DeviceCommandResultContext::new)
+    }
+}
+
+impl ::protobuf::MessageFull for DeviceCommandResultContext {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeviceCommandResultContext").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeviceCommandResultContext {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeviceCommandResultContext {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+///  Reports an update from a device command.
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeviceCommandUpdate {
+    // message fields
+    ///  The command ID from the corresponding DeviceCommandRequest.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.command_id)
+    pub command_id: ::std::string::String,
+    ///  The monotonically increasing sequence number for this command update.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.update_sequence_number)
+    pub update_sequence_number: u64,
+    // message oneof groups
+    pub update_type: ::std::option::Option<device_command_update::Update_type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeviceCommandUpdate {
+    fn default() -> &'a DeviceCommandUpdate {
+        <DeviceCommandUpdate as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeviceCommandUpdate {
+    pub fn new() -> DeviceCommandUpdate {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Accepted accepted = 3;
+
+    pub fn accepted(&self) -> &device_command_update::Accepted {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Accepted(ref v)) => v,
+            _ => <device_command_update::Accepted as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_accepted(&mut self) {
+        self.update_type = ::std::option::Option::None;
+    }
+
+    pub fn has_accepted(&self) -> bool {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Accepted(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_accepted(&mut self, v: device_command_update::Accepted) {
+        self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Accepted(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_accepted(&mut self) -> &mut device_command_update::Accepted {
+        if let ::std::option::Option::Some(device_command_update::Update_type::Accepted(_)) = self.update_type {
+        } else {
+            self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Accepted(device_command_update::Accepted::new()));
+        }
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Accepted(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_accepted(&mut self) -> device_command_update::Accepted {
+        if self.has_accepted() {
+            match self.update_type.take() {
+                ::std::option::Option::Some(device_command_update::Update_type::Accepted(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            device_command_update::Accepted::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed completed = 4;
+
+    pub fn completed(&self) -> &device_command_update::Completed {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Completed(ref v)) => v,
+            _ => <device_command_update::Completed as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_completed(&mut self) {
+        self.update_type = ::std::option::Option::None;
+    }
+
+    pub fn has_completed(&self) -> bool {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Completed(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_completed(&mut self, v: device_command_update::Completed) {
+        self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Completed(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_completed(&mut self) -> &mut device_command_update::Completed {
+        if let ::std::option::Option::Some(device_command_update::Update_type::Completed(_)) = self.update_type {
+        } else {
+            self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Completed(device_command_update::Completed::new()));
+        }
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Completed(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_completed(&mut self) -> device_command_update::Completed {
+        if self.has_completed() {
+            match self.update_type.take() {
+                ::std::option::Option::Some(device_command_update::Update_type::Completed(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            device_command_update::Completed::new()
+        }
+    }
+
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed failed = 5;
+
+    pub fn failed(&self) -> &device_command_update::Failed {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Failed(ref v)) => v,
+            _ => <device_command_update::Failed as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_failed(&mut self) {
+        self.update_type = ::std::option::Option::None;
+    }
+
+    pub fn has_failed(&self) -> bool {
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Failed(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_failed(&mut self, v: device_command_update::Failed) {
+        self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Failed(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_failed(&mut self) -> &mut device_command_update::Failed {
+        if let ::std::option::Option::Some(device_command_update::Update_type::Failed(_)) = self.update_type {
+        } else {
+            self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Failed(device_command_update::Failed::new()));
+        }
+        match self.update_type {
+            ::std::option::Option::Some(device_command_update::Update_type::Failed(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_failed(&mut self) -> device_command_update::Failed {
+        if self.has_failed() {
+            match self.update_type.take() {
+                ::std::option::Option::Some(device_command_update::Update_type::Failed(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            device_command_update::Failed::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "command_id",
+            |m: &DeviceCommandUpdate| { &m.command_id },
+            |m: &mut DeviceCommandUpdate| { &mut m.command_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "update_sequence_number",
+            |m: &DeviceCommandUpdate| { &m.update_sequence_number },
+            |m: &mut DeviceCommandUpdate| { &mut m.update_sequence_number },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, device_command_update::Accepted>(
+            "accepted",
+            DeviceCommandUpdate::has_accepted,
+            DeviceCommandUpdate::accepted,
+            DeviceCommandUpdate::mut_accepted,
+            DeviceCommandUpdate::set_accepted,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, device_command_update::Completed>(
+            "completed",
+            DeviceCommandUpdate::has_completed,
+            DeviceCommandUpdate::completed,
+            DeviceCommandUpdate::mut_completed,
+            DeviceCommandUpdate::set_completed,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, device_command_update::Failed>(
+            "failed",
+            DeviceCommandUpdate::has_failed,
+            DeviceCommandUpdate::failed,
+            DeviceCommandUpdate::mut_failed,
+            DeviceCommandUpdate::set_failed,
+        ));
+        oneofs.push(device_command_update::Update_type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandUpdate>(
+            "DeviceCommandUpdate",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeviceCommandUpdate {
+    const NAME: &'static str = "DeviceCommandUpdate";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.command_id = is.read_string()?;
+                },
+                16 => {
+                    self.update_sequence_number = is.read_uint64()?;
+                },
+                26 => {
+                    self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Accepted(is.read_message()?));
+                },
+                34 => {
+                    self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Completed(is.read_message()?));
+                },
+                42 => {
+                    self.update_type = ::std::option::Option::Some(device_command_update::Update_type::Failed(is.read_message()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.command_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.command_id);
+        }
+        if self.update_sequence_number != 0 {
+            my_size += ::protobuf::rt::uint64_size(2, self.update_sequence_number);
+        }
+        if let ::std::option::Option::Some(ref v) = self.update_type {
+            match v {
+                &device_command_update::Update_type::Accepted(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &device_command_update::Update_type::Completed(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &device_command_update::Update_type::Failed(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.command_id.is_empty() {
+            os.write_string(1, &self.command_id)?;
+        }
+        if self.update_sequence_number != 0 {
+            os.write_uint64(2, self.update_sequence_number)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.update_type {
+            match v {
+                &device_command_update::Update_type::Accepted(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+                &device_command_update::Update_type::Completed(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                },
+                &device_command_update::Update_type::Failed(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeviceCommandUpdate {
+        DeviceCommandUpdate::new()
+    }
+
+    fn clear(&mut self) {
+        self.command_id.clear();
+        self.update_sequence_number = 0;
+        self.update_type = ::std::option::Option::None;
+        self.update_type = ::std::option::Option::None;
+        self.update_type = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeviceCommandUpdate {
+        static instance: DeviceCommandUpdate = DeviceCommandUpdate {
+            command_id: ::std::string::String::new(),
+            update_sequence_number: 0,
+            update_type: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeviceCommandUpdate {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeviceCommandUpdate").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeviceCommandUpdate {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeviceCommandUpdate {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DeviceCommandUpdate`
+pub mod device_command_update {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.update_type)
+    pub enum Update_type {
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.accepted)
+        Accepted(Accepted),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.completed)
+        Completed(Completed),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.failed)
+        Failed(Failed),
+    }
+
+    impl ::protobuf::Oneof for Update_type {
+    }
+
+    impl ::protobuf::OneofFull for Update_type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::DeviceCommandUpdate as ::protobuf::MessageFull>::descriptor().oneof_by_name("update_type").unwrap()).clone()
+        }
+    }
+
+    impl Update_type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Update_type>("update_type")
+        }
+    }
+    ///  Confirms that the device accepted the command.
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Accepted)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Accepted {
+        // message fields
+        ///  The immutable total number of result payload bytes expected from the command.
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Accepted.total_result_bytes)
+        pub total_result_bytes: ::std::option::Option<u64>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Accepted.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Accepted {
+        fn default() -> &'a Accepted {
+            <Accepted as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Accepted {
+        pub fn new() -> Accepted {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "total_result_bytes",
+                |m: &Accepted| { &m.total_result_bytes },
+                |m: &mut Accepted| { &mut m.total_result_bytes },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Accepted>(
+                "DeviceCommandUpdate.Accepted",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Accepted {
+        const NAME: &'static str = "Accepted";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.total_result_bytes = ::std::option::Option::Some(is.read_uint64()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.total_result_bytes {
+                my_size += ::protobuf::rt::uint64_size(1, v);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.total_result_bytes {
+                os.write_uint64(1, v)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Accepted {
+            Accepted::new()
+        }
+
+        fn clear(&mut self) {
+            self.total_result_bytes = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Accepted {
+            static instance: Accepted = Accepted {
+                total_result_bytes: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Accepted {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Accepted").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Accepted {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Accepted {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    ///  Confirms that the command completed successfully.
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Completed {
+        // message fields
+        ///  Whether output was limited before the command completed.
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.output_truncated)
+        pub output_truncated: bool,
+        ///  Optional structured context supplied with the successful command result.
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.context)
+        pub context: ::protobuf::MessageField<super::DeviceCommandResultContext>,
+        ///  The attachment the device completed after uploading. This is optional only for compatibility
+        ///  with older clients; new command implementations must always set it.
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.attachment)
+        pub attachment: ::protobuf::MessageField<completed::Attachment>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Completed {
+        fn default() -> &'a Completed {
+            <Completed as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Completed {
+        pub fn new() -> Completed {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "output_truncated",
+                |m: &Completed| { &m.output_truncated },
+                |m: &mut Completed| { &mut m.output_truncated },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::DeviceCommandResultContext>(
+                "context",
+                |m: &Completed| { &m.context },
+                |m: &mut Completed| { &mut m.context },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, completed::Attachment>(
+                "attachment",
+                |m: &Completed| { &m.attachment },
+                |m: &mut Completed| { &mut m.attachment },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Completed>(
+                "DeviceCommandUpdate.Completed",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Completed {
+        const NAME: &'static str = "Completed";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.output_truncated = is.read_bool()?;
+                    },
+                    18 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.context)?;
+                    },
+                    26 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.attachment)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.output_truncated != false {
+                my_size += 1 + 1;
+            }
+            if let Some(v) = self.context.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if let Some(v) = self.attachment.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.output_truncated != false {
+                os.write_bool(1, self.output_truncated)?;
+            }
+            if let Some(v) = self.context.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            }
+            if let Some(v) = self.attachment.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Completed {
+            Completed::new()
+        }
+
+        fn clear(&mut self) {
+            self.output_truncated = false;
+            self.context.clear();
+            self.attachment.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Completed {
+            static instance: Completed = Completed {
+                output_truncated: false,
+                context: ::protobuf::MessageField::none(),
+                attachment: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Completed {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Completed").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Completed {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Completed {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `Completed`
+    pub mod completed {
+        ///  Declares the complete logical attachment produced by the command. The server verifies this
+        ///  declaration against its durable attachment catalog before reporting the command as
+        ///  succeeded.
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Attachment {
+            // message oneof groups
+            pub attachment_type: ::std::option::Option<attachment::Attachment_type>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Attachment {
+            fn default() -> &'a Attachment {
+                <Attachment as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Attachment {
+            pub fn new() -> Attachment {
+                ::std::default::Default::default()
+            }
+
+            // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.None none = 1;
+
+            pub fn none(&self) -> &attachment::None {
+                match self.attachment_type {
+                    ::std::option::Option::Some(attachment::Attachment_type::None(ref v)) => v,
+                    _ => <attachment::None as ::protobuf::Message>::default_instance(),
+                }
+            }
+
+            pub fn clear_none(&mut self) {
+                self.attachment_type = ::std::option::Option::None;
+            }
+
+            pub fn has_none(&self) -> bool {
+                match self.attachment_type {
+                    ::std::option::Option::Some(attachment::Attachment_type::None(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_none(&mut self, v: attachment::None) {
+                self.attachment_type = ::std::option::Option::Some(attachment::Attachment_type::None(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_none(&mut self) -> &mut attachment::None {
+                if let ::std::option::Option::Some(attachment::Attachment_type::None(_)) = self.attachment_type {
+                } else {
+                    self.attachment_type = ::std::option::Option::Some(attachment::Attachment_type::None(attachment::None::new()));
+                }
+                match self.attachment_type {
+                    ::std::option::Option::Some(attachment::Attachment_type::None(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_none(&mut self) -> attachment::None {
+                if self.has_none() {
+                    match self.attachment_type.take() {
+                        ::std::option::Option::Some(attachment::Attachment_type::None(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    attachment::None::new()
+                }
+            }
+
+            // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.Artifact artifact = 2;
+
+            pub fn artifact(&self) -> &attachment::Artifact {
+                match self.attachment_type {
+                    ::std::option::Option::Some(attachment::Attachment_type::Artifact(ref v)) => v,
+                    _ => <attachment::Artifact as ::protobuf::Message>::default_instance(),
+                }
+            }
+
+            pub fn clear_artifact(&mut self) {
+                self.attachment_type = ::std::option::Option::None;
+            }
+
+            pub fn has_artifact(&self) -> bool {
+                match self.attachment_type {
+                    ::std::option::Option::Some(attachment::Attachment_type::Artifact(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_artifact(&mut self, v: attachment::Artifact) {
+                self.attachment_type = ::std::option::Option::Some(attachment::Attachment_type::Artifact(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_artifact(&mut self) -> &mut attachment::Artifact {
+                if let ::std::option::Option::Some(attachment::Attachment_type::Artifact(_)) = self.attachment_type {
+                } else {
+                    self.attachment_type = ::std::option::Option::Some(attachment::Attachment_type::Artifact(attachment::Artifact::new()));
+                }
+                match self.attachment_type {
+                    ::std::option::Option::Some(attachment::Attachment_type::Artifact(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_artifact(&mut self) -> attachment::Artifact {
+                if self.has_artifact() {
+                    match self.attachment_type.take() {
+                        ::std::option::Option::Some(attachment::Attachment_type::Artifact(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    attachment::Artifact::new()
+                }
+            }
+
+            // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.LogBatches log_batches = 3;
+
+            pub fn log_batches(&self) -> &attachment::LogBatches {
+                match self.attachment_type {
+                    ::std::option::Option::Some(attachment::Attachment_type::LogBatches(ref v)) => v,
+                    _ => <attachment::LogBatches as ::protobuf::Message>::default_instance(),
+                }
+            }
+
+            pub fn clear_log_batches(&mut self) {
+                self.attachment_type = ::std::option::Option::None;
+            }
+
+            pub fn has_log_batches(&self) -> bool {
+                match self.attachment_type {
+                    ::std::option::Option::Some(attachment::Attachment_type::LogBatches(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_log_batches(&mut self, v: attachment::LogBatches) {
+                self.attachment_type = ::std::option::Option::Some(attachment::Attachment_type::LogBatches(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_log_batches(&mut self) -> &mut attachment::LogBatches {
+                if let ::std::option::Option::Some(attachment::Attachment_type::LogBatches(_)) = self.attachment_type {
+                } else {
+                    self.attachment_type = ::std::option::Option::Some(attachment::Attachment_type::LogBatches(attachment::LogBatches::new()));
+                }
+                match self.attachment_type {
+                    ::std::option::Option::Some(attachment::Attachment_type::LogBatches(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_log_batches(&mut self) -> attachment::LogBatches {
+                if self.has_log_batches() {
+                    match self.attachment_type.take() {
+                        ::std::option::Option::Some(attachment::Attachment_type::LogBatches(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    attachment::LogBatches::new()
+                }
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(3);
+                let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, attachment::None>(
+                    "none",
+                    Attachment::has_none,
+                    Attachment::none,
+                    Attachment::mut_none,
+                    Attachment::set_none,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, attachment::Artifact>(
+                    "artifact",
+                    Attachment::has_artifact,
+                    Attachment::artifact,
+                    Attachment::mut_artifact,
+                    Attachment::set_artifact,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, attachment::LogBatches>(
+                    "log_batches",
+                    Attachment::has_log_batches,
+                    Attachment::log_batches,
+                    Attachment::mut_log_batches,
+                    Attachment::set_log_batches,
+                ));
+                oneofs.push(attachment::Attachment_type::generated_oneof_descriptor_data());
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Attachment>(
+                    "DeviceCommandUpdate.Completed.Attachment",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Attachment {
+            const NAME: &'static str = "Attachment";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.attachment_type = ::std::option::Option::Some(attachment::Attachment_type::None(is.read_message()?));
+                        },
+                        18 => {
+                            self.attachment_type = ::std::option::Option::Some(attachment::Attachment_type::Artifact(is.read_message()?));
+                        },
+                        26 => {
+                            self.attachment_type = ::std::option::Option::Some(attachment::Attachment_type::LogBatches(is.read_message()?));
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if let ::std::option::Option::Some(ref v) = self.attachment_type {
+                    match v {
+                        &attachment::Attachment_type::None(ref v) => {
+                            let len = v.compute_size();
+                            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                        },
+                        &attachment::Attachment_type::Artifact(ref v) => {
+                            let len = v.compute_size();
+                            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                        },
+                        &attachment::Attachment_type::LogBatches(ref v) => {
+                            let len = v.compute_size();
+                            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                        },
+                    };
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if let ::std::option::Option::Some(ref v) = self.attachment_type {
+                    match v {
+                        &attachment::Attachment_type::None(ref v) => {
+                            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                        },
+                        &attachment::Attachment_type::Artifact(ref v) => {
+                            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                        },
+                        &attachment::Attachment_type::LogBatches(ref v) => {
+                            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                        },
+                    };
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Attachment {
+                Attachment::new()
+            }
+
+            fn clear(&mut self) {
+                self.attachment_type = ::std::option::Option::None;
+                self.attachment_type = ::std::option::Option::None;
+                self.attachment_type = ::std::option::Option::None;
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Attachment {
+                static instance: Attachment = Attachment {
+                    attachment_type: ::std::option::Option::None,
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Attachment {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Completed.Attachment").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Attachment {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Attachment {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        /// Nested message and enums of message `Attachment`
+        pub mod attachment {
+
+            #[derive(Clone,PartialEq,Debug)]
+            // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.attachment_type)
+            pub enum Attachment_type {
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.none)
+                None(None),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.artifact)
+                Artifact(Artifact),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.log_batches)
+                LogBatches(LogBatches),
+            }
+
+            impl ::protobuf::Oneof for Attachment_type {
+            }
+
+            impl ::protobuf::OneofFull for Attachment_type {
+                fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| <super::Attachment as ::protobuf::MessageFull>::descriptor().oneof_by_name("attachment_type").unwrap()).clone()
+                }
+            }
+
+            impl Attachment_type {
+                pub(in super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                    ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Attachment_type>("attachment_type")
+                }
+            }
+            ///  The command completed without an attachment.
+            // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.None)
+            #[derive(PartialEq,Clone,Default,Debug)]
+            pub struct None {
+                // special fields
+                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.None.special_fields)
+                pub special_fields: ::protobuf::SpecialFields,
+            }
+
+            impl<'a> ::std::default::Default for &'a None {
+                fn default() -> &'a None {
+                    <None as ::protobuf::Message>::default_instance()
+                }
+            }
+
+            impl None {
+                pub fn new() -> None {
+                    ::std::default::Default::default()
+                }
+
+                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                    let mut fields = ::std::vec::Vec::with_capacity(0);
+                    let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<None>(
+                        "DeviceCommandUpdate.Completed.Attachment.None",
+                        fields,
+                        oneofs,
+                    )
+                }
+            }
+
+            impl ::protobuf::Message for None {
+                const NAME: &'static str = "None";
+
+                fn is_initialized(&self) -> bool {
+                    true
+                }
+
+                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            tag => {
+                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                            },
+                        };
+                    }
+                    ::std::result::Result::Ok(())
+                }
+
+                // Compute sizes of nested messages
+                #[allow(unused_variables)]
+                fn compute_size(&self) -> u64 {
+                    let mut my_size = 0;
+                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                    self.special_fields.cached_size().set(my_size as u32);
+                    my_size
+                }
+
+                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                    ::std::result::Result::Ok(())
+                }
+
+                fn special_fields(&self) -> &::protobuf::SpecialFields {
+                    &self.special_fields
+                }
+
+                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                    &mut self.special_fields
+                }
+
+                fn new() -> None {
+                    None::new()
+                }
+
+                fn clear(&mut self) {
+                    self.special_fields.clear();
+                }
+
+                fn default_instance() -> &'static None {
+                    static instance: None = None {
+                        special_fields: ::protobuf::SpecialFields::new(),
+                    };
+                    &instance
+                }
+            }
+
+            impl ::protobuf::MessageFull for None {
+                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Completed.Attachment.None").unwrap()).clone()
+                }
+            }
+
+            impl ::std::fmt::Display for None {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    ::protobuf::text_format::fmt(self, f)
+                }
+            }
+
+            impl ::protobuf::reflect::ProtobufValue for None {
+                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+            }
+
+            ///  The command produced one artifact uploaded through UploadArtifactRequest.
+            // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.Artifact)
+            #[derive(PartialEq,Clone,Default,Debug)]
+            pub struct Artifact {
+                // message fields
+                ///  The stable artifact ID from the acknowledged upload.
+                // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.Artifact.artifact_id)
+                pub artifact_id: ::std::string::String,
+                // special fields
+                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.Artifact.special_fields)
+                pub special_fields: ::protobuf::SpecialFields,
+            }
+
+            impl<'a> ::std::default::Default for &'a Artifact {
+                fn default() -> &'a Artifact {
+                    <Artifact as ::protobuf::Message>::default_instance()
+                }
+            }
+
+            impl Artifact {
+                pub fn new() -> Artifact {
+                    ::std::default::Default::default()
+                }
+
+                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                    let mut fields = ::std::vec::Vec::with_capacity(1);
+                    let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                    fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                        "artifact_id",
+                        |m: &Artifact| { &m.artifact_id },
+                        |m: &mut Artifact| { &mut m.artifact_id },
+                    ));
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
+                        "DeviceCommandUpdate.Completed.Attachment.Artifact",
+                        fields,
+                        oneofs,
+                    )
+                }
+            }
+
+            impl ::protobuf::Message for Artifact {
+                const NAME: &'static str = "Artifact";
+
+                fn is_initialized(&self) -> bool {
+                    true
+                }
+
+                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => {
+                                self.artifact_id = is.read_string()?;
+                            },
+                            tag => {
+                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                            },
+                        };
+                    }
+                    ::std::result::Result::Ok(())
+                }
+
+                // Compute sizes of nested messages
+                #[allow(unused_variables)]
+                fn compute_size(&self) -> u64 {
+                    let mut my_size = 0;
+                    if !self.artifact_id.is_empty() {
+                        my_size += ::protobuf::rt::string_size(1, &self.artifact_id);
+                    }
+                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                    self.special_fields.cached_size().set(my_size as u32);
+                    my_size
+                }
+
+                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                    if !self.artifact_id.is_empty() {
+                        os.write_string(1, &self.artifact_id)?;
+                    }
+                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                    ::std::result::Result::Ok(())
+                }
+
+                fn special_fields(&self) -> &::protobuf::SpecialFields {
+                    &self.special_fields
+                }
+
+                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                    &mut self.special_fields
+                }
+
+                fn new() -> Artifact {
+                    Artifact::new()
+                }
+
+                fn clear(&mut self) {
+                    self.artifact_id.clear();
+                    self.special_fields.clear();
+                }
+
+                fn default_instance() -> &'static Artifact {
+                    static instance: Artifact = Artifact {
+                        artifact_id: ::std::string::String::new(),
+                        special_fields: ::protobuf::SpecialFields::new(),
+                    };
+                    &instance
+                }
+            }
+
+            impl ::protobuf::MessageFull for Artifact {
+                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Completed.Attachment.Artifact").unwrap()).clone()
+                }
+            }
+
+            impl ::std::fmt::Display for Artifact {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    ::protobuf::text_format::fmt(self, f)
+                }
+            }
+
+            impl ::protobuf::reflect::ProtobufValue for Artifact {
+                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+            }
+
+            ///  The command produced log batches uploaded through LogUploadRequest.
+            // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.LogBatches)
+            #[derive(PartialEq,Clone,Default,Debug)]
+            pub struct LogBatches {
+                // message fields
+                ///  The immutable total number of result payload bytes across all acknowledged batches.
+                // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.LogBatches.total_result_bytes)
+                pub total_result_bytes: u64,
+                // special fields
+                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment.LogBatches.special_fields)
+                pub special_fields: ::protobuf::SpecialFields,
+            }
+
+            impl<'a> ::std::default::Default for &'a LogBatches {
+                fn default() -> &'a LogBatches {
+                    <LogBatches as ::protobuf::Message>::default_instance()
+                }
+            }
+
+            impl LogBatches {
+                pub fn new() -> LogBatches {
+                    ::std::default::Default::default()
+                }
+
+                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                    let mut fields = ::std::vec::Vec::with_capacity(1);
+                    let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                    fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                        "total_result_bytes",
+                        |m: &LogBatches| { &m.total_result_bytes },
+                        |m: &mut LogBatches| { &mut m.total_result_bytes },
+                    ));
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<LogBatches>(
+                        "DeviceCommandUpdate.Completed.Attachment.LogBatches",
+                        fields,
+                        oneofs,
+                    )
+                }
+            }
+
+            impl ::protobuf::Message for LogBatches {
+                const NAME: &'static str = "LogBatches";
+
+                fn is_initialized(&self) -> bool {
+                    true
+                }
+
+                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            8 => {
+                                self.total_result_bytes = is.read_uint64()?;
+                            },
+                            tag => {
+                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                            },
+                        };
+                    }
+                    ::std::result::Result::Ok(())
+                }
+
+                // Compute sizes of nested messages
+                #[allow(unused_variables)]
+                fn compute_size(&self) -> u64 {
+                    let mut my_size = 0;
+                    if self.total_result_bytes != 0 {
+                        my_size += ::protobuf::rt::uint64_size(1, self.total_result_bytes);
+                    }
+                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                    self.special_fields.cached_size().set(my_size as u32);
+                    my_size
+                }
+
+                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                    if self.total_result_bytes != 0 {
+                        os.write_uint64(1, self.total_result_bytes)?;
+                    }
+                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                    ::std::result::Result::Ok(())
+                }
+
+                fn special_fields(&self) -> &::protobuf::SpecialFields {
+                    &self.special_fields
+                }
+
+                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                    &mut self.special_fields
+                }
+
+                fn new() -> LogBatches {
+                    LogBatches::new()
+                }
+
+                fn clear(&mut self) {
+                    self.total_result_bytes = 0;
+                    self.special_fields.clear();
+                }
+
+                fn default_instance() -> &'static LogBatches {
+                    static instance: LogBatches = LogBatches {
+                        total_result_bytes: 0,
+                        special_fields: ::protobuf::SpecialFields::new(),
+                    };
+                    &instance
+                }
+            }
+
+            impl ::protobuf::MessageFull for LogBatches {
+                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Completed.Attachment.LogBatches").unwrap()).clone()
+                }
+            }
+
+            impl ::std::fmt::Display for LogBatches {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    ::protobuf::text_format::fmt(self, f)
+                }
+            }
+
+            impl ::protobuf::reflect::ProtobufValue for LogBatches {
+                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+            }
+        }
+    }
+
+    ///  Reports that command execution could not be completed.
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Failed {
+        // message fields
+        ///  Optional structured context supplied with the failed command result.
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed.context)
+        pub context: ::protobuf::MessageField<super::DeviceCommandResultContext>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Failed {
+        fn default() -> &'a Failed {
+            <Failed as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Failed {
+        pub fn new() -> Failed {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::DeviceCommandResultContext>(
+                "context",
+                |m: &Failed| { &m.context },
+                |m: &mut Failed| { &mut m.context },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Failed>(
+                "DeviceCommandUpdate.Failed",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Failed {
+        const NAME: &'static str = "Failed";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.context)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.context.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.context.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Failed {
+            Failed::new()
+        }
+
+        fn clear(&mut self) {
+            self.context.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Failed {
+            static instance: Failed = Failed {
+                context: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Failed {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandUpdate.Failed").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Failed {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Failed {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+///  Acknowledges that the server persisted a command update.
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeviceCommandUpdateAck {
+    // message fields
+    ///  The command ID from the corresponding DeviceCommandRequest.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck.command_id)
+    pub command_id: ::std::string::String,
+    ///  The command update sequence number that was persisted.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck.update_sequence_number)
+    pub update_sequence_number: u64,
+    ///  A non-empty error means the server did not persist the update and the client should retry it.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck.error)
+    pub error: ::std::string::String,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeviceCommandUpdateAck {
+    fn default() -> &'a DeviceCommandUpdateAck {
+        <DeviceCommandUpdateAck as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeviceCommandUpdateAck {
+    pub fn new() -> DeviceCommandUpdateAck {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "command_id",
+            |m: &DeviceCommandUpdateAck| { &m.command_id },
+            |m: &mut DeviceCommandUpdateAck| { &mut m.command_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "update_sequence_number",
+            |m: &DeviceCommandUpdateAck| { &m.update_sequence_number },
+            |m: &mut DeviceCommandUpdateAck| { &mut m.update_sequence_number },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "error",
+            |m: &DeviceCommandUpdateAck| { &m.error },
+            |m: &mut DeviceCommandUpdateAck| { &mut m.error },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandUpdateAck>(
+            "DeviceCommandUpdateAck",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeviceCommandUpdateAck {
+    const NAME: &'static str = "DeviceCommandUpdateAck";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.command_id = is.read_string()?;
+                },
+                16 => {
+                    self.update_sequence_number = is.read_uint64()?;
+                },
+                26 => {
+                    self.error = is.read_string()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.command_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.command_id);
+        }
+        if self.update_sequence_number != 0 {
+            my_size += ::protobuf::rt::uint64_size(2, self.update_sequence_number);
+        }
+        if !self.error.is_empty() {
+            my_size += ::protobuf::rt::string_size(3, &self.error);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.command_id.is_empty() {
+            os.write_string(1, &self.command_id)?;
+        }
+        if self.update_sequence_number != 0 {
+            os.write_uint64(2, self.update_sequence_number)?;
+        }
+        if !self.error.is_empty() {
+            os.write_string(3, &self.error)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeviceCommandUpdateAck {
+        DeviceCommandUpdateAck::new()
+    }
+
+    fn clear(&mut self) {
+        self.command_id.clear();
+        self.update_sequence_number = 0;
+        self.error.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeviceCommandUpdateAck {
+        static instance: DeviceCommandUpdateAck = DeviceCommandUpdateAck {
+            command_id: ::std::string::String::new(),
+            update_sequence_number: 0,
+            error: ::std::string::String::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeviceCommandUpdateAck {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeviceCommandUpdateAck").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeviceCommandUpdateAck {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeviceCommandUpdateAck {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 ///  The response to Sankey diagram path upload request.
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.SankeyPathUploadResponse)
 #[derive(PartialEq,Clone,Default,Debug)]
@@ -11214,8 +13134,57 @@ impl ApiResponse {
         }
     }
 
+    // .bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck device_command_update_ack = 17;
+
+    pub fn device_command_update_ack(&self) -> &DeviceCommandUpdateAck {
+        match self.response_type {
+            ::std::option::Option::Some(api_response::Response_type::DeviceCommandUpdateAck(ref v)) => v,
+            _ => <DeviceCommandUpdateAck as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_device_command_update_ack(&mut self) {
+        self.response_type = ::std::option::Option::None;
+    }
+
+    pub fn has_device_command_update_ack(&self) -> bool {
+        match self.response_type {
+            ::std::option::Option::Some(api_response::Response_type::DeviceCommandUpdateAck(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_device_command_update_ack(&mut self, v: DeviceCommandUpdateAck) {
+        self.response_type = ::std::option::Option::Some(api_response::Response_type::DeviceCommandUpdateAck(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_device_command_update_ack(&mut self) -> &mut DeviceCommandUpdateAck {
+        if let ::std::option::Option::Some(api_response::Response_type::DeviceCommandUpdateAck(_)) = self.response_type {
+        } else {
+            self.response_type = ::std::option::Option::Some(api_response::Response_type::DeviceCommandUpdateAck(DeviceCommandUpdateAck::new()));
+        }
+        match self.response_type {
+            ::std::option::Option::Some(api_response::Response_type::DeviceCommandUpdateAck(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_device_command_update_ack(&mut self) -> DeviceCommandUpdateAck {
+        if self.has_device_command_update_ack() {
+            match self.response_type.take() {
+                ::std::option::Option::Some(api_response::Response_type::DeviceCommandUpdateAck(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            DeviceCommandUpdateAck::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(14);
+        let mut fields = ::std::vec::Vec::with_capacity(15);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, HandshakeResponse>(
             "handshake",
@@ -11315,6 +13284,13 @@ impl ApiResponse {
             ApiResponse::mut_state_update,
             ApiResponse::set_state_update,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, DeviceCommandUpdateAck>(
+            "device_command_update_ack",
+            ApiResponse::has_device_command_update_ack,
+            ApiResponse::device_command_update_ack,
+            ApiResponse::mut_device_command_update_ack,
+            ApiResponse::set_device_command_update_ack,
+        ));
         oneofs.push(api_response::Response_type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ApiResponse>(
             "ApiResponse",
@@ -11375,6 +13351,9 @@ impl ::protobuf::Message for ApiResponse {
                 },
                 130 => {
                     self.response_type = ::std::option::Option::Some(api_response::Response_type::StateUpdate(is.read_message()?));
+                },
+                138 => {
+                    self.response_type = ::std::option::Option::Some(api_response::Response_type::DeviceCommandUpdateAck(is.read_message()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -11446,6 +13425,10 @@ impl ::protobuf::Message for ApiResponse {
                     let len = v.compute_size();
                     my_size += 2 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &api_response::Response_type::DeviceCommandUpdateAck(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 2 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -11498,6 +13481,9 @@ impl ::protobuf::Message for ApiResponse {
                 &api_response::Response_type::StateUpdate(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(16, v, os)?;
                 },
+                &api_response::Response_type::DeviceCommandUpdateAck(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(17, v, os)?;
+                },
             };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -11517,6 +13503,7 @@ impl ::protobuf::Message for ApiResponse {
     }
 
     fn clear(&mut self) {
+        self.response_type = ::std::option::Option::None;
         self.response_type = ::std::option::Option::None;
         self.response_type = ::std::option::Option::None;
         self.response_type = ::std::option::Option::None;
@@ -11594,6 +13581,8 @@ pub mod api_response {
         ArtifactIntent(super::UploadArtifactIntentResponse),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiResponse.state_update)
         StateUpdate(super::StateUpdateResponse),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.ApiResponse.device_command_update_ack)
+        DeviceCommandUpdateAck(super::DeviceCommandUpdateAck),
     }
 
     impl ::protobuf::Oneof for Response_type {
@@ -11689,224 +13678,266 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     tobuf.client.v1.LogUploadIntentResponse.UploadImmediatelyH\0R\x11uploadI\
     mmediately\x12V\n\x04drop\x18\x03\x20\x01(\x0b2@.bitdrift_public.protobu\
     f.client.v1.LogUploadIntentResponse.DropH\0R\x04drop\x1a\x13\n\x11Upload\
-    Immediately\x1a\x06\n\x04DropB\n\n\x08decision\"\xfa\x01\n\x10LogUploadR\
+    Immediately\x1a\x06\n\x04DropB\n\n\x08decision\"\xb7\x02\n\x10LogUploadR\
     equest\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\
     \x04r\x02\x10\x01\x124\n\x16legacy_flatbuffer_logs\x18\x02\x20\x03(\x0cR\
     \x14legacyFlatbufferLogs\x12\x1d\n\nproto_logs\x18\x05\x20\x03(\x0cR\tpr\
     otoLogs\x12(\n\x0bbuffer_uuid\x18\x03\x20\x01(\tR\nbufferUuidB\x07\xfaB\
     \x04r\x02\x10\x01\x12#\n\rtrigger_uuids\x18\x06\x20\x03(\tR\x0ctriggerUu\
-    ids\x12\x18\n\x07ackless\x18\x04\x20\x01(\x08R\x07ackless\",\n\x0bPingRe\
-    quest\x12\x1d\n\nsleep_mode\x18\x01\x20\x01(\x08R\tsleepMode\"\xfc\x01\n\
-    \x16ConfigurationUpdateAck\x12;\n\x1alast_applied_version_nonce\x18\x01\
-    \x20\x01(\tR\x17lastAppliedVersionNonce\x12S\n\x04nack\x18\x02\x20\x01(\
-    \x0b2?.bitdrift_public.protobuf.client.v1.ConfigurationUpdateAck.NackR\
-    \x04nack\x1aP\n\x04Nack\x12#\n\rversion_nonce\x18\x01\x20\x01(\tR\x0cver\
-    sionNonce\x12#\n\rerror_details\x18\x02\x20\x01(\tR\x0cerrorDetails\"\
-    \x9f\n\n\nApiRequest\x12T\n\thandshake\x18\x01\x20\x01(\x0b24.bitdrift_p\
-    ublic.protobuf.client.v1.HandshakeRequestH\0R\thandshake\x12h\n\x11log_u\
-    pload_intent\x18\x07\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.L\
-    ogUploadIntentRequestH\0R\x0flogUploadIntent\x12U\n\nlog_upload\x18\x02\
-    \x20\x01(\x0b24.bitdrift_public.protobuf.client.v1.LogUploadRequestH\0R\
-    \tlogUpload\x12[\n\x0cstats_upload\x18\x06\x20\x01(\x0b26.bitdrift_publi\
-    c.protobuf.client.v1.StatsUploadRequestH\0R\x0bstatsUpload\x12E\n\x04pin\
-    g\x18\x03\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.PingRequestH\
-    \0R\x04ping\x12v\n\x18configuration_update_ack\x18\x04\x20\x01(\x0b2:.bi\
-    tdrift_public.protobuf.client.v1.ConfigurationUpdateAckH\0R\x16configura\
-    tionUpdateAck\x12j\n\x12runtime_update_ack\x18\x05\x20\x01(\x0b2:.bitdri\
-    ft_public.protobuf.client.v1.ConfigurationUpdateAckH\0R\x10runtimeUpdate\
-    Ack\x12k\n\x12sankey_path_upload\x18\n\x20\x01(\x0b2;.bitdrift_public.pr\
-    otobuf.client.v1.SankeyPathUploadRequestH\0R\x10sankeyPathUpload\x12^\n\
-    \rsankey_intent\x18\x0b\x20\x01(\x0b27.bitdrift_public.protobuf.client.v\
-    1.SankeyIntentRequestH\0R\x0csankeyIntent\x12d\n\x0fartifact_upload\x18\
-    \x0c\x20\x01(\x0b29.bitdrift_public.protobuf.client.v1.UploadArtifactReq\
-    uestH\0R\x0eartifactUpload\x12j\n\x0fartifact_intent\x18\r\x20\x01(\x0b2\
-    ?.bitdrift_public.protobuf.client.v1.UploadArtifactIntentRequestH\0R\x0e\
-    artifactIntent\x12U\n\ndebug_data\x18\x0e\x20\x01(\x0b24.bitdrift_public\
-    .protobuf.client.v1.DebugDataRequestH\0R\tdebugData\x12[\n\x0cstate_upda\
-    te\x18\x0f\x20\x01(\x0b26.bitdrift_public.protobuf.client.v1.StateUpdate\
-    RequestH\0R\x0bstateUpdateB\x13\n\x0crequest_type\x12\x03\xf8B\x01J\x04\
-    \x08\x08\x10\tJ\x04\x08\t\x10\n\"\x91\x02\n\x17SankeyPathUploadRequest\
-    \x12(\n\x0bupload_uuid\x18\x04\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\
-    \x02\x10\x01\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\
-    \x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\x01(\tR\x06pathIdB\x07\xfa\
-    B\x04r\x02\x10\x01\x12`\n\x05nodes\x18\x03\x20\x03(\x0b2@.bitdrift_publi\
-    c.protobuf.client.v1.SankeyPathUploadRequest.NodeR\x05nodesB\x08\xfaB\
-    \x05\x92\x01\x02\x08\x01\x1a/\n\x04Node\x12'\n\x0fextracted_value\x18\
-    \x01\x20\x01(\tR\x0eextractedValue\"\x96\x01\n\x13SankeyIntentRequest\
-    \x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\
-    \x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\x01(\tR\x06pathIdB\x07\xfa\
-    B\x04r\x02\x10\x01\x123\n\x11sankey_diagram_id\x18\x03\x20\x01(\tR\x0fsa\
-    nkeyDiagramIdB\x07\xfaB\x04r\x02\x10\x01\"\xd9\x03\n\x1bUploadArtifactIn\
-    tentRequest\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\
-    \xfaB\x04r\x02\x10\x01\x12\x20\n\x07type_id\x18\x02\x20\x01(\tR\x06typeI\
-    dB\x07\xfaB\x04r\x02\x10\x01\x12i\n\x08metadata\x18\x06\x20\x03(\x0b2M.b\
-    itdrift_public.protobuf.client.v1.UploadArtifactIntentRequest.MetadataEn\
-    tryR\x08metadata\x12(\n\x0bartifact_id\x18\x04\x20\x01(\tR\nartifactIdB\
-    \x07\xfaB\x04r\x02\x10\x01\x128\n\x04time\x18\x05\x20\x01(\x0b2\x1a.goog\
-    le.protobuf.TimestampR\x04timeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\"\n\
-    \nsession_id\x18\x07\x20\x01(\tH\0R\tsessionId\x88\x01\x01\x1af\n\rMetad\
-    ataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\
-    \x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value:\
-    \x028\x01B\r\n\x0b_session_idJ\x04\x08\x03\x10\x04\"\xd4\x02\n\x1cUpload\
-    ArtifactIntentResponse\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintent\
-    UuidB\x07\xfaB\x04r\x02\x10\x01\x12\x83\x01\n\x12upload_immediately\x18\
-    \x03\x20\x01(\x0b2R.bitdrift_public.protobuf.client.v1.UploadArtifactInt\
-    entResponse.UploadImmediatelyH\0R\x11uploadImmediately\x12[\n\x04drop\
-    \x18\x04\x20\x01(\x0b2E.bitdrift_public.protobuf.client.v1.UploadArtifac\
-    tIntentResponse.DropH\0R\x04drop\x1a\x13\n\x11UploadImmediately\x1a\x06\
-    \n\x04DropB\n\n\x08decision\"\xd0\x05\n\x15UploadArtifactRequest\x12(\n\
-    \x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\
-    \x01\x12\x20\n\x07type_id\x18\x02\x20\x01(\tR\x06typeIdB\x07\xfaB\x04r\
-    \x02\x10\x01\x12\x1a\n\x08contents\x18\x03\x20\x01(\x0cR\x08contents\x12\
-    (\n\x0bartifact_id\x18\x04\x20\x01(\tR\nartifactIdB\x07\xfaB\x04r\x02\
-    \x10\x01\x12s\n\x0estate_metadata\x18\x05\x20\x03(\x0b2L.bitdrift_public\
-    .protobuf.client.v1.UploadArtifactRequest.StateMetadataEntryR\rstateMeta\
-    data\x128\n\x04time\x18\x06\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\
-    \x04timeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\nsession_id\x18\x07\
-    \x20\x01(\tR\tsessionId\x12T\n\rfeature_flags\x18\x08\x20\x03(\x0b2/.bit\
-    drift_public.protobuf.client.v1.FeatureFlagR\x0cfeatureFlags\x12x\n\x17w\
-    orkflow_report_handoff\x18\t\x20\x01(\x0b2;.bitdrift_public.protobuf.wor\
-    kflow.v1.WorkflowReportHandoffH\0R\x15workflowReportHandoff\x88\x01\x01\
-    \x1ak\n\x12StateMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
-    y\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.loggin\
-    g.v1.DataR\x05value:\x028\x01B\x1a\n\x18_workflow_report_handoff\"X\n\
-    \x16UploadArtifactResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nup\
-    loadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\
-    \tR\x05error\"\xf6\x04\n\x11HandshakeResponse\x12m\n\x0fstream_settings\
-    \x18\x01\x20\x01(\x0b2D.bitdrift_public.protobuf.client.v1.HandshakeResp\
-    onse.StreamSettingsR\x0estreamSettings\x12>\n\x1bconfiguration_update_st\
-    atus\x18\x02\x20\x01(\rR\x19configurationUpdateStatus\x12A\n\x1bopaque_c\
-    lient_state_to_echo\x18\x03\x20\x01(\x0cH\0R\x17opaqueClientStateToEcho\
-    \x88\x01\x01\x12g\n\x14client_state_updates\x18\x04\x20\x03(\x0b25.bitdr\
-    ift_public.protobuf.client.v1.ClientStateUpdateR\x12clientStateUpdates\
-    \x12g\n\ranalytics_ack\x18\x05\x20\x01(\x0b2B.bitdrift_public.protobuf.c\
-    lient.v1.HandshakeResponse.AnalyticsAckR\x0canalyticsAck\x1a+\n\x0cAnaly\
-    ticsAck\x12\x1b\n\treport_id\x18\x01\x20\x01(\tR\x08reportId\x1aP\n\x0eS\
-    treamSettings\x12>\n\rping_interval\x18\x01\x20\x01(\x0b2\x19.google.pro\
-    tobuf.DurationR\x0cpingIntervalB\x1e\n\x1c_opaque_client_state_to_echo\"\
-    I\n\x0bRateLimited\x12:\n\x0bretry_after\x18\x01\x20\x01(\x0b2\x19.googl\
-    e.protobuf.DurationR\nretryAfter\"\xca\x01\n\x11LogUploadResponse\x12(\n\
-    \x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\
-    \x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\x12!\n\x0clogs_drop\
-    ped\x18\x03\x20\x01(\rR\x0blogsDropped\x12R\n\x0crate_limited\x18\x04\
-    \x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.RateLimitedR\x0brateL\
-    imited\"\x91\x0b\n\x12StatsUploadRequest\x12(\n\x0bupload_uuid\x18\x01\
-    \x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12e\n\x08snapshot\
-    \x18\x02\x20\x03(\x0b2?.bitdrift_public.protobuf.client.v1.StatsUploadRe\
-    quest.SnapshotR\x08snapshotB\x08\xfaB\x05\x92\x01\x02\x08\x01\x123\n\x07\
-    sent_at\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x06sentAt\
-    \x12h\n\rupload_reason\x18\x04\x20\x01(\x0e2C.bitdrift_public.protobuf.c\
-    lient.v1.StatsUploadRequest.UploadReasonR\x0cuploadReason\x1a\xbe\x07\n\
-    \x08Snapshot\x12K\n\x07metrics\x18\x01\x20\x01(\x0b2/.bitdrift_public.pr\
-    otobuf.client.v1.MetricsListH\0R\x07metrics\x12l\n\naggregated\x18\x02\
-    \x20\x01(\x0b2J.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Sn\
-    apshot.AggregatedH\x01R\naggregated\x12\x86\x01\n\x13metric_id_overflows\
-    \x18\x03\x20\x03(\x0b2V.bitdrift_public.protobuf.client.v1.StatsUploadRe\
-    quest.Snapshot.MetricIdOverflowsEntryR\x11metricIdOverflows\x12\x86\x01\
-    \n\x13workflow_debug_data\x18\x04\x20\x03(\x0b2V.bitdrift_public.protobu\
-    f.client.v1.StatsUploadRequest.Snapshot.WorkflowDebugDataEntryR\x11workf\
-    lowDebugData\x12\x1f\n\x0bretry_count\x18\x05\x20\x01(\rR\nretryCount\
-    \x122\n\x15client_stats_sequence\x18\x06\x20\x01(\x04R\x13clientStatsSeq\
-    uence\x1a\x90\x01\n\nAggregated\x12G\n\x0cperiod_start\x18\x04\x20\x01(\
-    \x0b2\x1a.google.protobuf.TimestampR\x0bperiodStartB\x08\xfaB\x05\x8a\
-    \x01\x02\x10\x01\x129\n\nperiod_end\x18\x05\x20\x01(\x0b2\x1a.google.pro\
-    tobuf.TimestampR\tperiodEnd\x1aD\n\x16MetricIdOverflowsEntry\x12\x10\n\
-    \x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\
-    \x04R\x05value:\x028\x01\x1a\x8c\x01\n\x16WorkflowDebugDataEntry\x12\x10\
-    \n\x03key\x18\x01\x20\x01(\tR\x03key\x12\\\n\x05value\x18\x02\x20\x01(\
-    \x0b2F.bitdrift_public.protobuf.client.v1.DebugDataRequest.WorkflowDebug\
-    DataR\x05value:\x028\x01B\x14\n\rsnapshot_type\x12\x03\xf8B\x01B\x12\n\
-    \x0boccurred_at\x12\x03\xf8B\x01\"\x89\x01\n\x0cUploadReason\x12\x1d\n\
-    \x19UPLOAD_REASON_UNSPECIFIED\x10\0\x12\x1a\n\x16UPLOAD_REASON_PERIODIC\
-    \x10\x01\x12!\n\x1dUPLOAD_REASON_EVENT_TRIGGERED\x10\x02\x12\x1b\n\x17UP\
-    LOAD_REASON_HANDSHAKE\x10\x03\"~\n\x13StatsUploadResponse\x12(\n\x0buplo\
-    ad_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\
-    \x14\n\x05error\x18\x02\x20\x01(\tR\x05error\x12'\n\x0fmetrics_dropped\
-    \x18\x03\x20\x01(\rR\x0emetricsDropped\"\x0e\n\x0cPongResponse\"\x8a\x07\
-    \n\x13ConfigurationUpdate\x12#\n\rversion_nonce\x18\x01\x20\x01(\tR\x0cv\
-    ersionNonce\x12v\n\x12state_of_the_world\x18\x02\x20\x01(\x0b2G.bitdrift\
-    _public.protobuf.client.v1.ConfigurationUpdate.StateOfTheWorldH\0R\x0fst\
-    ateOfTheWorld\x12g\n\x14client_state_updates\x18\x03\x20\x03(\x0b25.bitd\
-    rift_public.protobuf.client.v1.ClientStateUpdateR\x12clientStateUpdates\
-    \x1a\xdd\x04\n\x0fStateOfTheWorld\x12b\n\x12buffer_config_list\x18\x03\
-    \x20\x01(\x0b24.bitdrift_public.protobuf.config.v1.BufferConfigListR\x10\
-    bufferConfigList\x12u\n\x17workflows_configuration\x18\x04\x20\x01(\x0b2\
-    <.bitdrift_public.protobuf.workflow.v1.WorkflowsConfigurationR\x16workfl\
-    owsConfiguration\x12k\n\x14bdtail_configuration\x18\x06\x20\x01(\x0b28.b\
-    itdrift_public.protobuf.bdtail.v1.BdTailConfigurationsR\x13bdtailConfigu\
-    ration\x12m\n\x15filters_configuration\x18\x08\x20\x01(\x0b28.bitdrift_p\
-    ublic.protobuf.filter.v1.FiltersConfigurationR\x14filtersConfiguration\
-    \x12e\n\x0fdebug_workflows\x18\t\x20\x01(\x0b2<.bitdrift_public.protobuf\
-    .workflow.v1.WorkflowsConfigurationR\x0edebugWorkflowsJ\x04\x08\x02\x10\
-    \x03J\x04\x08\x07\x10\x08R\x08mll_listR\x16insights_configurationB\r\n\
-    \x0bupdate_type\"{\n\rRuntimeUpdate\x12#\n\rversion_nonce\x18\x01\x20\
-    \x01(\tR\x0cversionNonce\x12E\n\x07runtime\x18\x02\x20\x01(\x0b2+.bitdri\
-    ft_public.protobuf.client.v1.RuntimeR\x07runtime\"\xa7\x01\n\rErrorShutd\
-    own\x12\x1f\n\x0bgrpc_status\x18\x01\x20\x01(\x05R\ngrpcStatus\x12!\n\
-    \x0cgrpc_message\x18\x02\x20\x01(\tR\x0bgrpcMessage\x12R\n\x0crate_limit\
-    ed\x18\x03\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.RateLimited\
-    R\x0brateLimited\"\xa6\x01\n\x0cFlushBuffers\x12$\n\x0ebuffer_id_list\
-    \x18\x01\x20\x03(\tR\x0cbufferIdList\x12p\n\tstreaming\x18\x02\x20\x01(\
-    \x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionFlushB\
-    uffers.StreamingR\tstreaming\"Z\n\x18SankeyPathUploadResponse\x12(\n\x0b\
-    upload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\
-    \x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\xcb\x02\n\x14SankeyIn\
-    tentResponse\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\
-    \xfaB\x04r\x02\x10\x01\x12{\n\x12upload_immediately\x18\x03\x20\x01(\x0b\
-    2J.bitdrift_public.protobuf.client.v1.SankeyIntentResponse.UploadImmedia\
-    telyH\0R\x11uploadImmediately\x12S\n\x04drop\x18\x04\x20\x01(\x0b2=.bitd\
-    rift_public.protobuf.client.v1.SankeyIntentResponse.DropH\0R\x04drop\x1a\
-    \x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08decisionJ\x04\x08\
-    \x02\x10\x03R\x08decision\"\xb5\x08\n\x10DebugDataRequest\x12{\n\x13work\
-    flow_debug_data\x18\x01\x20\x03(\x0b2K.bitdrift_public.protobuf.client.v\
-    1.DebugDataRequest.WorkflowDebugDataEntryR\x11workflowDebugData\x1a\x87\
-    \x02\n\x1bWorkflowTransitionDebugData\x12+\n\x10transition_index\x18\x01\
-    \x20\x01(\rH\0R\x0ftransitionIndex\x12/\n\x12timeout_transition\x18\x02\
-    \x20\x01(\x08H\0R\x11timeoutTransition\x12)\n\x10transition_count\x18\
-    \x03\x20\x01(\x04R\x0ftransitionCount\x12L\n\x14last_transition_time\x18\
-    \x04\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x12lastTransitionTimeB\
-    \x11\n\x0ftransition_type\x1a\x8c\x01\n\x16WorkflowStateDebugData\x12r\n\
-    \x0btransitions\x18\x01\x20\x03(\x0b2P.bitdrift_public.protobuf.client.v\
-    1.DebugDataRequest.WorkflowTransitionDebugDataR\x0btransitions\x1a\xfb\
-    \x02\n\x11WorkflowDebugData\x12j\n\x06states\x18\x01\x20\x03(\x0b2R.bitd\
-    rift_public.protobuf.client.v1.DebugDataRequest.WorkflowDebugData.States\
-    EntryR\x06states\x12q\n\x0bstart_reset\x18\x02\x20\x01(\x0b2P.bitdrift_p\
-    ublic.protobuf.client.v1.DebugDataRequest.WorkflowTransitionDebugDataR\n\
-    startReset\x1a\x86\x01\n\x0bStatesEntry\x12\x10\n\x03key\x18\x01\x20\x01\
-    (\tR\x03key\x12a\n\x05value\x18\x02\x20\x01(\x0b2K.bitdrift_public.proto\
-    buf.client.v1.DebugDataRequest.WorkflowStateDebugDataR\x05value:\x028\
-    \x01\x1a\x8c\x01\n\x16WorkflowDebugDataEntry\x12\x10\n\x03key\x18\x01\
-    \x20\x01(\tR\x03key\x12\\\n\x05value\x18\x02\x20\x01(\x0b2F.bitdrift_pub\
-    lic.protobuf.client.v1.DebugDataRequest.WorkflowDebugDataR\x05value:\x02\
-    8\x01\"\x15\n\x13StateUpdateResponse\"\x86\x0b\n\x0bApiResponse\x12U\n\t\
-    handshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.Hand\
-    shakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25.b\
-    itdrift_public.protobuf.client.v1.LogUploadResponseH\0R\tlogUpload\x12i\
-    \n\x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_public.protobuf.\
-    client.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\\\n\x0cstat\
-    s_upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.Stats\
-    UploadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20.\
-    bitdrift_public.protobuf.client.v1.PongResponseH\0R\x04pong\x12l\n\x14co\
-    nfiguration_update\x18\x04\x20\x01(\x0b27.bitdrift_public.protobuf.clien\
-    t.v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\n\x0eruntime_up\
-    date\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.RuntimeUp\
-    dateH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.\
-    bitdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\
-    \n\rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.protobuf.client.v\
-    1.FlushBuffersH\0R\x0cflushBuffers\x12r\n\x15sankey_diagram_upload\x18\
-    \x0c\x20\x01(\x0b2<.bitdrift_public.protobuf.client.v1.SankeyPathUploadR\
-    esponseH\0R\x13sankeyDiagramUpload\x12p\n\x16sankey_intent_response\x18\
-    \r\x20\x01(\x0b28.bitdrift_public.protobuf.client.v1.SankeyIntentRespons\
-    eH\0R\x14sankeyIntentResponse\x12e\n\x0fartifact_upload\x18\x0e\x20\x01(\
+    ids\x12\x18\n\x07ackless\x18\x04\x20\x01(\x08R\x07ackless\x12,\n\ncomman\
+    d_id\x18\x08\x20\x01(\tH\0R\tcommandIdB\x08\xfaB\x05r\x03\xb0\x01\x01\
+    \x88\x01\x01B\r\n\x0b_command_id\",\n\x0bPingRequest\x12\x1d\n\nsleep_mo\
+    de\x18\x01\x20\x01(\x08R\tsleepMode\"\xfc\x01\n\x16ConfigurationUpdateAc\
+    k\x12;\n\x1alast_applied_version_nonce\x18\x01\x20\x01(\tR\x17lastApplie\
+    dVersionNonce\x12S\n\x04nack\x18\x02\x20\x01(\x0b2?.bitdrift_public.prot\
+    obuf.client.v1.ConfigurationUpdateAck.NackR\x04nack\x1aP\n\x04Nack\x12#\
+    \n\rversion_nonce\x18\x01\x20\x01(\tR\x0cversionNonce\x12#\n\rerror_deta\
+    ils\x18\x02\x20\x01(\tR\x0cerrorDetails\"\x8e\x0b\n\nApiRequest\x12T\n\t\
+    handshake\x18\x01\x20\x01(\x0b24.bitdrift_public.protobuf.client.v1.Hand\
+    shakeRequestH\0R\thandshake\x12h\n\x11log_upload_intent\x18\x07\x20\x01(\
+    \x0b2:.bitdrift_public.protobuf.client.v1.LogUploadIntentRequestH\0R\x0f\
+    logUploadIntent\x12U\n\nlog_upload\x18\x02\x20\x01(\x0b24.bitdrift_publi\
+    c.protobuf.client.v1.LogUploadRequestH\0R\tlogUpload\x12[\n\x0cstats_upl\
+    oad\x18\x06\x20\x01(\x0b26.bitdrift_public.protobuf.client.v1.StatsUploa\
+    dRequestH\0R\x0bstatsUpload\x12E\n\x04ping\x18\x03\x20\x01(\x0b2/.bitdri\
+    ft_public.protobuf.client.v1.PingRequestH\0R\x04ping\x12v\n\x18configura\
+    tion_update_ack\x18\x04\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v\
+    1.ConfigurationUpdateAckH\0R\x16configurationUpdateAck\x12j\n\x12runtime\
+    _update_ack\x18\x05\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.Co\
+    nfigurationUpdateAckH\0R\x10runtimeUpdateAck\x12k\n\x12sankey_path_uploa\
+    d\x18\n\x20\x01(\x0b2;.bitdrift_public.protobuf.client.v1.SankeyPathUplo\
+    adRequestH\0R\x10sankeyPathUpload\x12^\n\rsankey_intent\x18\x0b\x20\x01(\
+    \x0b27.bitdrift_public.protobuf.client.v1.SankeyIntentRequestH\0R\x0csan\
+    keyIntent\x12d\n\x0fartifact_upload\x18\x0c\x20\x01(\x0b29.bitdrift_publ\
+    ic.protobuf.client.v1.UploadArtifactRequestH\0R\x0eartifactUpload\x12j\n\
+    \x0fartifact_intent\x18\r\x20\x01(\x0b2?.bitdrift_public.protobuf.client\
+    .v1.UploadArtifactIntentRequestH\0R\x0eartifactIntent\x12U\n\ndebug_data\
+    \x18\x0e\x20\x01(\x0b24.bitdrift_public.protobuf.client.v1.DebugDataRequ\
+    estH\0R\tdebugData\x12[\n\x0cstate_update\x18\x0f\x20\x01(\x0b26.bitdrif\
+    t_public.protobuf.client.v1.StateUpdateRequestH\0R\x0bstateUpdate\x12m\n\
+    \x15device_command_update\x18\x10\x20\x01(\x0b27.bitdrift_public.protobu\
+    f.client.v1.DeviceCommandUpdateH\0R\x13deviceCommandUpdateB\x13\n\x0creq\
+    uest_type\x12\x03\xf8B\x01J\x04\x08\x08\x10\tJ\x04\x08\t\x10\n\"\x91\x02\
+    \n\x17SankeyPathUploadRequest\x12(\n\x0bupload_uuid\x18\x04\x20\x01(\tR\
+    \nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x17\n\x02id\x18\x01\x20\x01(\
+    \tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\
+    \x01(\tR\x06pathIdB\x07\xfaB\x04r\x02\x10\x01\x12`\n\x05nodes\x18\x03\
+    \x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.SankeyPathUploadReque\
+    st.NodeR\x05nodesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x1a/\n\x04Node\x12'\
+    \n\x0fextracted_value\x18\x01\x20\x01(\tR\x0eextractedValue\"\x96\x01\n\
+    \x13SankeyIntentRequest\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\ninten\
+    tUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07path_id\x18\x02\x20\x01(\t\
+    R\x06pathIdB\x07\xfaB\x04r\x02\x10\x01\x123\n\x11sankey_diagram_id\x18\
+    \x03\x20\x01(\tR\x0fsankeyDiagramIdB\x07\xfaB\x04r\x02\x10\x01\"\xd9\x03\
+    \n\x1bUploadArtifactIntentRequest\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\
+    \tR\nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07type_id\x18\x02\
+    \x20\x01(\tR\x06typeIdB\x07\xfaB\x04r\x02\x10\x01\x12i\n\x08metadata\x18\
+    \x06\x20\x03(\x0b2M.bitdrift_public.protobuf.client.v1.UploadArtifactInt\
+    entRequest.MetadataEntryR\x08metadata\x12(\n\x0bartifact_id\x18\x04\x20\
+    \x01(\tR\nartifactIdB\x07\xfaB\x04r\x02\x10\x01\x128\n\x04time\x18\x05\
+    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x04timeB\x08\xfaB\x05\x8a\
+    \x01\x02\x10\x01\x12\"\n\nsession_id\x18\x07\x20\x01(\tH\0R\tsessionId\
+    \x88\x01\x01\x1af\n\rMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\
+    \x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.\
+    logging.v1.DataR\x05value:\x028\x01B\r\n\x0b_session_idJ\x04\x08\x03\x10\
+    \x04\"\xd4\x02\n\x1cUploadArtifactIntentResponse\x12(\n\x0bintent_uuid\
+    \x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x83\x01\
+    \n\x12upload_immediately\x18\x03\x20\x01(\x0b2R.bitdrift_public.protobuf\
+    .client.v1.UploadArtifactIntentResponse.UploadImmediatelyH\0R\x11uploadI\
+    mmediately\x12[\n\x04drop\x18\x04\x20\x01(\x0b2E.bitdrift_public.protobu\
+    f.client.v1.UploadArtifactIntentResponse.DropH\0R\x04drop\x1a\x13\n\x11U\
+    ploadImmediately\x1a\x06\n\x04DropB\n\n\x08decision\"\x8d\x06\n\x15Uploa\
+    dArtifactRequest\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\
+    \x07\xfaB\x04r\x02\x10\x01\x12\x20\n\x07type_id\x18\x02\x20\x01(\tR\x06t\
+    ypeIdB\x07\xfaB\x04r\x02\x10\x01\x12\x1a\n\x08contents\x18\x03\x20\x01(\
+    \x0cR\x08contents\x12(\n\x0bartifact_id\x18\x04\x20\x01(\tR\nartifactIdB\
+    \x07\xfaB\x04r\x02\x10\x01\x12s\n\x0estate_metadata\x18\x05\x20\x03(\x0b\
+    2L.bitdrift_public.protobuf.client.v1.UploadArtifactRequest.StateMetadat\
+    aEntryR\rstateMetadata\x128\n\x04time\x18\x06\x20\x01(\x0b2\x1a.google.p\
+    rotobuf.TimestampR\x04timeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\n\
+    session_id\x18\x07\x20\x01(\tR\tsessionId\x12T\n\rfeature_flags\x18\x08\
+    \x20\x03(\x0b2/.bitdrift_public.protobuf.client.v1.FeatureFlagR\x0cfeatu\
+    reFlags\x12x\n\x17workflow_report_handoff\x18\t\x20\x01(\x0b2;.bitdrift_\
+    public.protobuf.workflow.v1.WorkflowReportHandoffH\0R\x15workflowReportH\
+    andoff\x88\x01\x01\x12,\n\ncommand_id\x18\n\x20\x01(\tH\x01R\tcommandIdB\
+    \x08\xfaB\x05r\x03\xb0\x01\x01\x88\x01\x01\x1ak\n\x12StateMetadataEntry\
+    \x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\
+    \x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value:\x028\x01\
+    B\x1a\n\x18_workflow_report_handoffB\r\n\x0b_command_id\"X\n\x16UploadAr\
+    tifactResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\
+    \x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05err\
+    or\"\xf6\x04\n\x11HandshakeResponse\x12m\n\x0fstream_settings\x18\x01\
+    \x20\x01(\x0b2D.bitdrift_public.protobuf.client.v1.HandshakeResponse.Str\
+    eamSettingsR\x0estreamSettings\x12>\n\x1bconfiguration_update_status\x18\
+    \x02\x20\x01(\rR\x19configurationUpdateStatus\x12A\n\x1bopaque_client_st\
+    ate_to_echo\x18\x03\x20\x01(\x0cH\0R\x17opaqueClientStateToEcho\x88\x01\
+    \x01\x12g\n\x14client_state_updates\x18\x04\x20\x03(\x0b25.bitdrift_publ\
+    ic.protobuf.client.v1.ClientStateUpdateR\x12clientStateUpdates\x12g\n\ra\
+    nalytics_ack\x18\x05\x20\x01(\x0b2B.bitdrift_public.protobuf.client.v1.H\
+    andshakeResponse.AnalyticsAckR\x0canalyticsAck\x1a+\n\x0cAnalyticsAck\
+    \x12\x1b\n\treport_id\x18\x01\x20\x01(\tR\x08reportId\x1aP\n\x0eStreamSe\
+    ttings\x12>\n\rping_interval\x18\x01\x20\x01(\x0b2\x19.google.protobuf.D\
+    urationR\x0cpingIntervalB\x1e\n\x1c_opaque_client_state_to_echo\"I\n\x0b\
+    RateLimited\x12:\n\x0bretry_after\x18\x01\x20\x01(\x0b2\x19.google.proto\
+    buf.DurationR\nretryAfter\"\xca\x01\n\x11LogUploadResponse\x12(\n\x0bupl\
+    oad_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\
+    \x14\n\x05error\x18\x02\x20\x01(\tR\x05error\x12!\n\x0clogs_dropped\x18\
+    \x03\x20\x01(\rR\x0blogsDropped\x12R\n\x0crate_limited\x18\x04\x20\x01(\
+    \x0b2/.bitdrift_public.protobuf.client.v1.RateLimitedR\x0brateLimited\"\
+    \x91\x0b\n\x12StatsUploadRequest\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\
+    \tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12e\n\x08snapshot\x18\x02\
+    \x20\x03(\x0b2?.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Sn\
+    apshotR\x08snapshotB\x08\xfaB\x05\x92\x01\x02\x08\x01\x123\n\x07sent_at\
+    \x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x06sentAt\x12h\n\r\
+    upload_reason\x18\x04\x20\x01(\x0e2C.bitdrift_public.protobuf.client.v1.\
+    StatsUploadRequest.UploadReasonR\x0cuploadReason\x1a\xbe\x07\n\x08Snapsh\
+    ot\x12K\n\x07metrics\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.cli\
+    ent.v1.MetricsListH\0R\x07metrics\x12l\n\naggregated\x18\x02\x20\x01(\
+    \x0b2J.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Snapshot.Ag\
+    gregatedH\x01R\naggregated\x12\x86\x01\n\x13metric_id_overflows\x18\x03\
+    \x20\x03(\x0b2V.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Sn\
+    apshot.MetricIdOverflowsEntryR\x11metricIdOverflows\x12\x86\x01\n\x13wor\
+    kflow_debug_data\x18\x04\x20\x03(\x0b2V.bitdrift_public.protobuf.client.\
+    v1.StatsUploadRequest.Snapshot.WorkflowDebugDataEntryR\x11workflowDebugD\
+    ata\x12\x1f\n\x0bretry_count\x18\x05\x20\x01(\rR\nretryCount\x122\n\x15c\
+    lient_stats_sequence\x18\x06\x20\x01(\x04R\x13clientStatsSequence\x1a\
+    \x90\x01\n\nAggregated\x12G\n\x0cperiod_start\x18\x04\x20\x01(\x0b2\x1a.\
+    google.protobuf.TimestampR\x0bperiodStartB\x08\xfaB\x05\x8a\x01\x02\x10\
+    \x01\x129\n\nperiod_end\x18\x05\x20\x01(\x0b2\x1a.google.protobuf.Timest\
+    ampR\tperiodEnd\x1aD\n\x16MetricIdOverflowsEntry\x12\x10\n\x03key\x18\
+    \x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\x04R\x05valu\
+    e:\x028\x01\x1a\x8c\x01\n\x16WorkflowDebugDataEntry\x12\x10\n\x03key\x18\
+    \x01\x20\x01(\tR\x03key\x12\\\n\x05value\x18\x02\x20\x01(\x0b2F.bitdrift\
+    _public.protobuf.client.v1.DebugDataRequest.WorkflowDebugDataR\x05value:\
+    \x028\x01B\x14\n\rsnapshot_type\x12\x03\xf8B\x01B\x12\n\x0boccurred_at\
+    \x12\x03\xf8B\x01\"\x89\x01\n\x0cUploadReason\x12\x1d\n\x19UPLOAD_REASON\
+    _UNSPECIFIED\x10\0\x12\x1a\n\x16UPLOAD_REASON_PERIODIC\x10\x01\x12!\n\
+    \x1dUPLOAD_REASON_EVENT_TRIGGERED\x10\x02\x12\x1b\n\x17UPLOAD_REASON_HAN\
+    DSHAKE\x10\x03\"~\n\x13StatsUploadResponse\x12(\n\x0bupload_uuid\x18\x01\
+    \x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\
+    \x18\x02\x20\x01(\tR\x05error\x12'\n\x0fmetrics_dropped\x18\x03\x20\x01(\
+    \rR\x0emetricsDropped\"\x0e\n\x0cPongResponse\"\x8a\x07\n\x13Configurati\
+    onUpdate\x12#\n\rversion_nonce\x18\x01\x20\x01(\tR\x0cversionNonce\x12v\
+    \n\x12state_of_the_world\x18\x02\x20\x01(\x0b2G.bitdrift_public.protobuf\
+    .client.v1.ConfigurationUpdate.StateOfTheWorldH\0R\x0fstateOfTheWorld\
+    \x12g\n\x14client_state_updates\x18\x03\x20\x03(\x0b25.bitdrift_public.p\
+    rotobuf.client.v1.ClientStateUpdateR\x12clientStateUpdates\x1a\xdd\x04\n\
+    \x0fStateOfTheWorld\x12b\n\x12buffer_config_list\x18\x03\x20\x01(\x0b24.\
+    bitdrift_public.protobuf.config.v1.BufferConfigListR\x10bufferConfigList\
+    \x12u\n\x17workflows_configuration\x18\x04\x20\x01(\x0b2<.bitdrift_publi\
+    c.protobuf.workflow.v1.WorkflowsConfigurationR\x16workflowsConfiguration\
+    \x12k\n\x14bdtail_configuration\x18\x06\x20\x01(\x0b28.bitdrift_public.p\
+    rotobuf.bdtail.v1.BdTailConfigurationsR\x13bdtailConfiguration\x12m\n\
+    \x15filters_configuration\x18\x08\x20\x01(\x0b28.bitdrift_public.protobu\
+    f.filter.v1.FiltersConfigurationR\x14filtersConfiguration\x12e\n\x0fdebu\
+    g_workflows\x18\t\x20\x01(\x0b2<.bitdrift_public.protobuf.workflow.v1.Wo\
+    rkflowsConfigurationR\x0edebugWorkflowsJ\x04\x08\x02\x10\x03J\x04\x08\
+    \x07\x10\x08R\x08mll_listR\x16insights_configurationB\r\n\x0bupdate_type\
+    \"{\n\rRuntimeUpdate\x12#\n\rversion_nonce\x18\x01\x20\x01(\tR\x0cversio\
+    nNonce\x12E\n\x07runtime\x18\x02\x20\x01(\x0b2+.bitdrift_public.protobuf\
+    .client.v1.RuntimeR\x07runtime\"\xa7\x01\n\rErrorShutdown\x12\x1f\n\x0bg\
+    rpc_status\x18\x01\x20\x01(\x05R\ngrpcStatus\x12!\n\x0cgrpc_message\x18\
+    \x02\x20\x01(\tR\x0bgrpcMessage\x12R\n\x0crate_limited\x18\x03\x20\x01(\
+    \x0b2/.bitdrift_public.protobuf.client.v1.RateLimitedR\x0brateLimited\"\
+    \xa6\x01\n\x0cFlushBuffers\x12$\n\x0ebuffer_id_list\x18\x01\x20\x03(\tR\
+    \x0cbufferIdList\x12p\n\tstreaming\x18\x02\x20\x01(\x0b2R.bitdrift_publi\
+    c.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffers.StreamingR\tst\
+    reaming\"\xf0\x01\n\x1aDeviceCommandResultContext\x12l\n\x06fields\x18\
+    \x01\x20\x03(\x0b2J.bitdrift_public.protobuf.client.v1.DeviceCommandResu\
+    ltContext.FieldsEntryR\x06fieldsB\x08\xfaB\x05\x9a\x01\x02\x10d\x1ad\n\
+    \x0bFieldsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05va\
+    lue\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05\
+    value:\x028\x01\"\xdc\n\n\x13DeviceCommandUpdate\x12'\n\ncommand_id\x18\
+    \x01\x20\x01(\tR\tcommandIdB\x08\xfaB\x05r\x03\xb0\x01\x01\x124\n\x16upd\
+    ate_sequence_number\x18\x02\x20\x01(\x04R\x14updateSequenceNumber\x12^\n\
+    \x08accepted\x18\x03\x20\x01(\x0b2@.bitdrift_public.protobuf.client.v1.D\
+    eviceCommandUpdate.AcceptedH\0R\x08accepted\x12a\n\tcompleted\x18\x04\
+    \x20\x01(\x0b2A.bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.C\
+    ompletedH\0R\tcompleted\x12X\n\x06failed\x18\x05\x20\x01(\x0b2>.bitdrift\
+    _public.protobuf.client.v1.DeviceCommandUpdate.FailedH\0R\x06failed\x1aT\
+    \n\x08Accepted\x121\n\x12total_result_bytes\x18\x01\x20\x01(\x04H\0R\x10\
+    totalResultBytes\x88\x01\x01B\x15\n\x13_total_result_bytes\x1a\xfa\x05\n\
+    \tCompleted\x12)\n\x10output_truncated\x18\x01\x20\x01(\x08R\x0foutputTr\
+    uncated\x12X\n\x07context\x18\x02\x20\x01(\x0b2>.bitdrift_public.protobu\
+    f.client.v1.DeviceCommandResultContextR\x07context\x12l\n\nattachment\
+    \x18\x03\x20\x01(\x0b2L.bitdrift_public.protobuf.client.v1.DeviceCommand\
+    Update.Completed.AttachmentR\nattachment\x1a\xf9\x03\n\nAttachment\x12g\
+    \n\x04none\x18\x01\x20\x01(\x0b2Q.bitdrift_public.protobuf.client.v1.Dev\
+    iceCommandUpdate.Completed.Attachment.NoneH\0R\x04none\x12s\n\x08artifac\
+    t\x18\x02\x20\x01(\x0b2U.bitdrift_public.protobuf.client.v1.DeviceComman\
+    dUpdate.Completed.Attachment.ArtifactH\0R\x08artifact\x12z\n\x0blog_batc\
+    hes\x18\x03\x20\x01(\x0b2W.bitdrift_public.protobuf.client.v1.DeviceComm\
+    andUpdate.Completed.Attachment.LogBatchesH\0R\nlogBatches\x1a\x06\n\x04N\
+    one\x1a5\n\x08Artifact\x12)\n\x0bartifact_id\x18\x01\x20\x01(\tR\nartifa\
+    ctIdB\x08\xfaB\x05r\x03\xb0\x01\x01\x1a:\n\nLogBatches\x12,\n\x12total_r\
+    esult_bytes\x18\x01\x20\x01(\x04R\x10totalResultBytesB\x16\n\x0fattachme\
+    nt_type\x12\x03\xf8B\x01\x1ab\n\x06Failed\x12X\n\x07context\x18\x01\x20\
+    \x01(\x0b2>.bitdrift_public.protobuf.client.v1.DeviceCommandResultContex\
+    tR\x07contextB\x12\n\x0bupdate_type\x12\x03\xf8B\x01\"\x8d\x01\n\x16Devi\
+    ceCommandUpdateAck\x12'\n\ncommand_id\x18\x01\x20\x01(\tR\tcommandIdB\
+    \x08\xfaB\x05r\x03\xb0\x01\x01\x124\n\x16update_sequence_number\x18\x02\
+    \x20\x01(\x04R\x14updateSequenceNumber\x12\x14\n\x05error\x18\x03\x20\
+    \x01(\tR\x05error\"Z\n\x18SankeyPathUploadResponse\x12(\n\x0bupload_uuid\
+    \x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\
+    \x05error\x18\x02\x20\x01(\tR\x05error\"\xcb\x02\n\x14SankeyIntentRespon\
+    se\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\
+    \x02\x10\x01\x12{\n\x12upload_immediately\x18\x03\x20\x01(\x0b2J.bitdrif\
+    t_public.protobuf.client.v1.SankeyIntentResponse.UploadImmediatelyH\0R\
+    \x11uploadImmediately\x12S\n\x04drop\x18\x04\x20\x01(\x0b2=.bitdrift_pub\
+    lic.protobuf.client.v1.SankeyIntentResponse.DropH\0R\x04drop\x1a\x13\n\
+    \x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08decisionJ\x04\x08\x02\
+    \x10\x03R\x08decision\"\xb5\x08\n\x10DebugDataRequest\x12{\n\x13workflow\
+    _debug_data\x18\x01\x20\x03(\x0b2K.bitdrift_public.protobuf.client.v1.De\
+    bugDataRequest.WorkflowDebugDataEntryR\x11workflowDebugData\x1a\x87\x02\
+    \n\x1bWorkflowTransitionDebugData\x12+\n\x10transition_index\x18\x01\x20\
+    \x01(\rH\0R\x0ftransitionIndex\x12/\n\x12timeout_transition\x18\x02\x20\
+    \x01(\x08H\0R\x11timeoutTransition\x12)\n\x10transition_count\x18\x03\
+    \x20\x01(\x04R\x0ftransitionCount\x12L\n\x14last_transition_time\x18\x04\
+    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x12lastTransitionTimeB\x11\
+    \n\x0ftransition_type\x1a\x8c\x01\n\x16WorkflowStateDebugData\x12r\n\x0b\
+    transitions\x18\x01\x20\x03(\x0b2P.bitdrift_public.protobuf.client.v1.De\
+    bugDataRequest.WorkflowTransitionDebugDataR\x0btransitions\x1a\xfb\x02\n\
+    \x11WorkflowDebugData\x12j\n\x06states\x18\x01\x20\x03(\x0b2R.bitdrift_p\
+    ublic.protobuf.client.v1.DebugDataRequest.WorkflowDebugData.StatesEntryR\
+    \x06states\x12q\n\x0bstart_reset\x18\x02\x20\x01(\x0b2P.bitdrift_public.\
+    protobuf.client.v1.DebugDataRequest.WorkflowTransitionDebugDataR\nstartR\
+    eset\x1a\x86\x01\n\x0bStatesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\
+    \x03key\x12a\n\x05value\x18\x02\x20\x01(\x0b2K.bitdrift_public.protobuf.\
+    client.v1.DebugDataRequest.WorkflowStateDebugDataR\x05value:\x028\x01\
+    \x1a\x8c\x01\n\x16WorkflowDebugDataEntry\x12\x10\n\x03key\x18\x01\x20\
+    \x01(\tR\x03key\x12\\\n\x05value\x18\x02\x20\x01(\x0b2F.bitdrift_public.\
+    protobuf.client.v1.DebugDataRequest.WorkflowDebugDataR\x05value:\x028\
+    \x01\"\x15\n\x13StateUpdateResponse\"\xff\x0b\n\x0bApiResponse\x12U\n\th\
+    andshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.Hands\
+    hakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25.bi\
+    tdrift_public.protobuf.client.v1.LogUploadResponseH\0R\tlogUpload\x12i\n\
+    \x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_public.protobuf.cl\
+    ient.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\\\n\x0cstats_\
+    upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.StatsUp\
+    loadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20.bi\
+    tdrift_public.protobuf.client.v1.PongResponseH\0R\x04pong\x12l\n\x14conf\
+    iguration_update\x18\x04\x20\x01(\x0b27.bitdrift_public.protobuf.client.\
+    v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\n\x0eruntime_upda\
+    te\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.RuntimeUpda\
+    teH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.bi\
+    tdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\n\
+    \rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.protobuf.client.v1.\
+    FlushBuffersH\0R\x0cflushBuffers\x12r\n\x15sankey_diagram_upload\x18\x0c\
+    \x20\x01(\x0b2<.bitdrift_public.protobuf.client.v1.SankeyPathUploadRespo\
+    nseH\0R\x13sankeyDiagramUpload\x12p\n\x16sankey_intent_response\x18\r\
+    \x20\x01(\x0b28.bitdrift_public.protobuf.client.v1.SankeyIntentResponseH\
+    \0R\x14sankeyIntentResponse\x12e\n\x0fartifact_upload\x18\x0e\x20\x01(\
     \x0b2:.bitdrift_public.protobuf.client.v1.UploadArtifactResponseH\0R\x0e\
     artifactUpload\x12k\n\x0fartifact_intent\x18\x0f\x20\x01(\x0b2@.bitdrift\
     _public.protobuf.client.v1.UploadArtifactIntentResponseH\0R\x0eartifactI\
     ntent\x12\\\n\x0cstate_update\x18\x10\x20\x01(\x0b27.bitdrift_public.pro\
-    tobuf.client.v1.StateUpdateResponseH\0R\x0bstateUpdateB\x14\n\rresponse_\
-    type\x12\x03\xf8B\x01J\x04\x08\n\x10\x0bJ\x04\x08\x0b\x10\x0c2x\n\nApiSe\
-    rvice\x12j\n\x03Mux\x12..bitdrift_public.protobuf.client.v1.ApiRequest\
-    \x1a/.bitdrift_public.protobuf.client.v1.ApiResponse(\x010\x01J\xf5\x86\
-    \x02\n\x07\x12\x05\x07\0\x80\x06\x01\n\xb8\x02\n\x01\x0c\x12\x03\x07\0\
+    tobuf.client.v1.StateUpdateResponseH\0R\x0bstateUpdate\x12w\n\x19device_\
+    command_update_ack\x18\x11\x20\x01(\x0b2:.bitdrift_public.protobuf.clien\
+    t.v1.DeviceCommandUpdateAckH\0R\x16deviceCommandUpdateAckB\x14\n\rrespon\
+    se_type\x12\x03\xf8B\x01J\x04\x08\n\x10\x0bJ\x04\x08\x0b\x10\x0c2x\n\nAp\
+    iService\x12j\n\x03Mux\x12..bitdrift_public.protobuf.client.v1.ApiReques\
+    t\x1a/.bitdrift_public.protobuf.client.v1.ApiResponse(\x010\x01J\xcb\xac\
+    \x02\n\x07\x12\x05\x07\0\xee\x06\x01\n\xb8\x02\n\x01\x0c\x12\x03\x07\0\
     \x122\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\x20defin\
     itions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\
     \n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\x20gov\
@@ -12185,7 +14216,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x20candidate\x20batch\x20should\x20be\x20dropped.\n\n\r\n\x05\x04\x05\
     \x02\x02\x06\x12\x04\xd8\x01\x04\x08\n\r\n\x05\x04\x05\x02\x02\x01\x12\
     \x04\xd8\x01\t\r\n\r\n\x05\x04\x05\x02\x02\x03\x12\x04\xd8\x01\x10\x11\n\
-    ,\n\x02\x04\x06\x12\x06\xdd\x01\0\x83\x02\x01\x1a\x1e\x20A\x20single\x20\
+    ,\n\x02\x04\x06\x12\x06\xdd\x01\0\x87\x02\x01\x1a\x1e\x20A\x20single\x20\
     log\x20upload\x20payload.\n\n\x0b\n\x03\x04\x06\x01\x12\x04\xdd\x01\x08\
     \x18\n\x88\x01\n\x04\x04\x06\x02\0\x12\x04\xe0\x01\x02B\x1az\x20A\x20UUI\
     D\x20(v4)\x20associated\x20with\x20this\x20upload.\x20This\x20should\x20\
@@ -12244,172 +14275,183 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     does\x20not\x20need\x20to\x20know\x20whether\n\x20the\x20upload\x20succe\
     eded\x20or\x20failed.\n\n\r\n\x05\x04\x06\x02\x05\x05\x12\x04\x82\x02\
     \x02\x06\n\r\n\x05\x04\x06\x02\x05\x01\x12\x04\x82\x02\x07\x0e\n\r\n\x05\
-    \x04\x06\x02\x05\x03\x12\x04\x82\x02\x11\x12\nS\n\x02\x04\x07\x12\x06\
-    \x86\x02\0\x89\x02\x01\x1aE\x20Empty\x20message\x20to\x20maintain\x20a\
-    \x20application\x20layer\x20keep\x20alive\x20mechanism.\n\n\x0b\n\x03\
-    \x04\x07\x01\x12\x04\x86\x02\x08\x13\nW\n\x04\x04\x07\x02\0\x12\x04\x88\
-    \x02\x02\x16\x1aI\x20At\x20the\x20time\x20of\x20the\x20ping,\x20whether\
-    \x20the\x20client\x20is\x20operating\x20in\x20sleep\x20mode.\n\n\r\n\x05\
-    \x04\x07\x02\0\x05\x12\x04\x88\x02\x02\x06\n\r\n\x05\x04\x07\x02\0\x01\
-    \x12\x04\x88\x02\x07\x11\n\r\n\x05\x04\x07\x02\0\x03\x12\x04\x88\x02\x14\
-    \x15\nD\n\x02\x04\x08\x12\x06\x8c\x02\0\x9f\x02\x01\x1a6\x20Configuratio\
-    n\x20update\x20response\x20from\x20client\x20to\x20server.\n\n\x0b\n\x03\
-    \x04\x08\x01\x12\x04\x8c\x02\x08\x1e\n\x0e\n\x04\x04\x08\x03\0\x12\x06\
-    \x8d\x02\x02\x93\x02\x03\n\r\n\x05\x04\x08\x03\0\x01\x12\x04\x8d\x02\n\
-    \x0e\nL\n\x06\x04\x08\x03\0\x02\0\x12\x04\x8f\x02\x04\x1d\x1a<\x20The\
-    \x20version\x20nonce\x20of\x20the\x20configuration\x20update\x20that\x20\
-    failed.\n\n\x0f\n\x07\x04\x08\x03\0\x02\0\x05\x12\x04\x8f\x02\x04\n\n\
-    \x0f\n\x07\x04\x08\x03\0\x02\0\x01\x12\x04\x8f\x02\x0b\x18\n\x0f\n\x07\
-    \x04\x08\x03\0\x02\0\x03\x12\x04\x8f\x02\x1b\x1c\n/\n\x06\x04\x08\x03\0\
-    \x02\x01\x12\x04\x92\x02\x04\x1d\x1a\x1f\x20Error\x20details\x20of\x20th\
-    e\x20failure.\n\n\x0f\n\x07\x04\x08\x03\0\x02\x01\x05\x12\x04\x92\x02\
-    \x04\n\n\x0f\n\x07\x04\x08\x03\0\x02\x01\x01\x12\x04\x92\x02\x0b\x18\n\
-    \x0f\n\x07\x04\x08\x03\0\x02\x01\x03\x12\x04\x92\x02\x1b\x1c\n\xca\x01\n\
-    \x04\x04\x08\x02\0\x12\x04\x98\x02\x02(\x1a\xbb\x01\x20The\x20version\
-    \x20nonce\x20that\x20the\x20client\x20is\x20actually\x20using.\x20This\
-    \x20version\x20nonce\x20was\x20sent\x20in\x20a\n\x20ConfigurationUpdate\
-    \x20message.\x20If\x20no\x20configuration\x20has\x20been\x20applied\x20(\
-    NACK\x20only)\x20this\x20will\x20be\n\x20empty.\n\n\r\n\x05\x04\x08\x02\
-    \0\x05\x12\x04\x98\x02\x02\x08\n\r\n\x05\x04\x08\x02\0\x01\x12\x04\x98\
-    \x02\t#\n\r\n\x05\x04\x08\x02\0\x03\x12\x04\x98\x02&'\n\xaa\x02\n\x04\
-    \x04\x08\x02\x01\x12\x04\x9e\x02\x02\x10\x1a\x9b\x02\x20If\x20a\x20confi\
-    guration\x20update\x20failed,\x20the\x20client\x20should\x20respond\x20t\
-    o\x20the\x20server\x20and\x20let\x20it\x20know.\n\x20It\x20should\x20con\
-    tinue\x20to\x20use\x20the\x20last\x20good\x20config.\x20This\x20message\
-    \x20is\x20empty\x20on\x20success,\x20and\x20the\n\x20client\x20should\
-    \x20respond\x20with\x20last_applied_version_nonce\x20being\x20equal\x20t\
-    o\x20the\x20update\x20that\x20was\n\x20applied.\n\n\r\n\x05\x04\x08\x02\
-    \x01\x06\x12\x04\x9e\x02\x02\x06\n\r\n\x05\x04\x08\x02\x01\x01\x12\x04\
-    \x9e\x02\x07\x0b\n\r\n\x05\x04\x08\x02\x01\x03\x12\x04\x9e\x02\x0e\x0f\n\
-    \xba\x02\n\x02\x04\t\x12\x06\xa5\x02\0\xba\x02\x01\x1a\xab\x02\x20A\x20m\
-    ultiplexed\x20request\x20sent\x20over\x20the\x20bitdrift\x20API.\x20Upon\
-    \x20stream\x20creation,\x20the\n\x20client\x20will\x20issue\x20a\x20sing\
-    le\x20handshake\x20request,\x20then\x20await\x20a\x20handshake\n\x20resp\
-    onse.\x20Once\x20the\x20handshake\x20has\x20completed,\x20the\x20client\
-    \x20may\x20issue\x20any\x20number\n\x20of\x20non-handshake\x20requests;\
-    \x20corresponding\x20responses\x20may\x20come\x20in\x20any\x20order.\n\n\
-    \x0b\n\x03\x04\t\x01\x12\x04\xa5\x02\x08\x12\n\x0e\n\x04\x04\t\x08\0\x12\
-    \x06\xa6\x02\x02\xb6\x02\x03\n\r\n\x05\x04\t\x08\0\x01\x12\x04\xa6\x02\
-    \x08\x14\n\r\n\x05\x04\t\x08\0\x02\x12\x04\xa7\x02\x04&\n\x0f\n\x07\x04\
-    \t\x08\0\x02\xaf\x08\x12\x04\xa7\x02\x04&\n\x0c\n\x04\x04\t\x02\0\x12\
-    \x04\xa9\x02\x04#\n\r\n\x05\x04\t\x02\0\x06\x12\x04\xa9\x02\x04\x14\n\r\
-    \n\x05\x04\t\x02\0\x01\x12\x04\xa9\x02\x15\x1e\n\r\n\x05\x04\t\x02\0\x03\
-    \x12\x04\xa9\x02!\"\n\x0c\n\x04\x04\t\x02\x01\x12\x04\xaa\x02\x041\n\r\n\
-    \x05\x04\t\x02\x01\x06\x12\x04\xaa\x02\x04\x1a\n\r\n\x05\x04\t\x02\x01\
-    \x01\x12\x04\xaa\x02\x1b,\n\r\n\x05\x04\t\x02\x01\x03\x12\x04\xaa\x02/0\
-    \n\x0c\n\x04\x04\t\x02\x02\x12\x04\xab\x02\x04$\n\r\n\x05\x04\t\x02\x02\
-    \x06\x12\x04\xab\x02\x04\x14\n\r\n\x05\x04\t\x02\x02\x01\x12\x04\xab\x02\
-    \x15\x1f\n\r\n\x05\x04\t\x02\x02\x03\x12\x04\xab\x02\"#\n\x0c\n\x04\x04\
-    \t\x02\x03\x12\x04\xac\x02\x04(\n\r\n\x05\x04\t\x02\x03\x06\x12\x04\xac\
-    \x02\x04\x16\n\r\n\x05\x04\t\x02\x03\x01\x12\x04\xac\x02\x17#\n\r\n\x05\
-    \x04\t\x02\x03\x03\x12\x04\xac\x02&'\n\x0c\n\x04\x04\t\x02\x04\x12\x04\
-    \xad\x02\x04\x19\n\r\n\x05\x04\t\x02\x04\x06\x12\x04\xad\x02\x04\x0f\n\r\
-    \n\x05\x04\t\x02\x04\x01\x12\x04\xad\x02\x10\x14\n\r\n\x05\x04\t\x02\x04\
-    \x03\x12\x04\xad\x02\x17\x18\n\x0c\n\x04\x04\t\x02\x05\x12\x04\xae\x02\
-    \x048\n\r\n\x05\x04\t\x02\x05\x06\x12\x04\xae\x02\x04\x1a\n\r\n\x05\x04\
-    \t\x02\x05\x01\x12\x04\xae\x02\x1b3\n\r\n\x05\x04\t\x02\x05\x03\x12\x04\
-    \xae\x0267\n\x0c\n\x04\x04\t\x02\x06\x12\x04\xaf\x02\x042\n\r\n\x05\x04\
-    \t\x02\x06\x06\x12\x04\xaf\x02\x04\x1a\n\r\n\x05\x04\t\x02\x06\x01\x12\
-    \x04\xaf\x02\x1b-\n\r\n\x05\x04\t\x02\x06\x03\x12\x04\xaf\x0201\n\x0c\n\
-    \x04\x04\t\x02\x07\x12\x04\xb0\x02\x044\n\r\n\x05\x04\t\x02\x07\x06\x12\
-    \x04\xb0\x02\x04\x1b\n\r\n\x05\x04\t\x02\x07\x01\x12\x04\xb0\x02\x1c.\n\
-    \r\n\x05\x04\t\x02\x07\x03\x12\x04\xb0\x0213\n\x0c\n\x04\x04\t\x02\x08\
-    \x12\x04\xb1\x02\x04+\n\r\n\x05\x04\t\x02\x08\x06\x12\x04\xb1\x02\x04\
-    \x17\n\r\n\x05\x04\t\x02\x08\x01\x12\x04\xb1\x02\x18%\n\r\n\x05\x04\t\
-    \x02\x08\x03\x12\x04\xb1\x02(*\n\x0c\n\x04\x04\t\x02\t\x12\x04\xb2\x02\
-    \x04/\n\r\n\x05\x04\t\x02\t\x06\x12\x04\xb2\x02\x04\x19\n\r\n\x05\x04\t\
-    \x02\t\x01\x12\x04\xb2\x02\x1a)\n\r\n\x05\x04\t\x02\t\x03\x12\x04\xb2\
-    \x02,.\n\x0c\n\x04\x04\t\x02\n\x12\x04\xb3\x02\x045\n\r\n\x05\x04\t\x02\
-    \n\x06\x12\x04\xb3\x02\x04\x1f\n\r\n\x05\x04\t\x02\n\x01\x12\x04\xb3\x02\
-    \x20/\n\r\n\x05\x04\t\x02\n\x03\x12\x04\xb3\x0224\n\x0c\n\x04\x04\t\x02\
-    \x0b\x12\x04\xb4\x02\x04%\n\r\n\x05\x04\t\x02\x0b\x06\x12\x04\xb4\x02\
-    \x04\x14\n\r\n\x05\x04\t\x02\x0b\x01\x12\x04\xb4\x02\x15\x1f\n\r\n\x05\
-    \x04\t\x02\x0b\x03\x12\x04\xb4\x02\"$\n\x0c\n\x04\x04\t\x02\x0c\x12\x04\
-    \xb5\x02\x04)\n\r\n\x05\x04\t\x02\x0c\x06\x12\x04\xb5\x02\x04\x16\n\r\n\
-    \x05\x04\t\x02\x0c\x01\x12\x04\xb5\x02\x17#\n\r\n\x05\x04\t\x02\x0c\x03\
-    \x12\x04\xb5\x02&(\n\x0b\n\x03\x04\t\t\x12\x04\xb8\x02\x02\r\n\x0c\n\x04\
-    \x04\t\t\0\x12\x04\xb8\x02\x0b\x0c\n\r\n\x05\x04\t\t\0\x01\x12\x04\xb8\
-    \x02\x0b\x0c\n\r\n\x05\x04\t\t\0\x02\x12\x04\xb8\x02\x0b\x0c\n\x0b\n\x03\
-    \x04\t\t\x12\x04\xb9\x02\x02\r\n\x0c\n\x04\x04\t\t\x01\x12\x04\xb9\x02\
-    \x0b\x0c\n\r\n\x05\x04\t\t\x01\x01\x12\x04\xb9\x02\x0b\x0c\n\r\n\x05\x04\
-    \t\t\x01\x02\x12\x04\xb9\x02\x0b\x0c\n:\n\x02\x04\n\x12\x06\xbd\x02\0\
-    \xd0\x02\x01\x1a,\x20A\x20request\x20to\x20upload\x20a\x20Sankey\x20diag\
-    ram\x20path.\n\n\x0b\n\x03\x04\n\x01\x12\x04\xbd\x02\x08\x1f\nf\n\x04\
-    \x04\n\x02\0\x12\x04\xbf\x02\x02B\x1aX\x20Upload\x20UUID\x20used\x20to\
-    \x20provide\x20idempotence\x20and\x20to\x20correlate\x20a\x20response\
-    \x20with\x20this\x20request.\n\n\r\n\x05\x04\n\x02\0\x05\x12\x04\xbf\x02\
-    \x02\x08\n\r\n\x05\x04\n\x02\0\x01\x12\x04\xbf\x02\t\x14\n\r\n\x05\x04\n\
-    \x02\0\x03\x12\x04\xbf\x02\x17\x18\n\r\n\x05\x04\n\x02\0\x08\x12\x04\xbf\
-    \x02\x19A\n\x10\n\x08\x04\n\x02\0\x08\xaf\x08\x0e\x12\x04\xbf\x02\x1a@\n\
-    \xc1\x01\n\x04\x04\n\x03\0\x12\x06\xc3\x02\x02\xc6\x02\x03\x1a\xb0\x01\
-    \x20A\x20single\x20node\x20in\x20the\x20Sankey\x20diagram.\x20This\x20di\
-    ffers\x20from\x20workflow\x20states.\x20Each\x20node\x20corresponds\n\
-    \x20to\x20a\x20single\x20transition\x20from\x20a\x20workflow\x20origin\
-    \x20state\x20to\x20a\x20workflow\x20target\x20state.\n\n\r\n\x05\x04\n\
-    \x03\0\x01\x12\x04\xc3\x02\n\x0e\n;\n\x06\x04\n\x03\0\x02\0\x12\x04\xc5\
-    \x02\x04\x1f\x1a+\x20The\x20value\x20extracted\x20from\x20the\x20matched\
-    \x20log.\n\n\x0f\n\x07\x04\n\x03\0\x02\0\x05\x12\x04\xc5\x02\x04\n\n\x0f\
-    \n\x07\x04\n\x03\0\x02\0\x01\x12\x04\xc5\x02\x0b\x1a\n\x0f\n\x07\x04\n\
-    \x03\0\x02\0\x03\x12\x04\xc5\x02\x1d\x1e\n\"\n\x04\x04\n\x02\x01\x12\x04\
-    \xc9\x02\x029\x1a\x14\x20Sankey\x20diagram\x20ID.\n\n\r\n\x05\x04\n\x02\
-    \x01\x05\x12\x04\xc9\x02\x02\x08\n\r\n\x05\x04\n\x02\x01\x01\x12\x04\xc9\
-    \x02\t\x0b\n\r\n\x05\x04\n\x02\x01\x03\x12\x04\xc9\x02\x0e\x0f\n\r\n\x05\
-    \x04\n\x02\x01\x08\x12\x04\xc9\x02\x108\n\x10\n\x08\x04\n\x02\x01\x08\
-    \xaf\x08\x0e\x12\x04\xc9\x02\x117\n\x8d\x02\n\x04\x04\n\x02\x02\x12\x04\
-    \xcd\x02\x02>\x1a\xfe\x01\x20The\x20identifier\x20that\x20represents\x20\
-    a\x20traversed\x20state's\x20path\x20registered\x20for\x20a\x20diagram.\
-    \x20Two\x20diagram\x20paths\n\x20within\x20the\x20same\x20diagram\x20can\
-    \x20have\x20the\x20same\x20ID\x20only\x20if\x20their\x20nodes\x20are\x20\
-    identical.\n\x20Conflicts\x20in\x20diagram\x20path\x20IDs\x20between\x20\
-    different\x20diagrams\x20are\x20possible.\n\n\r\n\x05\x04\n\x02\x02\x05\
-    \x12\x04\xcd\x02\x02\x08\n\r\n\x05\x04\n\x02\x02\x01\x12\x04\xcd\x02\t\
-    \x10\n\r\n\x05\x04\n\x02\x02\x03\x12\x04\xcd\x02\x13\x14\n\r\n\x05\x04\n\
-    \x02\x02\x08\x12\x04\xcd\x02\x15=\n\x10\n\x08\x04\n\x02\x02\x08\xaf\x08\
-    \x0e\x12\x04\xcd\x02\x16<\n4\n\x04\x04\n\x02\x03\x12\x04\xcf\x02\x02G\
-    \x1a&\x20The\x20list\x20of\x20traversed\x20diagram\x20nodes.\n\n\r\n\x05\
-    \x04\n\x02\x03\x04\x12\x04\xcf\x02\x02\n\n\r\n\x05\x04\n\x02\x03\x06\x12\
-    \x04\xcf\x02\x0b\x0f\n\r\n\x05\x04\n\x02\x03\x01\x12\x04\xcf\x02\x10\x15\
-    \n\r\n\x05\x04\n\x02\x03\x03\x12\x04\xcf\x02\x18\x19\n\r\n\x05\x04\n\x02\
-    \x03\x08\x12\x04\xcf\x02\x1aF\n\x10\n\x08\x04\n\x02\x03\x08\xaf\x08\x12\
-    \x12\x04\xcf\x02\x1bE\nA\n\x02\x04\x0b\x12\x06\xd3\x02\0\xdc\x02\x01\x1a\
-    3\x20A\x20request\x20to\x20ask\x20whether\x20to\x20upload\x20a\x20Sankey\
-    \x20path.\n\n\x0b\n\x03\x04\x0b\x01\x12\x04\xd3\x02\x08\x1b\nq\n\x04\x04\
-    \x0b\x02\0\x12\x04\xd5\x02\x02B\x1ac\x20The\x20UUID\x20of\x20the\x20inte\
+    \x04\x06\x02\x05\x03\x12\x04\x82\x02\x11\x12\n\xa2\x01\n\x04\x04\x06\x02\
+    \x06\x12\x04\x86\x02\x02G\x1a\x93\x01\x20Optional\x20buffer-dump\x20comm\
+    and\x20whose\x20persisted\x20log\x20bytes\x20this\x20upload\x20contribut\
+    es\x20to.\x20The\x20outer\n\x20upload_uuid\x20is\x20this\x20batch's\x20s\
+    table\x20idempotency\x20key.\n\n\r\n\x05\x04\x06\x02\x06\x04\x12\x04\x86\
+    \x02\x02\n\n\r\n\x05\x04\x06\x02\x06\x05\x12\x04\x86\x02\x0b\x11\n\r\n\
+    \x05\x04\x06\x02\x06\x01\x12\x04\x86\x02\x12\x1c\n\r\n\x05\x04\x06\x02\
+    \x06\x03\x12\x04\x86\x02\x1f\x20\n\r\n\x05\x04\x06\x02\x06\x08\x12\x04\
+    \x86\x02!F\n\x11\n\t\x04\x06\x02\x06\x08\xaf\x08\x0e\x16\x12\x04\x86\x02\
+    \"E\nS\n\x02\x04\x07\x12\x06\x8a\x02\0\x8d\x02\x01\x1aE\x20Empty\x20mess\
+    age\x20to\x20maintain\x20a\x20application\x20layer\x20keep\x20alive\x20m\
+    echanism.\n\n\x0b\n\x03\x04\x07\x01\x12\x04\x8a\x02\x08\x13\nW\n\x04\x04\
+    \x07\x02\0\x12\x04\x8c\x02\x02\x16\x1aI\x20At\x20the\x20time\x20of\x20th\
+    e\x20ping,\x20whether\x20the\x20client\x20is\x20operating\x20in\x20sleep\
+    \x20mode.\n\n\r\n\x05\x04\x07\x02\0\x05\x12\x04\x8c\x02\x02\x06\n\r\n\
+    \x05\x04\x07\x02\0\x01\x12\x04\x8c\x02\x07\x11\n\r\n\x05\x04\x07\x02\0\
+    \x03\x12\x04\x8c\x02\x14\x15\nD\n\x02\x04\x08\x12\x06\x90\x02\0\xa3\x02\
+    \x01\x1a6\x20Configuration\x20update\x20response\x20from\x20client\x20to\
+    \x20server.\n\n\x0b\n\x03\x04\x08\x01\x12\x04\x90\x02\x08\x1e\n\x0e\n\
+    \x04\x04\x08\x03\0\x12\x06\x91\x02\x02\x97\x02\x03\n\r\n\x05\x04\x08\x03\
+    \0\x01\x12\x04\x91\x02\n\x0e\nL\n\x06\x04\x08\x03\0\x02\0\x12\x04\x93\
+    \x02\x04\x1d\x1a<\x20The\x20version\x20nonce\x20of\x20the\x20configurati\
+    on\x20update\x20that\x20failed.\n\n\x0f\n\x07\x04\x08\x03\0\x02\0\x05\
+    \x12\x04\x93\x02\x04\n\n\x0f\n\x07\x04\x08\x03\0\x02\0\x01\x12\x04\x93\
+    \x02\x0b\x18\n\x0f\n\x07\x04\x08\x03\0\x02\0\x03\x12\x04\x93\x02\x1b\x1c\
+    \n/\n\x06\x04\x08\x03\0\x02\x01\x12\x04\x96\x02\x04\x1d\x1a\x1f\x20Error\
+    \x20details\x20of\x20the\x20failure.\n\n\x0f\n\x07\x04\x08\x03\0\x02\x01\
+    \x05\x12\x04\x96\x02\x04\n\n\x0f\n\x07\x04\x08\x03\0\x02\x01\x01\x12\x04\
+    \x96\x02\x0b\x18\n\x0f\n\x07\x04\x08\x03\0\x02\x01\x03\x12\x04\x96\x02\
+    \x1b\x1c\n\xca\x01\n\x04\x04\x08\x02\0\x12\x04\x9c\x02\x02(\x1a\xbb\x01\
+    \x20The\x20version\x20nonce\x20that\x20the\x20client\x20is\x20actually\
+    \x20using.\x20This\x20version\x20nonce\x20was\x20sent\x20in\x20a\n\x20Co\
+    nfigurationUpdate\x20message.\x20If\x20no\x20configuration\x20has\x20bee\
+    n\x20applied\x20(NACK\x20only)\x20this\x20will\x20be\n\x20empty.\n\n\r\n\
+    \x05\x04\x08\x02\0\x05\x12\x04\x9c\x02\x02\x08\n\r\n\x05\x04\x08\x02\0\
+    \x01\x12\x04\x9c\x02\t#\n\r\n\x05\x04\x08\x02\0\x03\x12\x04\x9c\x02&'\n\
+    \xaa\x02\n\x04\x04\x08\x02\x01\x12\x04\xa2\x02\x02\x10\x1a\x9b\x02\x20If\
+    \x20a\x20configuration\x20update\x20failed,\x20the\x20client\x20should\
+    \x20respond\x20to\x20the\x20server\x20and\x20let\x20it\x20know.\n\x20It\
+    \x20should\x20continue\x20to\x20use\x20the\x20last\x20good\x20config.\
+    \x20This\x20message\x20is\x20empty\x20on\x20success,\x20and\x20the\n\x20\
+    client\x20should\x20respond\x20with\x20last_applied_version_nonce\x20bei\
+    ng\x20equal\x20to\x20the\x20update\x20that\x20was\n\x20applied.\n\n\r\n\
+    \x05\x04\x08\x02\x01\x06\x12\x04\xa2\x02\x02\x06\n\r\n\x05\x04\x08\x02\
+    \x01\x01\x12\x04\xa2\x02\x07\x0b\n\r\n\x05\x04\x08\x02\x01\x03\x12\x04\
+    \xa2\x02\x0e\x0f\n\xba\x02\n\x02\x04\t\x12\x06\xa9\x02\0\xbf\x02\x01\x1a\
+    \xab\x02\x20A\x20multiplexed\x20request\x20sent\x20over\x20the\x20bitdri\
+    ft\x20API.\x20Upon\x20stream\x20creation,\x20the\n\x20client\x20will\x20\
+    issue\x20a\x20single\x20handshake\x20request,\x20then\x20await\x20a\x20h\
+    andshake\n\x20response.\x20Once\x20the\x20handshake\x20has\x20completed,\
+    \x20the\x20client\x20may\x20issue\x20any\x20number\n\x20of\x20non-handsh\
+    ake\x20requests;\x20corresponding\x20responses\x20may\x20come\x20in\x20a\
+    ny\x20order.\n\n\x0b\n\x03\x04\t\x01\x12\x04\xa9\x02\x08\x12\n\x0e\n\x04\
+    \x04\t\x08\0\x12\x06\xaa\x02\x02\xbb\x02\x03\n\r\n\x05\x04\t\x08\0\x01\
+    \x12\x04\xaa\x02\x08\x14\n\r\n\x05\x04\t\x08\0\x02\x12\x04\xab\x02\x04&\
+    \n\x0f\n\x07\x04\t\x08\0\x02\xaf\x08\x12\x04\xab\x02\x04&\n\x0c\n\x04\
+    \x04\t\x02\0\x12\x04\xad\x02\x04#\n\r\n\x05\x04\t\x02\0\x06\x12\x04\xad\
+    \x02\x04\x14\n\r\n\x05\x04\t\x02\0\x01\x12\x04\xad\x02\x15\x1e\n\r\n\x05\
+    \x04\t\x02\0\x03\x12\x04\xad\x02!\"\n\x0c\n\x04\x04\t\x02\x01\x12\x04\
+    \xae\x02\x041\n\r\n\x05\x04\t\x02\x01\x06\x12\x04\xae\x02\x04\x1a\n\r\n\
+    \x05\x04\t\x02\x01\x01\x12\x04\xae\x02\x1b,\n\r\n\x05\x04\t\x02\x01\x03\
+    \x12\x04\xae\x02/0\n\x0c\n\x04\x04\t\x02\x02\x12\x04\xaf\x02\x04$\n\r\n\
+    \x05\x04\t\x02\x02\x06\x12\x04\xaf\x02\x04\x14\n\r\n\x05\x04\t\x02\x02\
+    \x01\x12\x04\xaf\x02\x15\x1f\n\r\n\x05\x04\t\x02\x02\x03\x12\x04\xaf\x02\
+    \"#\n\x0c\n\x04\x04\t\x02\x03\x12\x04\xb0\x02\x04(\n\r\n\x05\x04\t\x02\
+    \x03\x06\x12\x04\xb0\x02\x04\x16\n\r\n\x05\x04\t\x02\x03\x01\x12\x04\xb0\
+    \x02\x17#\n\r\n\x05\x04\t\x02\x03\x03\x12\x04\xb0\x02&'\n\x0c\n\x04\x04\
+    \t\x02\x04\x12\x04\xb1\x02\x04\x19\n\r\n\x05\x04\t\x02\x04\x06\x12\x04\
+    \xb1\x02\x04\x0f\n\r\n\x05\x04\t\x02\x04\x01\x12\x04\xb1\x02\x10\x14\n\r\
+    \n\x05\x04\t\x02\x04\x03\x12\x04\xb1\x02\x17\x18\n\x0c\n\x04\x04\t\x02\
+    \x05\x12\x04\xb2\x02\x048\n\r\n\x05\x04\t\x02\x05\x06\x12\x04\xb2\x02\
+    \x04\x1a\n\r\n\x05\x04\t\x02\x05\x01\x12\x04\xb2\x02\x1b3\n\r\n\x05\x04\
+    \t\x02\x05\x03\x12\x04\xb2\x0267\n\x0c\n\x04\x04\t\x02\x06\x12\x04\xb3\
+    \x02\x042\n\r\n\x05\x04\t\x02\x06\x06\x12\x04\xb3\x02\x04\x1a\n\r\n\x05\
+    \x04\t\x02\x06\x01\x12\x04\xb3\x02\x1b-\n\r\n\x05\x04\t\x02\x06\x03\x12\
+    \x04\xb3\x0201\n\x0c\n\x04\x04\t\x02\x07\x12\x04\xb4\x02\x044\n\r\n\x05\
+    \x04\t\x02\x07\x06\x12\x04\xb4\x02\x04\x1b\n\r\n\x05\x04\t\x02\x07\x01\
+    \x12\x04\xb4\x02\x1c.\n\r\n\x05\x04\t\x02\x07\x03\x12\x04\xb4\x0213\n\
+    \x0c\n\x04\x04\t\x02\x08\x12\x04\xb5\x02\x04+\n\r\n\x05\x04\t\x02\x08\
+    \x06\x12\x04\xb5\x02\x04\x17\n\r\n\x05\x04\t\x02\x08\x01\x12\x04\xb5\x02\
+    \x18%\n\r\n\x05\x04\t\x02\x08\x03\x12\x04\xb5\x02(*\n\x0c\n\x04\x04\t\
+    \x02\t\x12\x04\xb6\x02\x04/\n\r\n\x05\x04\t\x02\t\x06\x12\x04\xb6\x02\
+    \x04\x19\n\r\n\x05\x04\t\x02\t\x01\x12\x04\xb6\x02\x1a)\n\r\n\x05\x04\t\
+    \x02\t\x03\x12\x04\xb6\x02,.\n\x0c\n\x04\x04\t\x02\n\x12\x04\xb7\x02\x04\
+    5\n\r\n\x05\x04\t\x02\n\x06\x12\x04\xb7\x02\x04\x1f\n\r\n\x05\x04\t\x02\
+    \n\x01\x12\x04\xb7\x02\x20/\n\r\n\x05\x04\t\x02\n\x03\x12\x04\xb7\x0224\
+    \n\x0c\n\x04\x04\t\x02\x0b\x12\x04\xb8\x02\x04%\n\r\n\x05\x04\t\x02\x0b\
+    \x06\x12\x04\xb8\x02\x04\x14\n\r\n\x05\x04\t\x02\x0b\x01\x12\x04\xb8\x02\
+    \x15\x1f\n\r\n\x05\x04\t\x02\x0b\x03\x12\x04\xb8\x02\"$\n\x0c\n\x04\x04\
+    \t\x02\x0c\x12\x04\xb9\x02\x04)\n\r\n\x05\x04\t\x02\x0c\x06\x12\x04\xb9\
+    \x02\x04\x16\n\r\n\x05\x04\t\x02\x0c\x01\x12\x04\xb9\x02\x17#\n\r\n\x05\
+    \x04\t\x02\x0c\x03\x12\x04\xb9\x02&(\n\x0c\n\x04\x04\t\x02\r\x12\x04\xba\
+    \x02\x043\n\r\n\x05\x04\t\x02\r\x06\x12\x04\xba\x02\x04\x17\n\r\n\x05\
+    \x04\t\x02\r\x01\x12\x04\xba\x02\x18-\n\r\n\x05\x04\t\x02\r\x03\x12\x04\
+    \xba\x0202\n\x0b\n\x03\x04\t\t\x12\x04\xbd\x02\x02\r\n\x0c\n\x04\x04\t\t\
+    \0\x12\x04\xbd\x02\x0b\x0c\n\r\n\x05\x04\t\t\0\x01\x12\x04\xbd\x02\x0b\
+    \x0c\n\r\n\x05\x04\t\t\0\x02\x12\x04\xbd\x02\x0b\x0c\n\x0b\n\x03\x04\t\t\
+    \x12\x04\xbe\x02\x02\r\n\x0c\n\x04\x04\t\t\x01\x12\x04\xbe\x02\x0b\x0c\n\
+    \r\n\x05\x04\t\t\x01\x01\x12\x04\xbe\x02\x0b\x0c\n\r\n\x05\x04\t\t\x01\
+    \x02\x12\x04\xbe\x02\x0b\x0c\n:\n\x02\x04\n\x12\x06\xc2\x02\0\xd5\x02\
+    \x01\x1a,\x20A\x20request\x20to\x20upload\x20a\x20Sankey\x20diagram\x20p\
+    ath.\n\n\x0b\n\x03\x04\n\x01\x12\x04\xc2\x02\x08\x1f\nf\n\x04\x04\n\x02\
+    \0\x12\x04\xc4\x02\x02B\x1aX\x20Upload\x20UUID\x20used\x20to\x20provide\
+    \x20idempotence\x20and\x20to\x20correlate\x20a\x20response\x20with\x20th\
+    is\x20request.\n\n\r\n\x05\x04\n\x02\0\x05\x12\x04\xc4\x02\x02\x08\n\r\n\
+    \x05\x04\n\x02\0\x01\x12\x04\xc4\x02\t\x14\n\r\n\x05\x04\n\x02\0\x03\x12\
+    \x04\xc4\x02\x17\x18\n\r\n\x05\x04\n\x02\0\x08\x12\x04\xc4\x02\x19A\n\
+    \x10\n\x08\x04\n\x02\0\x08\xaf\x08\x0e\x12\x04\xc4\x02\x1a@\n\xc1\x01\n\
+    \x04\x04\n\x03\0\x12\x06\xc8\x02\x02\xcb\x02\x03\x1a\xb0\x01\x20A\x20sin\
+    gle\x20node\x20in\x20the\x20Sankey\x20diagram.\x20This\x20differs\x20fro\
+    m\x20workflow\x20states.\x20Each\x20node\x20corresponds\n\x20to\x20a\x20\
+    single\x20transition\x20from\x20a\x20workflow\x20origin\x20state\x20to\
+    \x20a\x20workflow\x20target\x20state.\n\n\r\n\x05\x04\n\x03\0\x01\x12\
+    \x04\xc8\x02\n\x0e\n;\n\x06\x04\n\x03\0\x02\0\x12\x04\xca\x02\x04\x1f\
+    \x1a+\x20The\x20value\x20extracted\x20from\x20the\x20matched\x20log.\n\n\
+    \x0f\n\x07\x04\n\x03\0\x02\0\x05\x12\x04\xca\x02\x04\n\n\x0f\n\x07\x04\n\
+    \x03\0\x02\0\x01\x12\x04\xca\x02\x0b\x1a\n\x0f\n\x07\x04\n\x03\0\x02\0\
+    \x03\x12\x04\xca\x02\x1d\x1e\n\"\n\x04\x04\n\x02\x01\x12\x04\xce\x02\x02\
+    9\x1a\x14\x20Sankey\x20diagram\x20ID.\n\n\r\n\x05\x04\n\x02\x01\x05\x12\
+    \x04\xce\x02\x02\x08\n\r\n\x05\x04\n\x02\x01\x01\x12\x04\xce\x02\t\x0b\n\
+    \r\n\x05\x04\n\x02\x01\x03\x12\x04\xce\x02\x0e\x0f\n\r\n\x05\x04\n\x02\
+    \x01\x08\x12\x04\xce\x02\x108\n\x10\n\x08\x04\n\x02\x01\x08\xaf\x08\x0e\
+    \x12\x04\xce\x02\x117\n\x8d\x02\n\x04\x04\n\x02\x02\x12\x04\xd2\x02\x02>\
+    \x1a\xfe\x01\x20The\x20identifier\x20that\x20represents\x20a\x20traverse\
+    d\x20state's\x20path\x20registered\x20for\x20a\x20diagram.\x20Two\x20dia\
+    gram\x20paths\n\x20within\x20the\x20same\x20diagram\x20can\x20have\x20th\
+    e\x20same\x20ID\x20only\x20if\x20their\x20nodes\x20are\x20identical.\n\
+    \x20Conflicts\x20in\x20diagram\x20path\x20IDs\x20between\x20different\
+    \x20diagrams\x20are\x20possible.\n\n\r\n\x05\x04\n\x02\x02\x05\x12\x04\
+    \xd2\x02\x02\x08\n\r\n\x05\x04\n\x02\x02\x01\x12\x04\xd2\x02\t\x10\n\r\n\
+    \x05\x04\n\x02\x02\x03\x12\x04\xd2\x02\x13\x14\n\r\n\x05\x04\n\x02\x02\
+    \x08\x12\x04\xd2\x02\x15=\n\x10\n\x08\x04\n\x02\x02\x08\xaf\x08\x0e\x12\
+    \x04\xd2\x02\x16<\n4\n\x04\x04\n\x02\x03\x12\x04\xd4\x02\x02G\x1a&\x20Th\
+    e\x20list\x20of\x20traversed\x20diagram\x20nodes.\n\n\r\n\x05\x04\n\x02\
+    \x03\x04\x12\x04\xd4\x02\x02\n\n\r\n\x05\x04\n\x02\x03\x06\x12\x04\xd4\
+    \x02\x0b\x0f\n\r\n\x05\x04\n\x02\x03\x01\x12\x04\xd4\x02\x10\x15\n\r\n\
+    \x05\x04\n\x02\x03\x03\x12\x04\xd4\x02\x18\x19\n\r\n\x05\x04\n\x02\x03\
+    \x08\x12\x04\xd4\x02\x1aF\n\x10\n\x08\x04\n\x02\x03\x08\xaf\x08\x12\x12\
+    \x04\xd4\x02\x1bE\nA\n\x02\x04\x0b\x12\x06\xd8\x02\0\xe1\x02\x01\x1a3\
+    \x20A\x20request\x20to\x20ask\x20whether\x20to\x20upload\x20a\x20Sankey\
+    \x20path.\n\n\x0b\n\x03\x04\x0b\x01\x12\x04\xd8\x02\x08\x1b\nq\n\x04\x04\
+    \x0b\x02\0\x12\x04\xda\x02\x02B\x1ac\x20The\x20UUID\x20of\x20the\x20inte\
     nt\x20being\x20negotiated.\x20This\x20is\x20used\x20to\x20correlate\x20t\
     he\x20response\x20with\x20the\x20request.\n\n\r\n\x05\x04\x0b\x02\0\x05\
-    \x12\x04\xd5\x02\x02\x08\n\r\n\x05\x04\x0b\x02\0\x01\x12\x04\xd5\x02\t\
-    \x14\n\r\n\x05\x04\x0b\x02\0\x03\x12\x04\xd5\x02\x17\x18\n\r\n\x05\x04\
-    \x0b\x02\0\x08\x12\x04\xd5\x02\x19A\n\x10\n\x08\x04\x0b\x02\0\x08\xaf\
-    \x08\x0e\x12\x04\xd5\x02\x1a@\nG\n\x04\x04\x0b\x02\x01\x12\x04\xd8\x02\
+    \x12\x04\xda\x02\x02\x08\n\r\n\x05\x04\x0b\x02\0\x01\x12\x04\xda\x02\t\
+    \x14\n\r\n\x05\x04\x0b\x02\0\x03\x12\x04\xda\x02\x17\x18\n\r\n\x05\x04\
+    \x0b\x02\0\x08\x12\x04\xda\x02\x19A\n\x10\n\x08\x04\x0b\x02\0\x08\xaf\
+    \x08\x0e\x12\x04\xda\x02\x1a@\nG\n\x04\x04\x0b\x02\x01\x12\x04\xdd\x02\
     \x02>\x1a9\x20The\x20ID\x20of\x20the\x20path\x20that\x20is\x20being\x20c\
-    onsidered\x20for\x20upload.\n\n\r\n\x05\x04\x0b\x02\x01\x05\x12\x04\xd8\
-    \x02\x02\x08\n\r\n\x05\x04\x0b\x02\x01\x01\x12\x04\xd8\x02\t\x10\n\r\n\
-    \x05\x04\x0b\x02\x01\x03\x12\x04\xd8\x02\x13\x14\n\r\n\x05\x04\x0b\x02\
-    \x01\x08\x12\x04\xd8\x02\x15=\n\x10\n\x08\x04\x0b\x02\x01\x08\xaf\x08\
-    \x0e\x12\x04\xd8\x02\x16<\nF\n\x04\x04\x0b\x02\x02\x12\x04\xdb\x02\x02H\
+    onsidered\x20for\x20upload.\n\n\r\n\x05\x04\x0b\x02\x01\x05\x12\x04\xdd\
+    \x02\x02\x08\n\r\n\x05\x04\x0b\x02\x01\x01\x12\x04\xdd\x02\t\x10\n\r\n\
+    \x05\x04\x0b\x02\x01\x03\x12\x04\xdd\x02\x13\x14\n\r\n\x05\x04\x0b\x02\
+    \x01\x08\x12\x04\xdd\x02\x15=\n\x10\n\x08\x04\x0b\x02\x01\x08\xaf\x08\
+    \x0e\x12\x04\xdd\x02\x16<\nF\n\x04\x04\x0b\x02\x02\x12\x04\xe0\x02\x02H\
     \x1a8\x20The\x20ID\x20of\x20the\x20diagram\x20that\x20the\x20path\x20was\
-    \x20discovered\x20in.\n\n\r\n\x05\x04\x0b\x02\x02\x05\x12\x04\xdb\x02\
-    \x02\x08\n\r\n\x05\x04\x0b\x02\x02\x01\x12\x04\xdb\x02\t\x1a\n\r\n\x05\
-    \x04\x0b\x02\x02\x03\x12\x04\xdb\x02\x1d\x1e\n\r\n\x05\x04\x0b\x02\x02\
-    \x08\x12\x04\xdb\x02\x1fG\n\x10\n\x08\x04\x0b\x02\x02\x08\xaf\x08\x0e\
-    \x12\x04\xdb\x02\x20F\n\x0c\n\x02\x04\x0c\x12\x06\xde\x02\0\xf4\x02\x01\
-    \n\x0b\n\x03\x04\x0c\x01\x12\x04\xde\x02\x08#\nq\n\x04\x04\x0c\x02\0\x12\
-    \x04\xe0\x02\x02B\x1ac\x20The\x20UUID\x20of\x20the\x20intent\x20being\
+    \x20discovered\x20in.\n\n\r\n\x05\x04\x0b\x02\x02\x05\x12\x04\xe0\x02\
+    \x02\x08\n\r\n\x05\x04\x0b\x02\x02\x01\x12\x04\xe0\x02\t\x1a\n\r\n\x05\
+    \x04\x0b\x02\x02\x03\x12\x04\xe0\x02\x1d\x1e\n\r\n\x05\x04\x0b\x02\x02\
+    \x08\x12\x04\xe0\x02\x1fG\n\x10\n\x08\x04\x0b\x02\x02\x08\xaf\x08\x0e\
+    \x12\x04\xe0\x02\x20F\n\x0c\n\x02\x04\x0c\x12\x06\xe3\x02\0\xf9\x02\x01\
+    \n\x0b\n\x03\x04\x0c\x01\x12\x04\xe3\x02\x08#\nq\n\x04\x04\x0c\x02\0\x12\
+    \x04\xe5\x02\x02B\x1ac\x20The\x20UUID\x20of\x20the\x20intent\x20being\
     \x20negotiated.\x20This\x20is\x20used\x20to\x20correlate\x20the\x20respo\
-    nse\x20with\x20the\x20request.\n\n\r\n\x05\x04\x0c\x02\0\x05\x12\x04\xe0\
-    \x02\x02\x08\n\r\n\x05\x04\x0c\x02\0\x01\x12\x04\xe0\x02\t\x14\n\r\n\x05\
-    \x04\x0c\x02\0\x03\x12\x04\xe0\x02\x17\x18\n\r\n\x05\x04\x0c\x02\0\x08\
-    \x12\x04\xe0\x02\x19A\n\x10\n\x08\x04\x0c\x02\0\x08\xaf\x08\x0e\x12\x04\
-    \xe0\x02\x1a@\nE\n\x04\x04\x0c\x02\x01\x12\x04\xe3\x02\x02>\x1a7\x20The\
+    nse\x20with\x20the\x20request.\n\n\r\n\x05\x04\x0c\x02\0\x05\x12\x04\xe5\
+    \x02\x02\x08\n\r\n\x05\x04\x0c\x02\0\x01\x12\x04\xe5\x02\t\x14\n\r\n\x05\
+    \x04\x0c\x02\0\x03\x12\x04\xe5\x02\x17\x18\n\r\n\x05\x04\x0c\x02\0\x08\
+    \x12\x04\xe5\x02\x19A\n\x10\n\x08\x04\x0c\x02\0\x08\xaf\x08\x0e\x12\x04\
+    \xe5\x02\x1a@\nE\n\x04\x04\x0c\x02\x01\x12\x04\xe8\x02\x02>\x1a7\x20The\
     \x20type\x20of\x20the\x20artifact\x20being\x20considered\x20for\x20uploa\
-    d.\n\n\r\n\x05\x04\x0c\x02\x01\x05\x12\x04\xe3\x02\x02\x08\n\r\n\x05\x04\
-    \x0c\x02\x01\x01\x12\x04\xe3\x02\t\x10\n\r\n\x05\x04\x0c\x02\x01\x03\x12\
-    \x04\xe3\x02\x13\x14\n\r\n\x05\x04\x0c\x02\x01\x08\x12\x04\xe3\x02\x15=\
-    \n\x10\n\x08\x04\x0c\x02\x01\x08\xaf\x08\x0e\x12\x04\xe3\x02\x16<\n\x0b\
-    \n\x03\x04\x0c\t\x12\x04\xe5\x02\x02\r\n\x0c\n\x04\x04\x0c\t\0\x12\x04\
-    \xe5\x02\x0b\x0c\n\r\n\x05\x04\x0c\t\0\x01\x12\x04\xe5\x02\x0b\x0c\n\r\n\
-    \x05\x04\x0c\t\0\x02\x12\x04\xe5\x02\x0b\x0c\n\xd5\x02\n\x04\x04\x0c\x02\
-    \x02\x12\x04\xe8\x02\x02,\x1a\xc6\x02\x20The\x20metadata\x20associated\
+    d.\n\n\r\n\x05\x04\x0c\x02\x01\x05\x12\x04\xe8\x02\x02\x08\n\r\n\x05\x04\
+    \x0c\x02\x01\x01\x12\x04\xe8\x02\t\x10\n\r\n\x05\x04\x0c\x02\x01\x03\x12\
+    \x04\xe8\x02\x13\x14\n\r\n\x05\x04\x0c\x02\x01\x08\x12\x04\xe8\x02\x15=\
+    \n\x10\n\x08\x04\x0c\x02\x01\x08\xaf\x08\x0e\x12\x04\xe8\x02\x16<\n\x0b\
+    \n\x03\x04\x0c\t\x12\x04\xea\x02\x02\r\n\x0c\n\x04\x04\x0c\t\0\x12\x04\
+    \xea\x02\x0b\x0c\n\r\n\x05\x04\x0c\t\0\x01\x12\x04\xea\x02\x0b\x0c\n\r\n\
+    \x05\x04\x0c\t\0\x02\x12\x04\xea\x02\x0b\x0c\n\xd5\x02\n\x04\x04\x0c\x02\
+    \x02\x12\x04\xed\x02\x02,\x1a\xc6\x02\x20The\x20metadata\x20associated\
     \x20with\x20the\x20artifact.\x20The\x20contents\x20within\x20this\x20map\
     \x20depends\x20on\x20the\x20type\x20of\x20the\x20artfact\x20but\x20will\
     \x20generally\x20contain\x20information\x20that\x20can\x20help\x20the\
@@ -12417,596 +14459,743 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x20the\x20upload\x20or\x20not.\x20For\x20example,\x20for\x20issue\x20re\
     ports\x20this\x20may\x20contain\x20the\x20\"fields\"\x20associated\x20wi\
     th\x20the\x20issue\x20report.\n\n\r\n\x05\x04\x0c\x02\x02\x06\x12\x04\
-    \xe8\x02\x02\x1e\n\r\n\x05\x04\x0c\x02\x02\x01\x12\x04\xe8\x02\x1f'\n\r\
-    \n\x05\x04\x0c\x02\x02\x03\x12\x04\xe8\x02*+\n\x92\x01\n\x04\x04\x0c\x02\
-    \x03\x12\x04\xec\x02\x02B\x1a\x83\x01\x20A\x20client-generated\x20ID\x20\
+    \xed\x02\x02\x1e\n\r\n\x05\x04\x0c\x02\x02\x01\x12\x04\xed\x02\x1f'\n\r\
+    \n\x05\x04\x0c\x02\x02\x03\x12\x04\xed\x02*+\n\x92\x01\n\x04\x04\x0c\x02\
+    \x03\x12\x04\xf1\x02\x02B\x1a\x83\x01\x20A\x20client-generated\x20ID\x20\
     that\x20uniquely\x20identifies\x20the\x20artifact.\x20This\x20is\x20used\
     \x20to\x20correlate\x20the\x20artifact\n\x20with\x20logs\x20that\x20refe\
-    rence\x20it.\n\n\r\n\x05\x04\x0c\x02\x03\x05\x12\x04\xec\x02\x02\x08\n\r\
-    \n\x05\x04\x0c\x02\x03\x01\x12\x04\xec\x02\t\x14\n\r\n\x05\x04\x0c\x02\
-    \x03\x03\x12\x04\xec\x02\x17\x18\n\r\n\x05\x04\x0c\x02\x03\x08\x12\x04\
-    \xec\x02\x19A\n\x10\n\x08\x04\x0c\x02\x03\x08\xaf\x08\x0e\x12\x04\xec\
-    \x02\x1a@\n\x8f\x01\n\x04\x04\x0c\x02\x04\x12\x04\xef\x02\x02S\x1a\x80\
+    rence\x20it.\n\n\r\n\x05\x04\x0c\x02\x03\x05\x12\x04\xf1\x02\x02\x08\n\r\
+    \n\x05\x04\x0c\x02\x03\x01\x12\x04\xf1\x02\t\x14\n\r\n\x05\x04\x0c\x02\
+    \x03\x03\x12\x04\xf1\x02\x17\x18\n\r\n\x05\x04\x0c\x02\x03\x08\x12\x04\
+    \xf1\x02\x19A\n\x10\n\x08\x04\x0c\x02\x03\x08\xaf\x08\x0e\x12\x04\xf1\
+    \x02\x1a@\n\x8f\x01\n\x04\x04\x0c\x02\x04\x12\x04\xf4\x02\x02S\x1a\x80\
     \x01\x20The\x20timestamp\x20associated\x20with\x20the\x20artifact\x20bei\
     ng\x20uploaded.\x20This\x20allows\x20us\x20to\x20possibly\x20reject\x20t\
     he\x20upload\x20of\x20very\x20old\x20artifacts.\n\n\r\n\x05\x04\x0c\x02\
-    \x04\x06\x12\x04\xef\x02\x02\x1b\n\r\n\x05\x04\x0c\x02\x04\x01\x12\x04\
-    \xef\x02\x1c\x20\n\r\n\x05\x04\x0c\x02\x04\x03\x12\x04\xef\x02#$\n\r\n\
-    \x05\x04\x0c\x02\x04\x08\x12\x04\xef\x02%R\n\x10\n\x08\x04\x0c\x02\x04\
-    \x08\xaf\x08\x11\x12\x04\xef\x02&Q\n\xc8\x01\n\x04\x04\x0c\x02\x05\x12\
-    \x04\xf3\x02\x02!\x1a\xb9\x01\x20The\x20session\x20ID\x20associated\x20w\
+    \x04\x06\x12\x04\xf4\x02\x02\x1b\n\r\n\x05\x04\x0c\x02\x04\x01\x12\x04\
+    \xf4\x02\x1c\x20\n\r\n\x05\x04\x0c\x02\x04\x03\x12\x04\xf4\x02#$\n\r\n\
+    \x05\x04\x0c\x02\x04\x08\x12\x04\xf4\x02%R\n\x10\n\x08\x04\x0c\x02\x04\
+    \x08\xaf\x08\x11\x12\x04\xf4\x02&Q\n\xc8\x01\n\x04\x04\x0c\x02\x05\x12\
+    \x04\xf8\x02\x02!\x1a\xb9\x01\x20The\x20session\x20ID\x20associated\x20w\
     ith\x20the\x20artifact.\x20This\x20allows\x20correlating\x20the\x20inten\
     t\x20with\x20a\x20specific\x20user\x20session.\n\x20This\x20may\x20not\
     \x20be\x20set\x20for\x20all\x20kinds\x20of\x20artifacts,\x20such\x20as\
-    \x20state\x20snapshots.\n\n\r\n\x05\x04\x0c\x02\x05\x04\x12\x04\xf3\x02\
-    \x02\n\n\r\n\x05\x04\x0c\x02\x05\x05\x12\x04\xf3\x02\x0b\x11\n\r\n\x05\
-    \x04\x0c\x02\x05\x01\x12\x04\xf3\x02\x12\x1c\n\r\n\x05\x04\x0c\x02\x05\
-    \x03\x12\x04\xf3\x02\x1f\x20\n\x0c\n\x02\x04\r\x12\x06\xf6\x02\0\x85\x03\
-    \x01\n\x0b\n\x03\x04\r\x01\x12\x04\xf6\x02\x08$\nq\n\x04\x04\r\x02\0\x12\
-    \x04\xf8\x02\x02B\x1ac\x20The\x20UUID\x20of\x20the\x20intent\x20being\
+    \x20state\x20snapshots.\n\n\r\n\x05\x04\x0c\x02\x05\x04\x12\x04\xf8\x02\
+    \x02\n\n\r\n\x05\x04\x0c\x02\x05\x05\x12\x04\xf8\x02\x0b\x11\n\r\n\x05\
+    \x04\x0c\x02\x05\x01\x12\x04\xf8\x02\x12\x1c\n\r\n\x05\x04\x0c\x02\x05\
+    \x03\x12\x04\xf8\x02\x1f\x20\n\x0c\n\x02\x04\r\x12\x06\xfb\x02\0\x8a\x03\
+    \x01\n\x0b\n\x03\x04\r\x01\x12\x04\xfb\x02\x08$\nq\n\x04\x04\r\x02\0\x12\
+    \x04\xfd\x02\x02B\x1ac\x20The\x20UUID\x20of\x20the\x20intent\x20being\
     \x20negotiated.\x20This\x20is\x20used\x20to\x20correlate\x20the\x20respo\
-    nse\x20with\x20the\x20request.\n\n\r\n\x05\x04\r\x02\0\x05\x12\x04\xf8\
-    \x02\x02\x08\n\r\n\x05\x04\r\x02\0\x01\x12\x04\xf8\x02\t\x14\n\r\n\x05\
-    \x04\r\x02\0\x03\x12\x04\xf8\x02\x17\x18\n\r\n\x05\x04\r\x02\0\x08\x12\
-    \x04\xf8\x02\x19A\n\x10\n\x08\x04\r\x02\0\x08\xaf\x08\x0e\x12\x04\xf8\
-    \x02\x1a@\n\x0c\n\x04\x04\r\x03\0\x12\x04\xfa\x02\x02\x1e\n\r\n\x05\x04\
-    \r\x03\0\x01\x12\x04\xfa\x02\n\x1b\n\x0c\n\x04\x04\r\x03\x01\x12\x04\xfc\
-    \x02\x02\x11\n\r\n\x05\x04\r\x03\x01\x01\x12\x04\xfc\x02\n\x0e\n\x0e\n\
-    \x04\x04\r\x08\0\x12\x06\xfe\x02\x02\x84\x03\x03\n\r\n\x05\x04\r\x08\0\
-    \x01\x12\x04\xfe\x02\x08\x10\n<\n\x04\x04\r\x02\x01\x12\x04\x80\x03\x04-\
+    nse\x20with\x20the\x20request.\n\n\r\n\x05\x04\r\x02\0\x05\x12\x04\xfd\
+    \x02\x02\x08\n\r\n\x05\x04\r\x02\0\x01\x12\x04\xfd\x02\t\x14\n\r\n\x05\
+    \x04\r\x02\0\x03\x12\x04\xfd\x02\x17\x18\n\r\n\x05\x04\r\x02\0\x08\x12\
+    \x04\xfd\x02\x19A\n\x10\n\x08\x04\r\x02\0\x08\xaf\x08\x0e\x12\x04\xfd\
+    \x02\x1a@\n\x0c\n\x04\x04\r\x03\0\x12\x04\xff\x02\x02\x1e\n\r\n\x05\x04\
+    \r\x03\0\x01\x12\x04\xff\x02\n\x1b\n\x0c\n\x04\x04\r\x03\x01\x12\x04\x81\
+    \x03\x02\x11\n\r\n\x05\x04\r\x03\x01\x01\x12\x04\x81\x03\n\x0e\n\x0e\n\
+    \x04\x04\r\x08\0\x12\x06\x83\x03\x02\x89\x03\x03\n\r\n\x05\x04\r\x08\0\
+    \x01\x12\x04\x83\x03\x08\x10\n<\n\x04\x04\r\x02\x01\x12\x04\x85\x03\x04-\
     \x1a.\x20The\x20artifact\x20should\x20be\x20uploaded\x20immediately.\n\n\
-    \r\n\x05\x04\r\x02\x01\x06\x12\x04\x80\x03\x04\x15\n\r\n\x05\x04\r\x02\
-    \x01\x01\x12\x04\x80\x03\x16(\n\r\n\x05\x04\r\x02\x01\x03\x12\x04\x80\
-    \x03+,\n9\n\x04\x04\r\x02\x02\x12\x04\x83\x03\x04\x12\x1a+\x20The\x20can\
+    \r\n\x05\x04\r\x02\x01\x06\x12\x04\x85\x03\x04\x15\n\r\n\x05\x04\r\x02\
+    \x01\x01\x12\x04\x85\x03\x16(\n\r\n\x05\x04\r\x02\x01\x03\x12\x04\x85\
+    \x03+,\n9\n\x04\x04\r\x02\x02\x12\x04\x88\x03\x04\x12\x1a+\x20The\x20can\
     didate\x20artifact\x20should\x20be\x20dropped.\n\n\r\n\x05\x04\r\x02\x02\
-    \x06\x12\x04\x83\x03\x04\x08\n\r\n\x05\x04\r\x02\x02\x01\x12\x04\x83\x03\
-    \t\r\n\r\n\x05\x04\r\x02\x02\x03\x12\x04\x83\x03\x10\x11\n\x0c\n\x02\x04\
-    \x0e\x12\x06\x87\x03\0\xa5\x03\x01\n\x0b\n\x03\x04\x0e\x01\x12\x04\x87\
-    \x03\x08\x1d\nf\n\x04\x04\x0e\x02\0\x12\x04\x89\x03\x02B\x1aX\x20Upload\
+    \x06\x12\x04\x88\x03\x04\x08\n\r\n\x05\x04\r\x02\x02\x01\x12\x04\x88\x03\
+    \t\r\n\r\n\x05\x04\r\x02\x02\x03\x12\x04\x88\x03\x10\x11\n\x0c\n\x02\x04\
+    \x0e\x12\x06\x8c\x03\0\xae\x03\x01\n\x0b\n\x03\x04\x0e\x01\x12\x04\x8c\
+    \x03\x08\x1d\nf\n\x04\x04\x0e\x02\0\x12\x04\x8e\x03\x02B\x1aX\x20Upload\
     \x20UUID\x20used\x20to\x20provide\x20idempotence\x20and\x20to\x20correla\
     te\x20a\x20response\x20with\x20this\x20request.\n\n\r\n\x05\x04\x0e\x02\
-    \0\x05\x12\x04\x89\x03\x02\x08\n\r\n\x05\x04\x0e\x02\0\x01\x12\x04\x89\
-    \x03\t\x14\n\r\n\x05\x04\x0e\x02\0\x03\x12\x04\x89\x03\x17\x18\n\r\n\x05\
-    \x04\x0e\x02\0\x08\x12\x04\x89\x03\x19A\n\x10\n\x08\x04\x0e\x02\0\x08\
-    \xaf\x08\x0e\x12\x04\x89\x03\x1a@\n8\n\x04\x04\x0e\x02\x01\x12\x04\x8c\
+    \0\x05\x12\x04\x8e\x03\x02\x08\n\r\n\x05\x04\x0e\x02\0\x01\x12\x04\x8e\
+    \x03\t\x14\n\r\n\x05\x04\x0e\x02\0\x03\x12\x04\x8e\x03\x17\x18\n\r\n\x05\
+    \x04\x0e\x02\0\x08\x12\x04\x8e\x03\x19A\n\x10\n\x08\x04\x0e\x02\0\x08\
+    \xaf\x08\x0e\x12\x04\x8e\x03\x1a@\n8\n\x04\x04\x0e\x02\x01\x12\x04\x91\
     \x03\x02>\x1a*\x20The\x20type\x20of\x20the\x20artifact\x20being\x20uploa\
-    ded.\n\n\r\n\x05\x04\x0e\x02\x01\x05\x12\x04\x8c\x03\x02\x08\n\r\n\x05\
-    \x04\x0e\x02\x01\x01\x12\x04\x8c\x03\t\x10\n\r\n\x05\x04\x0e\x02\x01\x03\
-    \x12\x04\x8c\x03\x13\x14\n\r\n\x05\x04\x0e\x02\x01\x08\x12\x04\x8c\x03\
-    \x15=\n\x10\n\x08\x04\x0e\x02\x01\x08\xaf\x08\x0e\x12\x04\x8c\x03\x16<\n\
-    u\n\x04\x04\x0e\x02\x02\x12\x04\x8f\x03\x02\x15\x1ag\x20The\x20artifact\
+    ded.\n\n\r\n\x05\x04\x0e\x02\x01\x05\x12\x04\x91\x03\x02\x08\n\r\n\x05\
+    \x04\x0e\x02\x01\x01\x12\x04\x91\x03\t\x10\n\r\n\x05\x04\x0e\x02\x01\x03\
+    \x12\x04\x91\x03\x13\x14\n\r\n\x05\x04\x0e\x02\x01\x08\x12\x04\x91\x03\
+    \x15=\n\x10\n\x08\x04\x0e\x02\x01\x08\xaf\x08\x0e\x12\x04\x91\x03\x16<\n\
+    u\n\x04\x04\x0e\x02\x02\x12\x04\x94\x03\x02\x15\x1ag\x20The\x20artifact\
     \x20to\x20upload.\x20This\x20is\x20a\x20binary\x20blob\x20that\x20is\x20\
     interpreted\x20by\x20the\x20server\x20based\x20on\x20the\x20type_id.\n\n\
-    \r\n\x05\x04\x0e\x02\x02\x05\x12\x04\x8f\x03\x02\x07\n\r\n\x05\x04\x0e\
-    \x02\x02\x01\x12\x04\x8f\x03\x08\x10\n\r\n\x05\x04\x0e\x02\x02\x03\x12\
-    \x04\x8f\x03\x13\x14\n\xa1\x01\n\x04\x04\x0e\x02\x03\x12\x04\x93\x03\x02\
+    \r\n\x05\x04\x0e\x02\x02\x05\x12\x04\x94\x03\x02\x07\n\r\n\x05\x04\x0e\
+    \x02\x02\x01\x12\x04\x94\x03\x08\x10\n\r\n\x05\x04\x0e\x02\x02\x03\x12\
+    \x04\x94\x03\x13\x14\n\xa1\x01\n\x04\x04\x0e\x02\x03\x12\x04\x98\x03\x02\
     B\x1a\x92\x01\x20A\x20client-generated\x20ID\x20that\x20uniquely\x20iden\
     tifies\x20the\x20artifact\x20being\x20uploaded.\x20This\x20is\x20used\
     \x20to\x20correlate\n\x20the\x20artifact\x20with\x20logs\x20that\x20refe\
-    rence\x20it.\n\n\r\n\x05\x04\x0e\x02\x03\x05\x12\x04\x93\x03\x02\x08\n\r\
-    \n\x05\x04\x0e\x02\x03\x01\x12\x04\x93\x03\t\x14\n\r\n\x05\x04\x0e\x02\
-    \x03\x03\x12\x04\x93\x03\x17\x18\n\r\n\x05\x04\x0e\x02\x03\x08\x12\x04\
-    \x93\x03\x19A\n\x10\n\x08\x04\x0e\x02\x03\x08\xaf\x08\x0e\x12\x04\x93\
-    \x03\x1a@\n\xcb\x01\n\x04\x04\x0e\x02\x04\x12\x04\x97\x03\x022\x1a\xbc\
+    rence\x20it.\n\n\r\n\x05\x04\x0e\x02\x03\x05\x12\x04\x98\x03\x02\x08\n\r\
+    \n\x05\x04\x0e\x02\x03\x01\x12\x04\x98\x03\t\x14\n\r\n\x05\x04\x0e\x02\
+    \x03\x03\x12\x04\x98\x03\x17\x18\n\r\n\x05\x04\x0e\x02\x03\x08\x12\x04\
+    \x98\x03\x19A\n\x10\n\x08\x04\x0e\x02\x03\x08\xaf\x08\x0e\x12\x04\x98\
+    \x03\x1a@\n\xcb\x01\n\x04\x04\x0e\x02\x04\x12\x04\x9c\x03\x022\x1a\xbc\
     \x01\x20An\x20optional\x20set\x20of\x20key-value\x20data\x20indicating\
     \x20the\x20state\x20of\x20the\x20device\x20at\x20the\x20time\x20of\x20ar\
     tifact\x20emission.\x20For\x20example,\n\x20this\x20may\x20capture\x20in\
     formation\x20about\x20the\x20device\x20at\x20the\x20time\x20of\x20a\x20c\
-    rash.\n\n\r\n\x05\x04\x0e\x02\x04\x06\x12\x04\x97\x03\x02\x1e\n\r\n\x05\
-    \x04\x0e\x02\x04\x01\x12\x04\x97\x03\x1f-\n\r\n\x05\x04\x0e\x02\x04\x03\
-    \x12\x04\x97\x0301\n~\n\x04\x04\x0e\x02\x05\x12\x04\x9a\x03\x02S\x1ap\
+    rash.\n\n\r\n\x05\x04\x0e\x02\x04\x06\x12\x04\x9c\x03\x02\x1e\n\r\n\x05\
+    \x04\x0e\x02\x04\x01\x12\x04\x9c\x03\x1f-\n\r\n\x05\x04\x0e\x02\x04\x03\
+    \x12\x04\x9c\x0301\n~\n\x04\x04\x0e\x02\x05\x12\x04\x9f\x03\x02S\x1ap\
     \x20The\x20timestamp\x20associated\x20with\x20this\x20upload.\x20This\
     \x20allows\x20us\x20to\x20possibly\x20reject\x20the\x20upload\x20of\x20v\
-    ery\x20old\x20artifacts.\n\n\r\n\x05\x04\x0e\x02\x05\x06\x12\x04\x9a\x03\
-    \x02\x1b\n\r\n\x05\x04\x0e\x02\x05\x01\x12\x04\x9a\x03\x1c\x20\n\r\n\x05\
-    \x04\x0e\x02\x05\x03\x12\x04\x9a\x03#$\n\r\n\x05\x04\x0e\x02\x05\x08\x12\
-    \x04\x9a\x03%R\n\x10\n\x08\x04\x0e\x02\x05\x08\xaf\x08\x11\x12\x04\x9a\
-    \x03&Q\nJ\n\x04\x04\x0e\x02\x06\x12\x04\x9d\x03\x02\x18\x1a<\x20The\x20s\
+    ery\x20old\x20artifacts.\n\n\r\n\x05\x04\x0e\x02\x05\x06\x12\x04\x9f\x03\
+    \x02\x1b\n\r\n\x05\x04\x0e\x02\x05\x01\x12\x04\x9f\x03\x1c\x20\n\r\n\x05\
+    \x04\x0e\x02\x05\x03\x12\x04\x9f\x03#$\n\r\n\x05\x04\x0e\x02\x05\x08\x12\
+    \x04\x9f\x03%R\n\x10\n\x08\x04\x0e\x02\x05\x08\xaf\x08\x11\x12\x04\x9f\
+    \x03&Q\nJ\n\x04\x04\x0e\x02\x06\x12\x04\xa2\x03\x02\x18\x1a<\x20The\x20s\
     ession\x20ID\x20associated\x20with\x20the\x20artifact\x20if\x20applicabl\
-    e.\n\n\r\n\x05\x04\x0e\x02\x06\x05\x12\x04\x9d\x03\x02\x08\n\r\n\x05\x04\
-    \x0e\x02\x06\x01\x12\x04\x9d\x03\t\x13\n\r\n\x05\x04\x0e\x02\x06\x03\x12\
-    \x04\x9d\x03\x16\x17\n[\n\x04\x04\x0e\x02\x07\x12\x04\xa0\x03\x02)\x1aM\
+    e.\n\n\r\n\x05\x04\x0e\x02\x06\x05\x12\x04\xa2\x03\x02\x08\n\r\n\x05\x04\
+    \x0e\x02\x06\x01\x12\x04\xa2\x03\t\x13\n\r\n\x05\x04\x0e\x02\x06\x03\x12\
+    \x04\xa2\x03\x16\x17\n[\n\x04\x04\x0e\x02\x07\x12\x04\xa5\x03\x02)\x1aM\
     \x20The\x20set\x20of\x20feature\x20flags\x20that\x20were\x20active\x20at\
     \x20the\x20time\x20of\x20artifact\x20emission.\n\n\r\n\x05\x04\x0e\x02\
-    \x07\x04\x12\x04\xa0\x03\x02\n\n\r\n\x05\x04\x0e\x02\x07\x06\x12\x04\xa0\
-    \x03\x0b\x16\n\r\n\x05\x04\x0e\x02\x07\x01\x12\x04\xa0\x03\x17$\n\r\n\
-    \x05\x04\x0e\x02\x07\x03\x12\x04\xa0\x03'(\n\xbe\x01\n\x04\x04\x0e\x02\
-    \x08\x12\x04\xa4\x03\x02I\x1a\xaf\x01\x20Client\x20workflow\x20continuat\
+    \x07\x04\x12\x04\xa5\x03\x02\n\n\r\n\x05\x04\x0e\x02\x07\x06\x12\x04\xa5\
+    \x03\x0b\x16\n\r\n\x05\x04\x0e\x02\x07\x01\x12\x04\xa5\x03\x17$\n\r\n\
+    \x05\x04\x0e\x02\x07\x03\x12\x04\xa5\x03'(\n\xbe\x01\n\x04\x04\x0e\x02\
+    \x08\x12\x04\xa9\x03\x02I\x1a\xaf\x01\x20Client\x20workflow\x20continuat\
     ions\x20that\x20should\x20be\x20evaluated\x20when\x20this\x20report\x20i\
     s\x20processed.\n\x20Only\x20populated\x20for\x20issue-report\x20artifac\
     ts;\x20other\x20artifact\x20types\x20must\x20leave\x20this\x20unset.\n\n\
-    \r\n\x05\x04\x0e\x02\x08\x04\x12\x04\xa4\x03\x02\n\n\r\n\x05\x04\x0e\x02\
-    \x08\x06\x12\x04\xa4\x03\x0b,\n\r\n\x05\x04\x0e\x02\x08\x01\x12\x04\xa4\
-    \x03-D\n\r\n\x05\x04\x0e\x02\x08\x03\x12\x04\xa4\x03GH\n\x0c\n\x02\x04\
-    \x0f\x12\x06\xa7\x03\0\xad\x03\x01\n\x0b\n\x03\x04\x0f\x01\x12\x04\xa7\
-    \x03\x08\x1e\n=\n\x04\x04\x0f\x02\0\x12\x04\xa9\x03\x02B\x1a/\x20The\x20\
-    UUID\x20corresponding\x20to\x20the\x20upload\x20request.\n\n\r\n\x05\x04\
-    \x0f\x02\0\x05\x12\x04\xa9\x03\x02\x08\n\r\n\x05\x04\x0f\x02\0\x01\x12\
-    \x04\xa9\x03\t\x14\n\r\n\x05\x04\x0f\x02\0\x03\x12\x04\xa9\x03\x17\x18\n\
-    \r\n\x05\x04\x0f\x02\0\x08\x12\x04\xa9\x03\x19A\n\x10\n\x08\x04\x0f\x02\
-    \0\x08\xaf\x08\x0e\x12\x04\xa9\x03\x1a@\nS\n\x04\x04\x0f\x02\x01\x12\x04\
-    \xac\x03\x02\x13\x1aE\x20Optional\x20error\x20message\x20which\x20indica\
-    tes\x20that\x20artifact\x20upload\x20failed.\n\n\r\n\x05\x04\x0f\x02\x01\
-    \x05\x12\x04\xac\x03\x02\x08\n\r\n\x05\x04\x0f\x02\x01\x01\x12\x04\xac\
-    \x03\t\x0e\n\r\n\x05\x04\x0f\x02\x01\x03\x12\x04\xac\x03\x11\x12\nB\n\
-    \x02\x04\x10\x12\x06\xb0\x03\0\xd3\x03\x01\x1a4\x20The\x20response\x20se\
-    nt\x20as\x20part\x20of\x20stream\x20establishment.\n\n\x0b\n\x03\x04\x10\
-    \x01\x12\x04\xb0\x03\x08\x19\n\x0e\n\x04\x04\x10\x03\0\x12\x06\xb1\x03\
-    \x02\xb5\x03\x03\n\r\n\x05\x04\x10\x03\0\x01\x12\x04\xb1\x03\n\x16\n\xb8\
-    \x01\n\x06\x04\x10\x03\0\x02\0\x12\x04\xb4\x03\x04\x19\x1a\xa7\x01\x20Th\
-    e\x20analytics\x20report\x20ID\x20from\x20HandshakeRequest.Analytics.Sta\
-    tsPipelineAnalytics\x20that\x20the\n\x20server\x20accepted.\x20The\x20cl\
-    ient\x20retains\x20the\x20report\x20until\x20this\x20ID\x20is\x20echoed\
-    \x20back.\n\n\x0f\n\x07\x04\x10\x03\0\x02\0\x05\x12\x04\xb4\x03\x04\n\n\
-    \x0f\n\x07\x04\x10\x03\0\x02\0\x01\x12\x04\xb4\x03\x0b\x14\n\x0f\n\x07\
-    \x04\x10\x03\0\x02\0\x03\x12\x04\xb4\x03\x17\x18\n\x0e\n\x04\x04\x10\x03\
-    \x01\x12\x06\xb7\x03\x02\xbd\x03\x03\n\r\n\x05\x04\x10\x03\x01\x01\x12\
-    \x04\xb7\x03\n\x18\n\xe2\x01\n\x06\x04\x10\x03\x01\x02\0\x12\x04\xbc\x03\
-    \x04/\x1a\xd1\x01\x20How\x20often\x20the\x20client\x20should\x20ping\x20\
-    the\x20server.\x20This\x20informs\x20the\x20client\x20how\n\x20often\x20\
-    a\x20ping\x20request\x20should\x20be\x20issued\x20over\x20the\x20newly\
-    \x20created\x20stream.\n\n\x20If\x20this\x20is\x20not\x20set,\x20the\x20\
-    client\x20should\x20not\x20issue\x20ping\x20requests.\n\n\x0f\n\x07\x04\
-    \x10\x03\x01\x02\0\x06\x12\x04\xbc\x03\x04\x1c\n\x0f\n\x07\x04\x10\x03\
-    \x01\x02\0\x01\x12\x04\xbc\x03\x1d*\n\x0f\n\x07\x04\x10\x03\x01\x02\0\
-    \x03\x12\x04\xbc\x03-.\n\x0c\n\x04\x04\x10\x02\0\x12\x04\xbf\x03\x02%\n\
-    \r\n\x05\x04\x10\x02\0\x06\x12\x04\xbf\x03\x02\x10\n\r\n\x05\x04\x10\x02\
-    \0\x01\x12\x04\xbf\x03\x11\x20\n\r\n\x05\x04\x10\x02\0\x03\x12\x04\xbf\
-    \x03#$\n\x99\x02\n\x04\x04\x10\x02\x01\x12\x04\xc5\x03\x02)\x1a\x8a\x02\
-    \x20A\x20flag\x20set\x20that\x20describes\x20the\x20status\x20of\x20conf\
-    iguration\x20updates\x20based\x20on\x20the\x20provided\n\x20configuratio\
-    n\x20nonces.\n\x200x1:\x20Runtime\x20is\x20up\x20to\x20date\x20and\x20no\
-    \x20further\x20update\x20message\x20will\x20be\x20supplied.\n\x200x2:\
-    \x20Configuration\x20is\x20up\x20to\x20date\x20and\x20no\x20further\x20u\
-    pdate\x20message\x20will\x20be\x20supplied.\n\n\r\n\x05\x04\x10\x02\x01\
-    \x05\x12\x04\xc5\x03\x02\x08\n\r\n\x05\x04\x10\x02\x01\x01\x12\x04\xc5\
-    \x03\t$\n\r\n\x05\x04\x10\x02\x01\x03\x12\x04\xc5\x03'(\n\x91\x02\n\x04\
-    \x04\x10\x02\x02\x12\x04\xca\x03\x021\x1a\x82\x02\x20Opaque\x20client\
-    \x20state\x20that\x20should\x20be\x20echoed\x20back\x20to\x20the\x20serv\
-    er\x20on\x20every\x20future\x20handshake\n\x20request.\x20If\x20unset,\
-    \x20the\x20client\x20should\x20continue\x20to\x20send\x20any\x20existing\
-    \x20opaque\x20state,\x20or\x20none\n\x20if\x20it\x20has\x20none.\x20Send\
-    ing\x20an\x20explicit\x20empty\x20value\x20will\x20clear\x20any\x20exist\
-    ing\x20state.\n\n\r\n\x05\x04\x10\x02\x02\x04\x12\x04\xca\x03\x02\n\n\r\
-    \n\x05\x04\x10\x02\x02\x05\x12\x04\xca\x03\x0b\x10\n\r\n\x05\x04\x10\x02\
-    \x02\x01\x12\x04\xca\x03\x11,\n\r\n\x05\x04\x10\x02\x02\x03\x12\x04\xca\
-    \x03/0\n}\n\x04\x04\x10\x02\x03\x12\x04\xce\x03\x026\x1ao\x20If\x20set,\
-    \x20the\x20client\x20should\x20update\x20or\x20clear\x20the\x20correspon\
-    ding\x20state\x20according\x20to\x20the\x20provided\n\x20list\x20of\x20u\
-    pdates.\n\n\r\n\x05\x04\x10\x02\x03\x04\x12\x04\xce\x03\x02\n\n\r\n\x05\
-    \x04\x10\x02\x03\x06\x12\x04\xce\x03\x0b\x1c\n\r\n\x05\x04\x10\x02\x03\
-    \x01\x12\x04\xce\x03\x1d1\n\r\n\x05\x04\x10\x02\x03\x03\x12\x04\xce\x034\
-    5\n\xa2\x01\n\x04\x04\x10\x02\x04\x12\x04\xd2\x03\x02!\x1a\x93\x01\x20Th\
-    e\x20acknowledgement\x20for\x20the\x20durable\x20stats\x20pipeline\x20an\
-    alytics\x20report.\x20If\x20absent,\x20the\x20client\n\x20resends\x20the\
-    \x20same\x20report\x20ID\x20during\x20its\x20next\x20handshake.\n\n\r\n\
-    \x05\x04\x10\x02\x04\x06\x12\x04\xd2\x03\x02\x0e\n\r\n\x05\x04\x10\x02\
-    \x04\x01\x12\x04\xd2\x03\x0f\x1c\n\r\n\x05\x04\x10\x02\x04\x03\x12\x04\
-    \xd2\x03\x1f\x20\nL\n\x02\x04\x11\x12\x06\xd6\x03\0\xd9\x03\x01\x1a>\x20\
-    A\x20general\x20indication\x20of\x20rate\x20limiting\x20from\x20server\
-    \x20to\x20client.\n\n\x0b\n\x03\x04\x11\x01\x12\x04\xd6\x03\x08\x13\nY\n\
-    \x04\x04\x11\x02\0\x12\x04\xd8\x03\x02+\x1aK\x20Optional\x20minimum\x20r\
-    etry\x20backoff\x20duration\x20that\x20the\x20client\x20should\x20adhere\
-    \x20to.\n\n\r\n\x05\x04\x11\x02\0\x06\x12\x04\xd8\x03\x02\x1a\n\r\n\x05\
-    \x04\x11\x02\0\x01\x12\x04\xd8\x03\x1b&\n\r\n\x05\x04\x11\x02\0\x03\x12\
-    \x04\xd8\x03)*\n\xa1\x01\n\x02\x04\x12\x12\x06\xdd\x03\0\xee\x03\x01\x1a\
-    \x92\x01\x20A\x20response\x20to\x20an\x20upload\x20request,\x20intended\
-    \x20to\x20ack\x20or\x20nack\x20the\x20success\x20of\x20the\n\x20upload.\
-    \x20Upon\x20failure,\x20the\x20client\x20might\x20choose\x20to\x20retry\
-    \x20this\x20upload.\n\n\x0b\n\x03\x04\x12\x01\x12\x04\xdd\x03\x08\x19\n_\
-    \n\x04\x04\x12\x02\0\x12\x04\xe0\x03\x02B\x1aQ\x20The\x20upload\x20UUID\
-    \x20provided\x20in\x20the\x20upload\x20request\x20corresponding\x20to\
-    \x20this\n\x20response.\n\n\r\n\x05\x04\x12\x02\0\x05\x12\x04\xe0\x03\
-    \x02\x08\n\r\n\x05\x04\x12\x02\0\x01\x12\x04\xe0\x03\t\x14\n\r\n\x05\x04\
-    \x12\x02\0\x03\x12\x04\xe0\x03\x17\x18\n\r\n\x05\x04\x12\x02\0\x08\x12\
-    \x04\xe0\x03\x19A\n\x10\n\x08\x04\x12\x02\0\x08\xaf\x08\x0e\x12\x04\xe0\
-    \x03\x1a@\n}\n\x04\x04\x12\x02\x01\x12\x04\xe4\x03\x02\x13\x1ao\x20If\
-    \x20set,\x20indicates\x20that\x20the\x20log\x20upload\x20failed.\x20This\
-    \x20will\x20be\x20set\x20to\x20a\x20value\n\x20helpful\x20for\x20debuggi\
-    ng\x20the\x20failure.\n\n\r\n\x05\x04\x12\x02\x01\x05\x12\x04\xe4\x03\
-    \x02\x08\n\r\n\x05\x04\x12\x02\x01\x01\x12\x04\xe4\x03\t\x0e\n\r\n\x05\
-    \x04\x12\x02\x01\x03\x12\x04\xe4\x03\x11\x12\n\xe7\x01\n\x04\x04\x12\x02\
-    \x02\x12\x04\xe9\x03\x02\x1a\x1a\xd8\x01\x20If\x20any\x20logs\x20were\
-    \x20dropped\x20due\x20to\x20validation\x20errors,\x20the\x20count\x20wil\
-    l\x20be\x20supplied\x20here.\x20This\x20does\n\x20not\x20count\x20as\x20\
-    a\x20total\x20failure\x20and\x20'error'\x20will\x20not\x20be\x20populate\
-    d.\x20Debugging\x20information\x20will\x20be\n\x20available\x20on\x20the\
-    \x20server.\n\n\r\n\x05\x04\x12\x02\x02\x05\x12\x04\xe9\x03\x02\x08\n\r\
-    \n\x05\x04\x12\x02\x02\x01\x12\x04\xe9\x03\t\x15\n\r\n\x05\x04\x12\x02\
-    \x02\x03\x12\x04\xe9\x03\x18\x19\n\x7f\n\x04\x04\x12\x02\x03\x12\x04\xed\
-    \x03\x02\x1f\x1aq\x20If\x20set\x20the\x20log\x20upload\x20was\x20blocked\
-    \x20due\x20to\x20rate\x20limiting.\x20Further\x20information\x20is\x20av\
-    ailable\x20in\n\x20the\x20`error`\x20field.\n\n\r\n\x05\x04\x12\x02\x03\
-    \x06\x12\x04\xed\x03\x02\r\n\r\n\x05\x04\x12\x02\x03\x01\x12\x04\xed\x03\
-    \x0e\x1a\n\r\n\x05\x04\x12\x02\x03\x03\x12\x04\xed\x03\x1d\x1e\n\x0c\n\
-    \x02\x04\x13\x12\x06\xf0\x03\0\xb8\x04\x01\n\x0b\n\x03\x04\x13\x01\x12\
-    \x04\xf0\x03\x08\x1a\n\x0e\n\x04\x04\x13\x04\0\x12\x06\xf1\x03\x02\xfd\
-    \x03\x03\n\r\n\x05\x04\x13\x04\0\x01\x12\x04\xf1\x03\x07\x13\n4\n\x06\
-    \x04\x13\x04\0\x02\0\x12\x04\xf3\x03\x04\"\x1a$\x20Default\x20value.\x20\
-    Should\x20not\x20be\x20used.\n\n\x0f\n\x07\x04\x13\x04\0\x02\0\x01\x12\
-    \x04\xf3\x03\x04\x1d\n\x0f\n\x07\x04\x13\x04\0\x02\0\x02\x12\x04\xf3\x03\
-    \x20!\n+\n\x06\x04\x13\x04\0\x02\x01\x12\x04\xf6\x03\x04\x1f\x1a\x1b\x20\
-    Periodic\x20upload\x20of\x20stats.\n\n\x0f\n\x07\x04\x13\x04\0\x02\x01\
-    \x01\x12\x04\xf6\x03\x04\x1a\n\x0f\n\x07\x04\x13\x04\0\x02\x01\x02\x12\
-    \x04\xf6\x03\x1d\x1e\nK\n\x06\x04\x13\x04\0\x02\x02\x12\x04\xf9\x03\x04&\
-    \x1a;\x20Upload\x20triggered\x20by\x20a\x20specific\x20event,\x20e.g.,\
-    \x20buffer\x20flush.\n\n\x0f\n\x07\x04\x13\x04\0\x02\x02\x01\x12\x04\xf9\
-    \x03\x04!\n\x0f\n\x07\x04\x13\x04\0\x02\x02\x02\x12\x04\xf9\x03$%\nP\n\
-    \x06\x04\x13\x04\0\x02\x03\x12\x04\xfc\x03\x04\x20\x1a@\x20Upload\x20att\
-    ached\x20to\x20the\x20initial\x20handshake\x20for\x20a\x20new\x20API\x20\
-    stream.\n\n\x0f\n\x07\x04\x13\x04\0\x02\x03\x01\x12\x04\xfc\x03\x04\x1b\
-    \n\x0f\n\x07\x04\x13\x04\0\x02\x03\x02\x12\x04\xfc\x03\x1e\x1f\nf\n\x04\
-    \x04\x13\x02\0\x12\x04\x80\x04\x02B\x1aX\x20Upload\x20UUID\x20used\x20to\
-    \x20provide\x20idempotence\x20and\x20to\x20correlate\x20a\x20response\
-    \x20with\x20this\x20request.\n\n\r\n\x05\x04\x13\x02\0\x05\x12\x04\x80\
-    \x04\x02\x08\n\r\n\x05\x04\x13\x02\0\x01\x12\x04\x80\x04\t\x14\n\r\n\x05\
-    \x04\x13\x02\0\x03\x12\x04\x80\x04\x17\x18\n\r\n\x05\x04\x13\x02\0\x08\
-    \x12\x04\x80\x04\x19A\n\x10\n\x08\x04\x13\x02\0\x08\xaf\x08\x0e\x12\x04\
-    \x80\x04\x1a@\n\x0e\n\x04\x04\x13\x03\0\x12\x06\x82\x04\x02\xab\x04\x03\
-    \n\r\n\x05\x04\x13\x03\0\x01\x12\x04\x82\x04\n\x12\n\x10\n\x06\x04\x13\
-    \x03\0\x08\0\x12\x06\x83\x04\x04\x87\x04\x05\n\x0f\n\x07\x04\x13\x03\0\
-    \x08\0\x01\x12\x04\x83\x04\n\x17\n\x0f\n\x07\x04\x13\x03\0\x08\0\x02\x12\
-    \x04\x84\x04\x06(\n\x11\n\t\x04\x13\x03\0\x08\0\x02\xaf\x08\x12\x04\x84\
-    \x04\x06(\n\x0e\n\x06\x04\x13\x03\0\x02\0\x12\x04\x86\x04\x06\x1e\n\x0f\
-    \n\x07\x04\x13\x03\0\x02\0\x06\x12\x04\x86\x04\x06\x11\n\x0f\n\x07\x04\
-    \x13\x03\0\x02\0\x01\x12\x04\x86\x04\x12\x19\n\x0f\n\x07\x04\x13\x03\0\
-    \x02\0\x03\x12\x04\x86\x04\x1c\x1d\n\x10\n\x06\x04\x13\x03\0\x03\0\x12\
-    \x06\x89\x04\x04\x91\x04\x05\n\x0f\n\x07\x04\x13\x03\0\x03\0\x01\x12\x04\
-    \x89\x04\x0c\x16\n\xc6\x01\n\x08\x04\x13\x03\0\x03\0\x02\0\x12\x04\x8c\
-    \x04\x06_\x1a\xb3\x01\x20The\x20point\x20in\x20time\x20where\x20the\x20f\
-    irst\x20set\x20of\x20stats\x20in\x20this\x20aggregation\x20period\x20was\
-    \x20aggregated.\n\x20This\x20allows\x20the\x20server\x20to\x20get\x20som\
-    e\x20understanding\x20how\x20old\x20the\x20stats\x20being\x20uploaded\
-    \x20are.\n\n\x11\n\t\x04\x13\x03\0\x03\0\x02\0\x06\x12\x04\x8c\x04\x06\
-    \x1f\n\x11\n\t\x04\x13\x03\0\x03\0\x02\0\x01\x12\x04\x8c\x04\x20,\n\x11\
-    \n\t\x04\x13\x03\0\x03\0\x02\0\x03\x12\x04\x8c\x04/0\n\x11\n\t\x04\x13\
-    \x03\0\x03\0\x02\0\x08\x12\x04\x8c\x041^\n\x14\n\x0c\x04\x13\x03\0\x03\0\
-    \x02\0\x08\xaf\x08\x11\x12\x04\x8c\x042]\n\xc5\x01\n\x08\x04\x13\x03\0\
-    \x03\0\x02\x01\x12\x04\x90\x04\x06/\x1a\xb2\x01\x20When\x20the\x20aggreg\
-    ation\x20was\x20closed.\x20If\x20specified,\x20the\x20server\x20can\x20d\
-    ecide\x20to\x20handle\x20variable\n\x20size\x20aggregation\x20windows\
-    \x20by\x20averaging\x20the\x20data\x20over\x20the\x20period\x20or\x20som\
-    e\x20other\x20heuristic.\n\n\x11\n\t\x04\x13\x03\0\x03\0\x02\x01\x06\x12\
-    \x04\x90\x04\x06\x1f\n\x11\n\t\x04\x13\x03\0\x03\0\x02\x01\x01\x12\x04\
-    \x90\x04\x20*\n\x11\n\t\x04\x13\x03\0\x03\0\x02\x01\x03\x12\x04\x90\x04-\
-    .\n\x81\x01\n\x06\x04\x13\x03\0\x08\x01\x12\x06\x95\x04\x04\x9c\x04\x05\
-    \x1ao\x20To\x20support\x20different\x20kinds\x20of\x20snapshots,\x20we\
-    \x20support\x20providing\x20information\x20about\x20when\x20the\x20data\
-    \x20was\n\x20collected.\n\n\x0f\n\x07\x04\x13\x03\0\x08\x01\x01\x12\x04\
-    \x95\x04\n\x15\n\x0f\n\x07\x04\x13\x03\0\x08\x01\x02\x12\x04\x96\x04\x06\
-    (\n\x11\n\t\x04\x13\x03\0\x08\x01\x02\xaf\x08\x12\x04\x96\x04\x06(\n\xd4\
-    \x01\n\x06\x04\x13\x03\0\x02\x01\x12\x04\x9b\x04\x06\x20\x1a\xc3\x01\x20\
-    The\x20snapshot\x20data\x20is\x20aggregated\x20over\x20an\x20indefinite\
-    \x20period.\x20This\x20supports\x20metrics\x20where\x20we\n\x20care\x20m\
-    ore\x20about\x20the\x20total\x20data\x20(e.g.\x20counts)\x20than\x20unde\
-    rstanding\x20precisely\x20when\x20the\x20data\x20was\n\x20recorded.\n\n\
-    \x0f\n\x07\x04\x13\x03\0\x02\x01\x06\x12\x04\x9b\x04\x06\x10\n\x0f\n\x07\
-    \x04\x13\x03\0\x02\x01\x01\x12\x04\x9b\x04\x11\x1b\n\x0f\n\x07\x04\x13\
-    \x03\0\x02\x01\x03\x12\x04\x9b\x04\x1e\x1f\nn\n\x06\x04\x13\x03\0\x02\
-    \x02\x12\x04\x9f\x04\x040\x1a^\x20A\x20map\x20of\x20metric\x20ID\x20to\
-    \x20any\x20cardinality\x20overflows\x20that\x20occurred\x20during\x20thi\
-    s\x20snapshot\x20interval.\n\n\x0f\n\x07\x04\x13\x03\0\x02\x02\x06\x12\
-    \x04\x9f\x04\x04\x17\n\x0f\n\x07\x04\x13\x03\0\x02\x02\x01\x12\x04\x9f\
-    \x04\x18+\n\x0f\n\x07\x04\x13\x03\0\x02\x02\x03\x12\x04\x9f\x04./\nX\n\
-    \x06\x04\x13\x03\0\x02\x03\x12\x04\xa2\x04\x04L\x1aH\x20Workflow\x20ID\
-    \x20to\x20debug\x20data\x20that\x20occurred\x20during\x20this\x20snapsho\
-    t\x20interval.\n\n\x0f\n\x07\x04\x13\x03\0\x02\x03\x06\x12\x04\xa2\x04\
-    \x043\n\x0f\n\x07\x04\x13\x03\0\x02\x03\x01\x12\x04\xa2\x044G\n\x0f\n\
-    \x07\x04\x13\x03\0\x02\x03\x03\x12\x04\xa2\x04JK\n\xb0\x01\n\x06\x04\x13\
-    \x03\0\x02\x04\x12\x04\xa6\x04\x04\x1b\x1a\x9f\x01\x20Number\x20of\x20pr\
-    ior\x20attempts\x20to\x20upload\x20this\x20snapshot.\x20The\x20original\
-    \x20upload\x20is\x20zero,\x20which\x20also\n\x20preserves\x20the\x20beha\
-    vior\x20of\x20clients\x20that\x20do\x20not\x20yet\x20send\x20this\x20fie\
-    ld.\n\n\x0f\n\x07\x04\x13\x03\0\x02\x04\x05\x12\x04\xa6\x04\x04\n\n\x0f\
-    \n\x07\x04\x13\x03\0\x02\x04\x01\x12\x04\xa6\x04\x0b\x16\n\x0f\n\x07\x04\
-    \x13\x03\0\x02\x04\x03\x12\x04\xa6\x04\x19\x1a\n\xab\x01\n\x06\x04\x13\
-    \x03\0\x02\x05\x12\x04\xaa\x04\x04%\x1a\x9a\x01\x20Stable\x20monotonic\
-    \x20identifier\x20assigned\x20when\x20this\x20source\x20snapshot\x20is\
-    \x20created.\x20Zero\x20indicates\n\x20that\x20the\x20client\x20does\x20\
-    not\x20support\x20source\x20sequence\x20identifiers.\n\n\x0f\n\x07\x04\
-    \x13\x03\0\x02\x05\x05\x12\x04\xaa\x04\x04\n\n\x0f\n\x07\x04\x13\x03\0\
-    \x02\x05\x01\x12\x04\xaa\x04\x0b\x20\n\x0f\n\x07\x04\x13\x03\0\x02\x05\
-    \x03\x12\x04\xaa\x04#$\nN\n\x04\x04\x13\x02\x01\x12\x04\xae\x04\x02N\x1a\
-    @\x20A\x20collection\x20of\x20stats\x20snapshots\x20to\x20be\x20recorded\
-    \x20by\x20the\x20backend.\n\n\r\n\x05\x04\x13\x02\x01\x04\x12\x04\xae\
-    \x04\x02\n\n\r\n\x05\x04\x13\x02\x01\x06\x12\x04\xae\x04\x0b\x13\n\r\n\
-    \x05\x04\x13\x02\x01\x01\x12\x04\xae\x04\x14\x1c\n\r\n\x05\x04\x13\x02\
-    \x01\x03\x12\x04\xae\x04\x1f\x20\n\r\n\x05\x04\x13\x02\x01\x08\x12\x04\
-    \xae\x04!M\n\x10\n\x08\x04\x13\x02\x01\x08\xaf\x08\x12\x12\x04\xae\x04\"\
-    L\n\x94\x02\n\x04\x04\x13\x02\x02\x12\x04\xb4\x04\x02(\x1a\x85\x02\x20Th\
-    e\x20point\x20in\x20time\x20when\x20the\x20client\x20initialized\x20the\
-    \x20process\x20of\x20uploading\x20collected\x20snapshots.\n\x20Used\x20b\
-    y\x20the\x20server\x20to\x20detect\x20clients\x20with\x20skewed\x20clock\
-    s.\n\x20The\x20idea\x20is\x20that\x20upon\x20receiving\x20the\x20stats\
-    \x20payload,\x20the\x20server's\x20current\x20time\x20should\x20be\x20cl\
-    ose\x20to\x20this\n\x20value.\n\n\r\n\x05\x04\x13\x02\x02\x06\x12\x04\
-    \xb4\x04\x02\x1b\n\r\n\x05\x04\x13\x02\x02\x01\x12\x04\xb4\x04\x1c#\n\r\
-    \n\x05\x04\x13\x02\x02\x03\x12\x04\xb4\x04&'\n1\n\x04\x04\x13\x02\x03\
-    \x12\x04\xb7\x04\x02!\x1a#\x20The\x20reason\x20for\x20this\x20stats\x20u\
-    pload.\n\n\r\n\x05\x04\x13\x02\x03\x06\x12\x04\xb7\x04\x02\x0e\n\r\n\x05\
-    \x04\x13\x02\x03\x01\x12\x04\xb7\x04\x0f\x1c\n\r\n\x05\x04\x13\x02\x03\
-    \x03\x12\x04\xb7\x04\x1f\x20\n\x0c\n\x02\x04\x14\x12\x06\xba\x04\0\xc5\
-    \x04\x01\n\x0b\n\x03\x04\x14\x01\x12\x04\xba\x04\x08\x1b\n=\n\x04\x04\
-    \x14\x02\0\x12\x04\xbc\x04\x02B\x1a/\x20The\x20UUID\x20corresponding\x20\
-    to\x20the\x20upload\x20request.\n\n\r\n\x05\x04\x14\x02\0\x05\x12\x04\
-    \xbc\x04\x02\x08\n\r\n\x05\x04\x14\x02\0\x01\x12\x04\xbc\x04\t\x14\n\r\n\
-    \x05\x04\x14\x02\0\x03\x12\x04\xbc\x04\x17\x18\n\r\n\x05\x04\x14\x02\0\
-    \x08\x12\x04\xbc\x04\x19A\n\x10\n\x08\x04\x14\x02\0\x08\xaf\x08\x0e\x12\
-    \x04\xbc\x04\x1a@\nr\n\x04\x04\x14\x02\x01\x12\x04\xc0\x04\x02\x13\x1ad\
-    \x20Optional\x20error\x20message\x20which\x20indicates\x20that\x20stats\
-    \x20upload\x20failed\x20and/or\x20some\x20metrics\x20were\n\x20dropped.\
-    \n\n\r\n\x05\x04\x14\x02\x01\x05\x12\x04\xc0\x04\x02\x08\n\r\n\x05\x04\
-    \x14\x02\x01\x01\x12\x04\xc0\x04\t\x0e\n\r\n\x05\x04\x14\x02\x01\x03\x12\
-    \x04\xc0\x04\x11\x12\n\xb9\x01\n\x04\x04\x14\x02\x02\x12\x04\xc4\x04\x02\
-    \x1d\x1a\xaa\x01\x20If\x20any\x20metrics\x20were\x20dropped\x20due\x20to\
-    \x20validation\x20errors,\x20the\x20count\x20will\x20be\x20supplied\x20h\
-    ere.\x20Error\n\x20will\x20be\x20populated\x20with\x20debugging\x20infor\
-    mation\x20to\x20help\x20understand\x20the\x20error.\n\n\r\n\x05\x04\x14\
-    \x02\x02\x05\x12\x04\xc4\x04\x02\x08\n\r\n\x05\x04\x14\x02\x02\x01\x12\
-    \x04\xc4\x04\t\x18\n\r\n\x05\x04\x14\x02\x02\x03\x12\x04\xc4\x04\x1b\x1c\
-    \n(\n\x02\x04\x15\x12\x04\xc8\x04\0\x17\x1a\x1c\x20Response\x20to\x20a\
-    \x20client\x20ping.\n\n\x0b\n\x03\x04\x15\x01\x12\x04\xc8\x04\x08\x14\n;\
-    \n\x02\x04\x16\x12\x06\xcb\x04\0\xf7\x04\x01\x1a-\x20Configuration\x20up\
-    date\x20from\x20server\x20to\x20client.\n\n\x0b\n\x03\x04\x16\x01\x12\
-    \x04\xcb\x04\x08\x1b\nx\n\x04\x04\x16\x03\0\x12\x06\xce\x04\x02\xe9\x04\
-    \x03\x1ah\x20A\x20complete\x20configuration\x20snapshot.\x20The\x20clien\
-    t\x20should\x20reconfigure\x20to\x20match\x20the\x20supplied\n\x20config\
-    uration.\n\n\r\n\x05\x04\x16\x03\0\x01\x12\x04\xce\x04\n\x19\nd\n\x05\
-    \x04\x16\x03\0\n\x12\x04\xd0\x04\x04\x18\x1aU\x20Replaced\x20with\x20`wo\
-    rkflow_list`\x20and\x20not\x20available\x20for\x20clients\x20with\x20con\
-    fig_version\x206+.\n\n\x0e\n\x06\x04\x16\x03\0\n\0\x12\x04\xd0\x04\r\x17\
-    \n\r\n\x05\x04\x16\x03\0\t\x12\x04\xd1\x04\x04\x0f\n\x0e\n\x06\x04\x16\
-    \x03\0\t\0\x12\x04\xd1\x04\r\x0e\n\x0f\n\x07\x04\x16\x03\0\t\0\x01\x12\
-    \x04\xd1\x04\r\x0e\n\x0f\n\x07\x04\x16\x03\0\t\0\x02\x12\x04\xd1\x04\r\
-    \x0e\n&\n\x06\x04\x16\x03\0\x02\0\x12\x04\xd4\x04\x046\x1a\x16\x20The\
-    \x20list\x20of\x20buffers.\n\n\x0f\n\x07\x04\x16\x03\0\x02\0\x06\x12\x04\
-    \xd4\x04\x04\x1e\n\x0f\n\x07\x04\x16\x03\0\x02\0\x01\x12\x04\xd4\x04\x1f\
-    1\n\x0f\n\x07\x04\x16\x03\0\x02\0\x03\x12\x04\xd4\x0445\n.\n\x06\x04\x16\
-    \x03\0\x02\x01\x12\x04\xd7\x04\x04C\x1a\x1e\x20The\x20workflows\x20confi\
-    guration.\n\n\x0f\n\x07\x04\x16\x03\0\x02\x01\x06\x12\x04\xd7\x04\x04&\n\
-    \x0f\n\x07\x04\x16\x03\0\x02\x01\x01\x12\x04\xd7\x04'>\n\x0f\n\x07\x04\
-    \x16\x03\0\x02\x01\x03\x12\x04\xd7\x04AB\n5\n\x06\x04\x16\x03\0\x02\x02\
-    \x12\x04\xda\x04\x04<\x1a%\x20The\x20list\x20of\x20active\x20bdtail\x20s\
-    essions.\n\n\x0f\n\x07\x04\x16\x03\0\x02\x02\x06\x12\x04\xda\x04\x04\"\n\
-    \x0f\n\x07\x04\x16\x03\0\x02\x02\x01\x12\x04\xda\x04#7\n\x0f\n\x07\x04\
-    \x16\x03\0\x02\x02\x03\x12\x04\xda\x04:;\n\r\n\x05\x04\x16\x03\0\n\x12\
-    \x04\xdc\x04\x04&\n\x0e\n\x06\x04\x16\x03\0\n\x01\x12\x04\xdc\x04\r%\n\r\
-    \n\x05\x04\x16\x03\0\t\x12\x04\xdd\x04\x04\x0f\n\x0e\n\x06\x04\x16\x03\0\
-    \t\x01\x12\x04\xdd\x04\r\x0e\n\x0f\n\x07\x04\x16\x03\0\t\x01\x01\x12\x04\
-    \xdd\x04\r\x0e\n\x0f\n\x07\x04\x16\x03\0\t\x01\x02\x12\x04\xdd\x04\r\x0e\
-    \n,\n\x06\x04\x16\x03\0\x02\x03\x12\x04\xe0\x04\x04=\x1a\x1c\x20The\x20f\
-    ilters\x20configuration.\n\n\x0f\n\x07\x04\x16\x03\0\x02\x03\x06\x12\x04\
-    \xe0\x04\x04\"\n\x0f\n\x07\x04\x16\x03\0\x02\x03\x01\x12\x04\xe0\x04#8\n\
-    \x0f\n\x07\x04\x16\x03\0\x02\x03\x03\x12\x04\xe0\x04;<\n\xd4\x03\n\x06\
-    \x04\x16\x03\0\x02\x04\x12\x04\xe8\x04\x04;\x1a\xc3\x03\x20The\x20list\
-    \x20of\x20workflows\x20to\x20debug.\x20If\x20the\x20workflow\x20is\x20al\
-    ready\x20deployed,\x20debug\x20data\x20will\x20be\n\x20generated\x20for\
-    \x20it\x20alongside\x20the\x20deployed\x20workflow.\x20If\x20the\x20work\
-    flow\x20is\x20not\x20deployed,\x20the\n\x20workflow\x20will\x20be\x20exe\
-    cuted\x20in\x20debug\x20mode,\x20however\x20actions\x20will\x20*not*\x20\
-    be\x20executed\x20(metrics,\n\x20flushes,\x20and\x20so\x20on).\n\x20NOTE\
-    :\x20\"already\x20deployed\"\x20implies\x20that\x20the\x20workflow\x20wi\
-    ll\x20be\x20found\x20in\x20the\n\x20workflows_configuration\x20field.\
-    \x20The\x20server\x20will\x20not\x20de-dup\x20for\x20simplification\x20p\
-    urposes.\n\n\x0f\n\x07\x04\x16\x03\0\x02\x04\x06\x12\x04\xe8\x04\x04&\n\
-    \x0f\n\x07\x04\x16\x03\0\x02\x04\x01\x12\x04\xe8\x04'6\n\x0f\n\x07\x04\
-    \x16\x03\0\x02\x04\x03\x12\x04\xe8\x049:\n\x8a\x01\n\x04\x04\x16\x02\0\
-    \x12\x04\xed\x04\x02\x1b\x1a|\x20A\x20version\x20nonce\x20that\x20can\
-    \x20be\x20used\x20for\x20both\x20tracking\x20the\x20last\x20applied\x20u\
-    pdate\x20as\x20well\x20as\x20for\n\x20responding\x20with\x20a\x20NACK\
-    \x20message.\n\n\r\n\x05\x04\x16\x02\0\x05\x12\x04\xed\x04\x02\x08\n\r\n\
-    \x05\x04\x16\x02\0\x01\x12\x04\xed\x04\t\x16\n\r\n\x05\x04\x16\x02\0\x03\
-    \x12\x04\xed\x04\x19\x1a\n\x0e\n\x04\x04\x16\x08\0\x12\x06\xef\x04\x02\
-    \xf2\x04\x03\n\r\n\x05\x04\x16\x08\0\x01\x12\x04\xef\x04\x08\x13\nH\n\
-    \x04\x04\x16\x02\x01\x12\x04\xf1\x04\x04+\x1a:\x20SoTW\x20is\x20the\x20o\
-    nly\x20currently\x20supported\x20configuration\x20type.\n\n\r\n\x05\x04\
-    \x16\x02\x01\x06\x12\x04\xf1\x04\x04\x13\n\r\n\x05\x04\x16\x02\x01\x01\
-    \x12\x04\xf1\x04\x14&\n\r\n\x05\x04\x16\x02\x01\x03\x12\x04\xf1\x04)*\n}\
-    \n\x04\x04\x16\x02\x02\x12\x04\xf6\x04\x026\x1ao\x20If\x20set,\x20the\
-    \x20client\x20should\x20update\x20or\x20clear\x20the\x20corresponding\
-    \x20state\x20according\x20to\x20the\x20provided\n\x20list\x20of\x20updat\
-    es.\n\n\r\n\x05\x04\x16\x02\x02\x04\x12\x04\xf6\x04\x02\n\n\r\n\x05\x04\
-    \x16\x02\x02\x06\x12\x04\xf6\x04\x0b\x1c\n\r\n\x05\x04\x16\x02\x02\x01\
-    \x12\x04\xf6\x04\x1d1\n\r\n\x05\x04\x16\x02\x02\x03\x12\x04\xf6\x0445\n5\
-    \n\x02\x04\x17\x12\x06\xfa\x04\0\x81\x05\x01\x1a'\x20Runtime\x20update\
-    \x20from\x20server\x20to\x20client.\n\n\x0b\n\x03\x04\x17\x01\x12\x04\
-    \xfa\x04\x08\x15\n\x8a\x01\n\x04\x04\x17\x02\0\x12\x04\xfd\x04\x02\x1b\
-    \x1a|\x20A\x20version\x20nonce\x20that\x20can\x20be\x20used\x20for\x20bo\
-    th\x20tracking\x20the\x20last\x20applied\x20update\x20as\x20well\x20as\
-    \x20for\n\x20responding\x20with\x20a\x20NACK\x20message.\n\n\r\n\x05\x04\
-    \x17\x02\0\x05\x12\x04\xfd\x04\x02\x08\n\r\n\x05\x04\x17\x02\0\x01\x12\
-    \x04\xfd\x04\t\x16\n\r\n\x05\x04\x17\x02\0\x03\x12\x04\xfd\x04\x19\x1a\n\
-    ,\n\x04\x04\x17\x02\x01\x12\x04\x80\x05\x02\x16\x1a\x1e\x20The\x20runtim\
-    e\x20instance\x20to\x20use.\n\n\r\n\x05\x04\x17\x02\x01\x06\x12\x04\x80\
-    \x05\x02\t\n\r\n\x05\x04\x17\x02\x01\x01\x12\x04\x80\x05\n\x11\n\r\n\x05\
-    \x04\x17\x02\x01\x03\x12\x04\x80\x05\x14\x15\n\x8b\x02\n\x02\x04\x18\x12\
-    \x06\x86\x05\0\x8f\x05\x01\x1a\xfc\x01\x20In\x20order\x20to\x20support\
-    \x20clients\x20that\x20can't\x20easily\x20implement\x20gRPC\x20(e.g.,\
-    \x20iOS\x20URLSession),\x20instead\x20of\n\x20closing\x20a\x20stream\x20\
-    with\x20trailers,\x20this\x20frame\x20will\x20be\x20sent\x20followed\x20\
-    by\x20stream\x20closure.\x20This\x20allows\n\x20an\x20easier\x20way\x20f\
-    or\x20the\x20client\x20to\x20debug\x20and\x20handle\x20errors.\n\n\x0b\n\
-    \x03\x04\x18\x01\x12\x04\x86\x05\x08\x15\nA\n\x04\x04\x18\x02\0\x12\x04\
-    \x88\x05\x02\x18\x1a3\x20The\x20status\x20that\x20would\x20have\x20been\
-    \x20sent\x20in\x20trailers.\n\n\r\n\x05\x04\x18\x02\0\x05\x12\x04\x88\
-    \x05\x02\x07\n\r\n\x05\x04\x18\x02\0\x01\x12\x04\x88\x05\x08\x13\n\r\n\
-    \x05\x04\x18\x02\0\x03\x12\x04\x88\x05\x16\x17\nB\n\x04\x04\x18\x02\x01\
-    \x12\x04\x8b\x05\x02\x1a\x1a4\x20The\x20message\x20that\x20would\x20have\
-    \x20been\x20sent\x20in\x20trailers.\n\n\r\n\x05\x04\x18\x02\x01\x05\x12\
-    \x04\x8b\x05\x02\x08\n\r\n\x05\x04\x18\x02\x01\x01\x12\x04\x8b\x05\t\x15\
-    \n\r\n\x05\x04\x18\x02\x01\x03\x12\x04\x8b\x05\x18\x19\nH\n\x04\x04\x18\
-    \x02\x02\x12\x04\x8e\x05\x02\x1f\x1a:\x20Optional\x20rate\x20limiting\
-    \x20that\x20the\x20client\x20should\x20adhere\x20to.\n\n\r\n\x05\x04\x18\
-    \x02\x02\x06\x12\x04\x8e\x05\x02\r\n\r\n\x05\x04\x18\x02\x02\x01\x12\x04\
-    \x8e\x05\x0e\x1a\n\r\n\x05\x04\x18\x02\x02\x03\x12\x04\x8e\x05\x1d\x1e\n\
-    \x86\x02\n\x02\x04\x19\x12\x06\x94\x05\0\x9c\x05\x01\x1a\xf7\x01\x20Call\
-    ed\x20by\x20the\x20server\x20to\x20tell\x20the\x20client\x20to\x20flush\
-    \x20a\x20set\x20of\x20owned\x20buffers.\x20When\x20this\x20command\x20is\
-    \n\x20received\x20by\x20the\x20client\x20it\x20should\x20proceed\x20with\
-    \x20normal\x20behavior\x20as\x20if\x20it\x20had\x20decided\x20to\x20flus\
-    h\n\x20the\x20buffers\x20locally\x20(e.g.,\x20rate\x20limiting,\x20inten\
-    ts,\x20etc.).\n\n\x0b\n\x03\x04\x19\x01\x12\x04\x94\x05\x08\x14\n\x91\
-    \x01\n\x04\x04\x19\x02\0\x12\x04\x97\x05\x02%\x1a\x82\x01\x20The\x20list\
-    \x20of\x20trigger\x20buffers\x20to\x20flush.\x20If\x20the\x20list\x20is\
-    \x20empty,\x20all\x20eligible\x20trigger\x20buffers\n\x20known\x20to\x20\
-    the\x20client\x20should\x20be\x20flushed.\n\n\r\n\x05\x04\x19\x02\0\x04\
-    \x12\x04\x97\x05\x02\n\n\r\n\x05\x04\x19\x02\0\x05\x12\x04\x97\x05\x0b\
-    \x11\n\r\n\x05\x04\x19\x02\0\x01\x12\x04\x97\x05\x12\x20\n\r\n\x05\x04\
-    \x19\x02\0\x03\x12\x04\x97\x05#$\n\xb4\x01\n\x04\x04\x19\x02\x01\x12\x04\
-    \x9b\x05\x02I\x1a\xa5\x01\x20The\x20streaming\x20configuration\x20to\x20\
-    apply\x20when\x20buffer\x20flushing\x20occurs.\x20If\x20not\x20specified\
-    ,\x20no\x20subsequent\n\x20log\x20streaming\x20will\x20occur\x20when\x20\
-    the\x20specified\x20buffers\x20are\x20flushed.\n\n\r\n\x05\x04\x19\x02\
-    \x01\x06\x12\x04\x9b\x05\x02:\n\r\n\x05\x04\x19\x02\x01\x01\x12\x04\x9b\
-    \x05;D\n\r\n\x05\x04\x19\x02\x01\x03\x12\x04\x9b\x05GH\nC\n\x02\x04\x1a\
-    \x12\x06\x9f\x05\0\xa6\x05\x01\x1a5\x20The\x20response\x20to\x20Sankey\
-    \x20diagram\x20path\x20upload\x20request.\n\n\x0b\n\x03\x04\x1a\x01\x12\
-    \x04\x9f\x05\x08\x20\n=\n\x04\x04\x1a\x02\0\x12\x04\xa1\x05\x02B\x1a/\
-    \x20The\x20UUID\x20corresponding\x20to\x20the\x20upload\x20request.\n\n\
-    \r\n\x05\x04\x1a\x02\0\x05\x12\x04\xa1\x05\x02\x08\n\r\n\x05\x04\x1a\x02\
-    \0\x01\x12\x04\xa1\x05\t\x14\n\r\n\x05\x04\x1a\x02\0\x03\x12\x04\xa1\x05\
-    \x17\x18\n\r\n\x05\x04\x1a\x02\0\x08\x12\x04\xa1\x05\x19A\n\x10\n\x08\
-    \x04\x1a\x02\0\x08\xaf\x08\x0e\x12\x04\xa1\x05\x1a@\ns\n\x04\x04\x1a\x02\
-    \x01\x12\x04\xa5\x05\x02\x13\x1ae\x20Optional\x20error\x20message\x20whi\
-    ch\x20indicates\x20that\x20sankey\x20upload\x20failed\x20and/or\x20some\
-    \x20metrics\x20were\n\x20dropped.\n\n\r\n\x05\x04\x1a\x02\x01\x05\x12\
-    \x04\xa5\x05\x02\x08\n\r\n\x05\x04\x1a\x02\x01\x01\x12\x04\xa5\x05\t\x0e\
-    \n\r\n\x05\x04\x1a\x02\x01\x03\x12\x04\xa5\x05\x11\x12\n>\n\x02\x04\x1b\
-    \x12\x06\xa9\x05\0\xba\x05\x01\x1a0\x20The\x20response\x20to\x20Sankey\
-    \x20diagram\x20intent\x20request.\n\n\x0b\n\x03\x04\x1b\x01\x12\x04\xa9\
-    \x05\x08\x1c\n\x0c\n\x04\x04\x1b\x02\0\x12\x04\xaa\x05\x02B\n\r\n\x05\
-    \x04\x1b\x02\0\x05\x12\x04\xaa\x05\x02\x08\n\r\n\x05\x04\x1b\x02\0\x01\
-    \x12\x04\xaa\x05\t\x14\n\r\n\x05\x04\x1b\x02\0\x03\x12\x04\xaa\x05\x17\
-    \x18\n\r\n\x05\x04\x1b\x02\0\x08\x12\x04\xaa\x05\x19A\n\x10\n\x08\x04\
-    \x1b\x02\0\x08\xaf\x08\x0e\x12\x04\xaa\x05\x1a@\n\x0b\n\x03\x04\x1b\t\
-    \x12\x04\xac\x05\x02\r\n\x0c\n\x04\x04\x1b\t\0\x12\x04\xac\x05\x0b\x0c\n\
-    \r\n\x05\x04\x1b\t\0\x01\x12\x04\xac\x05\x0b\x0c\n\r\n\x05\x04\x1b\t\0\
-    \x02\x12\x04\xac\x05\x0b\x0c\n\x0b\n\x03\x04\x1b\n\x12\x04\xad\x05\x02\
-    \x16\n\x0c\n\x04\x04\x1b\n\0\x12\x04\xad\x05\x0b\x15\n\x0c\n\x04\x04\x1b\
-    \x03\0\x12\x04\xaf\x05\x02\x1e\n\r\n\x05\x04\x1b\x03\0\x01\x12\x04\xaf\
-    \x05\n\x1b\n\x0c\n\x04\x04\x1b\x03\x01\x12\x04\xb1\x05\x02\x11\n\r\n\x05\
-    \x04\x1b\x03\x01\x01\x12\x04\xb1\x05\n\x0e\n\x0e\n\x04\x04\x1b\x08\0\x12\
-    \x06\xb3\x05\x02\xb9\x05\x03\n\r\n\x05\x04\x1b\x08\0\x01\x12\x04\xb3\x05\
-    \x08\x10\nI\n\x04\x04\x1b\x02\x01\x12\x04\xb5\x05\x04-\x1a;\x20The\x20ca\
+    \r\n\x05\x04\x0e\x02\x08\x04\x12\x04\xa9\x03\x02\n\n\r\n\x05\x04\x0e\x02\
+    \x08\x06\x12\x04\xa9\x03\x0b,\n\r\n\x05\x04\x0e\x02\x08\x01\x12\x04\xa9\
+    \x03-D\n\r\n\x05\x04\x0e\x02\x08\x03\x12\x04\xa9\x03GH\n\xc2\x01\n\x04\
+    \x04\x0e\x02\t\x12\x04\xad\x03\x02H\x1a\xb3\x01\x20The\x20remote\x20comm\
+    and\x20that\x20produced\x20this\x20artifact.\x20Only\x20command-correlat\
+    ed\x20artifact\x20uploads\x20set\n\x20this\x20field;\x20workflow\x20comm\
+    and\x20artifacts\x20remain\x20session\x20artifacts\x20and\x20leave\x20it\
+    \x20unset.\n\n\r\n\x05\x04\x0e\x02\t\x04\x12\x04\xad\x03\x02\n\n\r\n\x05\
+    \x04\x0e\x02\t\x05\x12\x04\xad\x03\x0b\x11\n\r\n\x05\x04\x0e\x02\t\x01\
+    \x12\x04\xad\x03\x12\x1c\n\r\n\x05\x04\x0e\x02\t\x03\x12\x04\xad\x03\x1f\
+    !\n\r\n\x05\x04\x0e\x02\t\x08\x12\x04\xad\x03\"G\n\x11\n\t\x04\x0e\x02\t\
+    \x08\xaf\x08\x0e\x16\x12\x04\xad\x03#F\n\x0c\n\x02\x04\x0f\x12\x06\xb0\
+    \x03\0\xb6\x03\x01\n\x0b\n\x03\x04\x0f\x01\x12\x04\xb0\x03\x08\x1e\n=\n\
+    \x04\x04\x0f\x02\0\x12\x04\xb2\x03\x02B\x1a/\x20The\x20UUID\x20correspon\
+    ding\x20to\x20the\x20upload\x20request.\n\n\r\n\x05\x04\x0f\x02\0\x05\
+    \x12\x04\xb2\x03\x02\x08\n\r\n\x05\x04\x0f\x02\0\x01\x12\x04\xb2\x03\t\
+    \x14\n\r\n\x05\x04\x0f\x02\0\x03\x12\x04\xb2\x03\x17\x18\n\r\n\x05\x04\
+    \x0f\x02\0\x08\x12\x04\xb2\x03\x19A\n\x10\n\x08\x04\x0f\x02\0\x08\xaf\
+    \x08\x0e\x12\x04\xb2\x03\x1a@\nS\n\x04\x04\x0f\x02\x01\x12\x04\xb5\x03\
+    \x02\x13\x1aE\x20Optional\x20error\x20message\x20which\x20indicates\x20t\
+    hat\x20artifact\x20upload\x20failed.\n\n\r\n\x05\x04\x0f\x02\x01\x05\x12\
+    \x04\xb5\x03\x02\x08\n\r\n\x05\x04\x0f\x02\x01\x01\x12\x04\xb5\x03\t\x0e\
+    \n\r\n\x05\x04\x0f\x02\x01\x03\x12\x04\xb5\x03\x11\x12\nB\n\x02\x04\x10\
+    \x12\x06\xb9\x03\0\xdc\x03\x01\x1a4\x20The\x20response\x20sent\x20as\x20\
+    part\x20of\x20stream\x20establishment.\n\n\x0b\n\x03\x04\x10\x01\x12\x04\
+    \xb9\x03\x08\x19\n\x0e\n\x04\x04\x10\x03\0\x12\x06\xba\x03\x02\xbe\x03\
+    \x03\n\r\n\x05\x04\x10\x03\0\x01\x12\x04\xba\x03\n\x16\n\xb8\x01\n\x06\
+    \x04\x10\x03\0\x02\0\x12\x04\xbd\x03\x04\x19\x1a\xa7\x01\x20The\x20analy\
+    tics\x20report\x20ID\x20from\x20HandshakeRequest.Analytics.StatsPipeline\
+    Analytics\x20that\x20the\n\x20server\x20accepted.\x20The\x20client\x20re\
+    tains\x20the\x20report\x20until\x20this\x20ID\x20is\x20echoed\x20back.\n\
+    \n\x0f\n\x07\x04\x10\x03\0\x02\0\x05\x12\x04\xbd\x03\x04\n\n\x0f\n\x07\
+    \x04\x10\x03\0\x02\0\x01\x12\x04\xbd\x03\x0b\x14\n\x0f\n\x07\x04\x10\x03\
+    \0\x02\0\x03\x12\x04\xbd\x03\x17\x18\n\x0e\n\x04\x04\x10\x03\x01\x12\x06\
+    \xc0\x03\x02\xc6\x03\x03\n\r\n\x05\x04\x10\x03\x01\x01\x12\x04\xc0\x03\n\
+    \x18\n\xe2\x01\n\x06\x04\x10\x03\x01\x02\0\x12\x04\xc5\x03\x04/\x1a\xd1\
+    \x01\x20How\x20often\x20the\x20client\x20should\x20ping\x20the\x20server\
+    .\x20This\x20informs\x20the\x20client\x20how\n\x20often\x20a\x20ping\x20\
+    request\x20should\x20be\x20issued\x20over\x20the\x20newly\x20created\x20\
+    stream.\n\n\x20If\x20this\x20is\x20not\x20set,\x20the\x20client\x20shoul\
+    d\x20not\x20issue\x20ping\x20requests.\n\n\x0f\n\x07\x04\x10\x03\x01\x02\
+    \0\x06\x12\x04\xc5\x03\x04\x1c\n\x0f\n\x07\x04\x10\x03\x01\x02\0\x01\x12\
+    \x04\xc5\x03\x1d*\n\x0f\n\x07\x04\x10\x03\x01\x02\0\x03\x12\x04\xc5\x03-\
+    .\n\x0c\n\x04\x04\x10\x02\0\x12\x04\xc8\x03\x02%\n\r\n\x05\x04\x10\x02\0\
+    \x06\x12\x04\xc8\x03\x02\x10\n\r\n\x05\x04\x10\x02\0\x01\x12\x04\xc8\x03\
+    \x11\x20\n\r\n\x05\x04\x10\x02\0\x03\x12\x04\xc8\x03#$\n\x99\x02\n\x04\
+    \x04\x10\x02\x01\x12\x04\xce\x03\x02)\x1a\x8a\x02\x20A\x20flag\x20set\
+    \x20that\x20describes\x20the\x20status\x20of\x20configuration\x20updates\
+    \x20based\x20on\x20the\x20provided\n\x20configuration\x20nonces.\n\x200x\
+    1:\x20Runtime\x20is\x20up\x20to\x20date\x20and\x20no\x20further\x20updat\
+    e\x20message\x20will\x20be\x20supplied.\n\x200x2:\x20Configuration\x20is\
+    \x20up\x20to\x20date\x20and\x20no\x20further\x20update\x20message\x20wil\
+    l\x20be\x20supplied.\n\n\r\n\x05\x04\x10\x02\x01\x05\x12\x04\xce\x03\x02\
+    \x08\n\r\n\x05\x04\x10\x02\x01\x01\x12\x04\xce\x03\t$\n\r\n\x05\x04\x10\
+    \x02\x01\x03\x12\x04\xce\x03'(\n\x91\x02\n\x04\x04\x10\x02\x02\x12\x04\
+    \xd3\x03\x021\x1a\x82\x02\x20Opaque\x20client\x20state\x20that\x20should\
+    \x20be\x20echoed\x20back\x20to\x20the\x20server\x20on\x20every\x20future\
+    \x20handshake\n\x20request.\x20If\x20unset,\x20the\x20client\x20should\
+    \x20continue\x20to\x20send\x20any\x20existing\x20opaque\x20state,\x20or\
+    \x20none\n\x20if\x20it\x20has\x20none.\x20Sending\x20an\x20explicit\x20e\
+    mpty\x20value\x20will\x20clear\x20any\x20existing\x20state.\n\n\r\n\x05\
+    \x04\x10\x02\x02\x04\x12\x04\xd3\x03\x02\n\n\r\n\x05\x04\x10\x02\x02\x05\
+    \x12\x04\xd3\x03\x0b\x10\n\r\n\x05\x04\x10\x02\x02\x01\x12\x04\xd3\x03\
+    \x11,\n\r\n\x05\x04\x10\x02\x02\x03\x12\x04\xd3\x03/0\n}\n\x04\x04\x10\
+    \x02\x03\x12\x04\xd7\x03\x026\x1ao\x20If\x20set,\x20the\x20client\x20sho\
+    uld\x20update\x20or\x20clear\x20the\x20corresponding\x20state\x20accordi\
+    ng\x20to\x20the\x20provided\n\x20list\x20of\x20updates.\n\n\r\n\x05\x04\
+    \x10\x02\x03\x04\x12\x04\xd7\x03\x02\n\n\r\n\x05\x04\x10\x02\x03\x06\x12\
+    \x04\xd7\x03\x0b\x1c\n\r\n\x05\x04\x10\x02\x03\x01\x12\x04\xd7\x03\x1d1\
+    \n\r\n\x05\x04\x10\x02\x03\x03\x12\x04\xd7\x0345\n\xa2\x01\n\x04\x04\x10\
+    \x02\x04\x12\x04\xdb\x03\x02!\x1a\x93\x01\x20The\x20acknowledgement\x20f\
+    or\x20the\x20durable\x20stats\x20pipeline\x20analytics\x20report.\x20If\
+    \x20absent,\x20the\x20client\n\x20resends\x20the\x20same\x20report\x20ID\
+    \x20during\x20its\x20next\x20handshake.\n\n\r\n\x05\x04\x10\x02\x04\x06\
+    \x12\x04\xdb\x03\x02\x0e\n\r\n\x05\x04\x10\x02\x04\x01\x12\x04\xdb\x03\
+    \x0f\x1c\n\r\n\x05\x04\x10\x02\x04\x03\x12\x04\xdb\x03\x1f\x20\nL\n\x02\
+    \x04\x11\x12\x06\xdf\x03\0\xe2\x03\x01\x1a>\x20A\x20general\x20indicatio\
+    n\x20of\x20rate\x20limiting\x20from\x20server\x20to\x20client.\n\n\x0b\n\
+    \x03\x04\x11\x01\x12\x04\xdf\x03\x08\x13\nY\n\x04\x04\x11\x02\0\x12\x04\
+    \xe1\x03\x02+\x1aK\x20Optional\x20minimum\x20retry\x20backoff\x20duratio\
+    n\x20that\x20the\x20client\x20should\x20adhere\x20to.\n\n\r\n\x05\x04\
+    \x11\x02\0\x06\x12\x04\xe1\x03\x02\x1a\n\r\n\x05\x04\x11\x02\0\x01\x12\
+    \x04\xe1\x03\x1b&\n\r\n\x05\x04\x11\x02\0\x03\x12\x04\xe1\x03)*\n\xa1\
+    \x01\n\x02\x04\x12\x12\x06\xe6\x03\0\xf7\x03\x01\x1a\x92\x01\x20A\x20res\
+    ponse\x20to\x20an\x20upload\x20request,\x20intended\x20to\x20ack\x20or\
+    \x20nack\x20the\x20success\x20of\x20the\n\x20upload.\x20Upon\x20failure,\
+    \x20the\x20client\x20might\x20choose\x20to\x20retry\x20this\x20upload.\n\
+    \n\x0b\n\x03\x04\x12\x01\x12\x04\xe6\x03\x08\x19\n_\n\x04\x04\x12\x02\0\
+    \x12\x04\xe9\x03\x02B\x1aQ\x20The\x20upload\x20UUID\x20provided\x20in\
+    \x20the\x20upload\x20request\x20corresponding\x20to\x20this\n\x20respons\
+    e.\n\n\r\n\x05\x04\x12\x02\0\x05\x12\x04\xe9\x03\x02\x08\n\r\n\x05\x04\
+    \x12\x02\0\x01\x12\x04\xe9\x03\t\x14\n\r\n\x05\x04\x12\x02\0\x03\x12\x04\
+    \xe9\x03\x17\x18\n\r\n\x05\x04\x12\x02\0\x08\x12\x04\xe9\x03\x19A\n\x10\
+    \n\x08\x04\x12\x02\0\x08\xaf\x08\x0e\x12\x04\xe9\x03\x1a@\n}\n\x04\x04\
+    \x12\x02\x01\x12\x04\xed\x03\x02\x13\x1ao\x20If\x20set,\x20indicates\x20\
+    that\x20the\x20log\x20upload\x20failed.\x20This\x20will\x20be\x20set\x20\
+    to\x20a\x20value\n\x20helpful\x20for\x20debugging\x20the\x20failure.\n\n\
+    \r\n\x05\x04\x12\x02\x01\x05\x12\x04\xed\x03\x02\x08\n\r\n\x05\x04\x12\
+    \x02\x01\x01\x12\x04\xed\x03\t\x0e\n\r\n\x05\x04\x12\x02\x01\x03\x12\x04\
+    \xed\x03\x11\x12\n\xe7\x01\n\x04\x04\x12\x02\x02\x12\x04\xf2\x03\x02\x1a\
+    \x1a\xd8\x01\x20If\x20any\x20logs\x20were\x20dropped\x20due\x20to\x20val\
+    idation\x20errors,\x20the\x20count\x20will\x20be\x20supplied\x20here.\
+    \x20This\x20does\n\x20not\x20count\x20as\x20a\x20total\x20failure\x20and\
+    \x20'error'\x20will\x20not\x20be\x20populated.\x20Debugging\x20informati\
+    on\x20will\x20be\n\x20available\x20on\x20the\x20server.\n\n\r\n\x05\x04\
+    \x12\x02\x02\x05\x12\x04\xf2\x03\x02\x08\n\r\n\x05\x04\x12\x02\x02\x01\
+    \x12\x04\xf2\x03\t\x15\n\r\n\x05\x04\x12\x02\x02\x03\x12\x04\xf2\x03\x18\
+    \x19\n\x7f\n\x04\x04\x12\x02\x03\x12\x04\xf6\x03\x02\x1f\x1aq\x20If\x20s\
+    et\x20the\x20log\x20upload\x20was\x20blocked\x20due\x20to\x20rate\x20lim\
+    iting.\x20Further\x20information\x20is\x20available\x20in\n\x20the\x20`e\
+    rror`\x20field.\n\n\r\n\x05\x04\x12\x02\x03\x06\x12\x04\xf6\x03\x02\r\n\
+    \r\n\x05\x04\x12\x02\x03\x01\x12\x04\xf6\x03\x0e\x1a\n\r\n\x05\x04\x12\
+    \x02\x03\x03\x12\x04\xf6\x03\x1d\x1e\n\x0c\n\x02\x04\x13\x12\x06\xf9\x03\
+    \0\xc1\x04\x01\n\x0b\n\x03\x04\x13\x01\x12\x04\xf9\x03\x08\x1a\n\x0e\n\
+    \x04\x04\x13\x04\0\x12\x06\xfa\x03\x02\x86\x04\x03\n\r\n\x05\x04\x13\x04\
+    \0\x01\x12\x04\xfa\x03\x07\x13\n4\n\x06\x04\x13\x04\0\x02\0\x12\x04\xfc\
+    \x03\x04\"\x1a$\x20Default\x20value.\x20Should\x20not\x20be\x20used.\n\n\
+    \x0f\n\x07\x04\x13\x04\0\x02\0\x01\x12\x04\xfc\x03\x04\x1d\n\x0f\n\x07\
+    \x04\x13\x04\0\x02\0\x02\x12\x04\xfc\x03\x20!\n+\n\x06\x04\x13\x04\0\x02\
+    \x01\x12\x04\xff\x03\x04\x1f\x1a\x1b\x20Periodic\x20upload\x20of\x20stat\
+    s.\n\n\x0f\n\x07\x04\x13\x04\0\x02\x01\x01\x12\x04\xff\x03\x04\x1a\n\x0f\
+    \n\x07\x04\x13\x04\0\x02\x01\x02\x12\x04\xff\x03\x1d\x1e\nK\n\x06\x04\
+    \x13\x04\0\x02\x02\x12\x04\x82\x04\x04&\x1a;\x20Upload\x20triggered\x20b\
+    y\x20a\x20specific\x20event,\x20e.g.,\x20buffer\x20flush.\n\n\x0f\n\x07\
+    \x04\x13\x04\0\x02\x02\x01\x12\x04\x82\x04\x04!\n\x0f\n\x07\x04\x13\x04\
+    \0\x02\x02\x02\x12\x04\x82\x04$%\nP\n\x06\x04\x13\x04\0\x02\x03\x12\x04\
+    \x85\x04\x04\x20\x1a@\x20Upload\x20attached\x20to\x20the\x20initial\x20h\
+    andshake\x20for\x20a\x20new\x20API\x20stream.\n\n\x0f\n\x07\x04\x13\x04\
+    \0\x02\x03\x01\x12\x04\x85\x04\x04\x1b\n\x0f\n\x07\x04\x13\x04\0\x02\x03\
+    \x02\x12\x04\x85\x04\x1e\x1f\nf\n\x04\x04\x13\x02\0\x12\x04\x89\x04\x02B\
+    \x1aX\x20Upload\x20UUID\x20used\x20to\x20provide\x20idempotence\x20and\
+    \x20to\x20correlate\x20a\x20response\x20with\x20this\x20request.\n\n\r\n\
+    \x05\x04\x13\x02\0\x05\x12\x04\x89\x04\x02\x08\n\r\n\x05\x04\x13\x02\0\
+    \x01\x12\x04\x89\x04\t\x14\n\r\n\x05\x04\x13\x02\0\x03\x12\x04\x89\x04\
+    \x17\x18\n\r\n\x05\x04\x13\x02\0\x08\x12\x04\x89\x04\x19A\n\x10\n\x08\
+    \x04\x13\x02\0\x08\xaf\x08\x0e\x12\x04\x89\x04\x1a@\n\x0e\n\x04\x04\x13\
+    \x03\0\x12\x06\x8b\x04\x02\xb4\x04\x03\n\r\n\x05\x04\x13\x03\0\x01\x12\
+    \x04\x8b\x04\n\x12\n\x10\n\x06\x04\x13\x03\0\x08\0\x12\x06\x8c\x04\x04\
+    \x90\x04\x05\n\x0f\n\x07\x04\x13\x03\0\x08\0\x01\x12\x04\x8c\x04\n\x17\n\
+    \x0f\n\x07\x04\x13\x03\0\x08\0\x02\x12\x04\x8d\x04\x06(\n\x11\n\t\x04\
+    \x13\x03\0\x08\0\x02\xaf\x08\x12\x04\x8d\x04\x06(\n\x0e\n\x06\x04\x13\
+    \x03\0\x02\0\x12\x04\x8f\x04\x06\x1e\n\x0f\n\x07\x04\x13\x03\0\x02\0\x06\
+    \x12\x04\x8f\x04\x06\x11\n\x0f\n\x07\x04\x13\x03\0\x02\0\x01\x12\x04\x8f\
+    \x04\x12\x19\n\x0f\n\x07\x04\x13\x03\0\x02\0\x03\x12\x04\x8f\x04\x1c\x1d\
+    \n\x10\n\x06\x04\x13\x03\0\x03\0\x12\x06\x92\x04\x04\x9a\x04\x05\n\x0f\n\
+    \x07\x04\x13\x03\0\x03\0\x01\x12\x04\x92\x04\x0c\x16\n\xc6\x01\n\x08\x04\
+    \x13\x03\0\x03\0\x02\0\x12\x04\x95\x04\x06_\x1a\xb3\x01\x20The\x20point\
+    \x20in\x20time\x20where\x20the\x20first\x20set\x20of\x20stats\x20in\x20t\
+    his\x20aggregation\x20period\x20was\x20aggregated.\n\x20This\x20allows\
+    \x20the\x20server\x20to\x20get\x20some\x20understanding\x20how\x20old\
+    \x20the\x20stats\x20being\x20uploaded\x20are.\n\n\x11\n\t\x04\x13\x03\0\
+    \x03\0\x02\0\x06\x12\x04\x95\x04\x06\x1f\n\x11\n\t\x04\x13\x03\0\x03\0\
+    \x02\0\x01\x12\x04\x95\x04\x20,\n\x11\n\t\x04\x13\x03\0\x03\0\x02\0\x03\
+    \x12\x04\x95\x04/0\n\x11\n\t\x04\x13\x03\0\x03\0\x02\0\x08\x12\x04\x95\
+    \x041^\n\x14\n\x0c\x04\x13\x03\0\x03\0\x02\0\x08\xaf\x08\x11\x12\x04\x95\
+    \x042]\n\xc5\x01\n\x08\x04\x13\x03\0\x03\0\x02\x01\x12\x04\x99\x04\x06/\
+    \x1a\xb2\x01\x20When\x20the\x20aggregation\x20was\x20closed.\x20If\x20sp\
+    ecified,\x20the\x20server\x20can\x20decide\x20to\x20handle\x20variable\n\
+    \x20size\x20aggregation\x20windows\x20by\x20averaging\x20the\x20data\x20\
+    over\x20the\x20period\x20or\x20some\x20other\x20heuristic.\n\n\x11\n\t\
+    \x04\x13\x03\0\x03\0\x02\x01\x06\x12\x04\x99\x04\x06\x1f\n\x11\n\t\x04\
+    \x13\x03\0\x03\0\x02\x01\x01\x12\x04\x99\x04\x20*\n\x11\n\t\x04\x13\x03\
+    \0\x03\0\x02\x01\x03\x12\x04\x99\x04-.\n\x81\x01\n\x06\x04\x13\x03\0\x08\
+    \x01\x12\x06\x9e\x04\x04\xa5\x04\x05\x1ao\x20To\x20support\x20different\
+    \x20kinds\x20of\x20snapshots,\x20we\x20support\x20providing\x20informati\
+    on\x20about\x20when\x20the\x20data\x20was\n\x20collected.\n\n\x0f\n\x07\
+    \x04\x13\x03\0\x08\x01\x01\x12\x04\x9e\x04\n\x15\n\x0f\n\x07\x04\x13\x03\
+    \0\x08\x01\x02\x12\x04\x9f\x04\x06(\n\x11\n\t\x04\x13\x03\0\x08\x01\x02\
+    \xaf\x08\x12\x04\x9f\x04\x06(\n\xd4\x01\n\x06\x04\x13\x03\0\x02\x01\x12\
+    \x04\xa4\x04\x06\x20\x1a\xc3\x01\x20The\x20snapshot\x20data\x20is\x20agg\
+    regated\x20over\x20an\x20indefinite\x20period.\x20This\x20supports\x20me\
+    trics\x20where\x20we\n\x20care\x20more\x20about\x20the\x20total\x20data\
+    \x20(e.g.\x20counts)\x20than\x20understanding\x20precisely\x20when\x20th\
+    e\x20data\x20was\n\x20recorded.\n\n\x0f\n\x07\x04\x13\x03\0\x02\x01\x06\
+    \x12\x04\xa4\x04\x06\x10\n\x0f\n\x07\x04\x13\x03\0\x02\x01\x01\x12\x04\
+    \xa4\x04\x11\x1b\n\x0f\n\x07\x04\x13\x03\0\x02\x01\x03\x12\x04\xa4\x04\
+    \x1e\x1f\nn\n\x06\x04\x13\x03\0\x02\x02\x12\x04\xa8\x04\x040\x1a^\x20A\
+    \x20map\x20of\x20metric\x20ID\x20to\x20any\x20cardinality\x20overflows\
+    \x20that\x20occurred\x20during\x20this\x20snapshot\x20interval.\n\n\x0f\
+    \n\x07\x04\x13\x03\0\x02\x02\x06\x12\x04\xa8\x04\x04\x17\n\x0f\n\x07\x04\
+    \x13\x03\0\x02\x02\x01\x12\x04\xa8\x04\x18+\n\x0f\n\x07\x04\x13\x03\0\
+    \x02\x02\x03\x12\x04\xa8\x04./\nX\n\x06\x04\x13\x03\0\x02\x03\x12\x04\
+    \xab\x04\x04L\x1aH\x20Workflow\x20ID\x20to\x20debug\x20data\x20that\x20o\
+    ccurred\x20during\x20this\x20snapshot\x20interval.\n\n\x0f\n\x07\x04\x13\
+    \x03\0\x02\x03\x06\x12\x04\xab\x04\x043\n\x0f\n\x07\x04\x13\x03\0\x02\
+    \x03\x01\x12\x04\xab\x044G\n\x0f\n\x07\x04\x13\x03\0\x02\x03\x03\x12\x04\
+    \xab\x04JK\n\xb0\x01\n\x06\x04\x13\x03\0\x02\x04\x12\x04\xaf\x04\x04\x1b\
+    \x1a\x9f\x01\x20Number\x20of\x20prior\x20attempts\x20to\x20upload\x20thi\
+    s\x20snapshot.\x20The\x20original\x20upload\x20is\x20zero,\x20which\x20a\
+    lso\n\x20preserves\x20the\x20behavior\x20of\x20clients\x20that\x20do\x20\
+    not\x20yet\x20send\x20this\x20field.\n\n\x0f\n\x07\x04\x13\x03\0\x02\x04\
+    \x05\x12\x04\xaf\x04\x04\n\n\x0f\n\x07\x04\x13\x03\0\x02\x04\x01\x12\x04\
+    \xaf\x04\x0b\x16\n\x0f\n\x07\x04\x13\x03\0\x02\x04\x03\x12\x04\xaf\x04\
+    \x19\x1a\n\xab\x01\n\x06\x04\x13\x03\0\x02\x05\x12\x04\xb3\x04\x04%\x1a\
+    \x9a\x01\x20Stable\x20monotonic\x20identifier\x20assigned\x20when\x20thi\
+    s\x20source\x20snapshot\x20is\x20created.\x20Zero\x20indicates\n\x20that\
+    \x20the\x20client\x20does\x20not\x20support\x20source\x20sequence\x20ide\
+    ntifiers.\n\n\x0f\n\x07\x04\x13\x03\0\x02\x05\x05\x12\x04\xb3\x04\x04\n\
+    \n\x0f\n\x07\x04\x13\x03\0\x02\x05\x01\x12\x04\xb3\x04\x0b\x20\n\x0f\n\
+    \x07\x04\x13\x03\0\x02\x05\x03\x12\x04\xb3\x04#$\nN\n\x04\x04\x13\x02\
+    \x01\x12\x04\xb7\x04\x02N\x1a@\x20A\x20collection\x20of\x20stats\x20snap\
+    shots\x20to\x20be\x20recorded\x20by\x20the\x20backend.\n\n\r\n\x05\x04\
+    \x13\x02\x01\x04\x12\x04\xb7\x04\x02\n\n\r\n\x05\x04\x13\x02\x01\x06\x12\
+    \x04\xb7\x04\x0b\x13\n\r\n\x05\x04\x13\x02\x01\x01\x12\x04\xb7\x04\x14\
+    \x1c\n\r\n\x05\x04\x13\x02\x01\x03\x12\x04\xb7\x04\x1f\x20\n\r\n\x05\x04\
+    \x13\x02\x01\x08\x12\x04\xb7\x04!M\n\x10\n\x08\x04\x13\x02\x01\x08\xaf\
+    \x08\x12\x12\x04\xb7\x04\"L\n\x94\x02\n\x04\x04\x13\x02\x02\x12\x04\xbd\
+    \x04\x02(\x1a\x85\x02\x20The\x20point\x20in\x20time\x20when\x20the\x20cl\
+    ient\x20initialized\x20the\x20process\x20of\x20uploading\x20collected\
+    \x20snapshots.\n\x20Used\x20by\x20the\x20server\x20to\x20detect\x20clien\
+    ts\x20with\x20skewed\x20clocks.\n\x20The\x20idea\x20is\x20that\x20upon\
+    \x20receiving\x20the\x20stats\x20payload,\x20the\x20server's\x20current\
+    \x20time\x20should\x20be\x20close\x20to\x20this\n\x20value.\n\n\r\n\x05\
+    \x04\x13\x02\x02\x06\x12\x04\xbd\x04\x02\x1b\n\r\n\x05\x04\x13\x02\x02\
+    \x01\x12\x04\xbd\x04\x1c#\n\r\n\x05\x04\x13\x02\x02\x03\x12\x04\xbd\x04&\
+    '\n1\n\x04\x04\x13\x02\x03\x12\x04\xc0\x04\x02!\x1a#\x20The\x20reason\
+    \x20for\x20this\x20stats\x20upload.\n\n\r\n\x05\x04\x13\x02\x03\x06\x12\
+    \x04\xc0\x04\x02\x0e\n\r\n\x05\x04\x13\x02\x03\x01\x12\x04\xc0\x04\x0f\
+    \x1c\n\r\n\x05\x04\x13\x02\x03\x03\x12\x04\xc0\x04\x1f\x20\n\x0c\n\x02\
+    \x04\x14\x12\x06\xc3\x04\0\xce\x04\x01\n\x0b\n\x03\x04\x14\x01\x12\x04\
+    \xc3\x04\x08\x1b\n=\n\x04\x04\x14\x02\0\x12\x04\xc5\x04\x02B\x1a/\x20The\
+    \x20UUID\x20corresponding\x20to\x20the\x20upload\x20request.\n\n\r\n\x05\
+    \x04\x14\x02\0\x05\x12\x04\xc5\x04\x02\x08\n\r\n\x05\x04\x14\x02\0\x01\
+    \x12\x04\xc5\x04\t\x14\n\r\n\x05\x04\x14\x02\0\x03\x12\x04\xc5\x04\x17\
+    \x18\n\r\n\x05\x04\x14\x02\0\x08\x12\x04\xc5\x04\x19A\n\x10\n\x08\x04\
+    \x14\x02\0\x08\xaf\x08\x0e\x12\x04\xc5\x04\x1a@\nr\n\x04\x04\x14\x02\x01\
+    \x12\x04\xc9\x04\x02\x13\x1ad\x20Optional\x20error\x20message\x20which\
+    \x20indicates\x20that\x20stats\x20upload\x20failed\x20and/or\x20some\x20\
+    metrics\x20were\n\x20dropped.\n\n\r\n\x05\x04\x14\x02\x01\x05\x12\x04\
+    \xc9\x04\x02\x08\n\r\n\x05\x04\x14\x02\x01\x01\x12\x04\xc9\x04\t\x0e\n\r\
+    \n\x05\x04\x14\x02\x01\x03\x12\x04\xc9\x04\x11\x12\n\xb9\x01\n\x04\x04\
+    \x14\x02\x02\x12\x04\xcd\x04\x02\x1d\x1a\xaa\x01\x20If\x20any\x20metrics\
+    \x20were\x20dropped\x20due\x20to\x20validation\x20errors,\x20the\x20coun\
+    t\x20will\x20be\x20supplied\x20here.\x20Error\n\x20will\x20be\x20populat\
+    ed\x20with\x20debugging\x20information\x20to\x20help\x20understand\x20th\
+    e\x20error.\n\n\r\n\x05\x04\x14\x02\x02\x05\x12\x04\xcd\x04\x02\x08\n\r\
+    \n\x05\x04\x14\x02\x02\x01\x12\x04\xcd\x04\t\x18\n\r\n\x05\x04\x14\x02\
+    \x02\x03\x12\x04\xcd\x04\x1b\x1c\n(\n\x02\x04\x15\x12\x04\xd1\x04\0\x17\
+    \x1a\x1c\x20Response\x20to\x20a\x20client\x20ping.\n\n\x0b\n\x03\x04\x15\
+    \x01\x12\x04\xd1\x04\x08\x14\n;\n\x02\x04\x16\x12\x06\xd4\x04\0\x80\x05\
+    \x01\x1a-\x20Configuration\x20update\x20from\x20server\x20to\x20client.\
+    \n\n\x0b\n\x03\x04\x16\x01\x12\x04\xd4\x04\x08\x1b\nx\n\x04\x04\x16\x03\
+    \0\x12\x06\xd7\x04\x02\xf2\x04\x03\x1ah\x20A\x20complete\x20configuratio\
+    n\x20snapshot.\x20The\x20client\x20should\x20reconfigure\x20to\x20match\
+    \x20the\x20supplied\n\x20configuration.\n\n\r\n\x05\x04\x16\x03\0\x01\
+    \x12\x04\xd7\x04\n\x19\nd\n\x05\x04\x16\x03\0\n\x12\x04\xd9\x04\x04\x18\
+    \x1aU\x20Replaced\x20with\x20`workflow_list`\x20and\x20not\x20available\
+    \x20for\x20clients\x20with\x20config_version\x206+.\n\n\x0e\n\x06\x04\
+    \x16\x03\0\n\0\x12\x04\xd9\x04\r\x17\n\r\n\x05\x04\x16\x03\0\t\x12\x04\
+    \xda\x04\x04\x0f\n\x0e\n\x06\x04\x16\x03\0\t\0\x12\x04\xda\x04\r\x0e\n\
+    \x0f\n\x07\x04\x16\x03\0\t\0\x01\x12\x04\xda\x04\r\x0e\n\x0f\n\x07\x04\
+    \x16\x03\0\t\0\x02\x12\x04\xda\x04\r\x0e\n&\n\x06\x04\x16\x03\0\x02\0\
+    \x12\x04\xdd\x04\x046\x1a\x16\x20The\x20list\x20of\x20buffers.\n\n\x0f\n\
+    \x07\x04\x16\x03\0\x02\0\x06\x12\x04\xdd\x04\x04\x1e\n\x0f\n\x07\x04\x16\
+    \x03\0\x02\0\x01\x12\x04\xdd\x04\x1f1\n\x0f\n\x07\x04\x16\x03\0\x02\0\
+    \x03\x12\x04\xdd\x0445\n.\n\x06\x04\x16\x03\0\x02\x01\x12\x04\xe0\x04\
+    \x04C\x1a\x1e\x20The\x20workflows\x20configuration.\n\n\x0f\n\x07\x04\
+    \x16\x03\0\x02\x01\x06\x12\x04\xe0\x04\x04&\n\x0f\n\x07\x04\x16\x03\0\
+    \x02\x01\x01\x12\x04\xe0\x04'>\n\x0f\n\x07\x04\x16\x03\0\x02\x01\x03\x12\
+    \x04\xe0\x04AB\n5\n\x06\x04\x16\x03\0\x02\x02\x12\x04\xe3\x04\x04<\x1a%\
+    \x20The\x20list\x20of\x20active\x20bdtail\x20sessions.\n\n\x0f\n\x07\x04\
+    \x16\x03\0\x02\x02\x06\x12\x04\xe3\x04\x04\"\n\x0f\n\x07\x04\x16\x03\0\
+    \x02\x02\x01\x12\x04\xe3\x04#7\n\x0f\n\x07\x04\x16\x03\0\x02\x02\x03\x12\
+    \x04\xe3\x04:;\n\r\n\x05\x04\x16\x03\0\n\x12\x04\xe5\x04\x04&\n\x0e\n\
+    \x06\x04\x16\x03\0\n\x01\x12\x04\xe5\x04\r%\n\r\n\x05\x04\x16\x03\0\t\
+    \x12\x04\xe6\x04\x04\x0f\n\x0e\n\x06\x04\x16\x03\0\t\x01\x12\x04\xe6\x04\
+    \r\x0e\n\x0f\n\x07\x04\x16\x03\0\t\x01\x01\x12\x04\xe6\x04\r\x0e\n\x0f\n\
+    \x07\x04\x16\x03\0\t\x01\x02\x12\x04\xe6\x04\r\x0e\n,\n\x06\x04\x16\x03\
+    \0\x02\x03\x12\x04\xe9\x04\x04=\x1a\x1c\x20The\x20filters\x20configurati\
+    on.\n\n\x0f\n\x07\x04\x16\x03\0\x02\x03\x06\x12\x04\xe9\x04\x04\"\n\x0f\
+    \n\x07\x04\x16\x03\0\x02\x03\x01\x12\x04\xe9\x04#8\n\x0f\n\x07\x04\x16\
+    \x03\0\x02\x03\x03\x12\x04\xe9\x04;<\n\xd4\x03\n\x06\x04\x16\x03\0\x02\
+    \x04\x12\x04\xf1\x04\x04;\x1a\xc3\x03\x20The\x20list\x20of\x20workflows\
+    \x20to\x20debug.\x20If\x20the\x20workflow\x20is\x20already\x20deployed,\
+    \x20debug\x20data\x20will\x20be\n\x20generated\x20for\x20it\x20alongside\
+    \x20the\x20deployed\x20workflow.\x20If\x20the\x20workflow\x20is\x20not\
+    \x20deployed,\x20the\n\x20workflow\x20will\x20be\x20executed\x20in\x20de\
+    bug\x20mode,\x20however\x20actions\x20will\x20*not*\x20be\x20executed\
+    \x20(metrics,\n\x20flushes,\x20and\x20so\x20on).\n\x20NOTE:\x20\"already\
+    \x20deployed\"\x20implies\x20that\x20the\x20workflow\x20will\x20be\x20fo\
+    und\x20in\x20the\n\x20workflows_configuration\x20field.\x20The\x20server\
+    \x20will\x20not\x20de-dup\x20for\x20simplification\x20purposes.\n\n\x0f\
+    \n\x07\x04\x16\x03\0\x02\x04\x06\x12\x04\xf1\x04\x04&\n\x0f\n\x07\x04\
+    \x16\x03\0\x02\x04\x01\x12\x04\xf1\x04'6\n\x0f\n\x07\x04\x16\x03\0\x02\
+    \x04\x03\x12\x04\xf1\x049:\n\x8a\x01\n\x04\x04\x16\x02\0\x12\x04\xf6\x04\
+    \x02\x1b\x1a|\x20A\x20version\x20nonce\x20that\x20can\x20be\x20used\x20f\
+    or\x20both\x20tracking\x20the\x20last\x20applied\x20update\x20as\x20well\
+    \x20as\x20for\n\x20responding\x20with\x20a\x20NACK\x20message.\n\n\r\n\
+    \x05\x04\x16\x02\0\x05\x12\x04\xf6\x04\x02\x08\n\r\n\x05\x04\x16\x02\0\
+    \x01\x12\x04\xf6\x04\t\x16\n\r\n\x05\x04\x16\x02\0\x03\x12\x04\xf6\x04\
+    \x19\x1a\n\x0e\n\x04\x04\x16\x08\0\x12\x06\xf8\x04\x02\xfb\x04\x03\n\r\n\
+    \x05\x04\x16\x08\0\x01\x12\x04\xf8\x04\x08\x13\nH\n\x04\x04\x16\x02\x01\
+    \x12\x04\xfa\x04\x04+\x1a:\x20SoTW\x20is\x20the\x20only\x20currently\x20\
+    supported\x20configuration\x20type.\n\n\r\n\x05\x04\x16\x02\x01\x06\x12\
+    \x04\xfa\x04\x04\x13\n\r\n\x05\x04\x16\x02\x01\x01\x12\x04\xfa\x04\x14&\
+    \n\r\n\x05\x04\x16\x02\x01\x03\x12\x04\xfa\x04)*\n}\n\x04\x04\x16\x02\
+    \x02\x12\x04\xff\x04\x026\x1ao\x20If\x20set,\x20the\x20client\x20should\
+    \x20update\x20or\x20clear\x20the\x20corresponding\x20state\x20according\
+    \x20to\x20the\x20provided\n\x20list\x20of\x20updates.\n\n\r\n\x05\x04\
+    \x16\x02\x02\x04\x12\x04\xff\x04\x02\n\n\r\n\x05\x04\x16\x02\x02\x06\x12\
+    \x04\xff\x04\x0b\x1c\n\r\n\x05\x04\x16\x02\x02\x01\x12\x04\xff\x04\x1d1\
+    \n\r\n\x05\x04\x16\x02\x02\x03\x12\x04\xff\x0445\n5\n\x02\x04\x17\x12\
+    \x06\x83\x05\0\x8a\x05\x01\x1a'\x20Runtime\x20update\x20from\x20server\
+    \x20to\x20client.\n\n\x0b\n\x03\x04\x17\x01\x12\x04\x83\x05\x08\x15\n\
+    \x8a\x01\n\x04\x04\x17\x02\0\x12\x04\x86\x05\x02\x1b\x1a|\x20A\x20versio\
+    n\x20nonce\x20that\x20can\x20be\x20used\x20for\x20both\x20tracking\x20th\
+    e\x20last\x20applied\x20update\x20as\x20well\x20as\x20for\n\x20respondin\
+    g\x20with\x20a\x20NACK\x20message.\n\n\r\n\x05\x04\x17\x02\0\x05\x12\x04\
+    \x86\x05\x02\x08\n\r\n\x05\x04\x17\x02\0\x01\x12\x04\x86\x05\t\x16\n\r\n\
+    \x05\x04\x17\x02\0\x03\x12\x04\x86\x05\x19\x1a\n,\n\x04\x04\x17\x02\x01\
+    \x12\x04\x89\x05\x02\x16\x1a\x1e\x20The\x20runtime\x20instance\x20to\x20\
+    use.\n\n\r\n\x05\x04\x17\x02\x01\x06\x12\x04\x89\x05\x02\t\n\r\n\x05\x04\
+    \x17\x02\x01\x01\x12\x04\x89\x05\n\x11\n\r\n\x05\x04\x17\x02\x01\x03\x12\
+    \x04\x89\x05\x14\x15\n\x8b\x02\n\x02\x04\x18\x12\x06\x8f\x05\0\x98\x05\
+    \x01\x1a\xfc\x01\x20In\x20order\x20to\x20support\x20clients\x20that\x20c\
+    an't\x20easily\x20implement\x20gRPC\x20(e.g.,\x20iOS\x20URLSession),\x20\
+    instead\x20of\n\x20closing\x20a\x20stream\x20with\x20trailers,\x20this\
+    \x20frame\x20will\x20be\x20sent\x20followed\x20by\x20stream\x20closure.\
+    \x20This\x20allows\n\x20an\x20easier\x20way\x20for\x20the\x20client\x20t\
+    o\x20debug\x20and\x20handle\x20errors.\n\n\x0b\n\x03\x04\x18\x01\x12\x04\
+    \x8f\x05\x08\x15\nA\n\x04\x04\x18\x02\0\x12\x04\x91\x05\x02\x18\x1a3\x20\
+    The\x20status\x20that\x20would\x20have\x20been\x20sent\x20in\x20trailers\
+    .\n\n\r\n\x05\x04\x18\x02\0\x05\x12\x04\x91\x05\x02\x07\n\r\n\x05\x04\
+    \x18\x02\0\x01\x12\x04\x91\x05\x08\x13\n\r\n\x05\x04\x18\x02\0\x03\x12\
+    \x04\x91\x05\x16\x17\nB\n\x04\x04\x18\x02\x01\x12\x04\x94\x05\x02\x1a\
+    \x1a4\x20The\x20message\x20that\x20would\x20have\x20been\x20sent\x20in\
+    \x20trailers.\n\n\r\n\x05\x04\x18\x02\x01\x05\x12\x04\x94\x05\x02\x08\n\
+    \r\n\x05\x04\x18\x02\x01\x01\x12\x04\x94\x05\t\x15\n\r\n\x05\x04\x18\x02\
+    \x01\x03\x12\x04\x94\x05\x18\x19\nH\n\x04\x04\x18\x02\x02\x12\x04\x97\
+    \x05\x02\x1f\x1a:\x20Optional\x20rate\x20limiting\x20that\x20the\x20clie\
+    nt\x20should\x20adhere\x20to.\n\n\r\n\x05\x04\x18\x02\x02\x06\x12\x04\
+    \x97\x05\x02\r\n\r\n\x05\x04\x18\x02\x02\x01\x12\x04\x97\x05\x0e\x1a\n\r\
+    \n\x05\x04\x18\x02\x02\x03\x12\x04\x97\x05\x1d\x1e\n\x86\x02\n\x02\x04\
+    \x19\x12\x06\x9d\x05\0\xa5\x05\x01\x1a\xf7\x01\x20Called\x20by\x20the\
+    \x20server\x20to\x20tell\x20the\x20client\x20to\x20flush\x20a\x20set\x20\
+    of\x20owned\x20buffers.\x20When\x20this\x20command\x20is\n\x20received\
+    \x20by\x20the\x20client\x20it\x20should\x20proceed\x20with\x20normal\x20\
+    behavior\x20as\x20if\x20it\x20had\x20decided\x20to\x20flush\n\x20the\x20\
+    buffers\x20locally\x20(e.g.,\x20rate\x20limiting,\x20intents,\x20etc.).\
+    \n\n\x0b\n\x03\x04\x19\x01\x12\x04\x9d\x05\x08\x14\n\x91\x01\n\x04\x04\
+    \x19\x02\0\x12\x04\xa0\x05\x02%\x1a\x82\x01\x20The\x20list\x20of\x20trig\
+    ger\x20buffers\x20to\x20flush.\x20If\x20the\x20list\x20is\x20empty,\x20a\
+    ll\x20eligible\x20trigger\x20buffers\n\x20known\x20to\x20the\x20client\
+    \x20should\x20be\x20flushed.\n\n\r\n\x05\x04\x19\x02\0\x04\x12\x04\xa0\
+    \x05\x02\n\n\r\n\x05\x04\x19\x02\0\x05\x12\x04\xa0\x05\x0b\x11\n\r\n\x05\
+    \x04\x19\x02\0\x01\x12\x04\xa0\x05\x12\x20\n\r\n\x05\x04\x19\x02\0\x03\
+    \x12\x04\xa0\x05#$\n\xb4\x01\n\x04\x04\x19\x02\x01\x12\x04\xa4\x05\x02I\
+    \x1a\xa5\x01\x20The\x20streaming\x20configuration\x20to\x20apply\x20when\
+    \x20buffer\x20flushing\x20occurs.\x20If\x20not\x20specified,\x20no\x20su\
+    bsequent\n\x20log\x20streaming\x20will\x20occur\x20when\x20the\x20specif\
+    ied\x20buffers\x20are\x20flushed.\n\n\r\n\x05\x04\x19\x02\x01\x06\x12\
+    \x04\xa4\x05\x02:\n\r\n\x05\x04\x19\x02\x01\x01\x12\x04\xa4\x05;D\n\r\n\
+    \x05\x04\x19\x02\x01\x03\x12\x04\xa4\x05GH\n\xc2\x01\n\x02\x04\x1a\x12\
+    \x06\xa9\x05\0\xad\x05\x01\x1a\xb3\x01\x20Structured\x20data\x20supplied\
+    \x20with\x20a\x20terminal\x20device\x20command\x20result.\x20Artifact\
+    \x20bytes\x20are\x20uploaded\n\x20separately\x20through\x20`UploadArtifa\
+    ctRequest`\x20and\x20must\x20not\x20be\x20included\x20in\x20this\x20cont\
+    ext.\n\n\x0b\n\x03\x04\x1a\x01\x12\x04\xa9\x05\x08\"\n\x9f\x01\n\x04\x04\
+    \x1a\x02\0\x12\x04\xac\x05\x02Q\x1a\x90\x01\x20Command-\x20or\x20transpo\
+    rt-supplied\x20fields\x20describing\x20the\x20terminal\x20result.\x20Bin\
+    ary\x20values\x20are\n\x20rejected;\x20artifacts\x20must\x20use\x20`Uplo\
+    adArtifactRequest`.\n\n\r\n\x05\x04\x1a\x02\0\x06\x12\x04\xac\x05\x02\
+    \x1e\n\r\n\x05\x04\x1a\x02\0\x01\x12\x04\xac\x05\x1f%\n\r\n\x05\x04\x1a\
+    \x02\0\x03\x12\x04\xac\x05()\n\r\n\x05\x04\x1a\x02\0\x08\x12\x04\xac\x05\
+    *P\n\x11\n\t\x04\x1a\x02\0\x08\xaf\x08\x13\x02\x12\x04\xac\x05+O\n8\n\
+    \x02\x04\x1b\x12\x06\xb0\x05\0\xfd\x05\x01\x1a*\x20Reports\x20an\x20upda\
+    te\x20from\x20a\x20device\x20command.\n\n\x0b\n\x03\x04\x1b\x01\x12\x04\
+    \xb0\x05\x08\x1b\n@\n\x04\x04\x1b\x03\0\x12\x06\xb2\x05\x02\xb5\x05\x03\
+    \x1a0\x20Confirms\x20that\x20the\x20device\x20accepted\x20the\x20command\
+    .\n\n\r\n\x05\x04\x1b\x03\0\x01\x12\x04\xb2\x05\n\x12\n_\n\x06\x04\x1b\
+    \x03\0\x02\0\x12\x04\xb4\x05\x04+\x1aO\x20The\x20immutable\x20total\x20n\
+    umber\x20of\x20result\x20payload\x20bytes\x20expected\x20from\x20the\x20\
+    command.\n\n\x0f\n\x07\x04\x1b\x03\0\x02\0\x04\x12\x04\xb4\x05\x04\x0c\n\
+    \x0f\n\x07\x04\x1b\x03\0\x02\0\x05\x12\x04\xb4\x05\r\x13\n\x0f\n\x07\x04\
+    \x1b\x03\0\x02\0\x01\x12\x04\xb4\x05\x14&\n\x0f\n\x07\x04\x1b\x03\0\x02\
+    \0\x03\x12\x04\xb4\x05)*\nC\n\x04\x04\x1b\x03\x01\x12\x06\xb8\x05\x02\
+    \xe3\x05\x03\x1a3\x20Confirms\x20that\x20the\x20command\x20completed\x20\
+    successfully.\n\n\r\n\x05\x04\x1b\x03\x01\x01\x12\x04\xb8\x05\n\x13\n\
+    \xcf\x01\n\x06\x04\x1b\x03\x01\x03\0\x12\x06\xbc\x05\x04\xd8\x05\x05\x1a\
+    \xbc\x01\x20Declares\x20the\x20complete\x20logical\x20attachment\x20prod\
+    uced\x20by\x20the\x20command.\x20The\x20server\x20verifies\x20this\n\x20\
+    declaration\x20against\x20its\x20durable\x20attachment\x20catalog\x20bef\
+    ore\x20reporting\x20the\x20command\x20as\n\x20succeeded.\n\n\x0f\n\x07\
+    \x04\x1b\x03\x01\x03\0\x01\x12\x04\xbc\x05\x0c\x16\n@\n\x08\x04\x1b\x03\
+    \x01\x03\0\x03\0\x12\x04\xbe\x05\x06\x15\x1a.\x20The\x20command\x20compl\
+    eted\x20without\x20an\x20attachment.\n\n\x11\n\t\x04\x1b\x03\x01\x03\0\
+    \x03\0\x01\x12\x04\xbe\x05\x0e\x12\n_\n\x08\x04\x1b\x03\x01\x03\0\x03\
+    \x01\x12\x06\xc1\x05\x06\xc4\x05\x07\x1aK\x20The\x20command\x20produced\
+    \x20one\x20artifact\x20uploaded\x20through\x20UploadArtifactRequest.\n\n\
+    \x11\n\t\x04\x1b\x03\x01\x03\0\x03\x01\x01\x12\x04\xc1\x05\x0e\x16\nJ\n\
+    \n\x04\x1b\x03\x01\x03\0\x03\x01\x02\0\x12\x04\xc3\x05\x08E\x1a6\x20The\
+    \x20stable\x20artifact\x20ID\x20from\x20the\x20acknowledged\x20upload.\n\
+    \n\x13\n\x0b\x04\x1b\x03\x01\x03\0\x03\x01\x02\0\x05\x12\x04\xc3\x05\x08\
+    \x0e\n\x13\n\x0b\x04\x1b\x03\x01\x03\0\x03\x01\x02\0\x01\x12\x04\xc3\x05\
+    \x0f\x1a\n\x13\n\x0b\x04\x1b\x03\x01\x03\0\x03\x01\x02\0\x03\x12\x04\xc3\
+    \x05\x1d\x1e\n\x13\n\x0b\x04\x1b\x03\x01\x03\0\x03\x01\x02\0\x08\x12\x04\
+    \xc3\x05\x1fD\n\x17\n\x0f\x04\x1b\x03\x01\x03\0\x03\x01\x02\0\x08\xaf\
+    \x08\x0e\x16\x12\x04\xc3\x05\x20C\nY\n\x08\x04\x1b\x03\x01\x03\0\x03\x02\
+    \x12\x06\xc7\x05\x06\xca\x05\x07\x1aE\x20The\x20command\x20produced\x20l\
+    og\x20batches\x20uploaded\x20through\x20LogUploadRequest.\n\n\x11\n\t\
+    \x04\x1b\x03\x01\x03\0\x03\x02\x01\x12\x04\xc7\x05\x0e\x18\ni\n\n\x04\
+    \x1b\x03\x01\x03\0\x03\x02\x02\0\x12\x04\xc9\x05\x08&\x1aU\x20The\x20imm\
+    utable\x20total\x20number\x20of\x20result\x20payload\x20bytes\x20across\
+    \x20all\x20acknowledged\x20batches.\n\n\x13\n\x0b\x04\x1b\x03\x01\x03\0\
+    \x03\x02\x02\0\x05\x12\x04\xc9\x05\x08\x0e\n\x13\n\x0b\x04\x1b\x03\x01\
+    \x03\0\x03\x02\x02\0\x01\x12\x04\xc9\x05\x0f!\n\x13\n\x0b\x04\x1b\x03\
+    \x01\x03\0\x03\x02\x02\0\x03\x12\x04\xc9\x05$%\n\x12\n\x08\x04\x1b\x03\
+    \x01\x03\0\x08\0\x12\x06\xcc\x05\x06\xd7\x05\x07\n\x11\n\t\x04\x1b\x03\
+    \x01\x03\0\x08\0\x01\x12\x04\xcc\x05\x0c\x1b\n\x11\n\t\x04\x1b\x03\x01\
+    \x03\0\x08\0\x02\x12\x04\xcd\x05\x08*\n\x13\n\x0b\x04\x1b\x03\x01\x03\0\
+    \x08\0\x02\xaf\x08\x12\x04\xcd\x05\x08*\n@\n\x08\x04\x1b\x03\x01\x03\0\
+    \x02\0\x12\x04\xd0\x05\x08\x16\x1a.\x20The\x20command\x20completed\x20wi\
+    thout\x20an\x20attachment.\n\n\x11\n\t\x04\x1b\x03\x01\x03\0\x02\0\x06\
+    \x12\x04\xd0\x05\x08\x0c\n\x11\n\t\x04\x1b\x03\x01\x03\0\x02\0\x01\x12\
+    \x04\xd0\x05\r\x11\n\x11\n\t\x04\x1b\x03\x01\x03\0\x02\0\x03\x12\x04\xd0\
+    \x05\x14\x15\n<\n\x08\x04\x1b\x03\x01\x03\0\x02\x01\x12\x04\xd3\x05\x08\
+    \x1e\x1a*\x20The\x20command\x20completed\x20with\x20one\x20artifact.\n\n\
+    \x11\n\t\x04\x1b\x03\x01\x03\0\x02\x01\x06\x12\x04\xd3\x05\x08\x10\n\x11\
+    \n\t\x04\x1b\x03\x01\x03\0\x02\x01\x01\x12\x04\xd3\x05\x11\x19\n\x11\n\t\
+    \x04\x1b\x03\x01\x03\0\x02\x01\x03\x12\x04\xd3\x05\x1c\x1d\n\\\n\x08\x04\
+    \x1b\x03\x01\x03\0\x02\x02\x12\x04\xd6\x05\x08#\x1aJ\x20The\x20command\
+    \x20completed\x20with\x20one\x20logical\x20attachment\x20made\x20from\
+    \x20log\x20batches.\n\n\x11\n\t\x04\x1b\x03\x01\x03\0\x02\x02\x06\x12\
+    \x04\xd6\x05\x08\x12\n\x11\n\t\x04\x1b\x03\x01\x03\0\x02\x02\x01\x12\x04\
+    \xd6\x05\x13\x1e\n\x11\n\t\x04\x1b\x03\x01\x03\0\x02\x02\x03\x12\x04\xd6\
+    \x05!\"\nJ\n\x06\x04\x1b\x03\x01\x02\0\x12\x04\xdb\x05\x04\x1e\x1a:\x20W\
+    hether\x20output\x20was\x20limited\x20before\x20the\x20command\x20comple\
+    ted.\n\n\x0f\n\x07\x04\x1b\x03\x01\x02\0\x05\x12\x04\xdb\x05\x04\x08\n\
+    \x0f\n\x07\x04\x1b\x03\x01\x02\0\x01\x12\x04\xdb\x05\t\x19\n\x0f\n\x07\
+    \x04\x1b\x03\x01\x02\0\x03\x12\x04\xdb\x05\x1c\x1d\nZ\n\x06\x04\x1b\x03\
+    \x01\x02\x01\x12\x04\xde\x05\x04+\x1aJ\x20Optional\x20structured\x20cont\
+    ext\x20supplied\x20with\x20the\x20successful\x20command\x20result.\n\n\
+    \x0f\n\x07\x04\x1b\x03\x01\x02\x01\x06\x12\x04\xde\x05\x04\x1e\n\x0f\n\
+    \x07\x04\x1b\x03\x01\x02\x01\x01\x12\x04\xde\x05\x1f&\n\x0f\n\x07\x04\
+    \x1b\x03\x01\x02\x01\x03\x12\x04\xde\x05)*\n\xb4\x01\n\x06\x04\x1b\x03\
+    \x01\x02\x02\x12\x04\xe2\x05\x04\x1e\x1a\xa3\x01\x20The\x20attachment\
+    \x20the\x20device\x20completed\x20after\x20uploading.\x20This\x20is\x20o\
+    ptional\x20only\x20for\x20compatibility\n\x20with\x20older\x20clients;\
+    \x20new\x20command\x20implementations\x20must\x20always\x20set\x20it.\n\
+    \n\x0f\n\x07\x04\x1b\x03\x01\x02\x02\x06\x12\x04\xe2\x05\x04\x0e\n\x0f\n\
+    \x07\x04\x1b\x03\x01\x02\x02\x01\x12\x04\xe2\x05\x0f\x19\n\x0f\n\x07\x04\
+    \x1b\x03\x01\x02\x02\x03\x12\x04\xe2\x05\x1c\x1d\nH\n\x04\x04\x1b\x03\
+    \x02\x12\x06\xe6\x05\x02\xe9\x05\x03\x1a8\x20Reports\x20that\x20command\
+    \x20execution\x20could\x20not\x20be\x20completed.\n\n\r\n\x05\x04\x1b\
+    \x03\x02\x01\x12\x04\xe6\x05\n\x10\nV\n\x06\x04\x1b\x03\x02\x02\0\x12\
+    \x04\xe8\x05\x04+\x1aF\x20Optional\x20structured\x20context\x20supplied\
+    \x20with\x20the\x20failed\x20command\x20result.\n\n\x0f\n\x07\x04\x1b\
+    \x03\x02\x02\0\x06\x12\x04\xe8\x05\x04\x1e\n\x0f\n\x07\x04\x1b\x03\x02\
+    \x02\0\x01\x12\x04\xe8\x05\x1f&\n\x0f\n\x07\x04\x1b\x03\x02\x02\0\x03\
+    \x12\x04\xe8\x05)*\nK\n\x04\x04\x1b\x02\0\x12\x04\xec\x05\x02>\x1a=\x20T\
+    he\x20command\x20ID\x20from\x20the\x20corresponding\x20DeviceCommandRequ\
+    est.\n\n\r\n\x05\x04\x1b\x02\0\x05\x12\x04\xec\x05\x02\x08\n\r\n\x05\x04\
+    \x1b\x02\0\x01\x12\x04\xec\x05\t\x13\n\r\n\x05\x04\x1b\x02\0\x03\x12\x04\
+    \xec\x05\x16\x17\n\r\n\x05\x04\x1b\x02\0\x08\x12\x04\xec\x05\x18=\n\x11\
+    \n\t\x04\x1b\x02\0\x08\xaf\x08\x0e\x16\x12\x04\xec\x05\x19<\nU\n\x04\x04\
+    \x1b\x02\x01\x12\x04\xef\x05\x02$\x1aG\x20The\x20monotonically\x20increa\
+    sing\x20sequence\x20number\x20for\x20this\x20command\x20update.\n\n\r\n\
+    \x05\x04\x1b\x02\x01\x05\x12\x04\xef\x05\x02\x08\n\r\n\x05\x04\x1b\x02\
+    \x01\x01\x12\x04\xef\x05\t\x1f\n\r\n\x05\x04\x1b\x02\x01\x03\x12\x04\xef\
+    \x05\"#\n\x0e\n\x04\x04\x1b\x08\0\x12\x06\xf1\x05\x02\xfc\x05\x03\n\r\n\
+    \x05\x04\x1b\x08\0\x01\x12\x04\xf1\x05\x08\x13\n\r\n\x05\x04\x1b\x08\0\
+    \x02\x12\x04\xf2\x05\x04&\n\x0f\n\x07\x04\x1b\x08\0\x02\xaf\x08\x12\x04\
+    \xf2\x05\x04&\n>\n\x04\x04\x1b\x02\x02\x12\x04\xf5\x05\x04\x1a\x1a0\x20C\
+    onfirms\x20that\x20the\x20device\x20accepted\x20the\x20command.\n\n\r\n\
+    \x05\x04\x1b\x02\x02\x06\x12\x04\xf5\x05\x04\x0c\n\r\n\x05\x04\x1b\x02\
+    \x02\x01\x12\x04\xf5\x05\r\x15\n\r\n\x05\x04\x1b\x02\x02\x03\x12\x04\xf5\
+    \x05\x18\x19\nA\n\x04\x04\x1b\x02\x03\x12\x04\xf8\x05\x04\x1c\x1a3\x20Co\
+    nfirms\x20that\x20the\x20command\x20completed\x20successfully.\n\n\r\n\
+    \x05\x04\x1b\x02\x03\x06\x12\x04\xf8\x05\x04\r\n\r\n\x05\x04\x1b\x02\x03\
+    \x01\x12\x04\xf8\x05\x0e\x17\n\r\n\x05\x04\x1b\x02\x03\x03\x12\x04\xf8\
+    \x05\x1a\x1b\nF\n\x04\x04\x1b\x02\x04\x12\x04\xfb\x05\x04\x16\x1a8\x20Re\
+    ports\x20that\x20command\x20execution\x20could\x20not\x20be\x20completed\
+    .\n\n\r\n\x05\x04\x1b\x02\x04\x06\x12\x04\xfb\x05\x04\n\n\r\n\x05\x04\
+    \x1b\x02\x04\x01\x12\x04\xfb\x05\x0b\x11\n\r\n\x05\x04\x1b\x02\x04\x03\
+    \x12\x04\xfb\x05\x14\x15\nH\n\x02\x04\x1c\x12\x06\x80\x06\0\x89\x06\x01\
+    \x1a:\x20Acknowledges\x20that\x20the\x20server\x20persisted\x20a\x20comm\
+    and\x20update.\n\n\x0b\n\x03\x04\x1c\x01\x12\x04\x80\x06\x08\x1e\nK\n\
+    \x04\x04\x1c\x02\0\x12\x04\x82\x06\x02>\x1a=\x20The\x20command\x20ID\x20\
+    from\x20the\x20corresponding\x20DeviceCommandRequest.\n\n\r\n\x05\x04\
+    \x1c\x02\0\x05\x12\x04\x82\x06\x02\x08\n\r\n\x05\x04\x1c\x02\0\x01\x12\
+    \x04\x82\x06\t\x13\n\r\n\x05\x04\x1c\x02\0\x03\x12\x04\x82\x06\x16\x17\n\
+    \r\n\x05\x04\x1c\x02\0\x08\x12\x04\x82\x06\x18=\n\x11\n\t\x04\x1c\x02\0\
+    \x08\xaf\x08\x0e\x16\x12\x04\x82\x06\x19<\nF\n\x04\x04\x1c\x02\x01\x12\
+    \x04\x85\x06\x02$\x1a8\x20The\x20command\x20update\x20sequence\x20number\
+    \x20that\x20was\x20persisted.\n\n\r\n\x05\x04\x1c\x02\x01\x05\x12\x04\
+    \x85\x06\x02\x08\n\r\n\x05\x04\x1c\x02\x01\x01\x12\x04\x85\x06\t\x1f\n\r\
+    \n\x05\x04\x1c\x02\x01\x03\x12\x04\x85\x06\"#\nm\n\x04\x04\x1c\x02\x02\
+    \x12\x04\x88\x06\x02\x13\x1a_\x20A\x20non-empty\x20error\x20means\x20the\
+    \x20server\x20did\x20not\x20persist\x20the\x20update\x20and\x20the\x20cl\
+    ient\x20should\x20retry\x20it.\n\n\r\n\x05\x04\x1c\x02\x02\x05\x12\x04\
+    \x88\x06\x02\x08\n\r\n\x05\x04\x1c\x02\x02\x01\x12\x04\x88\x06\t\x0e\n\r\
+    \n\x05\x04\x1c\x02\x02\x03\x12\x04\x88\x06\x11\x12\nC\n\x02\x04\x1d\x12\
+    \x06\x8c\x06\0\x93\x06\x01\x1a5\x20The\x20response\x20to\x20Sankey\x20di\
+    agram\x20path\x20upload\x20request.\n\n\x0b\n\x03\x04\x1d\x01\x12\x04\
+    \x8c\x06\x08\x20\n=\n\x04\x04\x1d\x02\0\x12\x04\x8e\x06\x02B\x1a/\x20The\
+    \x20UUID\x20corresponding\x20to\x20the\x20upload\x20request.\n\n\r\n\x05\
+    \x04\x1d\x02\0\x05\x12\x04\x8e\x06\x02\x08\n\r\n\x05\x04\x1d\x02\0\x01\
+    \x12\x04\x8e\x06\t\x14\n\r\n\x05\x04\x1d\x02\0\x03\x12\x04\x8e\x06\x17\
+    \x18\n\r\n\x05\x04\x1d\x02\0\x08\x12\x04\x8e\x06\x19A\n\x10\n\x08\x04\
+    \x1d\x02\0\x08\xaf\x08\x0e\x12\x04\x8e\x06\x1a@\ns\n\x04\x04\x1d\x02\x01\
+    \x12\x04\x92\x06\x02\x13\x1ae\x20Optional\x20error\x20message\x20which\
+    \x20indicates\x20that\x20sankey\x20upload\x20failed\x20and/or\x20some\
+    \x20metrics\x20were\n\x20dropped.\n\n\r\n\x05\x04\x1d\x02\x01\x05\x12\
+    \x04\x92\x06\x02\x08\n\r\n\x05\x04\x1d\x02\x01\x01\x12\x04\x92\x06\t\x0e\
+    \n\r\n\x05\x04\x1d\x02\x01\x03\x12\x04\x92\x06\x11\x12\n>\n\x02\x04\x1e\
+    \x12\x06\x96\x06\0\xa7\x06\x01\x1a0\x20The\x20response\x20to\x20Sankey\
+    \x20diagram\x20intent\x20request.\n\n\x0b\n\x03\x04\x1e\x01\x12\x04\x96\
+    \x06\x08\x1c\n\x0c\n\x04\x04\x1e\x02\0\x12\x04\x97\x06\x02B\n\r\n\x05\
+    \x04\x1e\x02\0\x05\x12\x04\x97\x06\x02\x08\n\r\n\x05\x04\x1e\x02\0\x01\
+    \x12\x04\x97\x06\t\x14\n\r\n\x05\x04\x1e\x02\0\x03\x12\x04\x97\x06\x17\
+    \x18\n\r\n\x05\x04\x1e\x02\0\x08\x12\x04\x97\x06\x19A\n\x10\n\x08\x04\
+    \x1e\x02\0\x08\xaf\x08\x0e\x12\x04\x97\x06\x1a@\n\x0b\n\x03\x04\x1e\t\
+    \x12\x04\x99\x06\x02\r\n\x0c\n\x04\x04\x1e\t\0\x12\x04\x99\x06\x0b\x0c\n\
+    \r\n\x05\x04\x1e\t\0\x01\x12\x04\x99\x06\x0b\x0c\n\r\n\x05\x04\x1e\t\0\
+    \x02\x12\x04\x99\x06\x0b\x0c\n\x0b\n\x03\x04\x1e\n\x12\x04\x9a\x06\x02\
+    \x16\n\x0c\n\x04\x04\x1e\n\0\x12\x04\x9a\x06\x0b\x15\n\x0c\n\x04\x04\x1e\
+    \x03\0\x12\x04\x9c\x06\x02\x1e\n\r\n\x05\x04\x1e\x03\0\x01\x12\x04\x9c\
+    \x06\n\x1b\n\x0c\n\x04\x04\x1e\x03\x01\x12\x04\x9e\x06\x02\x11\n\r\n\x05\
+    \x04\x1e\x03\x01\x01\x12\x04\x9e\x06\n\x0e\n\x0e\n\x04\x04\x1e\x08\0\x12\
+    \x06\xa0\x06\x02\xa6\x06\x03\n\r\n\x05\x04\x1e\x08\0\x01\x12\x04\xa0\x06\
+    \x08\x10\nI\n\x04\x04\x1e\x02\x01\x12\x04\xa2\x06\x04-\x1a;\x20The\x20ca\
     ndidate\x20sankey\x20path\x20should\x20be\x20uploaded\x20immediately.\n\
-    \n\r\n\x05\x04\x1b\x02\x01\x06\x12\x04\xb5\x05\x04\x15\n\r\n\x05\x04\x1b\
-    \x02\x01\x01\x12\x04\xb5\x05\x16(\n\r\n\x05\x04\x1b\x02\x01\x03\x12\x04\
-    \xb5\x05+,\n<\n\x04\x04\x1b\x02\x02\x12\x04\xb8\x05\x04\x12\x1a.\x20The\
+    \n\r\n\x05\x04\x1e\x02\x01\x06\x12\x04\xa2\x06\x04\x15\n\r\n\x05\x04\x1e\
+    \x02\x01\x01\x12\x04\xa2\x06\x16(\n\r\n\x05\x04\x1e\x02\x01\x03\x12\x04\
+    \xa2\x06+,\n<\n\x04\x04\x1e\x02\x02\x12\x04\xa5\x06\x04\x12\x1a.\x20The\
     \x20candidate\x20sankey\x20path\x20should\x20be\x20dropped.\n\n\r\n\x05\
-    \x04\x1b\x02\x02\x06\x12\x04\xb8\x05\x04\x08\n\r\n\x05\x04\x1b\x02\x02\
-    \x01\x12\x04\xb8\x05\t\r\n\r\n\x05\x04\x1b\x02\x02\x03\x12\x04\xb8\x05\
-    \x10\x11\nj\n\x02\x04\x1c\x12\x06\xbd\x05\0\xe1\x05\x01\x1a\\\x20Debug\
+    \x04\x1e\x02\x02\x06\x12\x04\xa5\x06\x04\x08\n\r\n\x05\x04\x1e\x02\x02\
+    \x01\x12\x04\xa5\x06\t\r\n\r\n\x05\x04\x1e\x02\x02\x03\x12\x04\xa5\x06\
+    \x10\x11\nj\n\x02\x04\x1f\x12\x06\xaa\x06\0\xce\x06\x01\x1a\\\x20Debug\
     \x20data\x20that\x20is\x20periodically\x20sent\x20when\x20instructed\x20\
-    via\x20the\x20DebugControlResponse\x20message.\n\n\x0b\n\x03\x04\x1c\x01\
-    \x12\x04\xbd\x05\x08\x18\n\x0e\n\x04\x04\x1c\x03\0\x12\x06\xbe\x05\x02\
-    \xcc\x05\x03\n\r\n\x05\x04\x1c\x03\0\x01\x12\x04\xbe\x05\n%\n\x10\n\x06\
-    \x04\x1c\x03\0\x08\0\x12\x06\xbf\x05\x04\xc5\x05\x05\n\x0f\n\x07\x04\x1c\
-    \x03\0\x08\0\x01\x12\x04\xbf\x05\n\x19\nQ\n\x06\x04\x1c\x03\0\x02\0\x12\
-    \x04\xc1\x05\x06\"\x1aA\x20The\x20index\x20of\x20the\x20transition\x20th\
+    via\x20the\x20DebugControlResponse\x20message.\n\n\x0b\n\x03\x04\x1f\x01\
+    \x12\x04\xaa\x06\x08\x18\n\x0e\n\x04\x04\x1f\x03\0\x12\x06\xab\x06\x02\
+    \xb9\x06\x03\n\r\n\x05\x04\x1f\x03\0\x01\x12\x04\xab\x06\n%\n\x10\n\x06\
+    \x04\x1f\x03\0\x08\0\x12\x06\xac\x06\x04\xb2\x06\x05\n\x0f\n\x07\x04\x1f\
+    \x03\0\x08\0\x01\x12\x04\xac\x06\n\x19\nQ\n\x06\x04\x1f\x03\0\x02\0\x12\
+    \x04\xae\x06\x06\"\x1aA\x20The\x20index\x20of\x20the\x20transition\x20th\
     at\x20was\x20taken\x20to\x20leave\x20this\x20state.\n\n\x0f\n\x07\x04\
-    \x1c\x03\0\x02\0\x05\x12\x04\xc1\x05\x06\x0c\n\x0f\n\x07\x04\x1c\x03\0\
-    \x02\0\x01\x12\x04\xc1\x05\r\x1d\n\x0f\n\x07\x04\x1c\x03\0\x02\0\x03\x12\
-    \x04\xc1\x05\x20!\nC\n\x06\x04\x1c\x03\0\x02\x01\x12\x04\xc4\x05\x06\"\
+    \x1f\x03\0\x02\0\x05\x12\x04\xae\x06\x06\x0c\n\x0f\n\x07\x04\x1f\x03\0\
+    \x02\0\x01\x12\x04\xae\x06\r\x1d\n\x0f\n\x07\x04\x1f\x03\0\x02\0\x03\x12\
+    \x04\xae\x06\x20!\nC\n\x06\x04\x1f\x03\0\x02\x01\x12\x04\xb1\x06\x06\"\
     \x1a3\x20Whether\x20this\x20transition\x20was\x20a\x20timeout\x20transit\
-    ion.\n\n\x0f\n\x07\x04\x1c\x03\0\x02\x01\x05\x12\x04\xc4\x05\x06\n\n\x0f\
-    \n\x07\x04\x1c\x03\0\x02\x01\x01\x12\x04\xc4\x05\x0b\x1d\n\x0f\n\x07\x04\
-    \x1c\x03\0\x02\x01\x03\x12\x04\xc4\x05\x20!\nY\n\x06\x04\x1c\x03\0\x02\
-    \x02\x12\x04\xc8\x05\x04\x20\x1aI\x20The\x20number\x20of\x20times\x20thi\
+    ion.\n\n\x0f\n\x07\x04\x1f\x03\0\x02\x01\x05\x12\x04\xb1\x06\x06\n\n\x0f\
+    \n\x07\x04\x1f\x03\0\x02\x01\x01\x12\x04\xb1\x06\x0b\x1d\n\x0f\n\x07\x04\
+    \x1f\x03\0\x02\x01\x03\x12\x04\xb1\x06\x20!\nY\n\x06\x04\x1f\x03\0\x02\
+    \x02\x12\x04\xb5\x06\x04\x20\x1aI\x20The\x20number\x20of\x20times\x20thi\
     s\x20state/transition\x20has\x20been\x20transitioned\x20out\x20of.\n\n\
-    \x0f\n\x07\x04\x1c\x03\0\x02\x02\x05\x12\x04\xc8\x05\x04\n\n\x0f\n\x07\
-    \x04\x1c\x03\0\x02\x02\x01\x12\x04\xc8\x05\x0b\x1b\n\x0f\n\x07\x04\x1c\
-    \x03\0\x02\x02\x03\x12\x04\xc8\x05\x1e\x1f\nN\n\x06\x04\x1c\x03\0\x02\
-    \x03\x12\x04\xcb\x05\x047\x1a>\x20The\x20last\x20time\x20this\x20state/t\
-    ransition\x20was\x20transitioned\x20out\x20of.\n\n\x0f\n\x07\x04\x1c\x03\
-    \0\x02\x03\x06\x12\x04\xcb\x05\x04\x1d\n\x0f\n\x07\x04\x1c\x03\0\x02\x03\
-    \x01\x12\x04\xcb\x05\x1e2\n\x0f\n\x07\x04\x1c\x03\0\x02\x03\x03\x12\x04\
-    \xcb\x0556\n\x0e\n\x04\x04\x1c\x03\x01\x12\x06\xce\x05\x02\xd0\x05\x03\n\
-    \r\n\x05\x04\x1c\x03\x01\x01\x12\x04\xce\x05\n\x20\n\x0e\n\x06\x04\x1c\
-    \x03\x01\x02\0\x12\x04\xcf\x05\x049\n\x0f\n\x07\x04\x1c\x03\x01\x02\0\
-    \x04\x12\x04\xcf\x05\x04\x0c\n\x0f\n\x07\x04\x1c\x03\x01\x02\0\x06\x12\
-    \x04\xcf\x05\r(\n\x0f\n\x07\x04\x1c\x03\x01\x02\0\x01\x12\x04\xcf\x05)4\
-    \n\x0f\n\x07\x04\x1c\x03\x01\x02\0\x03\x12\x04\xcf\x0578\n\x0e\n\x04\x04\
-    \x1c\x03\x02\x12\x06\xd2\x05\x02\xdc\x05\x03\n\r\n\x05\x04\x1c\x03\x02\
-    \x01\x12\x04\xd2\x05\n\x1b\n\x85\x01\n\x06\x04\x1c\x03\x02\x02\0\x12\x04\
-    \xd5\x05\x043\x1au\x20The\x20state\x20debug\x20data\x20for\x20each\x20st\
+    \x0f\n\x07\x04\x1f\x03\0\x02\x02\x05\x12\x04\xb5\x06\x04\n\n\x0f\n\x07\
+    \x04\x1f\x03\0\x02\x02\x01\x12\x04\xb5\x06\x0b\x1b\n\x0f\n\x07\x04\x1f\
+    \x03\0\x02\x02\x03\x12\x04\xb5\x06\x1e\x1f\nN\n\x06\x04\x1f\x03\0\x02\
+    \x03\x12\x04\xb8\x06\x047\x1a>\x20The\x20last\x20time\x20this\x20state/t\
+    ransition\x20was\x20transitioned\x20out\x20of.\n\n\x0f\n\x07\x04\x1f\x03\
+    \0\x02\x03\x06\x12\x04\xb8\x06\x04\x1d\n\x0f\n\x07\x04\x1f\x03\0\x02\x03\
+    \x01\x12\x04\xb8\x06\x1e2\n\x0f\n\x07\x04\x1f\x03\0\x02\x03\x03\x12\x04\
+    \xb8\x0656\n\x0e\n\x04\x04\x1f\x03\x01\x12\x06\xbb\x06\x02\xbd\x06\x03\n\
+    \r\n\x05\x04\x1f\x03\x01\x01\x12\x04\xbb\x06\n\x20\n\x0e\n\x06\x04\x1f\
+    \x03\x01\x02\0\x12\x04\xbc\x06\x049\n\x0f\n\x07\x04\x1f\x03\x01\x02\0\
+    \x04\x12\x04\xbc\x06\x04\x0c\n\x0f\n\x07\x04\x1f\x03\x01\x02\0\x06\x12\
+    \x04\xbc\x06\r(\n\x0f\n\x07\x04\x1f\x03\x01\x02\0\x01\x12\x04\xbc\x06)4\
+    \n\x0f\n\x07\x04\x1f\x03\x01\x02\0\x03\x12\x04\xbc\x0678\n\x0e\n\x04\x04\
+    \x1f\x03\x02\x12\x06\xbf\x06\x02\xc9\x06\x03\n\r\n\x05\x04\x1f\x03\x02\
+    \x01\x12\x04\xbf\x06\n\x1b\n\x85\x01\n\x06\x04\x1f\x03\x02\x02\0\x12\x04\
+    \xc2\x06\x043\x1au\x20The\x20state\x20debug\x20data\x20for\x20each\x20st\
     ate\x20in\x20the\x20workflow\x20that\x20has\x20been\x20transitioned.\x20\
     This\x20is\x20a\x20map\n\x20of\x20state\x20ID\x20to\x20data.\n\n\x0f\n\
-    \x07\x04\x1c\x03\x02\x02\0\x06\x12\x04\xd5\x05\x04'\n\x0f\n\x07\x04\x1c\
-    \x03\x02\x02\0\x01\x12\x04\xd5\x05(.\n\x0f\n\x07\x04\x1c\x03\x02\x02\0\
-    \x03\x12\x04\xd5\x0512\n\xa6\x02\n\x06\x04\x1c\x03\x02\x02\x01\x12\x04\
-    \xdb\x05\x040\x1a\x95\x02\x20This\x20is\x20incremented\x20every\x20time\
+    \x07\x04\x1f\x03\x02\x02\0\x06\x12\x04\xc2\x06\x04'\n\x0f\n\x07\x04\x1f\
+    \x03\x02\x02\0\x01\x12\x04\xc2\x06(.\n\x0f\n\x07\x04\x1f\x03\x02\x02\0\
+    \x03\x12\x04\xc2\x0612\n\xa6\x02\n\x06\x04\x1f\x03\x02\x02\x01\x12\x04\
+    \xc8\x06\x040\x1a\x95\x02\x20This\x20is\x20incremented\x20every\x20time\
     \x20the\x20workflow\x20starts\x20or\x20resets.\x20Effectively\x20it\x20w\
     ill\x20be\n\x20incremented\x20when\x20the\x20workflow\x20is\x20delivered\
     ,\x20and\x20every\x20time\x20it\x20is\x20reset\x20to\x20the\x20initial\
     \x20state.\n\x20We\x20reuse\x20the\x20existing\x20WorkflowTransitionDebu\
     gData\x20message\x20and\x20leave\x20the\x20transition_type\n\x20unset.\n\
-    \n\x0f\n\x07\x04\x1c\x03\x02\x02\x01\x06\x12\x04\xdb\x05\x04\x1f\n\x0f\n\
-    \x07\x04\x1c\x03\x02\x02\x01\x01\x12\x04\xdb\x05\x20+\n\x0f\n\x07\x04\
-    \x1c\x03\x02\x02\x01\x03\x12\x04\xdb\x05./\n\x9a\x01\n\x04\x04\x1c\x02\0\
-    \x12\x04\xe0\x05\x029\x1a\x8b\x01\x20If\x20instructed\x20to\x20debug\x20\
+    \n\x0f\n\x07\x04\x1f\x03\x02\x02\x01\x06\x12\x04\xc8\x06\x04\x1f\n\x0f\n\
+    \x07\x04\x1f\x03\x02\x02\x01\x01\x12\x04\xc8\x06\x20+\n\x0f\n\x07\x04\
+    \x1f\x03\x02\x02\x01\x03\x12\x04\xc8\x06./\n\x9a\x01\n\x04\x04\x1f\x02\0\
+    \x12\x04\xcd\x06\x029\x1a\x8b\x01\x20If\x20instructed\x20to\x20debug\x20\
     workflows,\x20this\x20will\x20contain\x20the\x20debug\x20data\x20for\x20\
     each\x20workflow\x20being\n\x20debugged.\x20This\x20is\x20map\x20of\x20w\
-    orkflow\x20ID\x20to\x20data.\n\n\r\n\x05\x04\x1c\x02\0\x06\x12\x04\xe0\
-    \x05\x02\x20\n\r\n\x05\x04\x1c\x02\0\x01\x12\x04\xe0\x05!4\n\r\n\x05\x04\
-    \x1c\x02\0\x03\x12\x04\xe0\x0578\n\n\n\x02\x04\x1d\x12\x04\xe3\x05\0\x1e\
-    \n\x0b\n\x03\x04\x1d\x01\x12\x04\xe3\x05\x08\x1b\nB\n\x02\x04\x1e\x12\
-    \x06\xe6\x05\0\xfc\x05\x01\x1a4\x20A\x20multiplexed\x20response\x20sent\
-    \x20over\x20the\x20bitdrift\x20API.\n\n\x0b\n\x03\x04\x1e\x01\x12\x04\
-    \xe6\x05\x08\x13\n\x0e\n\x04\x04\x1e\x08\0\x12\x06\xe7\x05\x02\xf8\x05\
-    \x03\n\r\n\x05\x04\x1e\x08\0\x01\x12\x04\xe7\x05\x08\x15\n\r\n\x05\x04\
-    \x1e\x08\0\x02\x12\x04\xe8\x05\x04&\n\x0f\n\x07\x04\x1e\x08\0\x02\xaf\
-    \x08\x12\x04\xe8\x05\x04&\n\x0c\n\x04\x04\x1e\x02\0\x12\x04\xea\x05\x04$\
-    \n\r\n\x05\x04\x1e\x02\0\x06\x12\x04\xea\x05\x04\x15\n\r\n\x05\x04\x1e\
-    \x02\0\x01\x12\x04\xea\x05\x16\x1f\n\r\n\x05\x04\x1e\x02\0\x03\x12\x04\
-    \xea\x05\"#\n\x0c\n\x04\x04\x1e\x02\x01\x12\x04\xeb\x05\x04%\n\r\n\x05\
-    \x04\x1e\x02\x01\x06\x12\x04\xeb\x05\x04\x15\n\r\n\x05\x04\x1e\x02\x01\
-    \x01\x12\x04\xeb\x05\x16\x20\n\r\n\x05\x04\x1e\x02\x01\x03\x12\x04\xeb\
-    \x05#$\n\x0c\n\x04\x04\x1e\x02\x02\x12\x04\xec\x05\x042\n\r\n\x05\x04\
-    \x1e\x02\x02\x06\x12\x04\xec\x05\x04\x1b\n\r\n\x05\x04\x1e\x02\x02\x01\
-    \x12\x04\xec\x05\x1c-\n\r\n\x05\x04\x1e\x02\x02\x03\x12\x04\xec\x0501\n\
-    \x0c\n\x04\x04\x1e\x02\x03\x12\x04\xed\x05\x04)\n\r\n\x05\x04\x1e\x02\
-    \x03\x06\x12\x04\xed\x05\x04\x17\n\r\n\x05\x04\x1e\x02\x03\x01\x12\x04\
-    \xed\x05\x18$\n\r\n\x05\x04\x1e\x02\x03\x03\x12\x04\xed\x05'(\n\x0c\n\
-    \x04\x04\x1e\x02\x04\x12\x04\xee\x05\x04\x1a\n\r\n\x05\x04\x1e\x02\x04\
-    \x06\x12\x04\xee\x05\x04\x10\n\r\n\x05\x04\x1e\x02\x04\x01\x12\x04\xee\
-    \x05\x11\x15\n\r\n\x05\x04\x1e\x02\x04\x03\x12\x04\xee\x05\x18\x19\n\x0c\
-    \n\x04\x04\x1e\x02\x05\x12\x04\xef\x05\x041\n\r\n\x05\x04\x1e\x02\x05\
-    \x06\x12\x04\xef\x05\x04\x17\n\r\n\x05\x04\x1e\x02\x05\x01\x12\x04\xef\
-    \x05\x18,\n\r\n\x05\x04\x1e\x02\x05\x03\x12\x04\xef\x05/0\n\x0c\n\x04\
-    \x04\x1e\x02\x06\x12\x04\xf0\x05\x04%\n\r\n\x05\x04\x1e\x02\x06\x06\x12\
-    \x04\xf0\x05\x04\x11\n\r\n\x05\x04\x1e\x02\x06\x01\x12\x04\xf0\x05\x12\
-    \x20\n\r\n\x05\x04\x1e\x02\x06\x03\x12\x04\xf0\x05#$\n\x0c\n\x04\x04\x1e\
-    \x02\x07\x12\x04\xf1\x05\x04%\n\r\n\x05\x04\x1e\x02\x07\x06\x12\x04\xf1\
-    \x05\x04\x11\n\r\n\x05\x04\x1e\x02\x07\x01\x12\x04\xf1\x05\x12\x20\n\r\n\
-    \x05\x04\x1e\x02\x07\x03\x12\x04\xf1\x05#$\n\x0c\n\x04\x04\x1e\x02\x08\
-    \x12\x04\xf2\x05\x04#\n\r\n\x05\x04\x1e\x02\x08\x06\x12\x04\xf2\x05\x04\
-    \x10\n\r\n\x05\x04\x1e\x02\x08\x01\x12\x04\xf2\x05\x11\x1e\n\r\n\x05\x04\
-    \x1e\x02\x08\x03\x12\x04\xf2\x05!\"\n\x0c\n\x04\x04\x1e\x02\t\x12\x04\
-    \xf3\x05\x048\n\r\n\x05\x04\x1e\x02\t\x06\x12\x04\xf3\x05\x04\x1c\n\r\n\
-    \x05\x04\x1e\x02\t\x01\x12\x04\xf3\x05\x1d2\n\r\n\x05\x04\x1e\x02\t\x03\
-    \x12\x04\xf3\x0557\n\x0c\n\x04\x04\x1e\x02\n\x12\x04\xf4\x05\x045\n\r\n\
-    \x05\x04\x1e\x02\n\x06\x12\x04\xf4\x05\x04\x18\n\r\n\x05\x04\x1e\x02\n\
-    \x01\x12\x04\xf4\x05\x19/\n\r\n\x05\x04\x1e\x02\n\x03\x12\x04\xf4\x0524\
-    \n\x0c\n\x04\x04\x1e\x02\x0b\x12\x04\xf5\x05\x040\n\r\n\x05\x04\x1e\x02\
-    \x0b\x06\x12\x04\xf5\x05\x04\x1a\n\r\n\x05\x04\x1e\x02\x0b\x01\x12\x04\
-    \xf5\x05\x1b*\n\r\n\x05\x04\x1e\x02\x0b\x03\x12\x04\xf5\x05-/\n\x0c\n\
-    \x04\x04\x1e\x02\x0c\x12\x04\xf6\x05\x046\n\r\n\x05\x04\x1e\x02\x0c\x06\
-    \x12\x04\xf6\x05\x04\x20\n\r\n\x05\x04\x1e\x02\x0c\x01\x12\x04\xf6\x05!0\
-    \n\r\n\x05\x04\x1e\x02\x0c\x03\x12\x04\xf6\x0535\n\x0c\n\x04\x04\x1e\x02\
-    \r\x12\x04\xf7\x05\x04*\n\r\n\x05\x04\x1e\x02\r\x06\x12\x04\xf7\x05\x04\
-    \x17\n\r\n\x05\x04\x1e\x02\r\x01\x12\x04\xf7\x05\x18$\n\r\n\x05\x04\x1e\
-    \x02\r\x03\x12\x04\xf7\x05')\n\x0b\n\x03\x04\x1e\t\x12\x04\xfa\x05\x02\
-    \x0e\n\x0c\n\x04\x04\x1e\t\0\x12\x04\xfa\x05\x0b\r\n\r\n\x05\x04\x1e\t\0\
-    \x01\x12\x04\xfa\x05\x0b\r\n\r\n\x05\x04\x1e\t\0\x02\x12\x04\xfa\x05\x0b\
-    \r\n\x0b\n\x03\x04\x1e\t\x12\x04\xfb\x05\x02\x0e\n\x0c\n\x04\x04\x1e\t\
-    \x01\x12\x04\xfb\x05\x0b\r\n\r\n\x05\x04\x1e\t\x01\x01\x12\x04\xfb\x05\
-    \x0b\r\n\r\n\x05\x04\x1e\t\x01\x02\x12\x04\xfb\x05\x0b\r\n\x0c\n\x02\x06\
-    \0\x12\x06\xfe\x05\0\x80\x06\x01\n\x0b\n\x03\x06\0\x01\x12\x04\xfe\x05\
-    \x08\x12\n\x0c\n\x04\x06\0\x02\0\x12\x04\xff\x05\x02:\n\r\n\x05\x06\0\
-    \x02\0\x01\x12\x04\xff\x05\x06\t\n\r\n\x05\x06\0\x02\0\x05\x12\x04\xff\
-    \x05\n\x10\n\r\n\x05\x06\0\x02\0\x02\x12\x04\xff\x05\x11\x1b\n\r\n\x05\
-    \x06\0\x02\0\x06\x12\x04\xff\x05&,\n\r\n\x05\x06\0\x02\0\x03\x12\x04\xff\
-    \x05-8b\x06proto3\
+    orkflow\x20ID\x20to\x20data.\n\n\r\n\x05\x04\x1f\x02\0\x06\x12\x04\xcd\
+    \x06\x02\x20\n\r\n\x05\x04\x1f\x02\0\x01\x12\x04\xcd\x06!4\n\r\n\x05\x04\
+    \x1f\x02\0\x03\x12\x04\xcd\x0678\n\n\n\x02\x04\x20\x12\x04\xd0\x06\0\x1e\
+    \n\x0b\n\x03\x04\x20\x01\x12\x04\xd0\x06\x08\x1b\nB\n\x02\x04!\x12\x06\
+    \xd3\x06\0\xea\x06\x01\x1a4\x20A\x20multiplexed\x20response\x20sent\x20o\
+    ver\x20the\x20bitdrift\x20API.\n\n\x0b\n\x03\x04!\x01\x12\x04\xd3\x06\
+    \x08\x13\n\x0e\n\x04\x04!\x08\0\x12\x06\xd4\x06\x02\xe6\x06\x03\n\r\n\
+    \x05\x04!\x08\0\x01\x12\x04\xd4\x06\x08\x15\n\r\n\x05\x04!\x08\0\x02\x12\
+    \x04\xd5\x06\x04&\n\x0f\n\x07\x04!\x08\0\x02\xaf\x08\x12\x04\xd5\x06\x04\
+    &\n\x0c\n\x04\x04!\x02\0\x12\x04\xd7\x06\x04$\n\r\n\x05\x04!\x02\0\x06\
+    \x12\x04\xd7\x06\x04\x15\n\r\n\x05\x04!\x02\0\x01\x12\x04\xd7\x06\x16\
+    \x1f\n\r\n\x05\x04!\x02\0\x03\x12\x04\xd7\x06\"#\n\x0c\n\x04\x04!\x02\
+    \x01\x12\x04\xd8\x06\x04%\n\r\n\x05\x04!\x02\x01\x06\x12\x04\xd8\x06\x04\
+    \x15\n\r\n\x05\x04!\x02\x01\x01\x12\x04\xd8\x06\x16\x20\n\r\n\x05\x04!\
+    \x02\x01\x03\x12\x04\xd8\x06#$\n\x0c\n\x04\x04!\x02\x02\x12\x04\xd9\x06\
+    \x042\n\r\n\x05\x04!\x02\x02\x06\x12\x04\xd9\x06\x04\x1b\n\r\n\x05\x04!\
+    \x02\x02\x01\x12\x04\xd9\x06\x1c-\n\r\n\x05\x04!\x02\x02\x03\x12\x04\xd9\
+    \x0601\n\x0c\n\x04\x04!\x02\x03\x12\x04\xda\x06\x04)\n\r\n\x05\x04!\x02\
+    \x03\x06\x12\x04\xda\x06\x04\x17\n\r\n\x05\x04!\x02\x03\x01\x12\x04\xda\
+    \x06\x18$\n\r\n\x05\x04!\x02\x03\x03\x12\x04\xda\x06'(\n\x0c\n\x04\x04!\
+    \x02\x04\x12\x04\xdb\x06\x04\x1a\n\r\n\x05\x04!\x02\x04\x06\x12\x04\xdb\
+    \x06\x04\x10\n\r\n\x05\x04!\x02\x04\x01\x12\x04\xdb\x06\x11\x15\n\r\n\
+    \x05\x04!\x02\x04\x03\x12\x04\xdb\x06\x18\x19\n\x0c\n\x04\x04!\x02\x05\
+    \x12\x04\xdc\x06\x041\n\r\n\x05\x04!\x02\x05\x06\x12\x04\xdc\x06\x04\x17\
+    \n\r\n\x05\x04!\x02\x05\x01\x12\x04\xdc\x06\x18,\n\r\n\x05\x04!\x02\x05\
+    \x03\x12\x04\xdc\x06/0\n\x0c\n\x04\x04!\x02\x06\x12\x04\xdd\x06\x04%\n\r\
+    \n\x05\x04!\x02\x06\x06\x12\x04\xdd\x06\x04\x11\n\r\n\x05\x04!\x02\x06\
+    \x01\x12\x04\xdd\x06\x12\x20\n\r\n\x05\x04!\x02\x06\x03\x12\x04\xdd\x06#\
+    $\n\x0c\n\x04\x04!\x02\x07\x12\x04\xde\x06\x04%\n\r\n\x05\x04!\x02\x07\
+    \x06\x12\x04\xde\x06\x04\x11\n\r\n\x05\x04!\x02\x07\x01\x12\x04\xde\x06\
+    \x12\x20\n\r\n\x05\x04!\x02\x07\x03\x12\x04\xde\x06#$\n\x0c\n\x04\x04!\
+    \x02\x08\x12\x04\xdf\x06\x04#\n\r\n\x05\x04!\x02\x08\x06\x12\x04\xdf\x06\
+    \x04\x10\n\r\n\x05\x04!\x02\x08\x01\x12\x04\xdf\x06\x11\x1e\n\r\n\x05\
+    \x04!\x02\x08\x03\x12\x04\xdf\x06!\"\n\x0c\n\x04\x04!\x02\t\x12\x04\xe0\
+    \x06\x048\n\r\n\x05\x04!\x02\t\x06\x12\x04\xe0\x06\x04\x1c\n\r\n\x05\x04\
+    !\x02\t\x01\x12\x04\xe0\x06\x1d2\n\r\n\x05\x04!\x02\t\x03\x12\x04\xe0\
+    \x0657\n\x0c\n\x04\x04!\x02\n\x12\x04\xe1\x06\x045\n\r\n\x05\x04!\x02\n\
+    \x06\x12\x04\xe1\x06\x04\x18\n\r\n\x05\x04!\x02\n\x01\x12\x04\xe1\x06\
+    \x19/\n\r\n\x05\x04!\x02\n\x03\x12\x04\xe1\x0624\n\x0c\n\x04\x04!\x02\
+    \x0b\x12\x04\xe2\x06\x040\n\r\n\x05\x04!\x02\x0b\x06\x12\x04\xe2\x06\x04\
+    \x1a\n\r\n\x05\x04!\x02\x0b\x01\x12\x04\xe2\x06\x1b*\n\r\n\x05\x04!\x02\
+    \x0b\x03\x12\x04\xe2\x06-/\n\x0c\n\x04\x04!\x02\x0c\x12\x04\xe3\x06\x046\
+    \n\r\n\x05\x04!\x02\x0c\x06\x12\x04\xe3\x06\x04\x20\n\r\n\x05\x04!\x02\
+    \x0c\x01\x12\x04\xe3\x06!0\n\r\n\x05\x04!\x02\x0c\x03\x12\x04\xe3\x0635\
+    \n\x0c\n\x04\x04!\x02\r\x12\x04\xe4\x06\x04*\n\r\n\x05\x04!\x02\r\x06\
+    \x12\x04\xe4\x06\x04\x17\n\r\n\x05\x04!\x02\r\x01\x12\x04\xe4\x06\x18$\n\
+    \r\n\x05\x04!\x02\r\x03\x12\x04\xe4\x06')\n\x0c\n\x04\x04!\x02\x0e\x12\
+    \x04\xe5\x06\x04:\n\r\n\x05\x04!\x02\x0e\x06\x12\x04\xe5\x06\x04\x1a\n\r\
+    \n\x05\x04!\x02\x0e\x01\x12\x04\xe5\x06\x1b4\n\r\n\x05\x04!\x02\x0e\x03\
+    \x12\x04\xe5\x0679\n\x0b\n\x03\x04!\t\x12\x04\xe8\x06\x02\x0e\n\x0c\n\
+    \x04\x04!\t\0\x12\x04\xe8\x06\x0b\r\n\r\n\x05\x04!\t\0\x01\x12\x04\xe8\
+    \x06\x0b\r\n\r\n\x05\x04!\t\0\x02\x12\x04\xe8\x06\x0b\r\n\x0b\n\x03\x04!\
+    \t\x12\x04\xe9\x06\x02\x0e\n\x0c\n\x04\x04!\t\x01\x12\x04\xe9\x06\x0b\r\
+    \n\r\n\x05\x04!\t\x01\x01\x12\x04\xe9\x06\x0b\r\n\r\n\x05\x04!\t\x01\x02\
+    \x12\x04\xe9\x06\x0b\r\n\x0c\n\x02\x06\0\x12\x06\xec\x06\0\xee\x06\x01\n\
+    \x0b\n\x03\x06\0\x01\x12\x04\xec\x06\x08\x12\n\x0c\n\x04\x06\0\x02\0\x12\
+    \x04\xed\x06\x02:\n\r\n\x05\x06\0\x02\0\x01\x12\x04\xed\x06\x06\t\n\r\n\
+    \x05\x06\0\x02\0\x05\x12\x04\xed\x06\n\x10\n\r\n\x05\x06\0\x02\0\x02\x12\
+    \x04\xed\x06\x11\x1b\n\r\n\x05\x06\0\x02\0\x06\x12\x04\xed\x06&,\n\r\n\
+    \x05\x06\0\x02\0\x03\x12\x04\xed\x06-8b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -13037,7 +15226,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(55);
+            let mut messages = ::std::vec::Vec::with_capacity(65);
             messages.push(ClientKillFile::generated_message_descriptor_data());
             messages.push(ClientStateUpdate::generated_message_descriptor_data());
             messages.push(StateUpdateRequest::generated_message_descriptor_data());
@@ -13064,6 +15253,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(RuntimeUpdate::generated_message_descriptor_data());
             messages.push(ErrorShutdown::generated_message_descriptor_data());
             messages.push(FlushBuffers::generated_message_descriptor_data());
+            messages.push(DeviceCommandResultContext::generated_message_descriptor_data());
+            messages.push(DeviceCommandUpdate::generated_message_descriptor_data());
+            messages.push(DeviceCommandUpdateAck::generated_message_descriptor_data());
             messages.push(SankeyPathUploadResponse::generated_message_descriptor_data());
             messages.push(SankeyIntentResponse::generated_message_descriptor_data());
             messages.push(DebugDataRequest::generated_message_descriptor_data());
@@ -13088,6 +15280,13 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(stats_upload_request::Snapshot::generated_message_descriptor_data());
             messages.push(stats_upload_request::snapshot::Aggregated::generated_message_descriptor_data());
             messages.push(configuration_update::StateOfTheWorld::generated_message_descriptor_data());
+            messages.push(device_command_update::Accepted::generated_message_descriptor_data());
+            messages.push(device_command_update::Completed::generated_message_descriptor_data());
+            messages.push(device_command_update::Failed::generated_message_descriptor_data());
+            messages.push(device_command_update::completed::Attachment::generated_message_descriptor_data());
+            messages.push(device_command_update::completed::attachment::None::generated_message_descriptor_data());
+            messages.push(device_command_update::completed::attachment::Artifact::generated_message_descriptor_data());
+            messages.push(device_command_update::completed::attachment::LogBatches::generated_message_descriptor_data());
             messages.push(sankey_intent_response::UploadImmediately::generated_message_descriptor_data());
             messages.push(sankey_intent_response::Drop::generated_message_descriptor_data());
             messages.push(debug_data_request::WorkflowTransitionDebugData::generated_message_descriptor_data());

@@ -15,6 +15,13 @@ message DurationGte {
   google.protobuf.Duration one_second = 2 [(validate.rules).duration.gte = {seconds: 1}];
 }
 
+message DurationRequired {
+  google.protobuf.Duration field = 1 [(validate.rules).duration = {
+    required: true
+    gt: {}
+  }];
+}
+
 message Timestamp {
   google.protobuf.Timestamp field = 1 [(validate.rules).timestamp.required = true];
 }

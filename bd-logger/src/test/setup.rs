@@ -49,7 +49,6 @@ use bd_time::TimeProvider;
 use bd_time::test::TestTicker;
 use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
 use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc::{Receiver as StdReceiver, Sender as StdSender, channel as std_channel};
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
@@ -69,12 +68,7 @@ macro_rules! wait_for {
   };
 }
 
-struct MockSessionReplayTarget {
-  capture_screen_count: Arc<AtomicUsize>,
-  capture_screenshot_count: Arc<AtomicUsize>,
-  capture_screen_tx: StdSender<()>,
-  capture_screenshot_tx: StdSender<()>,
-}
+struct MockSessionReplayTarget;
 
 //
 // SetupTestHooks
@@ -111,19 +105,9 @@ impl TestHooks for SetupTestHooks {
 }
 
 impl bd_session_replay::Target for MockSessionReplayTarget {
-  fn capture_screen(&self) {
-    self
-      .capture_screen_count
-      .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let _ = self.capture_screen_tx.send(());
-  }
+  fn capture_screen(&self) {}
 
-  fn capture_screenshot(&self) {
-    self
-      .capture_screenshot_count
-      .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let _ = self.capture_screenshot_tx.send(());
-  }
+  fn capture_screenshot(&self) {}
 }
 
 //
@@ -180,8 +164,6 @@ pub struct Setup {
   pub server: Box<bd_test_helpers::test_api_server::ServerHandle>,
   pub current_api_stream: Option<StreamHandle>,
 
-  capture_screen_rx: StdReceiver<()>,
-  capture_screenshot_rx: StdReceiver<()>,
   startup_gate_ready_rx: StdReceiver<()>,
   remote_streaming_action_processed_rx: StdReceiver<()>,
   remote_streaming_trigger_upload_completed_rx: StdReceiver<()>,
@@ -250,8 +232,6 @@ impl Setup {
     };
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
-    let (capture_screen_tx, capture_screen_rx) = std::sync::mpsc::channel();
-    let (capture_screenshot_tx, capture_screenshot_rx) = std::sync::mpsc::channel();
     let (startup_gate_ready_tx, startup_gate_ready_rx) = std_channel();
     let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
       std_channel();
@@ -262,12 +242,7 @@ impl Setup {
     let (startup_replay_gate_opened_tx, startup_replay_gate_opened_rx) = std_channel();
     let (workflow_event_processed_tx, workflow_event_processed_rx) =
       std::sync::mpsc::sync_channel(1);
-    let session_replay_target = Box::new(MockSessionReplayTarget {
-      capture_screen_count: Arc::default(),
-      capture_screenshot_count: Arc::default(),
-      capture_screen_tx,
-      capture_screenshot_tx,
-    });
+    let session_replay_target = Box::new(MockSessionReplayTarget);
 
     let (flush_tick_tx, flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
@@ -320,8 +295,6 @@ impl Setup {
       sdk_directory: options.sdk_directory,
       server,
       current_api_stream,
-      capture_screen_rx,
-      capture_screenshot_rx,
       startup_gate_ready_rx,
       remote_streaming_action_processed_rx,
       remote_streaming_trigger_upload_completed_rx,
@@ -336,20 +309,6 @@ impl Setup {
 
   pub fn run_network(port: u16, shutdown: ComponentShutdown) -> bd_hyper_network::Handle {
     bd_hyper_network::HyperNetwork::run_on_thread(&format!("http://localhost:{port}"), shutdown)
-  }
-
-  pub fn wait_for_capture_screen(&self) {
-    self
-      .capture_screen_rx
-      .recv_timeout(std::time::Duration::from_secs(5))
-      .expect("timed out waiting for capture-screen callback");
-  }
-
-  pub fn wait_for_capture_screenshot(&self) {
-    self
-      .capture_screenshot_rx
-      .recv_timeout(std::time::Duration::from_secs(5))
-      .expect("timed out waiting for capture-screenshot callback");
   }
 
   pub fn wait_for_startup_gate_ready(&self) {
@@ -385,10 +344,6 @@ impl Setup {
       .workflow_event_processed_rx
       .recv_timeout(std::time::Duration::from_secs(5))
       .expect("timed out waiting for workflow event processing");
-  }
-
-  pub fn assert_no_capture_screenshot(&self) {
-    assert!(self.capture_screenshot_rx.try_recv().is_err());
   }
 
   pub fn restart_stream(&mut self, expect_sleep_mode: bool) {

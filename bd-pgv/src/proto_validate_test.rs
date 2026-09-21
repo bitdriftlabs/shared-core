@@ -13,7 +13,14 @@ use super::{
 };
 use crate::error;
 use crate::generated::test_protos;
-use crate::generated::test_protos::test_validate::{Duration, DurationGte, Int32, Int64, Uint64};
+use crate::generated::test_protos::test_validate::{
+  Duration,
+  DurationGte,
+  DurationRequired,
+  Int32,
+  Int64,
+  Uint64,
+};
 use bd_time::ToProtoDuration;
 use protobuf::well_known_types::duration::Duration as ProtoDuration;
 use protobuf::well_known_types::timestamp::Timestamp as ProtoTimestamp;
@@ -96,6 +103,34 @@ fn duration_gte() {
     Err(error::Error::ProtoValidation(message)) if message ==
     "duration 'proto_validate.test.DurationGte.one_second' in message \
     'proto_validate.test.DurationGte' requires >= 1s");
+}
+
+#[test]
+fn duration_required() {
+  let message = DurationRequired::default();
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.DurationRequired.field' in message \
+    'proto_validate.test.DurationRequired' is required"
+  );
+
+  let message = DurationRequired {
+    field: Some(ProtoDuration::default()).into(),
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "duration 'proto_validate.test.DurationRequired.field' in message \
+    'proto_validate.test.DurationRequired' requires > 0ns"
+  );
+
+  let message = DurationRequired {
+    field: 1.seconds().into_proto(),
+    ..Default::default()
+  };
+  assert!(validate(&message).is_ok());
 }
 
 #[test]

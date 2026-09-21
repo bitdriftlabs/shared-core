@@ -4,16 +4,9 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#[path = "src/proto_codegen.rs"]
+#[path = "../proto_codegen.rs"]
 mod proto_codegen;
 
 fn main() {
-  if std::env::var("SKIP_PROTO_GEN").is_ok() {
-    return;
-  }
-
-  println!("cargo:rerun-if-changed=../api/");
-  println!("cargo:rerun-if-changed=src/test_protos/");
-
   proto_codegen::generate_protos();
 }

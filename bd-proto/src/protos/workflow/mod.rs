@@ -8,6 +8,7 @@
 source_info_gated_mod! {
   save_field => "with_source/save_field.rs",
   workflow => "with_source/workflow.rs",
+  workflow_command => "with_source/workflow_command.rs",
 }
 
 use super::log_matcher::log_matcher;

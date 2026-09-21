@@ -270,7 +270,6 @@ impl_numeric_helper!(FloatRules, f32, "float");
 impl_numeric_helper!(DoubleRules, f64, "double");
 
 fn verify_duration_rules_supported(rules: &DurationRules) -> error::Result<()> {
-  not_implemented(rules.has_required(), "duration required")?;
   not_implemented(rules.const_.is_some(), "duration const")?;
   not_implemented(rules.lt.is_some(), "duration lt")?;
   not_implemented(rules.lte.is_some(), "duration lte")?;
@@ -284,10 +283,22 @@ fn validate_duration(
   rules: &DurationRules,
   field_descriptor: &FieldDescriptor,
   message_descriptor: &MessageDescriptor,
-  duration: &ProtoDuration,
+  duration: Option<&ProtoDuration>,
   formatter: &ErrorNameFormatter,
 ) -> error::Result<()> {
+  if rules.required() && duration.is_none() {
+    return Err(error::Error::ProtoValidation(format!(
+      "field '{}' in message '{}' is required",
+      formatter.field_name(field_descriptor, message_descriptor),
+      formatter.message_name(message_descriptor)
+    )));
+  }
+
   verify_duration_rules_supported(rules)?;
+
+  let Some(duration) = duration else {
+    return Ok(());
+  };
 
   let duration: Duration = duration.clone().try_into().map_err(|_| {
     error::Error::ProtoValidation("negative proto duration not supported".to_string())
@@ -529,7 +540,18 @@ fn validate_value(
           rules.duration(),
           field_descriptor,
           message_descriptor,
-          duration.downcast_ref().unwrap(),
+          Some(duration.downcast_ref().unwrap()),
+          formatter,
+        )?;
+        return Ok(false);
+      }
+
+      if rules.has_duration() && value.is_none() {
+        validate_duration(
+          rules.duration(),
+          field_descriptor,
+          message_descriptor,
+          None,
           formatter,
         )?;
         return Ok(false);

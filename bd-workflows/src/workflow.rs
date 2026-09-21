@@ -1855,9 +1855,6 @@ impl Traversal {
             path: SankeyPath::new(action.id(), sankey_state),
           }));
         },
-        Action::TakeScreenshot => {
-          triggered_actions.push(TriggeredAction::TakeScreenshot);
-        },
         Action::StartTracing => {
           triggered_actions.push(TriggeredAction::StartTracing);
         },
@@ -1890,7 +1887,6 @@ pub(crate) enum TriggeredAction<'a> {
   EmitMetric(&'a ActionEmitMetric),
   EmitMetricParallelRun(&'a ActionEmitMetric),
   SankeyDiagram(TriggeredActionEmitSankey<'a>),
-  TakeScreenshot,
   StartTracing,
 }
 
