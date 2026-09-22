@@ -1,8 +1,22 @@
-load("//tools/lint:linters.bzl", "rust_binary")
 load("//tools/rust:feature_variants.bzl", "all_crate_deps_with_overrides")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
+load(":fuzz.bzl", "fuzz_binary")
 
 package(default_visibility = ["//visibility:public"])
+
+config_setting(
+    name = "nightly_fuzz",
+    flag_values = {
+        "@rules_rust//rust/toolchain/channel": "nightly",
+    },
+)
+
+FUZZ_RUNTIME_DATA = select({
+    ":nightly_fuzz": [
+        "@@rules_rs++toolchains+rustc_macos_aarch64_nightly_2026_09_15//:rustc_lib",
+    ],
+    "//conditions:default": [],
+})
 
 FUZZ_DEPS = all_crate_deps_with_overrides(
     dependency_overrides = {
@@ -31,8 +45,9 @@ rust_library_with_test(
     deps = FUZZ_DEPS,
 )
 
-rust_binary(
+fuzz_binary(
     name = "bonjson",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/bonjson.rs"],
     crate_features = ["default"],
     crate_name = "bonjson",
@@ -42,8 +57,9 @@ rust_binary(
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
-rust_binary(
+fuzz_binary(
     name = "buffer_corruption_fuzz_test",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/buffer_corruption_fuzz_test.rs"],
     crate_features = ["default"],
     crate_name = "buffer_corruption_fuzz_test",
@@ -53,8 +69,9 @@ rust_binary(
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
-rust_binary(
+fuzz_binary(
     name = "mpsc_buffer_fuzz_test",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/mpsc_buffer_fuzz_test.rs"],
     crate_features = ["default"],
     crate_name = "mpsc_buffer_fuzz_test",
@@ -64,8 +81,9 @@ rust_binary(
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
-rust_binary(
+fuzz_binary(
     name = "spsc_buffer_fuzz_test",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/spsc_buffer_fuzz_test.rs"],
     crate_features = ["default"],
     crate_name = "spsc_buffer_fuzz_test",
@@ -75,8 +93,9 @@ rust_binary(
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
-rust_binary(
+fuzz_binary(
     name = "versioned_kv_journal",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/versioned_kv_journal.rs"],
     crate_features = ["default"],
     crate_name = "versioned_kv_journal",
@@ -86,8 +105,9 @@ rust_binary(
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
-rust_binary(
+fuzz_binary(
     name = "workflow_state",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/workflow_state.rs"],
     crate_features = ["default"],
     crate_name = "workflow_state",

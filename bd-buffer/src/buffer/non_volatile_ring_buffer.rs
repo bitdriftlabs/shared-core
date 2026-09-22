@@ -639,12 +639,15 @@ pub struct FileHeader {
   committed_write_start: Option<u32>,
   last_write_end_before_wrap: Option<u32>,
   next_read_start: Option<u32>,
+  unread_payload_bytes: u64,
+  unread_record_count: u64,
   crc32: u32,
 }
 
 // Version 1: Original version.
 // Version 2: Switched to protobuf encoding for records.
-const FILE_HEADER_CURRENT_VERSION: u32 = 2;
+// Version 3: Persist unread raw payload-byte and record-count accounting.
+const FILE_HEADER_CURRENT_VERSION: u32 = 3;
 
 //
 // ConsumerType
@@ -666,14 +669,67 @@ struct ProducerData {
 struct ExtraLockedData {
   producer: Option<ProducerData>,
   consumer: Option<ConsumerType>,
+  unread_payload_bytes: SendSyncNonNull<u64>,
+  unread_record_count: SendSyncNonNull<u64>,
   crc32: SendSyncNonNull<u32>,
   block_when_reserving_into_concurrent_read: BlockWhenReservingIntoConcurrentRead,
   per_record_crc32_check: PerRecordCrc32Check,
 }
 
 impl ExtraLockedData {
+  fn record_committed(&mut self, payload_bytes: u32) -> Result<()> {
+    let current_payload_bytes = unsafe {
+      // Safety: The caller holds the common ring buffer lock.
+      *self.unread_payload_bytes.0.as_ref()
+    };
+    let current_record_count = unsafe {
+      // Safety: The caller holds the common ring buffer lock.
+      *self.unread_record_count.0.as_ref()
+    };
+    let next_payload_bytes = current_payload_bytes
+      .checked_add(u64::from(payload_bytes))
+      .ok_or(InvariantError::Invariant)?;
+    let next_record_count = current_record_count
+      .checked_add(1)
+      .ok_or(InvariantError::Invariant)?;
+    unsafe {
+      // Safety: The caller holds the common ring buffer lock.
+      *self.unread_payload_bytes.0.as_mut() = next_payload_bytes;
+      *self.unread_record_count.0.as_mut() = next_record_count;
+    }
+    Ok(())
+  }
+
+  fn record_retired(&mut self, payload_bytes: u32) -> Result<()> {
+    let current_payload_bytes = unsafe {
+      // Safety: The caller holds the common ring buffer lock.
+      *self.unread_payload_bytes.0.as_ref()
+    };
+    let current_record_count = unsafe {
+      // Safety: The caller holds the common ring buffer lock.
+      *self.unread_record_count.0.as_ref()
+    };
+    let next_payload_bytes = current_payload_bytes
+      .checked_sub(u64::from(payload_bytes))
+      .ok_or(InvariantError::Invariant)?;
+    let next_record_count = current_record_count
+      .checked_sub(1)
+      .ok_or(InvariantError::Invariant)?;
+    unsafe {
+      // Safety: The caller holds the common ring buffer lock.
+      *self.unread_payload_bytes.0.as_mut() = next_payload_bytes;
+      *self.unread_record_count.0.as_mut() = next_record_count;
+    }
+    Ok(())
+  }
+
   fn on_total_data_loss(&mut self) {
-    write_header_crc32_worker(self, 0, None, None, None);
+    unsafe {
+      // Safety: Total data loss runs under the common ring buffer lock.
+      *self.unread_payload_bytes.0.as_mut() = 0;
+      *self.unread_record_count.0.as_mut() = 0;
+    }
+    write_header_crc32_worker(self, 0, None, None, None, 0, 0);
   }
 }
 
@@ -742,14 +798,16 @@ impl RingBufferImpl {
     // manual alignment. Additionally, although extremely unlikely, if a compiler change causes
     // these offsets to fail, either manual alignment changes will be required to match these or the
     // file version will need to be bumped.
-    const_assert_eq!(std::mem::size_of::<FileHeader>(), 40);
+    const_assert_eq!(std::mem::size_of::<FileHeader>(), 64);
     const_assert_eq!(offset_of!(FileHeader, version), 0);
     const_assert_eq!(offset_of!(FileHeader, size), 4);
     const_assert_eq!(offset_of!(FileHeader, next_write_start), 8);
     const_assert_eq!(offset_of!(FileHeader, committed_write_start), 12);
     const_assert_eq!(offset_of!(FileHeader, last_write_end_before_wrap), 20);
     const_assert_eq!(offset_of!(FileHeader, next_read_start), 28);
-    const_assert_eq!(offset_of!(FileHeader, crc32), 36);
+    const_assert_eq!(offset_of!(FileHeader, unread_payload_bytes), 40);
+    const_assert_eq!(offset_of!(FileHeader, unread_record_count), 48);
+    const_assert_eq!(offset_of!(FileHeader, crc32), 56);
 
     if size < std::mem::size_of::<FileHeader>().to_u32_lossy() {
       log::error!(
@@ -823,6 +881,8 @@ impl RingBufferImpl {
         file_header.committed_write_start,
         file_header.last_write_end_before_wrap,
         file_header.next_read_start,
+        file_header.unread_payload_bytes,
+        file_header.unread_record_count,
       );
     } else if file_header.version != FILE_HEADER_CURRENT_VERSION || file_header.size != size {
       log::error!(
@@ -842,6 +902,8 @@ impl RingBufferImpl {
       file_header.committed_write_start,
       file_header.last_write_end_before_wrap,
       file_header.next_read_start,
+      file_header.unread_payload_bytes,
+      file_header.unread_record_count,
     ) != file_header.crc32
     {
       log::error!("({name}) file corruption via bad header crc32");
@@ -872,6 +934,8 @@ impl RingBufferImpl {
         ExtraLockedData {
           producer: None,
           consumer: None,
+          unread_payload_bytes: SendSyncNonNull((&file_header.unread_payload_bytes).into()),
+          unread_record_count: SendSyncNonNull((&file_header.unread_record_count).into()),
           crc32: SendSyncNonNull((&file_header.crc32).into()),
           block_when_reserving_into_concurrent_read,
           per_record_crc32_check,
@@ -879,6 +943,8 @@ impl RingBufferImpl {
         allow_overwrite,
         stats,
         ExtraLockedData::on_total_data_loss,
+        ExtraLockedData::record_committed,
+        ExtraLockedData::record_retired,
         on_record_evicted_cb,
         |extra_locked_data| {
           extra_locked_data
@@ -941,6 +1007,27 @@ impl RingBufferImpl {
     self: Arc<Self>,
   ) -> Result<Box<dyn RingBufferCursorConsumer>> {
     self.register_cursor_consumer_inner(true, "registering locked trigger cursor consumer")
+  }
+
+  pub fn locked_cursor_remaining_stats(&self) -> Result<(u64, u64)> {
+    let common_ring_buffer = self.common_ring_buffer.locked_data.lock();
+    let unread_payload_bytes = unsafe {
+      // Safety: The common ring buffer lock protects the header-backed counter.
+      *common_ring_buffer
+        .extra_locked_data
+        .unread_payload_bytes
+        .0
+        .as_ref()
+    };
+    let unread_record_count = unsafe {
+      // Safety: The common ring buffer lock protects the header-backed counter.
+      *common_ring_buffer
+        .extra_locked_data
+        .unread_record_count
+        .0
+        .as_ref()
+    };
+    Ok((unread_payload_bytes, unread_record_count))
   }
 
   /// Runs `f` against the oldest record while holding the buffer lock.
@@ -1090,12 +1177,22 @@ fn write_header_crc32(guard: &mut MutexGuard<'_, LockedData<ExtraLockedData>>) {
   let committed_write_start = *guard.committed_write_start();
   let last_write_end_before_wrap = *guard.last_write_end_before_wrap();
   let next_read_start = *guard.next_read_start();
+  let unread_payload_bytes = unsafe {
+    // Safety: The common ring buffer lock protects the header-backed counter.
+    *guard.extra_locked_data.unread_payload_bytes.0.as_ref()
+  };
+  let unread_record_count = unsafe {
+    // Safety: The common ring buffer lock protects the header-backed counter.
+    *guard.extra_locked_data.unread_record_count.0.as_ref()
+  };
   write_header_crc32_worker(
     &mut guard.extra_locked_data,
     next_write_start,
     committed_write_start,
     last_write_end_before_wrap,
     next_read_start,
+    unread_payload_bytes,
+    unread_record_count,
   );
 }
 
@@ -1106,12 +1203,16 @@ fn write_header_crc32_worker(
   committed_write_start: Option<u32>,
   last_write_end_before_wrap: Option<u32>,
   next_read_start: Option<u32>,
+  unread_payload_bytes: u64,
+  unread_record_count: u64,
 ) {
   let crc32 = compute_header_crc_32(
     next_write_start,
     committed_write_start,
     last_write_end_before_wrap,
     next_read_start,
+    unread_payload_bytes,
+    unread_record_count,
   );
   unsafe {
     // Safety: We have exclusive access via &mut self.
@@ -1125,12 +1226,16 @@ fn compute_header_crc_32(
   committed_write_start: Option<u32>,
   last_write_end_before_wrap: Option<u32>,
   next_read_start: Option<u32>,
+  unread_payload_bytes: u64,
+  unread_record_count: u64,
 ) -> u32 {
   do_crc32(|hasher| {
     next_write_start.hash(&mut *hasher);
     committed_write_start.hash(&mut *hasher);
     last_write_end_before_wrap.hash(&mut *hasher);
     next_read_start.hash(&mut *hasher);
+    unread_payload_bytes.hash(&mut *hasher);
+    unread_record_count.hash(&mut *hasher);
   })
 }
 
@@ -1185,11 +1290,13 @@ fn common_consumer_start_read<'a>(
         // read reservation. If we are in cursor mode, we can simply null out the reservation as
         // it has not yet been committed to the reservation list.
         if matches!(cursor, Cursor::No) {
-          LockedData::finish_read_common(
+          let finish_read = LockedData::finish_read_common(
             common_ring_buffer,
             conditions,
             reservation.as_ref().ok_or(InvariantError::Invariant)?,
-          )?;
+          );
+          *reservation = None;
+          finish_read?;
           write_header_crc32(common_ring_buffer);
         }
 

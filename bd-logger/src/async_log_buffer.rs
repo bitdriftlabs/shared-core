@@ -64,7 +64,6 @@ use bd_proto::protos::client::api::debug_data_request::{
 use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{self, ConfigLoader, IntWatch};
-use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
   ENTITY_ID_KEY,
@@ -517,7 +516,6 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   resource_utilization_reporter: bd_resource_utilization::Reporter,
 
   session_replay_recorder: bd_session_replay::Recorder,
-  session_replay_capture_screenshot_handler: CaptureScreenshotHandler,
 
   events_listener: bd_events::Listener,
 
@@ -626,7 +624,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
     data_upload_tx: mpsc::Sender<DataUpload>,
     startup_replay_eligibility: StartupReplayEligibility,
-  ) -> (Self, Sender) {
+  ) -> (
+    Self,
+    Sender,
+    bd_session_replay::RemoteScreenshotCaptureHandler,
+  ) {
     uninitialized_logging_context
       .startup_replay_eligibility_initialized(startup_replay_eligibility);
     let test_hooks = uninitialized_logging_context.test_hooks();
@@ -664,15 +666,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // was built, while EventBuffer still applies it only at its next admission.
     event_buffer.set_pending_limits(event_buffer_limit_watches.read_mark_update());
 
-    let (
-      session_replay_recorder,
-      session_replay_capture_screenshot_handler,
-      screenshot_log_interceptor,
-    ) = bd_session_replay::Recorder::new(
-      session_replay_target,
-      runtime_loader,
-      &uninitialized_logging_context.stats.scope,
-    );
+    let (session_replay_recorder, remote_screenshot_capture_handler) =
+      bd_session_replay::Recorder::new(session_replay_target, runtime_loader);
 
     let internal_periodic_fields_reporter =
       Arc::new(internal_report::Reporter::new(runtime_loader));
@@ -714,7 +709,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ),
 
         session_replay_recorder,
-        session_replay_capture_screenshot_handler,
 
         events_listener: bd_events::Listener::new(events_listener_target, runtime_loader),
 
@@ -723,7 +717,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           bandwidth_usage_tracker,
           battery_drain_tracker,
           network_quality_interceptor,
-          Arc::new(screenshot_log_interceptor),
           device_id_interceptor,
         ],
 
@@ -747,6 +740,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         last_session_id: None,
       },
       Sender::new(event_buffer, metadata_provider, session_strategy),
+      remote_screenshot_capture_handler,
     )
   }
 
@@ -1032,12 +1026,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn update(mut self, config: ConfigUpdate) -> Self {
     let initialized_logging_context = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
-        uninitialized_logging_context
-          .updated(
-            config,
-            self.session_replay_capture_screenshot_handler.clone(),
-          )
-          .await
+        uninitialized_logging_context.updated(config).await
       },
       LoggingState::Initialized(mut initialized_logging_context) => {
         initialized_logging_context.update(config);

@@ -1495,7 +1495,6 @@ async fn engine_processing_log() {
         FlushBufferId::WorkflowActionId("foo_action_id".into())
       ),]),
       triggered_flushes_buffer_ids: TinySet::from(["foo_buffer_id".into()]),
-      capture_screenshot: false,
       is_tracing_active: false,
       workflow_debug_state: vec![],
       has_debug_workflows: false,
@@ -1752,7 +1751,6 @@ async fn log_without_destination() {
         FlushBufferId::WorkflowActionId("action".into())
       ),]),
       triggered_flushes_buffer_ids: TinySet::from(["trigger_buffer_id".into()]),
-      capture_screenshot: false,
       is_tracing_active: false,
       workflow_debug_state: vec![],
       has_debug_workflows: false,

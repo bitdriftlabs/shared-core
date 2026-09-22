@@ -91,7 +91,6 @@ fn accumulates_engine_outcomes() {
     tracing_state_changed: true,
     triggered_flush_action_count: 2,
     triggered_flush_buffer_count: 3,
-    capture_screenshot: true,
     injected_log_count: 4,
     workflow_debug_state_count: 5,
     has_debug_workflows: true,
@@ -104,7 +103,6 @@ fn accumulates_engine_outcomes() {
   assert_eq!(1, totals.tracing_state_change_count);
   assert_eq!(2, totals.triggered_flush_action_count);
   assert_eq!(3, totals.triggered_flush_buffer_count);
-  assert_eq!(1, totals.screenshot_request_count);
   assert_eq!(4, totals.injected_log_count);
   assert_eq!(5, totals.workflow_debug_state_count);
   assert_eq!(1, totals.debug_workflow_evaluation_count);

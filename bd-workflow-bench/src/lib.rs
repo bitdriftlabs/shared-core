@@ -131,7 +131,6 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
         tracing_state_changed: result.is_tracing_active != tracing_active,
         triggered_flush_action_count: result.triggered_flush_buffers_action_ids.len(),
         triggered_flush_buffer_count: result.triggered_flushes_buffer_ids.len(),
-        capture_screenshot: result.capture_screenshot,
         injected_log_count: result.logs_to_inject.iter().count(),
         workflow_debug_state_count: result.workflow_debug_state.len(),
         has_debug_workflows: result.has_debug_workflows,

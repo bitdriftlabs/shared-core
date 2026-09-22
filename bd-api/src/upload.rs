@@ -14,6 +14,8 @@ pub use bd_proto::protos::client::api::log_upload_intent_request::{
 pub use bd_proto::protos::client::api::log_upload_intent_response::Decision as LogsUploadDecision;
 use bd_proto::protos::client::api::sankey_intent_response::Decision as SankeyPathUploadDecision;
 use bd_proto::protos::client::api::{
+  DeviceCommandUpdate,
+  DeviceCommandUpdateAck,
   LogUploadRequest,
   SankeyIntentRequest,
   SankeyPathUploadRequest,
@@ -95,6 +97,21 @@ pub struct StateTracker {
   // A map of pending log intents to their response channel. This is used to communicate back the
   // result of an intent request back to the upload task.
   pending_intents: HashMap<String, tokio::sync::oneshot::Sender<IntentResponse>>,
+
+  // Command updates are correlated by their server-assigned invocation ID and monotonically
+  // increasing update sequence, rather than an independently generated upload UUID.
+  // TODO: Persist these updates and restore them after mux reconnect or SDK restart. This
+  // in-memory tracker intentionally provides only same-stream acknowledgement retry support.
+  pending_device_command_updates: HashMap<(String, u64), PendingDeviceCommandUpdate>,
+}
+
+//
+// PendingDeviceCommandUpdate
+//
+
+struct PendingDeviceCommandUpdate {
+  update: DeviceCommandUpdate,
+  response_tx: tokio::sync::oneshot::Sender<()>,
 }
 
 impl StateTracker {
@@ -103,6 +120,7 @@ impl StateTracker {
     Self {
       pending_uploads: HashMap::new(),
       pending_intents: HashMap::new(),
+      pending_device_command_updates: HashMap::new(),
     }
   }
 
@@ -155,6 +173,68 @@ impl StateTracker {
       });
 
     Ok(())
+  }
+
+  /// Tracks a command update until its acknowledgement reports that it was durably persisted.
+  pub fn track_device_command_update(
+    &mut self,
+    update: TrackedDeviceCommandUpdate,
+  ) -> anyhow::Result<DeviceCommandUpdate> {
+    let Tracked {
+      payload,
+      response_tx,
+      ..
+    } = update;
+    let key = (payload.command_id.clone(), payload.update_sequence_number);
+    if self.pending_device_command_updates.contains_key(&key) {
+      anyhow::bail!(
+        "device command update is already pending: command_id={:?}, sequence={}",
+        key.0,
+        key.1
+      );
+    }
+
+    let request = payload.clone();
+    self.pending_device_command_updates.insert(
+      key,
+      PendingDeviceCommandUpdate {
+        update: payload,
+        response_tx,
+      },
+    );
+    Ok(request)
+  }
+
+  /// Resolves a command acknowledgement. An error leaves the exact update pending for retry.
+  pub fn resolve_device_command_update(
+    &mut self,
+    acknowledgement: &DeviceCommandUpdateAck,
+  ) -> anyhow::Result<Option<DeviceCommandUpdate>> {
+    let key = (
+      acknowledgement.command_id.clone(),
+      acknowledgement.update_sequence_number,
+    );
+    let pending_update = self
+      .pending_device_command_updates
+      .remove(&key)
+      .ok_or_else(|| {
+        anyhow!(
+          "device command acknowledgement has no pending update: command_id={:?}, sequence={}",
+          key.0,
+          key.1
+        )
+      })?;
+
+    if !acknowledgement.error.is_empty() {
+      let update = pending_update.update.clone();
+      self
+        .pending_device_command_updates
+        .insert(key, pending_update);
+      return Ok(Some(update));
+    }
+
+    let _ignored = pending_update.response_tx.send(());
+    Ok(None)
   }
 }
 
@@ -244,3 +324,5 @@ pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, IntentResponse
 
 pub type TrackedArtifactUpload = Tracked<UploadArtifactRequest, UploadResponse>;
 pub type TrackedArtifactIntent = Tracked<UploadArtifactIntentRequest, IntentResponse>;
+
+pub type TrackedDeviceCommandUpdate = Tracked<DeviceCommandUpdate, ()>;

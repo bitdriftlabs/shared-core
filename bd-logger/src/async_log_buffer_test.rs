@@ -259,7 +259,7 @@ impl Setup {
 
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
 
-    AsyncLogBuffer::new(
+    let (buffer, sender, _) = AsyncLogBuffer::new(
       self.make_logging_context(),
       replayer,
       self.session_strategy.clone(),
@@ -282,7 +282,8 @@ impl Setup {
       self.sdk_status_tracker.clone(),
       self.data_upload_tx.clone(),
       startup_replay_eligibility,
-    )
+    );
+    (buffer, sender)
   }
 
   fn make_real_async_log_buffer(
@@ -291,7 +292,7 @@ impl Setup {
   ) -> (AsyncLogBuffer<LoggerReplay>, Sender) {
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (_, report_rx) = tokio::sync::mpsc::channel(1);
-    AsyncLogBuffer::new(
+    let (buffer, sender, _) = AsyncLogBuffer::new(
       self.make_logging_context(),
       LoggerReplay {},
       self.session_strategy.clone(),
@@ -314,7 +315,8 @@ impl Setup {
       self.sdk_status_tracker.clone(),
       self.data_upload_tx.clone(),
       StartupReplayEligibility::Unknown,
-    )
+    );
+    (buffer, sender)
   }
 
   fn make_logging_context(&self) -> UninitializedLoggingContext {

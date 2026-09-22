@@ -10,7 +10,7 @@
 mod flush_registry_test;
 
 use crate::trigger_upload_artifact::TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY;
-use bd_api::{TriggerUploadSource, TriggerUploadStreaming};
+use bd_api::{DeviceCommandUploadMetadata, TriggerUploadSource, TriggerUploadStreaming};
 use bd_client_common::file::{
   read_compressed_protobuf_file_if_exists,
   write_compressed_protobuf_file,
@@ -49,6 +49,7 @@ pub enum PersistedTriggerUploadSource {
   WorkflowAction(String),
   ExplicitSessionCapture(String),
   RemoteCommand(String),
+  RemoteDeviceCommand(DeviceCommandUploadMetadata),
 }
 
 impl From<&TriggerUploadSource> for PersistedTriggerUploadSource {
@@ -67,6 +68,9 @@ impl PersistedTriggerUploadSource {
       Self::WorkflowAction(id) => TriggerUploadSource::WorkflowAction(id.clone()),
       Self::ExplicitSessionCapture(id) => TriggerUploadSource::ExplicitSessionCapture(id.clone()),
       Self::RemoteCommand(id) => TriggerUploadSource::RemoteCommand(id.clone()),
+      Self::RemoteDeviceCommand(metadata) => {
+        TriggerUploadSource::RemoteCommand(metadata.command_id.clone())
+      },
     }
   }
 
@@ -75,6 +79,9 @@ impl PersistedTriggerUploadSource {
       Self::WorkflowAction(id) => FlushBufferId::WorkflowActionId(id.clone()),
       Self::ExplicitSessionCapture(id) => FlushBufferId::ExplicitSessionCapture(id.clone()),
       Self::RemoteCommand(id) => FlushBufferId::RemoteCommand(id.clone()),
+      Self::RemoteDeviceCommand(metadata) => {
+        FlushBufferId::RemoteCommand(metadata.command_id.clone())
+      },
     }
   }
 }
@@ -214,6 +221,15 @@ struct PendingTriggerUploadsSnapshot {
   uploads: Vec<PersistedTriggerUploadRecord>,
 }
 
+impl PendingTriggerUploadsSnapshot {
+  fn validate(&self) -> anyhow::Result<()> {
+    for upload in &self.uploads {
+      upload.source.validate()?;
+    }
+    Ok(())
+  }
+}
+
 //
 // PersistedTriggerUploadRecord
 //
@@ -247,6 +263,21 @@ struct PersistedTriggerUploadSourceRecord {
   kind: PersistedTriggerUploadSourceKindRecord,
   #[field(id = 2)]
   id: String,
+  #[field(id = 3)]
+  total_result_bytes: Option<u64>,
+}
+
+impl PersistedTriggerUploadSourceRecord {
+  fn validate(&self) -> anyhow::Result<()> {
+    if matches!(
+      self.kind,
+      PersistedTriggerUploadSourceKindRecord::RemoteDeviceCommand
+    ) && self.total_result_bytes.is_none()
+    {
+      anyhow::bail!("device command upload is missing total result bytes")
+    }
+    Ok(())
+  }
 }
 
 #[proto_serializable]
@@ -262,6 +293,9 @@ enum PersistedTriggerUploadSourceKindRecord {
   #[field(deserialize)]
   #[default]
   RemoteCommand,
+  #[field(id = 4)]
+  #[field(deserialize)]
+  RemoteDeviceCommand,
 }
 
 #[proto_serializable]
@@ -430,14 +464,22 @@ impl From<&PersistedTriggerUploadSource> for PersistedTriggerUploadSourceRecord 
       PersistedTriggerUploadSource::WorkflowAction(id) => Self {
         kind: PersistedTriggerUploadSourceKindRecord::WorkflowAction,
         id: id.clone(),
+        total_result_bytes: None,
       },
       PersistedTriggerUploadSource::ExplicitSessionCapture(id) => Self {
         kind: PersistedTriggerUploadSourceKindRecord::ExplicitSessionCapture,
         id: id.clone(),
+        total_result_bytes: None,
       },
       PersistedTriggerUploadSource::RemoteCommand(id) => Self {
         kind: PersistedTriggerUploadSourceKindRecord::RemoteCommand,
         id: id.clone(),
+        total_result_bytes: None,
+      },
+      PersistedTriggerUploadSource::RemoteDeviceCommand(metadata) => Self {
+        kind: PersistedTriggerUploadSourceKindRecord::RemoteDeviceCommand,
+        id: metadata.command_id.clone(),
+        total_result_bytes: Some(metadata.total_result_bytes),
       },
     }
   }
@@ -451,6 +493,12 @@ impl From<PersistedTriggerUploadSourceRecord> for PersistedTriggerUploadSource {
         Self::ExplicitSessionCapture(source.id)
       },
       PersistedTriggerUploadSourceKindRecord::RemoteCommand => Self::RemoteCommand(source.id),
+      PersistedTriggerUploadSourceKindRecord::RemoteDeviceCommand => {
+        Self::RemoteDeviceCommand(DeviceCommandUploadMetadata {
+          command_id: source.id,
+          total_result_bytes: source.total_result_bytes.unwrap_or_default(),
+        })
+      },
     }
   }
 }
@@ -522,6 +570,18 @@ impl PendingTriggerUploadsStore {
         uploads.push(upload);
       })
       .await;
+  }
+
+  pub async fn upsert_durably(&self, upload: PersistedTriggerUpload) -> anyhow::Result<()> {
+    let mut inner = self.inner.lock().await;
+    Self::ensure_loaded(&self.state_path, &mut inner).await;
+
+    let mut uploads = inner.uploads.clone();
+    uploads.retain(|existing| existing.id != upload.id);
+    uploads.push(upload);
+    Self::persist(&self.state_path, &uploads).await?;
+    inner.uploads = uploads;
+    Ok(())
   }
 
   pub async fn remove(&self, id: &str) {
@@ -696,15 +756,25 @@ impl PendingTriggerUploadsStore {
   }
 
   async fn load(state_path: &Path) -> Vec<PersistedTriggerUpload> {
-    match read_compressed_protobuf_file_if_exists::<PendingTriggerUploadsSnapshot>(state_path).await
-    {
-      Ok(None) => Vec::new(),
-      Ok(Some(snapshot)) => snapshot.uploads.into_iter().map(Into::into).collect(),
+    let loaded: anyhow::Result<Vec<PersistedTriggerUpload>> = async {
+      let Some(snapshot) =
+        read_compressed_protobuf_file_if_exists::<PendingTriggerUploadsSnapshot>(state_path)
+          .await?
+      else {
+        return Ok(Vec::new());
+      };
+      snapshot.validate()?;
+      Ok(snapshot.uploads.into_iter().map(Into::into).collect())
+    }
+    .await;
+
+    match loaded {
+      Ok(uploads) => uploads,
       Err(e) => {
         // A corrupt snapshot is treated as unrecoverable stale state. We delete it and proceed
         // empty rather than trapping the logger in a permanent startup failure loop.
         log::warn!(
-          "failed to deserialize pending trigger uploads from {}: {e}",
+          "failed to load pending trigger uploads from {}: {e}",
           state_path.display()
         );
         let _ignored = delete_file_if_exists_async(state_path).await;

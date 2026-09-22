@@ -40,7 +40,6 @@ pub struct EngineOutcome {
   pub tracing_state_changed: bool,
   pub triggered_flush_action_count: usize,
   pub triggered_flush_buffer_count: usize,
-  pub capture_screenshot: bool,
   pub injected_log_count: usize,
   pub workflow_debug_state_count: usize,
   pub has_debug_workflows: bool,
@@ -56,7 +55,6 @@ pub struct EngineOutcomeTotals {
   pub tracing_state_change_count: usize,
   pub triggered_flush_action_count: usize,
   pub triggered_flush_buffer_count: usize,
-  pub screenshot_request_count: usize,
   pub injected_log_count: usize,
   pub workflow_debug_state_count: usize,
   pub debug_workflow_evaluation_count: usize,
@@ -68,7 +66,6 @@ impl EngineOutcomeTotals {
     self.tracing_state_change_count += usize::from(outcome.tracing_state_changed);
     self.triggered_flush_action_count += outcome.triggered_flush_action_count;
     self.triggered_flush_buffer_count += outcome.triggered_flush_buffer_count;
-    self.screenshot_request_count += usize::from(outcome.capture_screenshot);
     self.injected_log_count += outcome.injected_log_count;
     self.workflow_debug_state_count += outcome.workflow_debug_state_count;
     self.debug_workflow_evaluation_count += usize::from(outcome.has_debug_workflows);

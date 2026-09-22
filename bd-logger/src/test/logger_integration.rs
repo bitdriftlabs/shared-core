@@ -12,9 +12,13 @@ use crate::{
   AnnotatedLogField,
   AppVersionExtra,
   DataValue,
+  DeviceCommandAttachment,
+  DeviceCommandInvocation,
+  DeviceCommandResult,
   InitParams,
   LogAttributesOverrides,
   LogMessage,
+  RegisteredDeviceCommandHandler,
   log_level,
   wait_for,
 };
@@ -27,22 +31,35 @@ use bd_log_matcher::builder::{and, feature_flag_equals, field_equals, message_eq
 use bd_log_metadata::LogFields;
 use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
-use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
+use bd_proto::protos::bdtail::bdtail_config::device_command_request::DumpDeviceBufferCommand;
+use bd_proto::protos::bdtail::bdtail_config::{
+  BdTailConfigurations,
+  BdTailStream,
+  DeviceCommandRequest,
+  device_command_request,
+};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type;
 use bd_proto::protos::client::api::{
   ClientStateUpdate,
   DebugDataRequest,
+  DeviceCommandUpdate,
   client_state_update,
   debug_data_request,
+  device_command_update,
 };
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
+use bd_proto::protos::workflow::workflow_command::{
+  WorkflowCommandSelector,
+  workflow_command_selector,
+};
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_session::test::no_timeout;
@@ -99,6 +116,7 @@ use flate2::write::ZlibDecoder;
 use parking_lot::{Mutex, ReentrantMutex};
 use pretty_assertions::assert_eq;
 use protobuf::Message;
+use std::collections::VecDeque;
 use std::io::Write;
 use std::ops::Add;
 use std::sync::Arc;
@@ -111,6 +129,57 @@ use time::macros::datetime;
 struct LockingSessionCallbacks {
   app_lock: Arc<ReentrantMutex<()>>,
   call_count: AtomicUsize,
+}
+
+struct TestDeviceCommandHandler {
+  result: Mutex<Option<DeviceCommandResult>>,
+}
+
+struct CountingDeviceCommandHandler {
+  calls: AtomicUsize,
+}
+
+struct TestScreenshotTarget {
+  results: Mutex<VecDeque<Result<Vec<u8>, String>>>,
+}
+
+#[async_trait::async_trait]
+impl RegisteredDeviceCommandHandler for TestDeviceCommandHandler {
+  async fn execute(&self, _invocation: DeviceCommandInvocation) -> DeviceCommandResult {
+    self
+      .result
+      .lock()
+      .take()
+      .expect("custom device command handler invoked more than once")
+  }
+}
+
+#[async_trait::async_trait]
+impl RegisteredDeviceCommandHandler for CountingDeviceCommandHandler {
+  async fn execute(&self, _invocation: DeviceCommandInvocation) -> DeviceCommandResult {
+    self.calls.fetch_add(1, Ordering::SeqCst);
+    DeviceCommandResult::Completed {
+      fields: LogFields::default(),
+      attachment: None,
+    }
+  }
+}
+
+impl bd_session_replay::Target for TestScreenshotTarget {
+  fn capture_screen(&self) {}
+
+  fn capture_device_command_screenshot(
+    &self,
+    completion: bd_session_replay::DeviceCommandScreenshotCompletion,
+  ) {
+    completion(
+      self
+        .results
+        .lock()
+        .pop_front()
+        .expect("screenshot target invoked more than expected"),
+    );
+  }
 }
 
 impl LockingSessionCallbacks {
@@ -696,7 +765,7 @@ fn api_bandwidth_counters() {
       assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
       // Platform events are now enabled by default, so this runtime update only carries the
       // resource-utilization override.
-      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(248));
+      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(206));
       assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
   });
 }
@@ -2586,7 +2655,730 @@ fn remote_buffer_upload() {
   // We receive a log upload without intent negotiation.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
       assert_eq!(log_upload.logs().len(), 10);
+      assert!(log_upload.logs().iter().all(|log| log.stream_ids().is_empty()));
+      assert!(log_upload.command_id().is_none());
   });
+}
+
+#[test]
+fn buffer_dump_device_command_uploads_and_reports_terminal_context() {
+  let mut setup = Setup::new();
+  let command_id = "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e";
+  let buffer_config = BufferConfigBuilder {
+    name: "default",
+    buffer_type: Type::TRIGGER,
+    filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+    non_volatile_size: 100_000,
+    volatile_size: 10_000,
+  }
+  .build();
+
+  assert!(
+    setup
+      .send_configuration_update(configuration_update(
+        "",
+        StateOfTheWorld {
+          buffer_config_list: Some(BufferConfigList {
+            buffer_config: vec![buffer_config.clone()],
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+  setup.log_then_flush(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "buffered before command".into(),
+    [].into(),
+    [].into(),
+  );
+
+  assert!(
+    setup
+      .send_configuration_update(configuration_update(
+        "command",
+        StateOfTheWorld {
+          buffer_config_list: Some(BufferConfigList {
+            buffer_config: vec![buffer_config],
+            ..Default::default()
+          })
+          .into(),
+          bdtail_configuration: Some(BdTailConfigurations {
+            active_streams: vec![BdTailStream {
+              stream_id: command_id.into(),
+              device_command: Some(DeviceCommandRequest {
+                command_id: command_id.into(),
+                command_type: Some(device_command_request::Command_type::DumpDeviceBuffer(
+                  DumpDeviceBufferCommand::default(),
+                )),
+                ..Default::default()
+              })
+              .into(),
+              ..Default::default()
+            }],
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+
+  let accepted_total_result_bytes = match setup.server.blocking_next_device_command_update() {
+    Some(DeviceCommandUpdate {
+      command_id: received_command_id,
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(accepted)),
+      ..
+    }) if received_command_id == command_id => accepted
+      .total_result_bytes
+      .expect("buffer dump accepted total"),
+    update => panic!("unexpected device command accepted update: {update:?}"),
+  };
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "buffered before command");
+    assert_eq!(log_upload.logs()[0].stream_ids(), &[command_id]);
+    assert_eq!(log_upload.proto_log_payload_bytes(), accepted_total_result_bytes);
+    assert_eq!(log_upload.command_id(), Some(command_id));
+  });
+  assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
+    command_id: received_command_id,
+    update_sequence_number: 2,
+    update_type: Some(device_command_update::Update_type::Completed(completed)),
+    ..
+  }) => {
+    assert_eq!(received_command_id.as_str(), command_id);
+    assert!(!completed.output_truncated);
+    assert_matches!(
+      completed.context.as_ref().and_then(|context| context.fields.get("uploaded_log_count")),
+      Some(value) if value.data_type == Some(Data_type::IntData(1))
+    );
+    assert_matches!(
+      completed.attachment.as_ref().and_then(|attachment| attachment.attachment_type.as_ref()),
+      Some(device_command_update::completed::attachment::Attachment_type::LogBatches(batches))
+        if batches.total_result_bytes == accepted_total_result_bytes
+    );
+  });
+}
+
+#[test]
+fn buffer_dump_device_command_bypasses_generic_lookback() {
+  let mut setup = Setup::new();
+  let command_id = "0f6a4eeb-0575-40df-8b5c-69c7b09d386c";
+  let buffer_config = BufferConfigBuilder {
+    name: "default",
+    buffer_type: Type::TRIGGER,
+    filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+    non_volatile_size: 100_000,
+    volatile_size: 10_000,
+  }
+  .build();
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::SendRuntime(make_update(
+      vec![(
+        bd_runtime::runtime::log_upload::FlushBufferLookbackWindow::path(),
+        ValueKind::Int(1.minutes().whole_milliseconds().try_into().unwrap()),
+      )],
+      "lookback".to_string(),
+    )));
+  let (_, ack) = setup.server.blocking_next_runtime_ack();
+  assert!(ack.nack.is_none());
+  assert!(
+    setup
+      .send_configuration_update(configuration_update(
+        "",
+        StateOfTheWorld {
+          buffer_config_list: Some(BufferConfigList {
+            buffer_config: vec![buffer_config.clone()],
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "expired before command".into(),
+    [].into(),
+    [].into(),
+    Some(LogAttributesOverrides::OccurredAt(
+      datetime!(2023-10-01 00:00:00 UTC),
+    )),
+  );
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+
+  assert!(
+    setup
+      .send_configuration_update(configuration_update(
+        "command",
+        StateOfTheWorld {
+          buffer_config_list: Some(BufferConfigList {
+            buffer_config: vec![buffer_config],
+            ..Default::default()
+          })
+          .into(),
+          bdtail_configuration: Some(BdTailConfigurations {
+            active_streams: vec![BdTailStream {
+              stream_id: command_id.into(),
+              device_command: Some(DeviceCommandRequest {
+                command_id: command_id.into(),
+                command_type: Some(device_command_request::Command_type::DumpDeviceBuffer(
+                  DumpDeviceBufferCommand::default(),
+                )),
+                ..Default::default()
+              })
+              .into(),
+              ..Default::default()
+            }],
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "expired before command");
+    assert_eq!(log_upload.logs()[0].stream_ids(), &[command_id]);
+    assert_eq!(log_upload.command_id(), Some(command_id));
+  });
+  assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
+    update_sequence_number: 2,
+    update_type: Some(device_command_update::Update_type::Completed(completed)),
+    ..
+  }) => {
+    assert!(!completed.output_truncated);
+    assert_matches!(
+      completed.context.as_ref().and_then(|context| context.fields.get("uploaded_log_count")),
+      Some(value) if value.data_type == Some(Data_type::IntData(1))
+    );
+    assert_matches!(
+      completed.attachment.as_ref().and_then(|attachment| attachment.attachment_type.as_ref()),
+      Some(device_command_update::completed::attachment::Attachment_type::LogBatches(_))
+    );
+  });
+}
+
+fn custom_device_command_configuration(
+  command_id: &str,
+  registered_command_id: &str,
+) -> bd_proto::protos::client::api::ConfigurationUpdate {
+  configuration_update(
+    "custom-command",
+    StateOfTheWorld {
+      bdtail_configuration: Some(BdTailConfigurations {
+        active_streams: vec![BdTailStream {
+          stream_id: command_id.to_string().into(),
+          device_command: Some(DeviceCommandRequest {
+            command_id: command_id.to_string().into(),
+            command_type: Some(device_command_request::Command_type::CommandSelector(
+              WorkflowCommandSelector {
+                command_selector: Some(
+                  workflow_command_selector::Command_selector::RegisteredCommand(
+                    workflow_command_selector::RegisteredCommand {
+                      registered_command_id: registered_command_id.to_string(),
+                      ..Default::default()
+                    },
+                  ),
+                ),
+                ..Default::default()
+              },
+            )),
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    },
+  )
+}
+
+fn screenshot_device_command_configuration(
+  command_id: &str,
+) -> bd_proto::protos::client::api::ConfigurationUpdate {
+  configuration_update(
+    "screenshot-command",
+    StateOfTheWorld {
+      bdtail_configuration: Some(BdTailConfigurations {
+        active_streams: vec![BdTailStream {
+          stream_id: command_id.to_string().into(),
+          device_command: Some(DeviceCommandRequest {
+            command_id: command_id.to_string().into(),
+            command_type: Some(device_command_request::Command_type::CommandSelector(
+              WorkflowCommandSelector {
+                command_selector: Some(
+                  workflow_command_selector::Command_selector::BuiltinCommand(
+                    workflow_command_selector::BuiltinCommand {
+                      command_type: Some(
+                        workflow_command_selector::builtin_command::Command_type::TakeScreenshot(
+                          workflow_command_selector::builtin_command::TakeScreenshot::default(),
+                        ),
+                      ),
+                      ..Default::default()
+                    },
+                  ),
+                ),
+                ..Default::default()
+              },
+            )),
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    },
+  )
+}
+
+#[test]
+fn screenshot_device_command_stages_correlated_attachment() {
+  let command_id = "d4a6e1e7-4bf8-434e-b42b-fde1a3d9d0cb";
+  let screenshot = vec![0xff, 0xd8, 1, 2, 3, 0xff, 0xd9];
+  let mut setup = Setup::new_with_options(SetupOptions {
+    session_replay_target: Some(Box::new(TestScreenshotTarget {
+      results: Mutex::new(VecDeque::from([Ok(screenshot.clone())])),
+    })),
+    ..Default::default()
+  });
+
+  assert!(
+    setup
+      .send_configuration_update(screenshot_device_command_configuration(command_id))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      command_id: received_command_id,
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    }) if received_command_id == command_id
+  );
+  let artifact_id = assert_matches!(
+    setup.server.blocking_next_artifact_upload(),
+    Some(artifact) => {
+      assert_eq!(artifact.command_id.as_deref(), Some(command_id));
+      assert_eq!(artifact.type_id, "screenshot");
+      assert_eq!(artifact.contents, screenshot);
+      artifact.artifact_id
+    }
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      command_id: received_command_id,
+      update_sequence_number: 2,
+      update_type: Some(device_command_update::Update_type::Completed(completed)),
+      ..
+    }) if received_command_id == command_id => {
+      assert_matches!(
+        completed.attachment.as_ref().and_then(|attachment| attachment.attachment_type.as_ref()),
+        Some(device_command_update::completed::attachment::Attachment_type::Artifact(artifact))
+          if artifact.artifact_id == artifact_id
+      );
+    }
+  );
+}
+
+#[test]
+fn screenshot_device_command_reports_capture_and_validation_failures() {
+  let capture_command_id = "b4a6e1e7-4bf8-434e-b42b-fde1a3d9d0cb";
+  let invalid_image_command_id = "c4a6e1e7-4bf8-434e-b42b-fde1a3d9d0cb";
+  let mut setup = Setup::new_with_options(SetupOptions {
+    session_replay_target: Some(Box::new(TestScreenshotTarget {
+      results: Mutex::new(VecDeque::from([
+        Err("capture failed".to_string()),
+        Ok(vec![0xff, 0xd8, 1, 2, 3]),
+      ])),
+    })),
+    ..Default::default()
+  });
+
+  for (command_id, expected_error) in [
+    (capture_command_id, "capture failed"),
+    (invalid_image_command_id, "screenshot is not a JPEG image"),
+  ] {
+    assert!(
+      setup
+        .send_configuration_update(screenshot_device_command_configuration(command_id))
+        .is_none()
+    );
+    assert_matches!(
+      setup.server.blocking_next_device_command_update(),
+      Some(DeviceCommandUpdate {
+        command_id: received_command_id,
+        update_sequence_number: 1,
+        update_type: Some(device_command_update::Update_type::Accepted(_)),
+        ..
+      }) if received_command_id == command_id
+    );
+    assert_matches!(
+      setup.server.blocking_next_device_command_update(),
+      Some(DeviceCommandUpdate {
+        command_id: received_command_id,
+        update_sequence_number: 2,
+        update_type: Some(device_command_update::Update_type::Failed(failed)),
+        ..
+      }) if received_command_id == command_id => {
+        assert_matches!(
+          failed.context.as_ref().and_then(|context| context.fields.get("error")),
+          Some(value) if value.data_type == Some(Data_type::StringData(expected_error.to_string()))
+        );
+      }
+    );
+  }
+}
+
+#[test]
+fn registered_custom_device_command_completes_without_attachment() {
+  let command_id = "5164d8d6-72b1-4b57-8d6f-997633e3f54a";
+  let registered_command_id = "com.example.capture";
+  let handler: Arc<dyn RegisteredDeviceCommandHandler> = Arc::new(TestDeviceCommandHandler {
+    result: Mutex::new(Some(DeviceCommandResult::Completed {
+      fields: [("result".into(), "completed".into())].into(),
+      attachment: None,
+    })),
+  });
+  let mut setup = Setup::new_with_options(SetupOptions {
+    device_command_handlers: [(registered_command_id.to_string(), handler)].into(),
+    ..Default::default()
+  });
+
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration(
+        command_id,
+        registered_command_id,
+      ))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
+    update_sequence_number: 2,
+    update_type: Some(device_command_update::Update_type::Completed(completed)),
+    ..
+  }) => {
+    assert_matches!(
+      completed.context.as_ref().and_then(|context| context.fields.get("result")),
+      Some(value) if value.data_type == Some(Data_type::StringData("completed".to_string()))
+    );
+    assert_matches!(
+      completed.attachment.as_ref().and_then(|attachment| attachment.attachment_type.as_ref()),
+      Some(device_command_update::completed::attachment::Attachment_type::None(_))
+    );
+  });
+}
+
+#[test]
+fn removed_device_command_id_can_be_reused() {
+  let command_id = "f4b6d461-4bfe-4bc6-a8b9-3bf16d83c62e";
+  let registered_command_id = "com.example.reused";
+  let handler = Arc::new(CountingDeviceCommandHandler {
+    calls: AtomicUsize::new(0),
+  });
+  let registered_handler: Arc<dyn RegisteredDeviceCommandHandler> = handler.clone();
+  let mut setup = Setup::new_with_options(SetupOptions {
+    device_command_handlers: [(registered_command_id.to_string(), registered_handler)].into(),
+    ..Default::default()
+  });
+
+  for configuration in [
+    custom_device_command_configuration(command_id, registered_command_id),
+    configuration_update(
+      "command-removed",
+      StateOfTheWorld {
+        bdtail_configuration: Some(BdTailConfigurations::default()).into(),
+        ..Default::default()
+      },
+    ),
+    custom_device_command_configuration(command_id, registered_command_id),
+  ] {
+    assert!(setup.send_configuration_update(configuration).is_none());
+  }
+
+  for _ in 0 .. 2 {
+    assert_matches!(
+      setup.server.blocking_next_device_command_update(),
+      Some(DeviceCommandUpdate {
+        update_sequence_number: 1,
+        update_type: Some(device_command_update::Update_type::Accepted(_)),
+        ..
+      })
+    );
+    assert_matches!(
+      setup.server.blocking_next_device_command_update(),
+      Some(DeviceCommandUpdate {
+        update_sequence_number: 2,
+        update_type: Some(device_command_update::Update_type::Completed(_)),
+        ..
+      })
+    );
+  }
+  assert_eq!(handler.calls.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn registered_custom_device_command_reports_failure_context() {
+  let command_id = "ca7d5b51-d97a-4a46-87c5-4d2f19332088";
+  let registered_command_id = "com.example.capture.failure";
+  let handler: Arc<dyn RegisteredDeviceCommandHandler> = Arc::new(TestDeviceCommandHandler {
+    result: Mutex::new(Some(DeviceCommandResult::Failed {
+      error: "capture failed".to_string(),
+      fields: [("reason".into(), "camera unavailable".into())].into(),
+    })),
+  });
+  let mut setup = Setup::new_with_options(SetupOptions {
+    device_command_handlers: [(registered_command_id.to_string(), handler)].into(),
+    ..Default::default()
+  });
+
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration(
+        command_id,
+        registered_command_id,
+      ))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
+    update_sequence_number: 2,
+    update_type: Some(device_command_update::Update_type::Failed(failed)),
+    ..
+  }) => {
+    let fields = &failed.context.as_ref().unwrap().fields;
+    assert_matches!(fields.get("error"), Some(value) if value.data_type == Some(Data_type::StringData("capture failed".to_string())));
+    assert_matches!(fields.get("reason"), Some(value) if value.data_type == Some(Data_type::StringData("camera unavailable".to_string())));
+  });
+}
+
+#[test]
+fn registered_custom_device_command_stages_correlated_attachment() {
+  let command_id = "d4a6e1e7-4bf8-434e-b42b-fde1a3d9d0cb";
+  let registered_command_id = "com.example.capture.attachment";
+  let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
+  let attachment_path = tempfile::NamedTempFile::new_in(sdk_directory.path())
+    .unwrap()
+    .into_temp_path();
+  std::fs::write(&attachment_path, b"custom-command-attachment").unwrap();
+  let attachment_path = attachment_path.keep().unwrap();
+  let handler: Arc<dyn RegisteredDeviceCommandHandler> = Arc::new(TestDeviceCommandHandler {
+    result: Mutex::new(Some(DeviceCommandResult::Completed {
+      fields: [("result".into(), "attached".into())].into(),
+      attachment: Some(DeviceCommandAttachment {
+        source: bd_artifact_upload::UploadSource::Path(attachment_path),
+        type_id: "custom_attachment".to_string(),
+        state: [("source".into(), "handler".into())].into(),
+      }),
+    })),
+  });
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    device_command_handlers: [(registered_command_id.to_string(), handler)].into(),
+    ..Default::default()
+  });
+
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration(
+        command_id,
+        registered_command_id,
+      ))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  let artifact_id = assert_matches!(
+    setup.server.blocking_next_artifact_upload(),
+    Some(artifact) => {
+      assert_eq!(artifact.command_id.as_deref(), Some(command_id));
+      assert_eq!(artifact.type_id, "custom_attachment");
+      assert_eq!(artifact.contents, b"custom-command-attachment");
+      artifact.artifact_id
+    }
+  );
+  assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
+    update_sequence_number: 2,
+    update_type: Some(device_command_update::Update_type::Completed(completed)),
+    ..
+  }) => {
+    assert_matches!(
+      completed.attachment.as_ref().and_then(|attachment| attachment.attachment_type.as_ref()),
+      Some(device_command_update::completed::attachment::Attachment_type::Artifact(artifact))
+        if artifact.artifact_id == artifact_id
+    );
+  });
+}
+
+#[test]
+fn unregistered_custom_device_command_fails_without_acceptance() {
+  let command_id = "c0ee8078-e590-427e-90dd-f6d2401ca688";
+  let registered_command_id = "com.example.unregistered";
+  let mut setup = Setup::new();
+
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration(
+        command_id,
+        registered_command_id,
+      ))
+      .is_none()
+  );
+  assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
+    update_sequence_number: 1,
+    update_type: Some(device_command_update::Update_type::Failed(failed)),
+    ..
+  }) => {
+    assert_matches!(
+      failed.context.as_ref().and_then(|context| context.fields.get("error")),
+      Some(value) if value.data_type == Some(Data_type::StringData("unregistered device command".to_string()))
+    );
+  });
+}
+
+#[test]
+fn device_command_dispatch_rejects_mismatched_tail_id() {
+  let mut setup = Setup::new();
+  let nack = setup.send_configuration_update(configuration_update(
+    "command",
+    StateOfTheWorld {
+      bdtail_configuration: Some(BdTailConfigurations {
+        active_streams: vec![BdTailStream {
+          stream_id: "19dfb301-9d56-4c80-b7d5-5be1b579f472".into(),
+          device_command: Some(DeviceCommandRequest {
+            command_id: "4dd3d61e-4621-4d4e-97df-ed1c91d484a9".into(),
+            command_type: Some(device_command_request::Command_type::DumpDeviceBuffer(
+              DumpDeviceBufferCommand::default(),
+            )),
+            ..Default::default()
+          })
+          .into(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    },
+  ));
+
+  assert_matches!(nack, Some(nack) if nack.error_details.contains("does not match BDTail"));
+}
+
+#[test]
+fn cached_device_command_is_not_dispatched_after_restart() {
+  let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
+  let command_id = "df5d61d9-8f5b-4bcf-aa74-46d591519045";
+
+  {
+    let mut setup = Setup::new_with_options(SetupOptions {
+      sdk_directory: sdk_directory.clone(),
+      ..Default::default()
+    });
+    assert!(
+      setup
+        .send_configuration_update(configuration_update(
+          "command",
+          StateOfTheWorld {
+            bdtail_configuration: Some(BdTailConfigurations {
+              active_streams: vec![BdTailStream {
+                stream_id: command_id.into(),
+                device_command: Some(DeviceCommandRequest {
+                  command_id: command_id.into(),
+                  command_type: Some(device_command_request::Command_type::DumpDeviceBuffer(
+                    DumpDeviceBufferCommand::default(),
+                  )),
+                  ..Default::default()
+                })
+                .into(),
+                ..Default::default()
+              }],
+              ..Default::default()
+            })
+            .into(),
+            ..Default::default()
+          },
+        ))
+        .is_none()
+    );
+    assert_matches!(
+      setup.server.blocking_next_device_command_update(),
+      Some(DeviceCommandUpdate {
+        update_sequence_number: 1,
+        update_type: Some(device_command_update::Update_type::Accepted(_)),
+        ..
+      })
+    );
+    assert_matches!(
+      setup.server.blocking_next_device_command_update(),
+      Some(DeviceCommandUpdate {
+        update_sequence_number: 2,
+        update_type: Some(device_command_update::Update_type::Completed(_)),
+        ..
+      })
+    );
+  }
+
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
+  setup.wait_for_startup_gate_ready();
+
+  assert_matches!(setup.server.try_next_device_command_update(), None);
 }
 
 #[test]
@@ -3358,7 +4150,7 @@ fn continuous_buffer_resume_with_full_buffer() {
             name: "continuous",
             buffer_type: Type::CONTINUOUS,
             filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 240,
+            non_volatile_size: 264,
             volatile_size: 200,
           }
           .build(),

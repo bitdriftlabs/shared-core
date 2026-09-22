@@ -27,6 +27,8 @@ use bd_proto::protos::client::api::{
   ConfigurationUpdate,
   ConfigurationUpdateAck,
   DebugDataRequest,
+  DeviceCommandUpdate,
+  DeviceCommandUpdateAck,
   FlushBuffers,
   HandshakeRequest,
   HandshakeResponse,
@@ -120,6 +122,7 @@ struct ServiceState {
   configuration_ack_tx: Sender<(i32, ConfigurationUpdateAck)>,
   runtime_ack_tx: Sender<(i32, ConfigurationUpdateAck)>,
   debug_data_tx: Sender<DebugDataRequest>,
+  device_command_update_tx: Sender<DeviceCommandUpdate>,
 
   shutdown_tx: broadcast::Sender<()>,
 }
@@ -577,6 +580,23 @@ impl RequestProcessor {
           .await;
         None
       },
+      Some(Request_type::DeviceCommandUpdate(update)) => {
+        let _ignored = self
+          .stream_state
+          .device_command_update_tx
+          .send(update.clone())
+          .await;
+        Some(ApiResponse {
+          response_type: Some(Response_type::DeviceCommandUpdateAck(
+            DeviceCommandUpdateAck {
+              command_id: update.command_id.clone(),
+              update_sequence_number: update.update_sequence_number,
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        })
+      },
       r => panic!("received unknown reqest type: {r:?}"),
     }
   }
@@ -880,6 +900,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let (configuration_ack_tx, configuration_ack_rx) = channel(1);
   let (runtime_ack_tx, runtime_ack_rx) = channel(256);
   let (debug_data_tx, debug_data_rx) = channel(256);
+  let (device_command_update_tx, device_command_update_rx) = channel(256);
   let log_upload_response_control = LogUploadResponseControl::default();
   let server_log_upload_response_control = log_upload_response_control.clone();
   let handshake_response_control = HandshakeResponseControl::default();
@@ -922,6 +943,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           configuration_ack_tx,
           runtime_ack_tx,
           debug_data_tx,
+          device_command_update_tx,
         });
 
         // Forward actions sent over the per stream action channel to the channel associated with
@@ -963,6 +985,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
     runtime_ack_rx,
     port: local_addr.port(),
     debug_data_rx,
+    device_command_update_rx,
   })
 }
 
@@ -1125,6 +1148,7 @@ pub struct ServerHandle {
   stats_upload_rx: Receiver<StatsUploadRequest>,
   stats_upload_response_control: StatsUploadResponseControl,
   debug_data_rx: Receiver<DebugDataRequest>,
+  device_command_update_rx: Receiver<DeviceCommandUpdate>,
 
   configuration_ack_rx: Receiver<(i32, ConfigurationUpdateAck)>,
   runtime_ack_rx: Receiver<(i32, ConfigurationUpdateAck)>,
@@ -1319,6 +1343,14 @@ impl ServerHandle {
 
   pub fn next_debug_data_request(&mut self) -> Option<DebugDataRequest> {
     Self::blocking_next_request_with_timeout(&mut self.debug_data_rx)
+  }
+
+  pub fn blocking_next_device_command_update(&mut self) -> Option<DeviceCommandUpdate> {
+    Self::blocking_next_request_with_timeout(&mut self.device_command_update_rx)
+  }
+
+  pub fn try_next_device_command_update(&mut self) -> Option<DeviceCommandUpdate> {
+    self.device_command_update_rx.try_recv().ok()
   }
 
   /// Blocks for the next configuration update ack to be received by the server.

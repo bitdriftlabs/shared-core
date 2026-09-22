@@ -747,28 +747,28 @@ pub mod workflow_command_selector {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n;bitdrift_public/protobuf/workflow/v1/workflow_command.proto\x12$bitdr\
-    ift_public.protobuf.workflow.v1\x1a\x17validate/validate.proto\"\xc4\x04\
+    ift_public.protobuf.workflow.v1\x1a\x17validate/validate.proto\"\xc3\x04\
     \n\x17WorkflowCommandSelector\x12w\n\x0fbuiltin_command\x18\x01\x20\x01(\
     \x0b2L.bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.Buil\
     tinCommandH\0R\x0ebuiltinCommand\x12\x80\x01\n\x12registered_command\x18\
     \x02\x20\x01(\x0b2O.bitdrift_public.protobuf.workflow.v1.WorkflowCommand\
-    Selector.RegisteredCommandH\0R\x11registeredCommand\x1aQ\n\x11Registered\
-    Command\x12<\n\x15registered_command_id\x18\x01\x20\x01(\tR\x13registere\
-    dCommandIdB\x08\xfaB\x05r\x03\xb0\x01\x01\x1a\xc0\x01\n\x0eBuiltinComman\
-    d\x12\x86\x01\n\x0ftake_screenshot\x18\x01\x20\x01(\x0b2[.bitdrift_publi\
-    c.protobuf.workflow.v1.WorkflowCommandSelector.BuiltinCommand.TakeScreen\
-    shotH\0R\x0etakeScreenshot\x1a\x10\n\x0eTakeScreenshotB\x13\n\x0ccommand\
-    _type\x12\x03\xf8B\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01J\xd5\
-    \n\n\x06\x12\x04\x07\0*\x01\n\xb8\x02\n\x01\x0c\x12\x03\x07\0\x122\xad\
-    \x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\x20definitions\n\
-    \x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20\
-    Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\x20governed\
-    \x20by\x20a\x20source\x20available\x20license\x20that\x20can\x20be\x20fo\
-    und\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://polyform\
-    project.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\
-    \n\x01\x02\x12\x03\t\0-\n\t\n\x02\x03\0\x12\x03\x0b\0!\nJ\n\x02\x04\0\
-    \x12\x04\x0e\0*\x01\x1a>\x20Selects\x20one\x20locally\x20registered\x20o\
-    r\x20built-in\x20workflow\x20command.\n\n\n\n\x03\x04\0\x01\x12\x03\x0e\
+    Selector.RegisteredCommandH\0R\x11registeredCommand\x1aP\n\x11Registered\
+    Command\x12;\n\x15registered_command_id\x18\x01\x20\x01(\tR\x13registere\
+    dCommandIdB\x07\xfaB\x04r\x02\x10\x01\x1a\xc0\x01\n\x0eBuiltinCommand\
+    \x12\x86\x01\n\x0ftake_screenshot\x18\x01\x20\x01(\x0b2[.bitdrift_public\
+    .protobuf.workflow.v1.WorkflowCommandSelector.BuiltinCommand.TakeScreens\
+    hotH\0R\x0etakeScreenshot\x1a\x10\n\x0eTakeScreenshotB\x13\n\x0ccommand_\
+    type\x12\x03\xf8B\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01J\xd5\n\
+    \n\x06\x12\x04\x07\0*\x01\n\xb8\x02\n\x01\x0c\x12\x03\x07\0\x122\xad\x02\
+    \x20api\x20-\x20bitdrift's\x20client/server\x20API\x20definitions\n\x20C\
+    opyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\
+    \x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\x20governed\x20by\
+    \x20a\x20source\x20available\x20license\x20that\x20can\x20be\x20found\
+    \x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://polyformpro\
+    ject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\
+    \x01\x02\x12\x03\t\0-\n\t\n\x02\x03\0\x12\x03\x0b\0!\nJ\n\x02\x04\0\x12\
+    \x04\x0e\0*\x01\x1a>\x20Selects\x20one\x20locally\x20registered\x20or\
+    \x20built-in\x20workflow\x20command.\n\n\n\n\x03\x04\0\x01\x12\x03\x0e\
     \x08\x1f\n\xb5\x01\n\x04\x04\0\x03\0\x12\x04\x11\x02\x13\x03\x1a\xa6\x01\
     \x20Selects\x20a\x20command\x20registered\x20by\x20the\x20embedding\x20a\
     pplication.\x20Additional\x20command-specific\n\x20configuration\x20can\
@@ -778,7 +778,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x12\x03\x12\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x01\x12\x03\x12\x0b\x20\
     \n\x0e\n\x07\x04\0\x03\0\x02\0\x03\x12\x03\x12#$\n\x0e\n\x07\x04\0\x03\0\
     \x02\0\x08\x12\x03\x12%J\n\x12\n\x0b\x04\0\x03\0\x02\0\x08\xaf\x08\x0e\
-    \x16\x12\x03\x12&I\nT\n\x04\x04\0\x03\x01\x12\x04\x16\x02\x1f\x03\x1aF\
+    \x02\x12\x03\x12&I\nT\n\x04\x04\0\x03\x01\x12\x04\x16\x02\x1f\x03\x1aF\
     \x20Built-in\x20commands\x20supported\x20directly\x20by\x20the\x20client\
     \x20workflow\x20runtime.\n\n\x0c\n\x05\x04\0\x03\x01\x01\x12\x03\x16\n\
     \x18\n\x0e\n\x06\x04\0\x03\x01\x08\0\x12\x04\x17\x04\x1c\x05\n\x0e\n\x07\

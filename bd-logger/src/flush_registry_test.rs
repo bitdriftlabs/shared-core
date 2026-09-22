@@ -6,16 +6,21 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{
+  PENDING_TRIGGER_UPLOADS_FILE_NAME,
+  PendingTriggerUploadsSnapshot,
   PendingTriggerUploadsStore,
   PersistedTriggerUpload,
   PersistedTriggerUploadBufferLifecycle,
   PersistedTriggerUploadBufferProgress,
   PersistedTriggerUploadLifecycle,
+  PersistedTriggerUploadRecord,
   PersistedTriggerUploadSource,
   PersistedTriggerUploadStreaming,
   PrunedTriggerUploadBuffer,
   TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY,
 };
+use bd_api::DeviceCommandUploadMetadata;
+use bd_client_common::file::write_compressed_protobuf_file;
 use tempfile::TempDir;
 
 fn make_store(temp_directory: &TempDir) -> PendingTriggerUploadsStore {
@@ -71,6 +76,31 @@ async fn upsert_replaces_existing_upload_with_same_id() {
       lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
     }]
   );
+}
+
+#[tokio::test]
+async fn durable_upsert_fails_without_retaining_undurable_upload() {
+  let temp_directory = TempDir::with_prefix("flush-registry").unwrap();
+  tokio::fs::write(temp_directory.path().join("state"), b"not a directory")
+    .await
+    .unwrap();
+  let store = make_store(&temp_directory);
+
+  assert!(
+    store
+      .upsert_durably(PersistedTriggerUpload {
+        id: "flush-1".to_string(),
+        source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+        request_trigger_uuid: None,
+        session_id: "session-1".to_string(),
+        buffers: vec![buffer_progress("trigger")],
+        streaming: None,
+        lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+      })
+      .await
+      .is_err()
+  );
+  assert!(store.pending_uploads().await.is_empty());
 }
 
 #[tokio::test]
@@ -207,6 +237,81 @@ async fn request_trigger_uuid_round_trips_when_present() {
       lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
     }]
   );
+}
+
+#[tokio::test]
+async fn device_command_upload_metadata_round_trips() {
+  let temp_directory = TempDir::with_prefix("flush-registry").unwrap();
+  let store = make_store(&temp_directory);
+  let metadata = DeviceCommandUploadMetadata {
+    command_id: "command-1".to_string(),
+    total_result_bytes: 42,
+  };
+  store
+    .upsert(PersistedTriggerUpload {
+      id: "command-1".to_string(),
+      source: PersistedTriggerUploadSource::RemoteDeviceCommand(metadata.clone()),
+      request_trigger_uuid: None,
+      session_id: "command-session".to_string(),
+      buffers: vec![buffer_progress("trigger")],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    })
+    .await;
+
+  assert_eq!(
+    make_store(&temp_directory).pending_uploads().await,
+    vec![PersistedTriggerUpload {
+      id: "command-1".to_string(),
+      source: PersistedTriggerUploadSource::RemoteDeviceCommand(metadata),
+      request_trigger_uuid: None,
+      session_id: "command-session".to_string(),
+      buffers: vec![buffer_progress("trigger")],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    }]
+  );
+}
+
+#[tokio::test]
+async fn missing_device_command_total_drops_snapshot() {
+  let temp_directory = TempDir::with_prefix("flush-registry").unwrap();
+  let metadata = DeviceCommandUploadMetadata {
+    command_id: "command-1".to_string(),
+    total_result_bytes: 42,
+  };
+  let upload = PersistedTriggerUpload {
+    id: metadata.command_id.clone(),
+    source: PersistedTriggerUploadSource::RemoteDeviceCommand(metadata),
+    request_trigger_uuid: None,
+    session_id: "command-session".to_string(),
+    buffers: vec![buffer_progress("trigger")],
+    streaming: None,
+    lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+  };
+  let mut record: PersistedTriggerUploadRecord = (&upload).into();
+  record.source.total_result_bytes = None;
+  let snapshot_path = temp_directory
+    .path()
+    .join("state")
+    .join("logger")
+    .join(PENDING_TRIGGER_UPLOADS_FILE_NAME);
+  write_compressed_protobuf_file(
+    &snapshot_path,
+    &PendingTriggerUploadsSnapshot {
+      uploads: vec![record],
+    },
+  )
+  .await
+  .unwrap();
+
+  assert!(
+    make_store(&temp_directory)
+      .pending_uploads()
+      .await
+      .is_empty()
+  );
+  assert!(!tokio::fs::try_exists(snapshot_path).await.unwrap());
 }
 
 #[tokio::test]

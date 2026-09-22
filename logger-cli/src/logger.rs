@@ -9,6 +9,7 @@
 #[path = "./logger_test.rs"]
 mod tests;
 
+use crate::fake_screenshot::FakeScreenshotTarget;
 use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
 use crate::types::{Platform, RuntimeValueType};
@@ -378,7 +379,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     initial_ootb_fields: [].into(),
     initial_custom_fields: [].into(),
     resource_utilization_target: Box::new(bd_test_helpers::resource_utilization::EmptyTarget),
-    session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
+    session_replay_target: Box::new(FakeScreenshotTarget),
     events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
     device,
     store,

@@ -5,7 +5,14 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{BufferUploadManager, ContinuousBufferUploader, Flags, service};
+use super::{
+  BufferUploadManager,
+  ContinuousBufferUploader,
+  Flags,
+  append_command_stream_id,
+  command_stream_id_field_size,
+  service,
+};
 use crate::consumer::{BatchBuilder, RemoteFlushStreamingRequest, StreamedBufferUpload};
 use crate::flush_registry::{
   PendingTriggerUploadsStore,
@@ -19,7 +26,13 @@ use crate::flush_registry::{
 use crate::trigger_upload_artifact::TriggerUploadArtifactStore;
 use assert_matches::assert_matches;
 use bd_api::upload::{Tracked, UploadResponse};
-use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource, TriggerUploadStreaming};
+use bd_api::{
+  DataUpload,
+  DeviceCommandUploadMetadata,
+  TriggerUpload,
+  TriggerUploadSource,
+  TriggerUploadStreaming,
+};
 use bd_buffer::{
   AbslCode,
   Buffer,
@@ -68,6 +81,26 @@ fn make_flags(runtime_loader: &ConfigLoader) -> Flags {
     upload_lookback_window_feature_flag: runtime_loader.register_duration_watch(),
     streaming_batch_deadline: runtime_loader.register_duration_watch(),
   }
+}
+
+#[test]
+fn command_stream_id_wire_encoding_matches_accounted_size() {
+  let command_id = "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e";
+  let log = ProtoLog {
+    stream_ids: vec!["ordinary-stream".to_string()],
+    ..Default::default()
+  };
+  let mut encoded_log = log.write_to_bytes().unwrap();
+  let original_size = u64::try_from(encoded_log.len()).unwrap();
+
+  append_command_stream_id(&mut encoded_log, command_id).unwrap();
+
+  assert_eq!(
+    u64::try_from(encoded_log.len()).unwrap(),
+    original_size + command_stream_id_field_size(command_id).unwrap()
+  );
+  let decoded_log = ProtoLog::parse_from_bytes(&encoded_log).unwrap();
+  assert_eq!(decoded_log.stream_ids, vec!["ordinary-stream", command_id]);
 }
 
 struct SetupSingleConsumer {
@@ -163,6 +196,7 @@ impl SetupSingleConsumer {
       DataUpload::ArtifactUpload(_) => panic!("unexpected artifact upload"),
       DataUpload::AcklessLogsUpload(_) => panic!("unexpected ackless upload"),
       DataUpload::DebugData(_) => panic!("unexpected debug data upload"),
+      DataUpload::DeviceCommandUpdate(_) => panic!("unexpected device command update"),
     }
   }
 
@@ -2274,6 +2308,355 @@ async fn remote_command_upload_does_not_emit_request_trigger_uuid_on_recovery() 
       .trigger_uuids
       .is_empty()
   );
+}
+
+#[tokio::test(start_paused = true)]
+async fn recovered_device_command_upload_reuses_persisted_progress_metadata() {
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  let metadata = DeviceCommandUploadMetadata {
+    command_id: "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e".to_string(),
+    total_result_bytes: 123,
+  };
+  PendingTriggerUploadsStore::new(temp_directory.path())
+    .upsert(PersistedTriggerUpload {
+      id: metadata.command_id.clone(),
+      source: PersistedTriggerUploadSource::RemoteDeviceCommand(metadata.clone()),
+      request_trigger_uuid: None,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress::new(
+        "buffer".to_string(),
+      )],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    })
+    .await;
+
+  let buffer_path = temp_directory.path().join("buffer");
+  let (buffer, mut producer) = create_trigger_buffer(buffer_path.as_path()).await;
+  producer
+    .write(&make_test_log(time::OffsetDateTime::now_utc()))
+    .unwrap();
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory).await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let recovered_upload = setup.next_upload().await;
+  let progress = recovered_upload
+    .payload
+    .log_upload()
+    .command_id
+    .as_deref()
+    .expect("recovered command upload ID");
+  assert_eq!(progress, metadata.command_id);
+}
+
+#[tokio::test(start_paused = true)]
+async fn queued_device_command_artifact_is_deduped_against_buffer_on_restart() {
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  let metadata = DeviceCommandUploadMetadata {
+    command_id: "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e".to_string(),
+    total_result_bytes: 123,
+  };
+  PendingTriggerUploadsStore::new(temp_directory.path())
+    .upsert(PersistedTriggerUpload {
+      id: metadata.command_id.clone(),
+      source: PersistedTriggerUploadSource::RemoteDeviceCommand(metadata.clone()),
+      request_trigger_uuid: None,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer,
+        uploaded_batches_count: 0,
+        uploaded_logs_count: 0,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
+    })
+    .await;
+
+  let raw_log = make_test_log(time::OffsetDateTime::now_utc());
+  let mut tagged_log = raw_log.clone();
+  append_command_stream_id(&mut tagged_log, &metadata.command_id).unwrap();
+  TriggerUploadArtifactStore::new(
+    temp_directory.path().join("state").join("logger"),
+    &metadata.command_id,
+    "buffer",
+  )
+  .stage_batch(vec![tagged_log.clone()])
+  .await
+  .unwrap();
+
+  let buffer_path = temp_directory.path().join("buffer");
+  let (buffer, mut producer) = create_trigger_buffer(buffer_path.as_path()).await;
+  producer.write(&raw_log).unwrap();
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory).await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let recovered_upload = setup.next_upload().await;
+  assert_eq!(
+    *recovered_upload.payload.log_upload().proto_logs,
+    vec![tagged_log]
+  );
+  recovered_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: recovered_upload.uuid,
+    })
+    .unwrap();
+
+  let pinned = Box::pin(setup.log_upload_rx.recv());
+  assert!(poll!(pinned).is_pending());
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn dropped_device_command_admission_releases_buffer() {
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.sdk_directory.join("buffer").as_path()).await;
+  producer.write(b"one").unwrap();
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let (trigger_upload, admission_rx, completion_rx) =
+    TriggerUpload::new_device_command_with_completion(
+      vec!["buffer".to_string()],
+      "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e".to_string(),
+      "session-1".to_string(),
+    );
+  drop(admission_rx);
+  setup.trigger_upload_tx.send(trigger_upload).await.unwrap();
+
+  assert_matches!(
+    completion_rx.await,
+    Ok(bd_api::TriggerUploadCompletion::Failed)
+  );
+  assert!(setup.pending_trigger_uploads().await.is_empty());
+
+  setup.trigger_buffer_upload("buffer").await;
+  let upload = setup.next_upload().await;
+  assert_eq!(upload.payload.log_upload().proto_logs.len(), 1);
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn device_command_admission_rejects_active_buffer() {
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.sdk_directory.join("buffer").as_path()).await;
+  producer.write(b"one").unwrap();
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let (first_upload, first_admission_rx, first_completion_rx) =
+    TriggerUpload::new_device_command_with_completion(
+      vec!["buffer".to_string()],
+      "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e".to_string(),
+      "session-1".to_string(),
+    );
+  setup.trigger_upload_tx.send(first_upload).await.unwrap();
+  let first_admission = first_admission_rx.await.unwrap();
+  first_admission.start_upload_tx.send(()).unwrap();
+  let first_upload = setup.next_upload().await;
+
+  let (second_upload, second_admission_rx, second_completion_rx) =
+    TriggerUpload::new_device_command_with_completion(
+      vec!["buffer".to_string()],
+      "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e".to_string(),
+      "session-1".to_string(),
+    );
+  setup.trigger_upload_tx.send(second_upload).await.unwrap();
+
+  assert!(second_admission_rx.await.is_err());
+  assert_matches!(
+    second_completion_rx.await,
+    Ok(bd_api::TriggerUploadCompletion::Failed)
+  );
+
+  first_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: first_upload.uuid,
+    })
+    .unwrap();
+  assert_matches!(
+    first_completion_rx.await,
+    Ok(bd_api::TriggerUploadCompletion::Completed { .. })
+  );
+  assert!(setup.pending_trigger_uploads().await.is_empty());
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn dropped_device_command_start_signal_releases_buffer() {
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.sdk_directory.join("buffer").as_path()).await;
+  producer.write(b"one").unwrap();
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let (trigger_upload, admission_rx, completion_rx) =
+    TriggerUpload::new_device_command_with_completion(
+      vec!["buffer".to_string()],
+      "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e".to_string(),
+      "session-1".to_string(),
+    );
+  setup.trigger_upload_tx.send(trigger_upload).await.unwrap();
+
+  let admission = admission_rx.await.unwrap();
+  drop(admission.start_upload_tx);
+  assert_matches!(
+    completion_rx.await,
+    Ok(bd_api::TriggerUploadCompletion::Failed)
+  );
+  assert!(setup.pending_trigger_uploads().await.is_empty());
+
+  setup.trigger_buffer_upload("buffer").await;
+  let upload = setup.next_upload().await;
+  assert_eq!(upload.payload.log_upload().proto_logs.len(), 1);
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn pending_device_command_admission_does_not_block_other_uploads() {
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
+  let (first_buffer, mut first_producer) =
+    create_trigger_buffer(setup.sdk_directory.join("first").as_path()).await;
+  let (second_buffer, mut second_producer) =
+    create_trigger_buffer(setup.sdk_directory.join("second").as_path()).await;
+  first_producer.write(b"first").unwrap();
+  second_producer.write(b"second").unwrap();
+  setup.add_trigger_buffer("first", first_buffer).await;
+  setup.add_trigger_buffer("second", second_buffer).await;
+  setup.sync_trigger_buffer_config(&["first", "second"]).await;
+
+  let (device_command_upload, admission_rx, completion_rx) =
+    TriggerUpload::new_device_command_with_completion(
+      vec!["first".to_string()],
+      "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e".to_string(),
+      "session-1".to_string(),
+    );
+  setup
+    .trigger_upload_tx
+    .send(device_command_upload)
+    .await
+    .unwrap();
+  let _admission = admission_rx.await.unwrap();
+
+  setup.trigger_buffer_upload("second").await;
+  let upload = tokio::time::timeout(std::time::Duration::from_secs(1), setup.next_upload())
+    .await
+    .expect("pending device-command admission should not block the manager");
+  assert_eq!(upload.payload.log_upload().proto_logs, vec![b"second"]);
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+
+  tokio::task::yield_now().await;
+  tokio::time::advance(std::time::Duration::from_secs(30)).await;
+  assert_matches!(
+    completion_rx.await,
+    Ok(bd_api::TriggerUploadCompletion::Failed)
+  );
+
+  setup.trigger_buffer_upload("first").await;
+  let upload = setup.next_upload().await;
+  assert_eq!(upload.payload.log_upload().proto_logs, vec![b"first"]);
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn device_command_admission_total_aggregates_transformed_batches() {
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
+  let (first_buffer, mut first_producer) =
+    create_trigger_buffer(setup.sdk_directory.join("first").as_path()).await;
+  let (second_buffer, mut second_producer) =
+    create_trigger_buffer(setup.sdk_directory.join("second").as_path()).await;
+  setup.add_trigger_buffer("first", first_buffer).await;
+  setup.add_trigger_buffer("second", second_buffer).await;
+  first_producer
+    .write(&make_test_log(time::OffsetDateTime::now_utc()))
+    .unwrap();
+  second_producer
+    .write(&make_test_log(time::OffsetDateTime::now_utc()))
+    .unwrap();
+
+  let command_id = "a51bce65-a56f-46ac-a1a1-3bcc3a4b6a1e".to_string();
+  let (trigger_upload, admission_rx, completion_rx) =
+    TriggerUpload::new_device_command_with_completion(
+      vec!["first".to_string(), "second".to_string()],
+      command_id.clone(),
+      "session-1".to_string(),
+    );
+  setup.trigger_upload_tx.send(trigger_upload).await.unwrap();
+
+  let admission = admission_rx.await.unwrap();
+  admission.start_upload_tx.send(()).unwrap();
+
+  let mut uploaded_bytes = 0u64;
+  for _ in 0 .. 2 {
+    let log_upload = setup.next_upload().await;
+    let progress = log_upload
+      .payload
+      .log_upload()
+      .command_id
+      .as_deref()
+      .expect("device command upload ID");
+    assert_eq!(progress, command_id);
+    for encoded_log in &log_upload.payload.log_upload().proto_logs {
+      uploaded_bytes = uploaded_bytes
+        .checked_add(u64::try_from(encoded_log.len()).unwrap())
+        .unwrap();
+    }
+    log_upload
+      .response_tx
+      .send(UploadResponse {
+        success: true,
+        uuid: log_upload.uuid,
+      })
+      .unwrap();
+  }
+
+  assert_eq!(uploaded_bytes, admission.total_result_bytes);
+  assert_matches!(
+    completion_rx.await.unwrap(),
+    bd_api::TriggerUploadCompletion::Completed {
+      uploaded_log_count: 2,
+      output_truncated: false,
+    }
+  );
+  setup.shutdown().await;
 }
 
 #[tokio::test(start_paused = true)]

@@ -9,9 +9,11 @@
 #[path = "./client_config_test.rs"]
 mod client_config_test;
 
+use crate::device_command::DeviceCommandDispatcher;
 use crate::logging_state::{BufferProducers, ConfigUpdate};
-use crate::write_log_to_buffer;
+use crate::{RegisteredDeviceCommandHandler, write_log_to_buffer};
 use anyhow::anyhow;
+use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::RingBuffer as _;
 use bd_client_common::HANDSHAKE_FLAG_CONFIG_UP_TO_DATE;
 use bd_client_common::error::InvariantError;
@@ -23,7 +25,7 @@ use bd_log_filter::FilterChain;
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{EncodableLog, FieldsRef};
-use bd_proto::protos::bdtail::bdtail_config::BdTailConfigurations;
+use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, DeviceCommandRequest};
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::client::api::{
@@ -41,6 +43,7 @@ use bd_workflows::config::WorkflowsConfiguration;
 use itertools::Itertools;
 use parking_lot::Mutex;
 use protobuf::Chars;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -252,6 +255,7 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate f
 pub struct LoggerUpdate {
   buffer_manager: Arc<bd_buffer::Manager>,
   config_update_tx: Sender<ConfigUpdate>,
+  device_command_dispatcher: DeviceCommandDispatcher,
   stream_config_parse_failure: Counter,
   filter_config_parse_failure: Counter,
 }
@@ -260,15 +264,54 @@ impl LoggerUpdate {
   pub(crate) fn new(
     buffer_manager: Arc<bd_buffer::Manager>,
     config_update_tx: Sender<ConfigUpdate>,
+    data_upload_tx: Sender<DataUpload>,
+    trigger_upload_tx: Sender<TriggerUpload>,
+    session_strategy: Arc<bd_session::Strategy>,
+    artifact_client: Arc<dyn bd_artifact_upload::Client>,
+    device_command_handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
+    remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
     scope: &Scope,
   ) -> Self {
     Self {
       buffer_manager,
       config_update_tx,
+      device_command_dispatcher: DeviceCommandDispatcher::new(
+        data_upload_tx,
+        trigger_upload_tx,
+        session_strategy,
+        artifact_client,
+        device_command_handlers,
+        remote_screenshot_capture_handler,
+      ),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),
       filter_config_parse_failure: scope.counter("filter_config_parse_failure"),
     }
   }
+}
+
+fn device_commands_from_bdtail(
+  bdtail: &BdTailConfigurations,
+) -> anyhow::Result<Vec<DeviceCommandRequest>> {
+  bdtail
+    .active_streams
+    .iter()
+    .filter_map(|stream| {
+      stream
+        .device_command
+        .as_ref()
+        .map(|command| (stream, command))
+    })
+    .map(|(stream, command)| {
+      if command.command_id.as_str() != stream.stream_id.as_str() {
+        anyhow::bail!(
+          "device command id {:?} does not match BDTail stream id {:?}",
+          command.command_id,
+          stream.stream_id,
+        );
+      }
+      Ok(command.clone())
+    })
+    .collect()
 }
 
 #[async_trait::async_trait]
@@ -285,6 +328,11 @@ impl ApplyConfig for LoggerUpdate {
       bdtail,
       filters,
     } = configuration;
+    let device_commands = device_commands_from_bdtail(&bdtail)?;
+    let has_active_tail_streams = bdtail
+      .active_streams
+      .iter()
+      .any(|stream| stream.device_command.is_none());
 
     // During startup, this first trigger-buffer config update is the ordering barrier for
     // trigger-upload recovery. The buffer manager does not return until the full trigger-buffer
@@ -294,13 +342,10 @@ impl ApplyConfig for LoggerUpdate {
     // trigger buffers before new thread-local producers are exposed to normal log writing.
     let maybe_stream_buffer = self
       .buffer_manager
-      .update_from_config(&buffer, !bdtail.active_streams.is_empty())
+      .update_from_config(&buffer, has_active_tail_streams)
       .await?;
 
-    debug_assert_eq!(
-      maybe_stream_buffer.is_some(),
-      !bdtail.active_streams.is_empty()
-    );
+    debug_assert_eq!(maybe_stream_buffer.is_some(), has_active_tail_streams);
 
     let workflows_configuration =
       WorkflowsConfiguration::new(workflows.workflows, debug_workflows.workflows);
@@ -335,6 +380,13 @@ impl ApplyConfig for LoggerUpdate {
       .await
     {
       log::debug!("failed to push config update to a channel: {e:?}");
+      return Ok(());
+    }
+
+    if !from_cache {
+      self
+        .device_command_dispatcher
+        .dispatch_configuration(device_commands);
     }
 
     Ok(())
@@ -371,6 +423,13 @@ impl TailConfigurations {
 
     let mut active_streams = Vec::new();
     for stream in config.active_streams {
+      // Command-bearing entries are one-shot dispatch envelopes. Their buffer records are tagged
+      // during command upload, so adding them here would duplicate the command output as live tail
+      // traffic.
+      if stream.device_command.is_some() {
+        continue;
+      }
+
       let matcher = if let Some(matcher_config) = stream.matcher.into_option() {
         match bd_log_matcher::matcher::Tree::new(&matcher_config) {
           Ok(matcher) => Some(matcher),
@@ -387,6 +446,11 @@ impl TailConfigurations {
       };
 
       active_streams.push((stream.stream_id.clone(), matcher));
+    }
+
+    if active_streams.is_empty() {
+      log::debug!("zero active live bdtail streams");
+      return Ok(Self::default());
     }
 
     log::debug!("{} active bdtail streams", active_streams.len());

@@ -19,18 +19,13 @@
 mod recorder_test;
 
 use bd_client_common::maybe_await_interval;
-use bd_client_stats_store::{Counter, Scope};
-use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, session_replay};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
-use bd_stats_common::{Counter as _, labels};
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::sync::oneshot;
 use tokio::time::{Interval, MissedTickBehavior};
-
-pub const SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE: &str = "Screenshot captured";
 
 #[cfg(test)]
 #[ctor::ctor(unsafe)]
@@ -42,6 +37,8 @@ fn test_global_init() {
 // Target
 //
 
+pub type DeviceCommandScreenshotCompletion = Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>;
+
 // An interface implementing the act of capturing user screens.
 pub trait Target {
   // Instruct the target to capture a privacy-preserving and bandwidth-efficient representation
@@ -51,15 +48,89 @@ pub trait Target {
   // thread, and the `capture_screen` method is always called from a non-main thread.
   fn capture_screen(&self);
 
-  // Instruct the target to capture a pixel-perfect representation of the user's screen.
-  // The target should capture the screenshot and send it using the
-  // `logger::log_session_replay_screenshot` method. The target is expected to operate
-  // asynchronously, as accessing the application view hierarchy requires executing on the main
-  // thread, and the `take_screenshot` method is always called from a non-main thread.
-  //
-  // The recorder implementation guarantees that the consecutive `take_screenshot` method calls are
-  // not made after the previous screenshot is taken.
-  fn capture_screenshot(&self);
+  // Instruct the target to capture a screenshot for a remote device command. Targets that do not
+  // support returning screenshot bytes explicitly reject the request rather than leaving the
+  // command pending.
+  fn capture_device_command_screenshot(&self, completion: DeviceCommandScreenshotCompletion) {
+    completion(Err("remote screenshot capture is unavailable".to_string()));
+  }
+}
+
+//
+// RemoteScreenshotCaptureHandler
+//
+
+#[derive(Clone)]
+pub struct RemoteScreenshotCaptureHandler {
+  target: Arc<dyn Target + Send + Sync>,
+  active_capture_id: Arc<AtomicU64>,
+  next_capture_id: Arc<AtomicU64>,
+  capture_timeout: std::time::Duration,
+}
+
+struct ActiveCaptureGuard {
+  active_capture_id: Arc<AtomicU64>,
+  capture_id: u64,
+}
+
+impl Drop for ActiveCaptureGuard {
+  fn drop(&mut self) {
+    let _ = self.active_capture_id.compare_exchange(
+      self.capture_id,
+      0,
+      Ordering::AcqRel,
+      Ordering::Acquire,
+    );
+  }
+}
+
+impl RemoteScreenshotCaptureHandler {
+  pub fn new(target: Arc<dyn Target + Send + Sync>) -> Self {
+    Self::with_timeout(target, std::time::Duration::from_secs(30))
+  }
+
+  fn with_timeout(
+    target: Arc<dyn Target + Send + Sync>,
+    capture_timeout: std::time::Duration,
+  ) -> Self {
+    Self {
+      target,
+      active_capture_id: Arc::new(AtomicU64::new(0)),
+      next_capture_id: Arc::new(AtomicU64::new(1)),
+      capture_timeout,
+    }
+  }
+
+  pub async fn capture(&self) -> Result<Vec<u8>, String> {
+    let capture_id = self.next_capture_id.fetch_add(1, Ordering::Relaxed);
+    if self
+      .active_capture_id
+      .compare_exchange(0, capture_id, Ordering::AcqRel, Ordering::Acquire)
+      .is_err()
+    {
+      return Err("a remote screenshot capture is already in progress".to_string());
+    }
+
+    let _active_capture_guard = ActiveCaptureGuard {
+      active_capture_id: self.active_capture_id.clone(),
+      capture_id,
+    };
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let active_capture_id = self.active_capture_id.clone();
+    self
+      .target
+      .capture_device_command_screenshot(Box::new(move |result| {
+        let _ =
+          active_capture_id.compare_exchange(capture_id, 0, Ordering::AcqRel, Ordering::Acquire);
+        let _ = completion_tx.send(result);
+      }));
+
+    match tokio::time::timeout(self.capture_timeout, completion_rx).await {
+      Ok(Ok(result)) => result,
+      Ok(Err(_)) => Err("remote screenshot capture was interrupted".to_string()),
+      Err(_) => Err("remote screenshot capture timed out".to_string()),
+    }
+  }
 }
 
 //
@@ -67,41 +138,20 @@ pub trait Target {
 //
 
 pub struct Recorder {
-  target: Box<dyn Target + Send + Sync>,
+  target: Arc<dyn Target + Send + Sync>,
 
   is_periodic_reporting_enabled_flag: BoolWatch<session_replay::PeriodicScreensEnabledFlag>,
   is_periodic_reporting_enabled: bool,
   reporting_interval_rate_flag: DurationWatch<session_replay::ReportingIntervalFlag>,
   reporting_interval_rate: time::Duration,
   reporting_interval: Option<Interval>,
-
-  is_capture_screenshots_enabled_flag: BoolWatch<session_replay::ScreenshotsEnabledFlag>,
-  is_capture_screenshots_enabled: bool,
-  capture_screenshot_rx: Receiver<()>,
-
-  // A flag indicating whether the recorder is ready to take a screenshot. This flag ensures
-  // that the recorder does not request a screenshot from the platform layer while it is still
-  // processing a previously requested screenshot.
-  // Each time a screenshot is requested, the flag is set to `false`, and it is set back to `true`
-  // when the screenshot log is intercepted.
-  is_ready_to_capture_screenshot: Arc<AtomicBool>,
-
-  stats: Stats,
 }
 
 impl Recorder {
   pub fn new(
     target: Box<dyn Target + Send + Sync>,
     runtime_loader: &Arc<ConfigLoader>,
-    scope: &Scope,
-  ) -> (Self, CaptureScreenshotHandler, ScreenshotLogInterceptor) {
-    // Limit the buffer size to 1 to reduce the risk of putting too much pressure on the
-    // application's main thread when dequeuing the screenshot actions from the channel and
-    // passing them to the platform layer, which performs the actual screenshotting on the main
-    // thread.
-    let (capture_screenshot_tx, capture_screenshot_rx) = channel(1);
-    let is_ready_to_capture_screenshot = Arc::new(AtomicBool::new(true));
-
+  ) -> (Self, RemoteScreenshotCaptureHandler) {
     let mut is_periodic_reporting_enabled_flag =
       session_replay::PeriodicScreensEnabledFlag::register(runtime_loader);
     let is_periodic_reporting_enabled = *is_periodic_reporting_enabled_flag.read_mark_update();
@@ -109,21 +159,8 @@ impl Recorder {
     let reporting_interval_rate =
       *session_replay::ReportingIntervalFlag::register(runtime_loader).read_mark_update();
 
-    let mut is_capture_screenshots_enabled_flag =
-      session_replay::ScreenshotsEnabledFlag::register(runtime_loader);
-    let is_capture_screenshots_enabled = *is_capture_screenshots_enabled_flag.read_mark_update();
-
-    let stats = Stats::new(scope);
-
-    let capture_screenshot_handler = CaptureScreenshotHandler {
-      capture_screenshot_tx,
-      channel_full: stats.channel_full.clone(),
-    };
-
-    let screenshot_log_interceptor = ScreenshotLogInterceptor {
-      is_ready_to_capture_screenshot: is_ready_to_capture_screenshot.clone(),
-      received: stats.received.clone(),
-    };
+    let target: Arc<dyn Target + Send + Sync> = target.into();
+    let remote_screenshot_capture_handler = RemoteScreenshotCaptureHandler::new(target.clone());
 
     (
       Self {
@@ -135,14 +172,8 @@ impl Recorder {
         ),
         reporting_interval_rate,
         reporting_interval: None,
-        is_capture_screenshots_enabled_flag,
-        is_capture_screenshots_enabled,
-        capture_screenshot_rx,
-        is_ready_to_capture_screenshot,
-        stats,
       },
-      capture_screenshot_handler,
-      screenshot_log_interceptor,
+      remote_screenshot_capture_handler,
     )
   }
 
@@ -195,120 +226,14 @@ impl Recorder {
             )
           );
         },
-        Some(()) = self.capture_screenshot_rx.recv() => {
-          if !self.is_capture_screenshots_enabled {
-            self.stats.disabled.inc();
-            log::debug!("session replay recorder ignored screenshot: capturing screenshots is disabled");
-            continue;
-          }
-
-          if !self
-            .is_ready_to_capture_screenshot
-            .swap(false, Ordering::Relaxed)
-          {
-            self.stats.not_ready.inc();
-            log::debug!("session replay recorder ignored screenshot: not ready to capture screenshot");
-            continue;
-          }
-
-          log::debug!("session replay recorder taking screenshot");
-
-          self.stats.success.inc();
-          self.target.capture_screenshot();
-        },
         _ = self.is_periodic_reporting_enabled_flag.changed() => {
           self.is_periodic_reporting_enabled
             = *self.is_periodic_reporting_enabled_flag.read_mark_update();
-        },
-        _ = self.is_capture_screenshots_enabled_flag.changed() => {
-          self.is_capture_screenshots_enabled
-            = *self.is_capture_screenshots_enabled_flag.read_mark_update();
         },
         () = &mut local_shutdown => {
           return;
         },
       }
     }
-  }
-}
-
-//
-// Stats
-//
-
-#[allow(clippy::struct_field_names)]
-struct Stats {
-  success: Counter,
-  channel_full: Counter,
-  disabled: Counter,
-  not_ready: Counter,
-  received: Counter,
-}
-
-impl Stats {
-  fn new(scope: &Scope) -> Self {
-    let scope = scope.scope("screenshots");
-    Self {
-      success: scope.counter_with_labels("requests_total", labels!("type" => "success")),
-      channel_full: scope.counter_with_labels("requests_total", labels!("type" => "channel_full")),
-      disabled: scope.counter_with_labels("requests_total", labels!("type" => "disabled")),
-      not_ready: scope.counter_with_labels("requests_total", labels!("type" => "not_ready")),
-      received: scope.counter("received_total"),
-    }
-  }
-}
-
-//
-// CaptureScreenshotHandler
-//
-
-#[derive(Clone)]
-pub struct CaptureScreenshotHandler {
-  capture_screenshot_tx: Sender<()>,
-  channel_full: Counter,
-}
-
-impl CaptureScreenshotHandler {
-  pub fn capture_screenshot(&self) {
-    // We use a channel with a capacity of one and employ `try_send` to avoid waiting for space in
-    // the channel before sending a new signal. This is especially important as the method is
-    // expected to be called on logging hot path.
-    // The channel may become full if "capture screenshot" requests arrive faster than the platform
-    // layer can process them. In such cases, new requests are ignored.
-    if let Err(e) = self.capture_screenshot_tx.try_send(()) {
-      self.channel_full.inc();
-      log::debug!("failed to send capture screenshot signal: {e:?}");
-    }
-  }
-}
-
-//
-// ScreenshotLogInterceptor
-//
-
-pub struct ScreenshotLogInterceptor {
-  is_ready_to_capture_screenshot: Arc<AtomicBool>,
-  received: Counter,
-}
-
-impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
-  fn process(
-    &self,
-    _log_level: bd_log_primitives::LogLevel,
-    log_type: LogType,
-    msg: &bd_log_primitives::LogMessage,
-    _fields: &mut bd_log_primitives::AnnotatedLogFields,
-    _matching_fields: &mut bd_log_primitives::AnnotatedLogFields,
-  ) {
-    if !(log_type == LogType::REPLAY && msg.as_str() == Some(SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE))
-    {
-      return;
-    }
-
-    log::debug!("session replay recorder received screenshot");
-    self
-      .is_ready_to_capture_screenshot
-      .store(true, Ordering::Relaxed);
-    self.received.inc();
   }
 }

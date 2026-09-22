@@ -27,6 +27,11 @@ use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{LogFields, LogMessage, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow as workflow_proto;
+use bd_proto::protos::workflow::workflow::workflow::action::Action_type;
+use bd_proto::protos::workflow::workflow_command::{
+  WorkflowCommandSelector,
+  workflow_command_selector,
+};
 use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
 use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::workflow::macros::rule;
@@ -46,6 +51,7 @@ use bd_test_helpers::workflow::{
 };
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use pretty_assertions::assert_eq;
+use protobuf::MessageField;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Cursor;
 use std::vec;
@@ -291,6 +297,39 @@ fn one_state_workflow() {
       .unwrap()
       .to_string(),
     "invalid workflow configuration: initial state must have at least one transition"
+  );
+}
+
+#[test]
+fn run_command_action_is_rejected() {
+  let command_selector = WorkflowCommandSelector {
+    command_selector: Some(
+      workflow_command_selector::Command_selector::RegisteredCommand(
+        workflow_command_selector::RegisteredCommand {
+          registered_command_id: "eb795954-2383-41f9-b8ff-03e32c0d84d4".to_string(),
+          ..Default::default()
+        },
+      ),
+    ),
+    ..Default::default()
+  };
+
+  let mut run_command = workflow_proto::workflow::action::ActionRunCommand::new();
+  run_command.command_selector = MessageField::some(command_selector);
+
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(message_equals("foo")),
+    &[Action_type::ActionRunCommand(run_command)],
+  );
+  let config = WorkflowBuilder::new("1", &[&a, &b]).build();
+
+  assert_eq!(
+    "workflow run command actions are not supported",
+    Config::new(config, WorkflowDebugMode::None)
+      .unwrap_err()
+      .to_string()
   );
 }
 

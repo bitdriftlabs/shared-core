@@ -475,6 +475,8 @@ impl RingBufferImpl {
       AllowOverwrite::Yes,
       stats,
       |_| {},
+      |_, _| Ok(()),
+      |_, _| Ok(()),
       on_record_evicted_cb,
       |extra_locked_data| {
         extra_locked_data

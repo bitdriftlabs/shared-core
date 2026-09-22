@@ -25,7 +25,14 @@ use crate::trigger_upload_artifact::{
   TriggerUploadArtifactStore,
 };
 use bd_api::upload::{LogBatch, TrackedLogUploadIntent};
-use bd_api::{TriggerUpload, TriggerUploadSource, TriggerUploadStreaming};
+use bd_api::{
+  DeviceCommandUploadAdmission,
+  DeviceCommandUploadMetadata,
+  TriggerUpload,
+  TriggerUploadCompletion,
+  TriggerUploadSource,
+  TriggerUploadStreaming,
+};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
@@ -51,6 +58,8 @@ use tokio::time::{Instant, Sleep, sleep};
 use tower::{Service, ServiceExt};
 use tracing::Instrument as _;
 use unwrap_infallible::UnwrapInfallible;
+
+const DEVICE_COMMAND_ADMISSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 // Feature flags used to control the upload parameters.
 #[derive(Clone)]
@@ -289,22 +298,27 @@ impl BufferUploadManager {
   ) -> anyhow::Result<()> {
     log::debug!("received trigger upload request");
 
+    let mut trigger_upload = trigger_upload;
+    let mut completion_tx = trigger_upload.take_completion_tx();
+    let device_command_admission_tx = trigger_upload.take_device_command_admission_tx();
     let TriggerUpload {
       buffer_ids,
       streaming,
       source,
       request_trigger_uuid,
       session_id,
+      command_stream_id,
+      device_command_upload,
+      ..
     } = trigger_upload;
 
     // Intent-negotiated trigger uploads have a per-trigger UUID that the server can use for
     // completion deduplication. Trigger uploads without intent negotiation still need a durable
     // internal key for retries and replay, so they fall back to the logical trigger ID.
     let trigger_upload_identity = TriggerUploadIdentity::new(&source, request_trigger_uuid);
-    let trigger_upload_source = PersistedTriggerUploadSource::from(&source);
+    let mut trigger_upload_source = PersistedTriggerUploadSource::from(&source);
     let trigger_upload_streaming = streaming.as_ref().map(Into::into);
     let is_remote_streaming_activation = matches!(source, TriggerUploadSource::RemoteCommand(_));
-    let mut buffer_upload_completions = vec![];
     let mut eligible_buffer_ids = vec![];
     let mut scheduled_consumers = vec![];
     let buffer_ids = if buffer_ids.is_empty() {
@@ -312,6 +326,21 @@ impl BufferUploadManager {
     } else {
       buffer_ids
     };
+
+    // Device-command results advertise a single complete byte count, so they cannot omit a
+    // requested buffer. Ordinary trigger uploads may still proceed with their eligible subset.
+    if device_command_admission_tx.is_some()
+      && let Some(buffer_id) = buffer_ids.iter().find(|buffer_id| {
+        self.active_trigger_uploads.contains(*buffer_id)
+          || !self.trigger_buffers.contains_key(*buffer_id)
+      })
+    {
+      log::debug!("cannot start device command upload for unavailable buffer {buffer_id}");
+      if let Some(completion_tx) = completion_tx.take() {
+        let _ignored = completion_tx.send(TriggerUploadCompletion::Failed);
+      }
+      return Ok(());
+    }
 
     // Trigger uploads are coordinated in two phases. First we decide which buffers can actually
     // participate in this upload and register a consumer for each of them. Only after that do we
@@ -358,8 +387,12 @@ impl BufferUploadManager {
         )
         .await;
 
-        let trigger_consumer =
-          self.new_trigger_consumer(&buffer_id, trigger_upload_identity.clone(), &buffer)?;
+        let trigger_consumer = self.new_trigger_consumer(
+          &buffer_id,
+          trigger_upload_identity.clone(),
+          command_stream_id.clone(),
+          &buffer,
+        )?;
 
         self.active_trigger_uploads.insert(buffer_id.clone());
         eligible_buffer_ids.push(buffer_id.clone());
@@ -374,15 +407,38 @@ impl BufferUploadManager {
       }
     }
 
+    let device_command_upload = if let Some(metadata) = device_command_upload {
+      Some(metadata)
+    } else if let Some(command_id) = command_stream_id.as_deref() {
+      let mut total_result_bytes = 0u64;
+      for (_, trigger_consumer) in &scheduled_consumers {
+        total_result_bytes = total_result_bytes
+          .checked_add(trigger_consumer.device_command_payload_bytes()?)
+          .ok_or_else(|| anyhow::anyhow!("device command result bytes overflow"))?;
+      }
+      Some(DeviceCommandUploadMetadata {
+        command_id: command_id.to_string(),
+        total_result_bytes,
+      })
+    } else {
+      None
+    };
+    if let Some(metadata) = &device_command_upload {
+      trigger_upload_source = PersistedTriggerUploadSource::RemoteDeviceCommand(metadata.clone());
+      for (_, trigger_consumer) in &mut scheduled_consumers {
+        trigger_consumer.set_device_command_upload(metadata.clone());
+      }
+    }
+
     if !eligible_buffer_ids.is_empty() {
       // Persist the upload before any background worker can complete. That gives restart recovery
       // a durable description of the upload even if the process dies after tasks are spawned but
       // before any individual buffer batch has been uploaded. If an overlapping request was
       // filtered by the active-buffer gate above, this durable record only contains the eligible
       // subset that this process actually admitted.
-      self
+      if let Err(error) = self
         .pending_trigger_uploads
-        .upsert(PersistedTriggerUpload {
+        .upsert_durably(PersistedTriggerUpload {
           id: trigger_upload_identity.durable_upload_id.clone(),
           source: trigger_upload_source,
           request_trigger_uuid: trigger_upload_identity.request_trigger_uuid.clone(),
@@ -395,11 +451,58 @@ impl BufferUploadManager {
           streaming: trigger_upload_streaming,
           lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
         })
-        .await;
+        .await
+      {
+        log::warn!(
+          "failed to persist trigger upload {} before starting workers: {error}",
+          trigger_upload_identity.durable_upload_id,
+        );
+        for buffer_id in &eligible_buffer_ids {
+          self.active_trigger_uploads.remove(buffer_id);
+        }
+        if let Some(completion_tx) = completion_tx.take() {
+          let _ignored = completion_tx.send(TriggerUploadCompletion::Failed);
+        }
+        return Ok(());
+      }
       self
         .process_local_pending_flush_state
         .mark_pending(flush_buffer_id_from_trigger_upload_source(&source));
     }
+
+    let start_device_command_upload_rx = if let Some(device_command_admission_tx) =
+      device_command_admission_tx
+    {
+      let Some(metadata) = device_command_upload else {
+        self
+          .abandon_unstarted_trigger_upload(&trigger_upload_identity, &source, &eligible_buffer_ids)
+          .await;
+        if let Some(completion_tx) = completion_tx.take() {
+          let _ignored = completion_tx.send(TriggerUploadCompletion::Failed);
+        }
+        return Ok(());
+      };
+      let (start_upload_tx, start_upload_rx) = tokio::sync::oneshot::channel();
+      if device_command_admission_tx
+        .send(DeviceCommandUploadAdmission {
+          total_result_bytes: metadata.total_result_bytes,
+          start_upload_tx,
+        })
+        .is_err()
+      {
+        log::debug!("device command upload admission receiver dropped");
+        self
+          .abandon_unstarted_trigger_upload(&trigger_upload_identity, &source, &eligible_buffer_ids)
+          .await;
+        if let Some(completion_tx) = completion_tx.take() {
+          let _ignored = completion_tx.send(TriggerUploadCompletion::Failed);
+        }
+        return Ok(());
+      }
+      Some(start_upload_rx)
+    } else {
+      None
+    };
 
     // Remote-command streaming should only become visible once the associated trigger upload has
     // actually completed. We therefore carry the activation request alongside the upload and only
@@ -417,86 +520,154 @@ impl BufferUploadManager {
       None
     };
 
-    for (buffer_id, trigger_consumer) in scheduled_consumers {
-      let upload_complete_tx = trigger_upload_complete_tx.clone();
-      let buffer_id_clone = buffer_id.clone();
-      let internal_logger = self.logging.clone();
-      let shutdown_trigger = ComponentShutdownTrigger::default();
-      let shutdown = shutdown_trigger.make_shutdown();
-      let (single_upload_complete_tx, single_upload_complete_rx) = tokio::sync::oneshot::channel();
-      buffer_upload_completions.push(single_upload_complete_rx);
-      tokio::task::spawn(
-        async move {
-          // Handle the error here so that we can fire the complete message even on failure.
-          let upload_completed = match trigger_consumer.run().await {
-            Ok(logs_count) => {
-              internal_logger.log_internal(&format!(
-                "completed trigger upload for buffer {buffer_id_clone:?}, uploaded logs count: \
-                 {logs_count:?}",
-              ));
-              true
-            },
-            Err(e) => {
-              internal_logger.log_internal(&format!(
-                "failed trigger upload for buffer {buffer_id_clone:?}: {e:?}"
-              ));
-              if !e.is::<TriggerBatchUploadCanceled>() {
-                handle_unexpected_error_with_details(e, "", || None);
-              }
-              false
-            },
-          };
+    let scheduled_consumers = scheduled_consumers
+      .into_iter()
+      .map(|(buffer_id, trigger_consumer)| {
+        let shutdown_trigger = ComponentShutdownTrigger::default();
+        let shutdown = shutdown_trigger.make_shutdown();
+        self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
+        (buffer_id, trigger_consumer, shutdown)
+      })
+      .collect::<Vec<_>>();
+    let scheduled_buffer_ids = scheduled_consumers
+      .iter()
+      .map(|(buffer_id, ..)| buffer_id.clone())
+      .collect::<Vec<_>>();
 
-          single_upload_complete_tx
-            .send(upload_completed)
-            .map_err(|_| InvariantError::Invariant)?;
-
-          // TODO(mattklein123): Should we pass this into the trigger consumer and actually
-          // try to bail quickly if it's taking a long time and we are trying to shutdown?
-          drop(shutdown);
-          upload_complete_tx
-            .send(buffer_id_clone)
-            .await
-            .map_err(|_| InvariantError::Invariant)
-        }
-        .instrument(tracing::debug_span!(
-          "trigger_consumer",
-          buffer_id = &*buffer_id
-        )),
-      );
-
-      // We never cancel the trigger uploads directly, so just reuse the top level shutdown
-      // token.
-      self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
-    }
-
-    // Since we have one completion handler for the entire set of trigger uploads, we need to
-    // spawn a task to wait for all of the individual trigger uploads to complete before we can
-    // signal that the trigger uploads are complete. The durable upload entry stays source-scoped
-    // even though stale replacement above happens buffer-by-buffer: one logical upload can still
-    // own multiple admitted buffers, one deferred remote-streaming payload, and one
-    // process-local flush ID that should only complete once every surviving buffer in that upload
-    // has succeeded or the entire upload has been pruned away.
     let pending_trigger_uploads = self.pending_trigger_uploads.clone();
     let process_local_pending_flush_state = self.process_local_pending_flush_state.clone();
     let remote_flush_streaming_tx = self.remote_flush_streaming_tx.clone();
     let tracked_flush_id = flush_buffer_id_from_trigger_upload_source(&source);
     let test_hooks = self.test_hooks.clone();
+    let mut shutdown = self.shutdown.clone();
+    let logging = self.logging.clone();
+    let trigger_upload_complete_tx = trigger_upload_complete_tx.clone();
     tokio::spawn(async move {
+      let mut completion_tx = completion_tx;
+      if let Some(start_upload_rx) = start_device_command_upload_rx {
+        tokio::select! {
+          start_upload = start_upload_rx => {
+            if start_upload.is_ok() {
+              // The Accepted update reached the dispatcher, so workers may now upload results.
+            } else {
+              Self::abandon_detached_trigger_upload(
+                &trigger_upload_identity,
+                &source,
+                &scheduled_buffer_ids,
+                &pending_trigger_uploads,
+                &process_local_pending_flush_state,
+                &trigger_upload_complete_tx,
+                completion_tx.take(),
+              ).await;
+              return;
+            }
+          },
+          () = tokio::time::sleep(DEVICE_COMMAND_ADMISSION_TIMEOUT) => {
+            log::debug!("device command upload admission timed out");
+            Self::abandon_detached_trigger_upload(
+              &trigger_upload_identity,
+              &source,
+              &scheduled_buffer_ids,
+              &pending_trigger_uploads,
+              &process_local_pending_flush_state,
+              &trigger_upload_complete_tx,
+              completion_tx.take(),
+            ).await;
+            return;
+          },
+          () = shutdown.cancelled() => {
+            Self::abandon_detached_trigger_upload(
+              &trigger_upload_identity,
+              &source,
+              &scheduled_buffer_ids,
+              &pending_trigger_uploads,
+              &process_local_pending_flush_state,
+              &trigger_upload_complete_tx,
+              completion_tx.take(),
+            ).await;
+            return;
+          },
+        }
+      }
+
+      let mut buffer_upload_completions = vec![];
+      for (buffer_id, trigger_consumer, shutdown) in scheduled_consumers {
+        let upload_complete_tx = trigger_upload_complete_tx.clone();
+        let buffer_id_clone = buffer_id.clone();
+        let internal_logger = logging.clone();
+        let (single_upload_complete_tx, single_upload_complete_rx) =
+          tokio::sync::oneshot::channel();
+        buffer_upload_completions.push(single_upload_complete_rx);
+        tokio::task::spawn(
+          async move {
+            // Handle the error here so that we can fire the complete message even on failure.
+            let upload_completed = match trigger_consumer.run().await {
+              Ok((logs_count, output_truncated)) => {
+                internal_logger.log_internal(&format!(
+                  "completed trigger upload for buffer {buffer_id_clone:?}, uploaded logs count: \
+                   {logs_count:?}",
+                ));
+                TriggerUploadCompletion::Completed {
+                  uploaded_log_count: logs_count,
+                  output_truncated,
+                }
+              },
+              Err(e) => {
+                internal_logger.log_internal(&format!(
+                  "failed trigger upload for buffer {buffer_id_clone:?}: {e:?}"
+                ));
+                if !e.is::<TriggerBatchUploadCanceled>() {
+                  handle_unexpected_error_with_details(e, "", || None);
+                }
+                TriggerUploadCompletion::Failed
+              },
+            };
+
+            single_upload_complete_tx
+              .send(upload_completed)
+              .map_err(|_| InvariantError::Invariant)?;
+
+            // TODO(mattklein123): Should we pass this into the trigger consumer and actually
+            // try to bail quickly if it's taking a long time and we are trying to shutdown?
+            drop(shutdown);
+            upload_complete_tx
+              .send(buffer_id_clone)
+              .await
+              .map_err(|_| InvariantError::Invariant)
+          }
+          .instrument(tracing::debug_span!(
+            "trigger_consumer",
+            buffer_id = &*buffer_id
+          )),
+        );
+      }
+
+      // Since we have one completion handler for the entire set of trigger uploads, wait for all
+      // individual uploads before signaling the command completion. The durable upload entry
+      // remains source-scoped even though stale replacement happens buffer-by-buffer.
       let completed_uploads = match try_join_all(buffer_upload_completions).await {
         Ok(completed_uploads) => completed_uploads,
         Err(e) => {
           log::debug!("failed to wait for trigger uploads to complete: {e:?}");
+          if let Some(completion_tx) = completion_tx.take() {
+            let _ignored = completion_tx.send(TriggerUploadCompletion::Failed);
+          }
           return;
         },
       };
 
-      if completed_uploads.iter().any(|completed| !completed) {
+      if completed_uploads
+        .iter()
+        .any(|completion| matches!(completion, TriggerUploadCompletion::Failed))
+      {
         log::debug!(
           "preserving pending trigger upload state for {durable_trigger_upload_id} because at \
            least one buffer upload did not complete successfully",
           durable_trigger_upload_id = trigger_upload_identity.durable_upload_id,
         );
+        if let Some(completion_tx) = completion_tx.take() {
+          let _ignored = completion_tx.send(TriggerUploadCompletion::Failed);
+        }
         return;
       }
 
@@ -511,6 +682,9 @@ impl BufferUploadManager {
            streaming activation could not be delivered",
           durable_trigger_upload_id = trigger_upload_identity.durable_upload_id,
         );
+        if let Some(completion_tx) = completion_tx.take() {
+          let _ignored = completion_tx.send(TriggerUploadCompletion::Failed);
+        }
         return;
       }
 
@@ -525,9 +699,77 @@ impl BufferUploadManager {
       }
 
       log::debug!("signaling all trigger uploads complete");
+      if let Some(completion_tx) = completion_tx.take() {
+        let (uploaded_log_count, output_truncated) = completed_uploads.into_iter().fold(
+          (0u64, false),
+          |(uploaded_log_count, output_truncated), completion| match completion {
+            TriggerUploadCompletion::Completed {
+              uploaded_log_count: next_uploaded_log_count,
+              output_truncated: next_output_truncated,
+            } => (
+              uploaded_log_count.saturating_add(next_uploaded_log_count),
+              output_truncated || next_output_truncated,
+            ),
+            TriggerUploadCompletion::Failed => (uploaded_log_count, output_truncated),
+          },
+        );
+        let _ignored = completion_tx.send(TriggerUploadCompletion::Completed {
+          uploaded_log_count,
+          output_truncated,
+        });
+      }
     });
 
     Ok(())
+  }
+
+  async fn abandon_unstarted_trigger_upload(
+    &mut self,
+    trigger_upload_identity: &TriggerUploadIdentity,
+    source: &TriggerUploadSource,
+    buffer_ids: &[String],
+  ) {
+    for buffer_id in buffer_ids {
+      self.active_trigger_uploads.remove(buffer_id);
+    }
+    if buffer_ids.is_empty() {
+      return;
+    }
+    self
+      .pending_trigger_uploads
+      .remove(trigger_upload_identity.durable_upload_id())
+      .await;
+    self
+      .process_local_pending_flush_state
+      .mark_completed(&flush_buffer_id_from_trigger_upload_source(source));
+  }
+
+  async fn abandon_detached_trigger_upload(
+    trigger_upload_identity: &TriggerUploadIdentity,
+    source: &TriggerUploadSource,
+    scheduled_buffer_ids: &[String],
+    pending_trigger_uploads: &PendingTriggerUploadsStore,
+    process_local_pending_flush_state: &ProcessLocalPendingFlushState,
+    trigger_upload_complete_tx: &Sender<String>,
+    completion_tx: Option<tokio::sync::oneshot::Sender<TriggerUploadCompletion>>,
+  ) {
+    pending_trigger_uploads
+      .remove(trigger_upload_identity.durable_upload_id())
+      .await;
+    process_local_pending_flush_state
+      .mark_completed(&flush_buffer_id_from_trigger_upload_source(source));
+    for buffer_id in scheduled_buffer_ids {
+      if trigger_upload_complete_tx
+        .send(buffer_id.clone())
+        .await
+        .is_err()
+      {
+        break;
+      }
+    }
+    if let Some(completion_tx) = completion_tx {
+      let _ignored = completion_tx.send(TriggerUploadCompletion::Failed);
+    }
   }
 
   // Handles a single buffer event, where a buffer is either added or removed.
@@ -785,13 +1027,23 @@ impl BufferUploadManager {
 
       self
         .handle_trigger_uploads(
-          match pending_upload.source {
+          match &pending_upload.source {
             PersistedTriggerUploadSource::RemoteCommand(_) => TriggerUpload::new(
               pending_upload.buffer_ids(),
               pending_upload.streaming(),
               pending_upload.source.to_trigger_upload_source(),
               pending_upload.session_id.clone(),
             ),
+            PersistedTriggerUploadSource::RemoteDeviceCommand(metadata) => {
+              // TODO(mattklein123): Device commands do not yet persist terminal updates. Do not
+              // rely on restart recovery to complete their server-side lifecycle until the
+              // follow-up durability work can replay those updates.
+              TriggerUpload::new_recovered_device_command(
+                pending_upload.buffer_ids(),
+                metadata.clone(),
+                pending_upload.session_id.clone(),
+              )
+            },
             PersistedTriggerUploadSource::WorkflowAction(_)
             | PersistedTriggerUploadSource::ExplicitSessionCapture(_) => {
               let request_trigger_uuid = pending_upload
@@ -890,6 +1142,7 @@ impl BufferUploadManager {
     &self,
     buffer_name: &str,
     trigger_upload_identity: TriggerUploadIdentity,
+    command_stream_id: Option<String>,
     buffer: &Arc<Buffer>,
   ) -> anyhow::Result<CompleteBufferUpload> {
     let artifact_store = TriggerUploadArtifactStore::new(
@@ -907,6 +1160,7 @@ impl BufferUploadManager {
       self.state_upload_handle.clone(),
       self.pending_trigger_uploads.clone(),
       trigger_upload_identity,
+      command_stream_id,
       artifact_store,
       buffer.clone(),
     ))
@@ -1254,10 +1508,55 @@ struct CompleteBufferUpload {
   // from the buffer in this process.
   pending_trigger_uploads: PendingTriggerUploadsStore,
   trigger_upload_identity: TriggerUploadIdentity,
+  command_stream_id: Option<String>,
+  device_command_upload: Option<DeviceCommandUploadMetadata>,
   has_marked_uploading_from_buffer: bool,
   pending_batch_reads: usize,
   artifact_store: TriggerUploadArtifactStore,
   buffer: Arc<Buffer>,
+  output_truncated: bool,
+}
+
+const STREAM_IDS_FIELD_TAG: u64 = (8 << 3) | 2;
+
+fn encoded_varint_len(mut value: u64) -> u64 {
+  let mut length = 1;
+  while value >= 0x80 {
+    value >>= 7;
+    length += 1;
+  }
+  length
+}
+
+fn append_varint(encoded: &mut Vec<u8>, mut value: u64) -> anyhow::Result<()> {
+  while value >= 0x80 {
+    let byte = u8::try_from(value & 0x7f)?;
+    encoded.push(byte | 0x80);
+    value >>= 7;
+  }
+  encoded.push(u8::try_from(value)?);
+  Ok(())
+}
+
+fn command_stream_id_field_size(command_stream_id: &str) -> anyhow::Result<u64> {
+  let stream_id_len = u64::try_from(command_stream_id.len())?;
+  encoded_varint_len(STREAM_IDS_FIELD_TAG)
+    .checked_add(encoded_varint_len(stream_id_len))
+    .and_then(|size| size.checked_add(stream_id_len))
+    .ok_or_else(|| anyhow::anyhow!("device command stream ID field size overflow"))
+}
+
+fn append_command_stream_id(
+  encoded_log: &mut Vec<u8>,
+  command_stream_id: &str,
+) -> anyhow::Result<()> {
+  // Device command IDs are server-issued UUIDs that cannot already be present in a log's stream
+  // IDs. Append exactly one protobuf field so the admission total and emitted bytes stay aligned.
+  let stream_id_len = u64::try_from(command_stream_id.len())?;
+  append_varint(encoded_log, STREAM_IDS_FIELD_TAG)?;
+  append_varint(encoded_log, stream_id_len)?;
+  encoded_log.extend_from_slice(command_stream_id.as_bytes());
+  Ok(())
 }
 
 impl CompleteBufferUpload {
@@ -1270,12 +1569,13 @@ impl CompleteBufferUpload {
     state_upload_handle: Option<Arc<StateUploadHandle>>,
     pending_trigger_uploads: PendingTriggerUploadsStore,
     trigger_upload_identity: TriggerUploadIdentity,
+    command_stream_id: Option<String>,
     artifact_store: TriggerUploadArtifactStore,
     buffer: Arc<Buffer>,
   ) -> Self {
     let lookback_window_limit = *runtime_flags.upload_lookback_window_feature_flag.read();
 
-    let lookback_window = if lookback_window_limit.is_zero() {
+    let lookback_window = if command_stream_id.is_some() || lookback_window_limit.is_zero() {
       None
     } else {
       Some(OffsetDateTime::now_utc() - lookback_window_limit)
@@ -1291,14 +1591,36 @@ impl CompleteBufferUpload {
       state_upload_handle,
       pending_trigger_uploads,
       trigger_upload_identity,
+      command_stream_id,
+      device_command_upload: None,
       has_marked_uploading_from_buffer: false,
       pending_batch_reads: 0,
       artifact_store,
       buffer,
+      output_truncated: false,
     }
   }
 
-  async fn run(mut self) -> anyhow::Result<i32> {
+  fn device_command_payload_bytes(&self) -> anyhow::Result<u64> {
+    let Some(command_stream_id) = &self.command_stream_id else {
+      return Ok(0);
+    };
+    let stats = self.consumer.remaining_payload_stats()?;
+    let stream_id_bytes = stats
+      .record_count
+      .checked_mul(command_stream_id_field_size(command_stream_id)?)
+      .ok_or_else(|| anyhow::anyhow!("device command stream ID bytes overflow"))?;
+    stats
+      .payload_bytes
+      .checked_add(stream_id_bytes)
+      .ok_or_else(|| anyhow::anyhow!("device command result bytes overflow"))
+  }
+
+  fn set_device_command_upload(&mut self, metadata: DeviceCommandUploadMetadata) {
+    self.device_command_upload = Some(metadata);
+  }
+
+  async fn run(mut self) -> anyhow::Result<(u64, bool)> {
     log::debug!("starting trigger consumption task");
 
     // TODO(snowp): Consider tokio::task::yield_now to avoid starving other tasks if the batch size
@@ -1311,14 +1633,14 @@ impl CompleteBufferUpload {
     self.discard_duplicate_queued_batch().await?;
     self.flush_persisted_batches().await?;
 
-    let mut total_logs = 0;
+    let mut total_logs = 0u64;
     loop {
       let entry = self.consumer.start_read(false);
 
       match entry {
         // Accumulate a full trigger batch in memory, then persist it once before the buffer is
         // advanced in bulk.
-        Ok(log) => {
+        Ok(mut log) => {
           if let Some(lookback_window) = self.lookback_window {
             // We are defensive here as we can't be sure the log is well formed.
             if let Some(ts) = EncodableLog::extract_timestamp(&log)
@@ -1326,6 +1648,7 @@ impl CompleteBufferUpload {
             {
               log::debug!("skipping log, outside lookback window");
               self.old_logs_dropped.inc();
+              self.output_truncated = true;
               self.consumer.finish_read()?;
               continue;
             }
@@ -1342,9 +1665,13 @@ impl CompleteBufferUpload {
             self.has_marked_uploading_from_buffer = true;
           }
 
+          if let Some(command_stream_id) = &self.command_stream_id {
+            append_command_stream_id(&mut log, command_stream_id)?;
+          }
+
           self.batch_builder.add_log(log);
           self.pending_batch_reads += 1;
-          total_logs += 1;
+          total_logs = total_logs.saturating_add(1);
 
           if self.batch_builder.limit_reached() {
             self.persist_and_flush_current_batch().await?;
@@ -1356,7 +1683,7 @@ impl CompleteBufferUpload {
           self.flush_persisted_batches().await?;
 
           log::debug!("trigger upload complete, sent {total_logs} logs");
-          return Ok(total_logs);
+          return Ok((total_logs, self.output_truncated));
         },
         // Unexpected error, bubble up.
         Err(e) => return Err(e.into()),
@@ -1369,9 +1696,13 @@ impl CompleteBufferUpload {
     let Some(queued_batch) = self.artifact_store.queued_batch().await? else {
       return Ok(());
     };
-    let Some(buffer_log) = self.buffer.peek_oldest_record()? else {
+    let Some(mut buffer_log) = self.buffer.peek_oldest_record()? else {
       return Ok(());
     };
+
+    if let Some(command_stream_id) = &self.command_stream_id {
+      append_command_stream_id(&mut buffer_log, command_stream_id)?;
+    }
 
     // A queued batch has been durably staged but has not yet been promoted to inflight. If the
     // current buffer head still matches the first log in that artifact, we know this process has
@@ -1484,7 +1815,8 @@ impl CompleteBufferUpload {
           },
           false,
         )
-        .with_request_trigger_uuid(self.trigger_upload_identity.request_trigger_uuid.clone()),
+        .with_request_trigger_uuid(self.trigger_upload_identity.request_trigger_uuid.clone())
+        .with_device_command_upload(self.device_command_upload.clone()),
       )
       .await
       .unwrap_infallible();
