@@ -10,10 +10,13 @@ rust_binary(
         "src/bin/generate_protos.rs",
         "src/proto_codegen.rs",
     ],
+    crate_features = ["codegen"],
     crate_name = "generate_protos",
     crate_root = "src/bin/generate_protos.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True),
+    deps = all_crate_deps(normal = True) + [
+        "@crates//:protobuf-codegen",
+    ],
 )
 
 rust_library_with_test(

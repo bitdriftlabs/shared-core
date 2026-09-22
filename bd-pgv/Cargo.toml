@@ -12,7 +12,7 @@ doctest = false
 bd-workspace-hack.workspace = true
 log.workspace               = true
 protobuf.workspace          = true
-protobuf-codegen.workspace  = true
+protobuf-codegen            = { workspace = true, optional = true }
 thiserror.workspace         = true
 uuid.workspace              = true
 
@@ -21,8 +21,16 @@ bd-time           = { path = "../bd-time" }
 matches.workspace = true
 time.workspace    = true
 
+[features]
+codegen = ["dep:protobuf-codegen"]
+
 [build-dependencies]
 protobuf-codegen.workspace = true
+
+[[bin]]
+name              = "generate_protos"
+path              = "src/bin/generate_protos.rs"
+required-features = ["codegen"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin_include)"] }
