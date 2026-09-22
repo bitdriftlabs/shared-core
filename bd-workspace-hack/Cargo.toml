@@ -60,6 +60,7 @@ ppv-lite86 = { version = "0.2", default-features = false, features = ["simd", "s
 protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = ["with-bytes"] }
 rand = { version = "0.9", default-features = false, features = ["small_rng", "thread_rng"] }
 rand_chacha = { version = "0.9", default-features = false, features = ["std"] }
+regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-build", "dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
 reqwest = { version = "0.13", features = ["deflate", "json"] }
@@ -127,6 +128,7 @@ ppv-lite86 = { version = "0.2", default-features = false, features = ["simd", "s
 protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = ["with-bytes"] }
 rand = { version = "0.9", default-features = false, features = ["small_rng", "thread_rng"] }
 rand_chacha = { version = "0.9", default-features = false, features = ["std"] }
+regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-build", "dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
 reqwest = { version = "0.13", features = ["deflate", "json"] }
