@@ -43,6 +43,7 @@ impl ConnectSafeCompressionLayer {
 //
 
 // What compression type to use for gRPC requests.
+#[derive(Clone)]
 pub enum Compression {
   // No compression.
   None,

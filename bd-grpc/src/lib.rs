@@ -19,6 +19,7 @@ pub mod error;
 pub mod service;
 pub mod stats;
 pub mod status;
+pub mod unary_transport;
 
 use crate::error::{Error, Result};
 use axum::body::{Body, to_bytes};

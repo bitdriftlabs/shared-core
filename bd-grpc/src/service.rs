@@ -16,6 +16,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct GrpcMethod {
   method_descriptor: Arc<MethodDescriptor>,
+  file_descriptor: FileDescriptor,
   service: String,
   method: String,
   full_path: String,
@@ -122,6 +123,7 @@ impl<OutgoingType: MessageFull, IncomingType: MessageFull>
     Self {
       grpc_method: GrpcMethod {
         method_descriptor: Arc::new(method_descriptor),
+        file_descriptor: file_descriptor.clone(),
         full_path: format!("/{service}/{method}"),
         method,
         service,
@@ -129,6 +131,11 @@ impl<OutgoingType: MessageFull, IncomingType: MessageFull>
       outgoing_type: PhantomData,
       incoming_type: PhantomData,
     }
+  }
+
+  #[must_use]
+  pub fn file_descriptor(&self) -> &FileDescriptor {
+    &self.grpc_method.file_descriptor
   }
 
   #[must_use]
