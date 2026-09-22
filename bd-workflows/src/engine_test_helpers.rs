@@ -146,7 +146,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
     }
   }
 
-  pub fn process_log(&mut self, log: TestLog) -> WorkflowsEngineResult<'_> {
+  pub fn process_log(&mut self, log: TestLog) -> WorkflowsEngineResult<'static> {
     self.engine.process_event(
       WorkflowEvent::Log(&bd_log_primitives::Log {
         log_type: LogType::NORMAL,
@@ -170,7 +170,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
   pub fn process_state_change(
     &mut self,
     state_change: &bd_state::StateChange,
-  ) -> WorkflowsEngineResult<'_> {
+  ) -> WorkflowsEngineResult<'static> {
     self.process_state_change_with_reader(state_change, &bd_state::InMemoryStateReader::default())
   }
 
@@ -178,7 +178,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
     &mut self,
     state_change: &bd_state::StateChange,
     state_reader: &dyn bd_state::StateReader,
-  ) -> WorkflowsEngineResult<'_> {
+  ) -> WorkflowsEngineResult<'static> {
     // State changes don't write to log buffers, so use the static empty set
     // Most tests use empty fields for simplicity. Tests that need to verify global metadata
     // fields should call engine.process_event() directly with custom fields.
@@ -517,6 +517,7 @@ macro_rules! engine_assert_active_runs {
     let annotated = $crate::workflow::workflow_test::AnnotatedWorkflow {
       config: $engine.engine.configs[$workflow_index].clone(),
       workflow: $engine.engine.state.workflows[$workflow_index].clone(),
+      command_last_started_at_ns: std::collections::HashMap::new(),
     };
     $crate::assert_active_runs!(annotated; $($state_id),+);
   }};
@@ -529,6 +530,7 @@ macro_rules! engine_assert_active_run_traversals {
     let annotated = $crate::workflow::workflow_test::AnnotatedWorkflow {
       config: $engine.engine.configs[$workflow_index].clone(),
       workflow: $engine.engine.state.workflows[$workflow_index].clone(),
+      command_last_started_at_ns: std::collections::HashMap::new(),
     };
     $crate::assert_active_run_traversals!(annotated; $run_index; $($state_id),+);
   }};

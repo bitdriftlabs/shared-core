@@ -20,6 +20,7 @@ use bd_proto::protos::workflow::workflow::workflow::{
   LimitDuration as LimitDurationProto,
   LimitMatchedLogsCount,
 };
+use bd_proto::protos::workflow::workflow_command::WorkflowCommandSelector;
 use bd_state::{Scope, state_value_as_cow};
 use bd_stats_common::MetricType;
 use protobuf::MessageField;
@@ -620,7 +621,38 @@ impl Transition {
       },
       Rule_type::OnNewSession(_) => Predicate::OnNewSession,
       Rule_type::OnReport(_) => Predicate::OnReport,
-      Rule_type::MatchRunCommand(_) => Predicate::MatchRunCommand,
+      Rule_type::MatchRunCommand(command) => {
+        let command_selector = command
+          .command_selector
+          .clone()
+          .into_option()
+          .ok_or_else(|| {
+            anyhow!("invalid workflow command matcher configuration: missing command selector")
+          })?;
+        let minimum_execution_interval =
+            anyhow!("invalid workflow command matcher configuration: missing minimum interval")
+          })?;
+        let minimum_execution_interval = Duration::new(
+          minimum_execution_interval.seconds,
+          minimum_execution_interval.nanos,
+        );
+        if minimum_execution_interval <= Duration::ZERO {
+          bail!(
+            "invalid workflow command matcher configuration: minimum interval must be positive"
+          );
+        }
+
+        Predicate::MatchRunCommand {
+          command_selector,
+          minimum_execution_interval,
+          outcome_log_matcher: command
+            .outcome_log_matcher
+            .as_ref()
+            .map(Tree::new)
+            .transpose()?,
+        }
+      },
+>>>>>>> 6a9f7b59 (workflow commands: base workflow changes)
     };
 
     let actions = transition
@@ -700,12 +732,14 @@ pub(crate) enum Predicate {
   /// TODO(snowp): Dispatch an event for report-triggered transitions once report handoff support
   /// is implemented. Until then, the existing unmatched-transition path intentionally ignores it.
   OnReport,
-  /// Command execution is implemented by a later stack layer. Keep this inert in the base proto
-  /// layer so clients can parse configurations before the execution machinery lands.
-  MatchRunCommand,
   StateChangeMatch {
     state_change_match: StateChangeMatch,
     extra_matcher: Option<Tree>,
+  },
+  MatchRunCommand {
+    command_selector: WorkflowCommandSelector,
+    minimum_execution_interval: Duration,
+    outcome_log_matcher: Option<Tree>,
   },
 }
 

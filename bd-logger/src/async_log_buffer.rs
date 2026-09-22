@@ -9,6 +9,7 @@
 #[path = "./async_log_buffer_test.rs"]
 mod async_log_buffer_test;
 
+use crate::device_command::{WorkflowCommandCompletion, WorkflowCommandDispatcher};
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{LogReplay, LogReplayResult};
 use crate::logger::{
@@ -75,7 +76,7 @@ use bd_state::{
 use bd_stats_common::{Counter as _, Histogram as _, labels};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
-use bd_workflows::workflow::WorkflowDebugStateMap;
+use bd_workflows::workflow::{WorkflowCommandRequest, WorkflowDebugStateMap};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use std::collections::{HashMap, VecDeque};
 use std::future::{Future, ready};
@@ -507,6 +508,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   startup_replay_delay: Option<watch::Receiver<time::Duration>>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
+  workflow_command_completion_rx: mpsc::Receiver<WorkflowCommandCompletion>,
   data_upload_tx: mpsc::Sender<DataUpload>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
 
@@ -520,6 +522,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   events_listener: bd_events::Listener,
 
   replayer: R,
+  workflow_command_dispatcher: WorkflowCommandDispatcher,
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
   logging_state: LoggingState,
@@ -611,6 +614,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
     session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
+    command_handlers: HashMap<String, Arc<dyn crate::RegisteredCommandHandler>>,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
     report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
@@ -632,6 +636,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     uninitialized_logging_context
       .startup_replay_eligibility_initialized(startup_replay_eligibility);
     let test_hooks = uninitialized_logging_context.test_hooks();
+    let (workflow_command_completion_tx, workflow_command_completion_rx) = mpsc::channel(16);
 
     // The old log and control channels had 1 MiB and 10 MiB byte budgets respectively. Keep
     // those bootstrap limits while moving both flows into one ordered ingress.
@@ -691,10 +696,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         config_update_rx,
         report_processor_rx,
+        workflow_command_completion_rx,
         data_upload_tx,
         shutdown_trigger_handle,
 
         replayer,
+        workflow_command_dispatcher: WorkflowCommandDispatcher::new(
+          command_handlers,
+          workflow_command_completion_tx,
+        ),
 
         session_strategy: session_strategy.clone(),
         metadata_provider: metadata_provider.clone(),
@@ -816,6 +826,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       let source_context = context.clone();
       let source_attributes_overrides = log.attributes_overrides.clone();
       let log_replay_result = self.process_log(log, state_store, context).await?;
+      self.dispatch_workflow_commands(log_replay_result.workflow_commands_to_start);
       logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
         workflow_generated_log(
           log,
@@ -840,6 +851,70 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       }
     }
     Ok(())
+  }
+
+  fn dispatch_workflow_commands(&self, requests: Vec<WorkflowCommandRequest>) {
+    for request in requests {
+      self.workflow_command_dispatcher.dispatch(&request);
+    }
+  }
+
+  async fn process_workflow_command_completion(
+    &mut self,
+    completion: WorkflowCommandCompletion,
+    state_store: &bd_state::Store,
+  ) {
+    let log = match &mut self.logging_state {
+      LoggingState::Initialized(context) => context.processing_pipeline.complete_workflow_command(
+        &completion.token,
+        completion.outcome,
+        self.time_provider.now(),
+      ),
+      LoggingState::Uninitialized(_) => return,
+    };
+    let Ok(log) = log else {
+      log::debug!("discarding duplicate or unknown workflow command completion");
+      return;
+    };
+
+    self
+      .process_workflow_command_outcome_logs(Vec::from([log]), state_store)
+      .await;
+  }
+
+  async fn recover_workflow_commands(&mut self, state_store: &bd_state::Store) {
+    let logs = match &mut self.logging_state {
+      LoggingState::Initialized(context) => context
+        .processing_pipeline
+        .fail_recovered_workflow_commands(self.time_provider.now()),
+      LoggingState::Uninitialized(_) => return,
+    };
+    self
+      .process_workflow_command_outcome_logs(logs, state_store)
+      .await;
+  }
+
+  async fn process_workflow_command_outcome_logs(
+    &mut self,
+    logs: impl IntoIterator<Item = bd_workflows::engine::WorkflowCommandLog>,
+    state_store: &bd_state::Store,
+  ) {
+    let mut logs: VecDeque<_> = logs
+      .into_iter()
+      .map(|event| (event.log, Some(event.token)))
+      .collect();
+    while let Some((log, completion_token)) = logs.pop_front() {
+      match self.write_log(log, completion_token, state_store).await {
+        Ok(result) => {
+          self.dispatch_workflow_commands(result.workflow_commands_to_start);
+          logs.extend(result.logs_to_inject.into_iter().map(|log| (log, None)));
+          self
+            .pending_workflow_debug_state
+            .extend(result.workflow_debug_state);
+        },
+        Err(error) => log::warn!("failed to replay workflow command outcome; dropping it: {error}"),
+      }
+    }
   }
 
   async fn process_log(
@@ -965,7 +1040,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, state_store).await
+        self.write_log(processed_log, None, state_store).await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -979,6 +1054,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn write_log(
     &mut self,
     log: Log,
+    completion_token: Option<bd_workflows::workflow::WorkflowCommandCompletionToken>,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<LogReplayResult> {
     let log_replay_result = match &mut self.logging_state {
@@ -989,6 +1065,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .replayer
         .replay_log(
           log,
+          completion_token,
           &mut initialized_logging_context.processing_pipeline,
           state_store,
           self.time_provider.now(),
@@ -1023,7 +1100,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn update(mut self, config: ConfigUpdate) -> Self {
+  async fn update(mut self, config: ConfigUpdate, state_store: &bd_state::Store) -> Self {
+    let recovering = matches!(self.logging_state, LoggingState::Uninitialized(_));
     let initialized_logging_context = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         uninitialized_logging_context.updated(config).await
@@ -1035,6 +1113,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     };
 
     self.logging_state = LoggingState::Initialized(initialized_logging_context);
+    if recovering {
+      self.recover_workflow_commands(state_store).await;
+    }
     self
   }
 
@@ -1089,7 +1170,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           self.refresh_event_buffer_limits();
         },
         Some(config) = self.config_update_rx.recv() => {
-          self = self.update(config).await;
+          self = self.update(config, &state_store).await;
           // Publish limits before readiness. EventBuffer reads the current delay watch before
           // opening, including when the startup deadline elapsed during configuration I/O.
           self.refresh_event_buffer_limits();
@@ -1105,6 +1186,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           // startup-gate release so their entries can join the protected replay lane.
           let reports = report_processor.process_all_pending_reports().await;
           self.admit_crash_reports(reports, &session);
+        },
+        Some(completion) = self.workflow_command_completion_rx.recv() => {
+          self.process_workflow_command_completion(completion, &state_store).await;
         },
         // TODO(snowp): Benchmark batched reads. A batched implementation must cooperatively yield
         // between entries and return to this select! so Tokio and ALB's other branches progress.

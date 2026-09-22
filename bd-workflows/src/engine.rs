@@ -42,6 +42,10 @@ use crate::workflow::{
   TriggeredAction,
   TriggeredActionEmitSankey,
   Workflow,
+  WorkflowCommandCompletionError,
+  WorkflowCommandCompletionToken,
+  WorkflowCommandOutcome,
+  WorkflowCommandRequest,
   WorkflowDebugStateMap,
   WorkflowEvent,
 };
@@ -73,6 +77,12 @@ use tokio::time::Instant;
 // The state version was updated from 11 to 12 after a serialization bug was present in version 1
 // that would lose some data when serializing/deserializing.
 pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.12.bin";
+
+/// A normal log accompanied by private routing metadata for its command traversal.
+pub struct WorkflowCommandLog {
+  pub log: Log,
+  pub token: WorkflowCommandCompletionToken,
+}
 
 //
 // ProcessLocalPendingFlushState
@@ -154,6 +164,7 @@ pub struct WorkflowsEngine<C, H> {
   // at index `i`.
   configs: Vec<Config>,
   state: WorkflowsState,
+  pending_workflow_command_index: HashMap<String, PendingWorkflowCommandLocation>,
   // Tracks the immediately preceding session for detecting out-of-order logs that return to it.
   // This is process local as the most relevant case of this is during startup when sequencing
   // crash logs that occurred in a previous session.
@@ -251,6 +262,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     let workflows_engine = Self {
       configs: vec![],
       state: WorkflowsState::default(),
+      pending_workflow_command_index: HashMap::new(),
       previous_session_id: String::new(),
       stats: WorkflowsEngineStats::new(&scope),
       state_store,
@@ -338,6 +350,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       self.state.pending_sankey_actions = state.pending_sankey_actions;
 
       self.state.session_id.clone_from(&state.session_id);
+      self.state.command_last_started_at_ns = state.command_last_started_at_ns;
       self.add_workflows(
         config.workflows_configuration.workflows,
         Some(state.workflows),
@@ -371,6 +384,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     }
 
     self.state.refresh_tracing_counts_from_state();
+    self.rebuild_pending_workflow_command_index();
 
     log::debug!(
       "started workflows engine with {} workflow(s); {} pending processing action(s); {} pending \
@@ -498,6 +512,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     self.state.streaming_actions = self
       .flush_buffers_actions_resolver
       .standardize_streaming_buffers(self.state.streaming_actions.clone());
+    self.rebuild_pending_workflow_command_index();
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
@@ -544,6 +559,38 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
 
     for (workflow, config) in workflows_and_configs {
       self.add_workflow(workflow, config);
+    }
+  }
+
+  fn rebuild_pending_workflow_command_index(&mut self) {
+    self.pending_workflow_command_index.clear();
+    for (workflow_index, workflow) in self.state.workflows.iter().enumerate() {
+      Self::index_pending_workflow_commands(
+        &mut self.pending_workflow_command_index,
+        workflow_index,
+        workflow,
+      );
+    }
+  }
+
+  fn index_pending_workflow_commands(
+    index: &mut HashMap<String, PendingWorkflowCommandLocation>,
+    workflow_index: usize,
+    workflow: &Workflow,
+  ) {
+    for (run_index, run) in workflow.runs.iter().enumerate() {
+      for (traversal_index, traversal) in run.traversals.iter().enumerate() {
+        if let Some(pending_command) = &traversal.pending_command {
+          index.insert(
+            pending_command.completion_token.clone(),
+            PendingWorkflowCommandLocation {
+              workflow_index,
+              run_index,
+              traversal_index,
+            },
+          );
+        }
+      }
     }
   }
 
@@ -604,6 +651,73 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
   #[must_use]
   pub fn is_tracing_active(&self) -> bool {
     self.state.is_tracing_active()
+  }
+
+  /// Completes exactly one pending command and returns the synthetic outcome log that must be
+  /// replayed through the normal logger pipeline to resume the matching traversal.
+  pub fn complete_workflow_command(
+    &mut self,
+    token: &WorkflowCommandCompletionToken,
+    outcome: WorkflowCommandOutcome,
+    now: OffsetDateTime,
+  ) -> Result<WorkflowCommandLog, WorkflowCommandCompletionError> {
+    let Some(location) = self.pending_workflow_command_index.get(&token.0).copied() else {
+      return Err(WorkflowCommandCompletionError::UnknownToken);
+    };
+    let Some(pending_command) = self
+      .state
+      .workflows
+      .get_mut(location.workflow_index)
+      .and_then(|workflow| workflow.runs.get_mut(location.run_index))
+      .and_then(|run| run.traversals.get_mut(location.traversal_index))
+      .and_then(|traversal| traversal.pending_command.as_mut())
+    else {
+      return Err(WorkflowCommandCompletionError::UnknownToken);
+    };
+    if pending_command.completion_received {
+      return Err(WorkflowCommandCompletionError::AlreadyCompleted);
+    }
+
+    pending_command.completion_received = true;
+    self.needs_state_persistence = true;
+    Ok(WorkflowCommandLog {
+      log: outcome.into_log(self.state.session_id.clone(), now),
+      token: token.clone(),
+    })
+  }
+
+  /// Returns terminal failure logs for commands that were pending when the previous process
+  /// stopped. Their original executors cannot report another outcome after a restart.
+  pub fn fail_recovered_workflow_commands(
+    &mut self,
+    now: OffsetDateTime,
+  ) -> Vec<WorkflowCommandLog> {
+    let mut completion_tokens = Vec::new();
+    for workflow in &mut self.state.workflows {
+      for run in &mut workflow.runs {
+        for traversal in &mut run.traversals {
+          if let Some(pending_command) = traversal.pending_command.as_mut() {
+            pending_command.completion_received = true;
+            completion_tokens.push(pending_command.completion_token.clone());
+          }
+        }
+      }
+    }
+    if !completion_tokens.is_empty() {
+      self.needs_state_persistence = true;
+    }
+
+    completion_tokens
+      .into_iter()
+      .map(|token| WorkflowCommandLog {
+        token: WorkflowCommandCompletionToken(token),
+        log: WorkflowCommandOutcome::Failed {
+          message: Some("workflow command interrupted by SDK restart".to_string()),
+          fields: bd_log_primitives::LogFields::default(),
+        }
+        .into_log(self.state.session_id.clone(), now),
+      })
+      .collect()
   }
 
   pub async fn run(&mut self) {
@@ -753,7 +867,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
-  ) -> WorkflowsEngineResult<'a> {
+  ) -> WorkflowsEngineResult<'static> {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
@@ -790,7 +904,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
-  ) -> WorkflowsEngineResult<'a> {
+  ) -> WorkflowsEngineResult<'static> {
     let match_context = bd_log_matcher::matcher::MatchContext {
       json_path_string_matching_enabled: self
         .json_path_string_matching_enabled
@@ -805,19 +919,24 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       && event.capture_session().is_none()
       && self.state.streaming_actions.is_empty()
     {
+      let log_destination_buffer_ids: TinySet<Cow<'static, str>> = log_destination_buffer_ids
+        .iter()
+        .map(|buffer_id| Cow::Owned(buffer_id.to_string()))
+        .collect();
       return WorkflowsEngineResult {
-        log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
+        log_destination_buffer_ids: Cow::Owned(log_destination_buffer_ids),
         triggered_flushes_buffer_ids: TinySet::default(),
         triggered_flush_buffers_action_ids: BTreeSet::default(),
         is_tracing_active: self.state.is_tracing_active(),
         logs_to_inject: TinyMap::default(),
+        workflow_commands_to_start: vec![],
         workflow_debug_state: vec![],
         has_debug_workflows: false,
       };
     }
 
     let mut prepared_actions = PreparedActions::default();
-    let mut logs_to_inject: TinyMap<&'a str, Log> = TinyMap::default();
+    let mut logs_to_inject: TinyMap<String, Log> = TinyMap::default();
     let mut all_cumulative_workflow_debug_state = vec![];
     let mut all_incremental_workflow_debug_state = vec![];
     let mut tracing_carryover_flush_action_ids: TinySet<FlushBufferId> = TinySet::default();
@@ -825,7 +944,11 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     // evaluates it. Roll once here and thread the same value through matcher evaluation.
     let sampled_roll = bd_log_matcher::matcher::random_sample_roll();
     let mut has_debug_workflows = false;
-    for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
+    let (workflows, command_last_started_at_ns) = (
+      &mut self.state.workflows,
+      &mut self.state.command_last_started_at_ns,
+    );
+    for (index, workflow) in workflows.iter_mut().enumerate() {
       let Some(config) = self.configs.get(index) else {
         continue;
       };
@@ -838,7 +961,31 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         now,
         sampled_roll,
         match_context,
+        command_last_started_at_ns,
       );
+      let result_has_command_start = result.has_command_start();
+      let index_is_stale = self
+        .pending_workflow_command_index
+        .iter()
+        .any(|(token, location)| {
+          location.workflow_index == index
+            && workflow
+              .runs
+              .get(location.run_index)
+              .and_then(|run| run.traversals.get(location.traversal_index))
+              .and_then(|traversal| traversal.pending_command.as_ref())
+              .is_none_or(|pending_command| pending_command.completion_token != *token)
+        });
+      if result_has_command_start || index_is_stale {
+        self
+          .pending_workflow_command_index
+          .retain(|_, location| location.workflow_index != index);
+        Self::index_pending_workflow_commands(
+          &mut self.pending_workflow_command_index,
+          index,
+          workflow,
+        );
+      }
 
       macro_rules! inc_by {
         ($field:ident, $value:ident) => {
@@ -870,7 +1017,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       //   * match a single log
       //   * execute emit metric action
       //   * be an initial state
-      if result.stats().did_make_progress()
+      if (result.stats().did_make_progress() || result_has_command_start)
         && !(was_in_initial_state && workflow.is_in_initial_state())
       {
         self.needs_state_persistence = true;
@@ -889,7 +1036,11 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       if !matches!(config.mode(), WorkflowDebugMode::DebugOnly) {
         prepared_actions.incorporate_workflow_actions(index, triggered_actions);
       }
-      logs_to_inject.extend(workflow_logs_to_inject);
+      logs_to_inject.extend(
+        workflow_logs_to_inject
+          .into_iter()
+          .map(|(log_id, log)| (log_id.to_string(), log)),
+      );
       if let Some(cumulative_workflow_debug_state) = cumulative_workflow_debug_state {
         all_cumulative_workflow_debug_state
           .push((workflow.id().to_string(), cumulative_workflow_debug_state));
@@ -909,6 +1060,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       mut flush_buffers_actions,
       emit_metric_action_counts,
       emit_sankey_diagrams_actions,
+      workflow_commands_to_start,
     } = prepared_actions;
 
     if let Some(capture_session) = event.capture_session()
@@ -1032,16 +1184,45 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       self.needs_state_persistence = true;
     }
 
-    WorkflowsEngineResult {
-      log_destination_buffer_ids: Cow::Owned(result.log_destination_buffer_ids),
-      triggered_flush_buffers_action_ids: flush_buffers_actions_processing_result
-        .triggered_flush_buffers_action_ids,
-      triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
-        .triggered_flushes_buffer_ids,
-      is_tracing_active: self.state.is_tracing_active(),
-      logs_to_inject: logs_to_inject
+    let log_destination_buffer_ids: Cow<'static, TinySet<Cow<'static, str>>> = Cow::Owned(
+      result
+        .log_destination_buffer_ids
         .into_iter()
-        .map(|(log_id, log)| (Cow::Borrowed(log_id), log))
+        .map(|buffer_id| Cow::Owned(buffer_id.into_owned()))
+        .collect(),
+    );
+    let triggered_flush_buffers_action_ids: BTreeSet<Cow<'static, FlushBufferId>> =
+      flush_buffers_actions_processing_result
+        .triggered_flush_buffers_action_ids
+        .into_iter()
+        .map(|action_id| Cow::Owned(action_id.into_owned()))
+        .collect();
+    let triggered_flushes_buffer_ids: TinySet<Cow<'static, str>> =
+      flush_buffers_actions_processing_result
+        .triggered_flushes_buffer_ids
+        .into_iter()
+        .map(|buffer_id| Cow::Owned(buffer_id.into_owned()))
+        .collect();
+    let logs_to_inject: TinyMap<Cow<'static, str>, Log> = logs_to_inject
+      .into_iter()
+      .map(|(log_id, log)| (Cow::Owned(log_id), log))
+      .collect();
+
+    WorkflowsEngineResult {
+      log_destination_buffer_ids,
+      triggered_flush_buffers_action_ids,
+      triggered_flushes_buffer_ids,
+      is_tracing_active: self.state.is_tracing_active(),
+      logs_to_inject,
+      workflow_commands_to_start: workflow_commands_to_start
+        .into_iter()
+        .map(|action| {
+          WorkflowCommandRequest::new(
+            action.command_selector,
+            self.state.session_id.clone(),
+            action.completion_token,
+          )
+        })
         .collect(),
       workflow_debug_state: all_cumulative_workflow_debug_state,
       has_debug_workflows,
@@ -1055,6 +1236,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     // * streaming actions after the session ID change are cleared on the next call to the
     //   Resolver's resolve method.
     self.state.clear_ongoing_workflows_state();
+    self.pending_workflow_command_index.clear();
     self.state.active_run_tracing_count = 0;
     self.state.active_streaming_tracing_count = 0;
     // TODO(mattklein123): Switch pending flush actions to a map.
@@ -1084,6 +1266,7 @@ struct PreparedActions<'a> {
   flush_buffers_actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
   emit_metric_action_counts: BTreeMap<&'a ActionEmitMetric, EmitMetricActionCount>,
   emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>>,
+  workflow_commands_to_start: Vec<crate::workflow::TriggeredActionRunCommand>,
 }
 
 impl<'a> PreparedActions<'a> {
@@ -1155,6 +1338,9 @@ impl<'a> PreparedActions<'a> {
           self.emit_sankey_diagrams_actions.insert(action);
         },
         TriggeredAction::StartTracing => {},
+        TriggeredAction::RunCommand(command) => {
+          self.workflow_commands_to_start.push(command);
+        },
       }
     }
   }
@@ -1172,7 +1358,7 @@ pub(crate) struct EmitMetricActionCount {
 //
 
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct WorkflowsEngineResult<'a> {
   pub log_destination_buffer_ids: Cow<'a, TinySet<Cow<'a, str>>>,
 
@@ -1186,6 +1372,9 @@ pub struct WorkflowsEngineResult<'a> {
 
   // Logs to be injected back into the workflow engine after field attachment and other processing.
   pub logs_to_inject: TinyMap<Cow<'a, str>, Log>,
+
+  /// Commands whose execution must be delegated to the embedding platform.
+  pub workflow_commands_to_start: Vec<WorkflowCommandRequest>,
 
   // If any workflows have debugging enabled, this will contain the *cumulative* debug state since
   // debugging started for each workflow. The state is persisted in the workflow state file to
@@ -1209,6 +1398,7 @@ struct PrecedingEventCarryover {
   triggered_flush_buffers_action_ids: BTreeSet<FlushBufferId>,
   triggered_flushes_buffer_ids: TinySet<Cow<'static, str>>,
   logs_to_inject: TinyMap<String, Log>,
+  workflow_commands_to_start: Vec<WorkflowCommandRequest>,
   workflow_debug_state: AllWorkflowsDebugState,
   has_debug_workflows: bool,
 }
@@ -1227,6 +1417,7 @@ impl PrecedingEventCarryover {
         .into_iter()
         .map(|(log_id, log)| (log_id.into_owned(), log))
         .collect(),
+      workflow_commands_to_start: result.workflow_commands_to_start,
       workflow_debug_state: result.workflow_debug_state,
       has_debug_workflows: result.has_debug_workflows,
     }
@@ -1248,6 +1439,9 @@ impl PrecedingEventCarryover {
         .into_iter()
         .map(|(log_id, log)| (Cow::Owned(log_id), log)),
     );
+    followup
+      .workflow_commands_to_start
+      .extend(self.workflow_commands_to_start);
     followup.has_debug_workflows |= self.has_debug_workflows;
 
     for (workflow_id, workflow_debug_state) in self.workflow_debug_state {
@@ -1387,7 +1581,7 @@ impl StateStore {
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
-  /// Returns `true` if an attempt to store state was made, false otherwise.
+  /// Returns `true` only if the state was stored successfully.
   ///
   /// # Arguments
   ///
@@ -1420,14 +1614,14 @@ impl StateStore {
         log::trace!("finished persisting workflows state to disk");
         self.last_persisted = Some(now);
         self.stats.state_persistence_successes_total.inc();
+        true
       },
       Err(e) => {
         log::debug!("failed to serialize workflows: {e}");
         self.stats.state_persistence_failures_total.inc();
+        false
       },
     }
-
-    true
   }
 
   async fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
@@ -1470,6 +1664,16 @@ pub(crate) struct WorkflowsState {
   active_run_tracing_count: u32,
   #[field(id = 7)]
   active_streaming_tracing_count: u32,
+  /// Last start time, in nanoseconds, for each workflow command matcher on this device.
+  #[field(id = 8)]
+  command_last_started_at_ns: HashMap<String, i64>,
+}
+
+#[derive(Clone, Copy)]
+struct PendingWorkflowCommandLocation {
+  workflow_index: usize,
+  run_index: usize,
+  traversal_index: usize,
 }
 
 impl WorkflowsState {
@@ -1500,6 +1704,7 @@ impl WorkflowsState {
       streaming_actions: self.streaming_actions.clone(),
       active_run_tracing_count: self.active_run_tracing_count,
       active_streaming_tracing_count: self.active_streaming_tracing_count,
+      command_last_started_at_ns: self.command_last_started_at_ns.clone(),
     }
   }
 

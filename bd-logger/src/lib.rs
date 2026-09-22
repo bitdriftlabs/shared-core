@@ -43,10 +43,10 @@ pub(crate) mod test;
 
 pub use crate::app_version::AppVersionExtra;
 pub use crate::device_command::{
-  DeviceCommandAttachment,
-  DeviceCommandInvocation,
-  DeviceCommandResult,
-  RegisteredDeviceCommandHandler,
+  CommandAttachment,
+  CommandInvocation,
+  CommandResult,
+  RegisteredCommandHandler,
 };
 pub use crate::logger::{ChannelPair, InitParams};
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};

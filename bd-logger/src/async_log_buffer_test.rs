@@ -53,6 +53,12 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::M
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+use bd_proto::protos::workflow::workflow::workflow::{MatchRunCommand, Rule};
+use bd_proto::protos::workflow::workflow_command::{
+  WorkflowCommandSelector,
+  workflow_command_selector,
+};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
 use bd_session::test::no_timeout;
@@ -71,7 +77,9 @@ use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
+use bd_workflows::workflow::WorkflowCommandOutcome;
 use futures_util::poll;
+use std::collections::HashMap;
 use std::future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -269,6 +277,7 @@ impl Setup {
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
+      HashMap::new(),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
@@ -302,6 +311,7 @@ impl Setup {
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
+      HashMap::new(),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
@@ -1164,6 +1174,7 @@ impl LogReplay for TestReplay {
   async fn replay_log(
     &mut self,
     log: Log,
+    _completion_token: Option<bd_workflows::workflow::WorkflowCommandCompletionToken>,
     _processing_pipeline: &mut ProcessingPipeline,
     _state: &bd_state::Store,
     _now: OffsetDateTime,
@@ -1817,6 +1828,78 @@ async fn updates_workflow_engine_in_response_to_config_update() {
     1,
     "workflows:workflows_total",
     labels! {"operation" => "stop"},
+  );
+}
+
+#[tokio::test]
+async fn workflow_command_survives_live_config_update() {
+  let setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    Rule {
+      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+        command_selector: Some(WorkflowCommandSelector {
+          command_selector: Some(
+            workflow_command_selector::Command_selector::RegisteredCommand(
+              workflow_command_selector::RegisteredCommand {
+                registered_command_id: "handler".to_string(),
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        })
+        .into(),
+        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+          seconds: 60,
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    },
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut buffer = buffer
+    .update(setup.make_config_update(workflows.clone()), &state_store)
+    .await;
+  buffer
+    .process_log(normal_log("start"), &state_store, None)
+    .await
+    .unwrap();
+  let result = buffer
+    .process_log(normal_log("execute"), &state_store, None)
+    .await
+    .unwrap();
+  assert_eq!(1, result.workflow_commands_to_start.len());
+  let token = result.workflow_commands_to_start[0].completion_token();
+
+  let mut buffer = buffer
+    .update(setup.make_config_update(workflows), &state_store)
+    .await;
+  assert!(
+    buffer
+      .logging_state
+      .workflows_engine()
+      .unwrap()
+      .complete_workflow_command(
+        &token,
+        WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+        OffsetDateTime::now_utc(),
+      )
+      .is_ok()
   );
 }
 

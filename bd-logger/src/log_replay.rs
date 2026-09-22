@@ -28,8 +28,20 @@ use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
-use bd_workflows::engine::{ProcessLocalPendingFlushState, WorkflowsEngine, WorkflowsEngineConfig};
-use bd_workflows::workflow::{WorkflowDebugStateMap, WorkflowEvent};
+use bd_workflows::engine::{
+  ProcessLocalPendingFlushState,
+  WorkflowCommandLog,
+  WorkflowsEngine,
+  WorkflowsEngineConfig,
+};
+use bd_workflows::workflow::{
+  WorkflowCommandCompletionError,
+  WorkflowCommandCompletionToken,
+  WorkflowCommandOutcome,
+  WorkflowCommandRequest,
+  WorkflowDebugStateMap,
+  WorkflowEvent,
+};
 use itertools::Itertools;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -42,6 +54,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[derive(Default)]
 pub struct LogReplayResult {
   pub logs_to_inject: Vec<Log>,
+  pub workflow_commands_to_start: Vec<WorkflowCommandRequest>,
   pub workflow_debug_state: Vec<(String, WorkflowDebugStateMap)>,
   pub engine_has_debug_workflows: bool,
 }
@@ -62,6 +75,7 @@ pub trait LogReplay {
   async fn replay_log(
     &mut self,
     log: Log,
+    completion_token: Option<WorkflowCommandCompletionToken>,
     pipeline: &mut ProcessingPipeline,
     state: &bd_state::Store,
     now: OffsetDateTime,
@@ -91,11 +105,14 @@ impl LogReplay for LoggerReplay {
   async fn replay_log(
     &mut self,
     log: Log,
+    completion_token: Option<WorkflowCommandCompletionToken>,
     pipeline: &mut ProcessingPipeline,
     state_store: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
-    pipeline.process_log(log, state_store, now).await
+    pipeline
+      .process_log(log, completion_token.as_ref(), state_store, now)
+      .await
   }
 
   async fn replay_state_change(
@@ -245,9 +262,28 @@ impl ProcessingPipeline {
     self.workflows_engine.update(workflows_engine_config);
   }
 
+  pub(crate) fn complete_workflow_command(
+    &mut self,
+    token: &WorkflowCommandCompletionToken,
+    outcome: WorkflowCommandOutcome,
+    now: OffsetDateTime,
+  ) -> Result<WorkflowCommandLog, WorkflowCommandCompletionError> {
+    self
+      .workflows_engine
+      .complete_workflow_command(token, outcome, now)
+  }
+
+  pub(crate) fn fail_recovered_workflow_commands(
+    &mut self,
+    now: OffsetDateTime,
+  ) -> Vec<WorkflowCommandLog> {
+    self.workflows_engine.fail_recovered_workflow_commands(now)
+  }
+
   async fn process_log(
     &mut self,
     mut log: Log,
+    completion_token: Option<&WorkflowCommandCompletionToken>,
     state: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
@@ -277,12 +313,17 @@ impl ProcessingPipeline {
       &state_reader,
     );
 
-    let mut result = self.workflows_engine.process_event(
-      WorkflowEvent::Log(&log.log),
-      &matching_buffers,
-      &state_reader,
-      now,
-    );
+    let event = match completion_token {
+      Some(token) => WorkflowEvent::CommandCompletion {
+        log: &log.log,
+        token,
+      },
+      None => WorkflowEvent::Log(&log.log),
+    };
+    let mut result =
+      self
+        .workflows_engine
+        .process_event(event, &matching_buffers, &state_reader, now);
     self
       .is_tracing_active
       .store(result.is_tracing_active, Ordering::Relaxed);
@@ -290,7 +331,8 @@ impl ProcessingPipeline {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()
         .collect(),
-      workflow_debug_state: result.workflow_debug_state,
+      workflow_commands_to_start: std::mem::take(&mut result.workflow_commands_to_start),
+      workflow_debug_state: std::mem::take(&mut result.workflow_debug_state),
       engine_has_debug_workflows: result.has_debug_workflows,
     };
 
@@ -330,6 +372,8 @@ impl ProcessingPipeline {
       log.log.occurred_at,
     );
 
+    // Command execution is best-effort across restarts: persistence may be deferred or fail, so
+    // an interrupted command may be lost or executed again after a restart.
     self.workflows_engine.maybe_persist(false).await;
     if let Some(test_hooks) = &self.test_hooks {
       test_hooks.workflow_event_processed();
@@ -375,6 +419,7 @@ impl ProcessingPipeline {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()
         .collect(),
+      workflow_commands_to_start: std::mem::take(&mut result.workflow_commands_to_start),
       workflow_debug_state: result.workflow_debug_state,
       engine_has_debug_workflows: result.has_debug_workflows,
     };

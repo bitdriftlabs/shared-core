@@ -11,7 +11,7 @@ mod client_config_test;
 
 use crate::device_command::DeviceCommandDispatcher;
 use crate::logging_state::{BufferProducers, ConfigUpdate};
-use crate::{RegisteredDeviceCommandHandler, write_log_to_buffer};
+use crate::{RegisteredCommandHandler, write_log_to_buffer};
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::RingBuffer as _;
@@ -268,7 +268,7 @@ impl LoggerUpdate {
     trigger_upload_tx: Sender<TriggerUpload>,
     session_strategy: Arc<bd_session::Strategy>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
-    device_command_handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
+    command_handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
     scope: &Scope,
   ) -> Self {
@@ -280,7 +280,7 @@ impl LoggerUpdate {
         trigger_upload_tx,
         session_strategy,
         artifact_client,
-        device_command_handlers,
+        command_handlers,
         remote_screenshot_capture_handler,
       ),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),

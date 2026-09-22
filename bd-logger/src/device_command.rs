@@ -21,6 +21,11 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::workflow::workflow_command::workflow_command_selector;
+use bd_workflows::workflow::{
+  WorkflowCommandCompletionToken,
+  WorkflowCommandOutcome,
+  WorkflowCommandRequest,
+};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -44,7 +49,7 @@ pub struct DeviceCommandDispatcher {
   trigger_upload_tx: Sender<TriggerUpload>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
+  command_dispatcher: RegisteredCommandDispatcher,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   active_command_ids: Mutex<HashSet<String>>,
 }
@@ -55,7 +60,7 @@ impl DeviceCommandDispatcher {
     trigger_upload_tx: Sender<TriggerUpload>,
     session_strategy: Arc<bd_session::Strategy>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
-    handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
+    handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   ) -> Self {
     Self {
@@ -63,7 +68,7 @@ impl DeviceCommandDispatcher {
       trigger_upload_tx,
       session_strategy,
       artifact_client,
-      handlers,
+      command_dispatcher: RegisteredCommandDispatcher::new(handlers),
       remote_screenshot_capture_handler,
       active_command_ids: Mutex::default(),
     }
@@ -94,7 +99,7 @@ impl DeviceCommandDispatcher {
     let trigger_upload_tx = self.trigger_upload_tx.clone();
     let session_strategy = self.session_strategy.clone();
     let artifact_client = self.artifact_client.clone();
-    let handlers = self.handlers.clone();
+    let command_dispatcher = self.command_dispatcher.clone();
     let remote_screenshot_capture_handler = self.remote_screenshot_capture_handler.clone();
     tokio::task::spawn(async move {
       if let Err(error) = execute_device_command(
@@ -103,7 +108,7 @@ impl DeviceCommandDispatcher {
         trigger_upload_tx,
         session_strategy,
         artifact_client,
-        handlers,
+        command_dispatcher,
         remote_screenshot_capture_handler,
       )
       .await
@@ -114,28 +119,29 @@ impl DeviceCommandDispatcher {
   }
 }
 
-/// An invocation of a custom device command registered by definition ID.
+/// An invocation of an application-defined command.
 #[derive(Debug, Clone)]
-pub struct DeviceCommandInvocation {
-  pub command_id: Uuid,
+pub struct CommandInvocation {
+  /// Present only when the command was directly dispatched to the device.
+  pub command_id: Option<Uuid>,
   pub registered_command_id: String,
   pub session_id: String,
 }
 
-/// A durable artifact produced by a custom device command.
+/// A locally produced command attachment.
 #[derive(Debug)]
-pub struct DeviceCommandAttachment {
+pub struct CommandAttachment {
   pub source: UploadSource,
   pub type_id: String,
   pub state: LogFields,
 }
 
-/// The terminal outcome of a custom device command.
+/// The terminal outcome of an application-defined command.
 #[derive(Debug)]
-pub enum DeviceCommandResult {
+pub enum CommandResult {
   Completed {
     fields: LogFields,
-    attachment: Option<DeviceCommandAttachment>,
+    attachment: Option<CommandAttachment>,
   },
   Failed {
     error: String,
@@ -143,10 +149,125 @@ pub enum DeviceCommandResult {
   },
 }
 
-/// Handles an opaque device command selected by its registered command ID.
+/// Handles an opaque command selected by its registered command ID.
 #[async_trait::async_trait]
-pub trait RegisteredDeviceCommandHandler: Send + Sync {
-  async fn execute(&self, invocation: DeviceCommandInvocation) -> DeviceCommandResult;
+pub trait RegisteredCommandHandler: Send + Sync {
+  async fn execute(&self, invocation: CommandInvocation) -> CommandResult;
+}
+
+#[derive(Clone)]
+pub struct RegisteredCommandDispatcher {
+  handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
+}
+
+impl RegisteredCommandDispatcher {
+  pub fn new(handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>) -> Self {
+    Self { handlers }
+  }
+
+  pub fn has_handler(&self, registered_command_id: &str) -> bool {
+    self.handlers.contains_key(registered_command_id)
+  }
+
+  pub async fn execute(&self, invocation: CommandInvocation) -> CommandResult {
+    let Some(handler) = self.handlers.get(&invocation.registered_command_id) else {
+      return CommandResult::Failed {
+        error: "unregistered command".to_string(),
+        fields: LogFields::default(),
+      };
+    };
+
+    handler.execute(invocation).await
+  }
+}
+
+pub struct WorkflowCommandCompletion {
+  pub token: WorkflowCommandCompletionToken,
+  pub outcome: WorkflowCommandOutcome,
+}
+
+pub struct WorkflowCommandDispatcher {
+  command_dispatcher: RegisteredCommandDispatcher,
+  completion_tx: Sender<WorkflowCommandCompletion>,
+}
+
+impl WorkflowCommandDispatcher {
+  pub fn new(
+    handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
+    completion_tx: Sender<WorkflowCommandCompletion>,
+  ) -> Self {
+    Self {
+      command_dispatcher: RegisteredCommandDispatcher::new(handlers),
+      completion_tx,
+    }
+  }
+
+  pub fn dispatch(&self, request: &WorkflowCommandRequest) {
+    let token = request.completion_token();
+    let completion_tx = self.completion_tx.clone();
+    let registered_command_id = match &request.command_selector.command_selector {
+      Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
+        Some(command.registered_command_id.clone())
+      },
+      Some(workflow_command_selector::Command_selector::BuiltinCommand(_)) | None => None,
+    };
+    let command_dispatcher = self.command_dispatcher.clone();
+    let session_id = request.session_id.clone();
+
+    tokio::task::spawn(async move {
+      let outcome = match registered_command_id {
+        Some(registered_command_id) if command_dispatcher.has_handler(&registered_command_id) => {
+          let execution = tokio::task::spawn(async move {
+            command_dispatcher
+              .execute(CommandInvocation {
+                command_id: None,
+                registered_command_id,
+                session_id,
+              })
+              .await
+          });
+          match execution.await {
+            Ok(result) => workflow_command_outcome(result),
+            Err(error) if error.is_panic() => {
+              workflow_command_failure("workflow command handler panicked")
+            },
+            Err(_) => workflow_command_failure("workflow command handler stopped"),
+          }
+        },
+        Some(_) => workflow_command_failure("unregistered workflow command"),
+        None => workflow_command_failure("unsupported workflow command"),
+      };
+      if completion_tx
+        .send(WorkflowCommandCompletion { token, outcome })
+        .await
+        .is_err()
+      {
+        log::debug!("workflow command completion receiver dropped");
+      }
+    });
+  }
+}
+
+fn workflow_command_failure(message: &str) -> WorkflowCommandOutcome {
+  WorkflowCommandOutcome::Failed {
+    message: Some(message.to_string()),
+    fields: LogFields::default(),
+  }
+}
+
+fn workflow_command_outcome(result: CommandResult) -> WorkflowCommandOutcome {
+  match result {
+    // TODO: Preserve and upload workflow command attachments instead of silently dropping them;
+    // add an artifact ID to the outcome log once the workflow artifact path is available.
+    CommandResult::Completed { fields, .. } => WorkflowCommandOutcome::Succeeded {
+      message: None,
+      fields,
+    },
+    CommandResult::Failed { error, fields } => WorkflowCommandOutcome::Failed {
+      message: Some(error),
+      fields,
+    },
+  }
 }
 
 async fn execute_device_command(
@@ -155,7 +276,7 @@ async fn execute_device_command(
   trigger_upload_tx: Sender<TriggerUpload>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
+  command_dispatcher: RegisteredCommandDispatcher,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
 ) -> anyhow::Result<()> {
   let command_id = command.command_id.to_string();
@@ -177,7 +298,7 @@ async fn execute_device_command(
           data_upload_tx,
           session_strategy,
           artifact_client,
-          handlers,
+          command_dispatcher,
         )
         .await
       },
@@ -271,7 +392,7 @@ async fn execute_screenshot_device_command(
     },
   };
 
-  let attachment = DeviceCommandAttachment {
+  let attachment = CommandAttachment {
     source: UploadSource::Bytes(screenshot),
     type_id: "screenshot".to_string(),
     state: LogFields::default(),
@@ -389,7 +510,7 @@ async fn execute_custom_device_command(
   data_upload_tx: Sender<DataUpload>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
+  command_dispatcher: RegisteredCommandDispatcher,
 ) -> anyhow::Result<()> {
   let Ok(command_id_uuid) = Uuid::parse_str(&command_id) else {
     send_device_command_update(
@@ -399,14 +520,14 @@ async fn execute_custom_device_command(
     .await?;
     return Ok(());
   };
-  let Some(handler) = handlers.get(&registered_command_id).cloned() else {
+  if !command_dispatcher.has_handler(&registered_command_id) {
     send_device_command_update(
       &data_upload_tx,
       failed_device_command_update(&command_id, 1, "unregistered device command"),
     )
     .await?;
     return Ok(());
-  };
+  }
 
   send_device_command_update(
     &data_upload_tx,
@@ -432,16 +553,16 @@ async fn execute_custom_device_command(
       return Ok(());
     },
   };
-  let result = handler
-    .execute(DeviceCommandInvocation {
-      command_id: command_id_uuid,
+  let result = command_dispatcher
+    .execute(CommandInvocation {
+      command_id: Some(command_id_uuid),
       registered_command_id,
       session_id: session_id.clone(),
     })
     .await;
 
   let update = match result {
-    DeviceCommandResult::Completed { fields, attachment } => {
+    CommandResult::Completed { fields, attachment } => {
       let attachment = match attachment {
         Some(attachment) => {
           match stage_device_command_attachment(
@@ -471,7 +592,7 @@ async fn execute_custom_device_command(
         attachment,
       )
     },
-    DeviceCommandResult::Failed { error, mut fields } => {
+    CommandResult::Failed { error, mut fields } => {
       fields.insert("error".into(), error.into());
       failed_device_command_update_with_fields(&command_id, 2, fields)
     },
@@ -480,7 +601,7 @@ async fn execute_custom_device_command(
 }
 
 async fn stage_device_command_attachment(
-  attachment: DeviceCommandAttachment,
+  attachment: CommandAttachment,
   command_id: &str,
   session_id: &str,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,

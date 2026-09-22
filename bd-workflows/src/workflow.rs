@@ -26,6 +26,7 @@ use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, Log, log_level};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::workflow_command::WorkflowCommandSelector;
 use bd_proto_util::serialization::TimestampMicros;
 use bd_state::state_value_as_cow;
 use bd_time::OffsetDateTimeExt;
@@ -34,6 +35,94 @@ use itertools::Itertools;
 use sha2::Digest;
 use std::collections::HashMap;
 use time::OffsetDateTime;
+use uuid::Uuid;
+
+const WORKFLOW_COMMAND_STATUS_FIELD: &str = "_workflow_command_status";
+const WORKFLOW_COMMAND_MESSAGE_FIELD: &str = "_workflow_command_message";
+
+/// An opaque capability used to complete exactly one pending workflow command.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkflowCommandCompletionToken(pub(crate) String);
+
+/// A command start requested by the workflow runtime.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorkflowCommandRequest {
+  pub command_selector: WorkflowCommandSelector,
+  pub session_id: String,
+  completion_token: WorkflowCommandCompletionToken,
+}
+
+impl WorkflowCommandRequest {
+  pub(crate) fn new(
+    command_selector: WorkflowCommandSelector,
+    session_id: String,
+    completion_token: WorkflowCommandCompletionToken,
+  ) -> Self {
+    Self {
+      command_selector,
+      session_id,
+      completion_token,
+    }
+  }
+
+  #[must_use]
+  pub fn completion_token(&self) -> WorkflowCommandCompletionToken {
+    self.completion_token.clone()
+  }
+}
+
+/// The terminal outcome reported by a workflow command executor.
+#[derive(Debug)]
+pub enum WorkflowCommandOutcome {
+  Succeeded {
+    message: Option<String>,
+    fields: bd_log_primitives::LogFields,
+  },
+  Failed {
+    message: Option<String>,
+    fields: bd_log_primitives::LogFields,
+  },
+}
+
+impl WorkflowCommandOutcome {
+  pub(crate) fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
+    let (succeeded, message, mut fields) = match self {
+      Self::Succeeded { message, fields } => (true, message, fields),
+      Self::Failed { message, fields } => (false, message, fields),
+    };
+
+    fields.retain(|key, _| !key.starts_with("_workflow_command_"));
+
+    fields.insert(
+      WORKFLOW_COMMAND_STATUS_FIELD.into(),
+      if succeeded { "success" } else { "failure" }.into(),
+    );
+    if let Some(message) = message {
+      fields.insert(WORKFLOW_COMMAND_MESSAGE_FIELD.into(), message.into());
+    }
+
+    Log {
+      log_type: LogType::NORMAL,
+      log_level: if succeeded {
+        log_level::INFO
+      } else {
+        log_level::ERROR
+      },
+      message: "Workflow command completed".into(),
+      session_id: session_id.into(),
+      occurred_at: now,
+      fields,
+      matching_fields: bd_log_primitives::LogFields::default(),
+      capture_session: None,
+    }
+  }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum WorkflowCommandCompletionError {
+  UnknownToken,
+  AlreadyCompleted,
+}
 
 #[cfg(feature = "fuzzing")]
 mod fuzzing {
@@ -167,6 +256,7 @@ mod fuzzing {
         matched_logs_counts,
         extractions,
         timeout_unix_ms,
+        pending_command: None,
       })
     }
   }
@@ -221,6 +311,11 @@ mod fuzzing {
 pub enum WorkflowEvent<'a> {
   /// A log message was received
   Log(&'a Log),
+  /// A normal log produced by a completed command, with private traversal routing metadata.
+  CommandCompletion {
+    log: &'a Log,
+    token: &'a WorkflowCommandCompletionToken,
+  },
   /// A new session started before the first log for that session is processed.
   ///
   /// This shares the triggering log payload so transition actions and extractions can reuse the
@@ -234,13 +329,17 @@ impl WorkflowEvent<'_> {
   pub(crate) fn capture_session(&self) -> Option<&'static str> {
     match self {
       WorkflowEvent::Log(log) => log.capture_session,
-      WorkflowEvent::SessionStart(_) | WorkflowEvent::StateChange(..) => None,
+      WorkflowEvent::CommandCompletion { .. }
+      | WorkflowEvent::SessionStart(_)
+      | WorkflowEvent::StateChange(..) => None,
     }
   }
 
   pub(crate) fn occurred_at(&self) -> OffsetDateTime {
     match self {
-      WorkflowEvent::Log(log) | WorkflowEvent::SessionStart(log) => log.occurred_at,
+      WorkflowEvent::Log(log)
+      | WorkflowEvent::CommandCompletion { log, .. }
+      | WorkflowEvent::SessionStart(log) => log.occurred_at,
       WorkflowEvent::StateChange(state_change, _) => state_change.timestamp,
     }
   }
@@ -338,6 +437,7 @@ impl Workflow {
     now: OffsetDateTime,
     sampled_roll: u32,
     match_context: MatchContext,
+    command_last_started_at_ns: &mut HashMap<String, i64>,
   ) -> WorkflowResult<'a> {
     let mut result = WorkflowResult::default();
 
@@ -411,6 +511,7 @@ impl Workflow {
           now,
           sampled_roll,
           match_context,
+          command_last_started_at_ns,
         );
 
         // Parallel workflows may have multiple active runs that match the same event. We annotate
@@ -708,6 +809,13 @@ impl<'a> WorkflowResult<'a> {
     &self.stats
   }
 
+  pub(crate) fn has_command_start(&self) -> bool {
+    self
+      .triggered_actions
+      .iter()
+      .any(|action| matches!(action, TriggeredAction::RunCommand(_)))
+  }
+
   fn incorporate_run_result(&mut self, run_result: &mut RunResult<'a>) {
     self
       .triggered_actions
@@ -933,6 +1041,7 @@ impl Run {
     now: OffsetDateTime,
     sampled_roll: u32,
     match_context: MatchContext,
+    command_last_started_at_ns: &mut HashMap<String, i64>,
   ) -> RunResult<'a> {
     // Optimize for the case when no traversal is advanced as it's
     // the most common situation.
@@ -961,6 +1070,7 @@ impl Run {
         now,
         sampled_roll,
         match_context,
+        command_last_started_at_ns,
       );
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
@@ -1306,6 +1416,20 @@ pub(crate) struct Traversal {
   /// The unix timestamp in milliseconds of when the optional state timeout expires.
   #[field(id = 4)]
   timeout_unix_ms: Option<i64>,
+  /// The command invocation holding this traversal until its terminal outcome is replayed.
+  #[field(id = 5)]
+  pub(crate) pending_command: Option<PendingCommand>,
+}
+
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingCommand {
+  #[field(id = 1)]
+  pub(crate) completion_token: String,
+  #[field(id = 2, serialize_as = "u64")]
+  pub(crate) transition_index: usize,
+  #[field(id = 3)]
+  pub(crate) completion_received: bool,
 }
 
 impl Traversal {
@@ -1330,6 +1454,7 @@ impl Traversal {
         matched_logs_counts: vec![0; state.transitions().len()],
         extractions,
         timeout_unix_ms: None,
+        pending_command: None,
       };
 
       if initialize_timeout {
@@ -1363,6 +1488,7 @@ impl Traversal {
     now: OffsetDateTime,
     sampled_roll: u32,
     match_context: MatchContext,
+    command_last_started_at_ns: &mut HashMap<String, i64>,
   ) -> TraversalResult<'a> {
     let transitions = config
       .inner()
@@ -1370,6 +1496,18 @@ impl Traversal {
       .unwrap_or_default();
 
     let mut result = TraversalResult::default();
+    if let Some(pending_command) = &self.pending_command {
+      let WorkflowEvent::CommandCompletion { token, .. } = event else {
+        return result;
+      };
+      if !pending_command.completion_received || token.0 != pending_command.completion_token {
+        return result;
+      }
+    }
+    let pending_transition_index = self
+      .pending_command
+      .as_ref()
+      .map(|command| command.transition_index);
     // In majority of cases each traversal has 0 or 1 successor. A case when
     // more than 1 successor is created is possible if a state corresponding to
     // currently processed traversal has multiple outgoing transitions and a
@@ -1389,13 +1527,16 @@ impl Traversal {
     // Try to match explicit transitions (logs or state changes).
     // Multiple transitions can match the same event, causing workflow forking.
     for (index, transition) in transitions.iter().enumerate() {
+      if pending_transition_index.is_some_and(|pending_index| pending_index != index) {
+        continue;
+      }
       match (&transition.rule(), event) {
         (
           Predicate::LogMatch {
             matcher,
             required_matches,
           },
-          WorkflowEvent::Log(log),
+          WorkflowEvent::Log(log) | WorkflowEvent::CommandCompletion { log, .. },
         ) => {
           self.process_log_match(
             config,
@@ -1434,6 +1575,29 @@ impl Traversal {
             &mut result,
           );
         },
+        (
+          Predicate::MatchRunCommand {
+            command_selector,
+            minimum_execution_interval,
+            outcome_log_matcher,
+          },
+          _,
+        ) => {
+          self.process_command_match(
+            config,
+            event,
+            command_selector,
+            *minimum_execution_interval,
+            outcome_log_matcher.as_ref(),
+            index,
+            state_reader,
+            now,
+            sampled_roll,
+            match_context,
+            command_last_started_at_ns,
+            &mut result,
+          );
+        },
         _ => { /* No match, continue to next transition */ },
       }
     }
@@ -1456,9 +1620,9 @@ impl Traversal {
       // is the same hack we are using at the top level. It should really only be using the fields
       // provided by the installed field providers.
       let fields = match event {
-        WorkflowEvent::Log(log) | WorkflowEvent::SessionStart(log) => {
-          FieldsRef::new(&log.fields, &log.matching_fields)
-        },
+        WorkflowEvent::Log(log)
+        | WorkflowEvent::CommandCompletion { log, .. }
+        | WorkflowEvent::SessionStart(log) => FieldsRef::new(&log.fields, &log.matching_fields),
         WorkflowEvent::StateChange(_, fields) => fields,
       };
 
@@ -1482,6 +1646,105 @@ impl Traversal {
     }
 
     result
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  fn process_command_match<'a>(
+    &mut self,
+    config: &'a Config,
+    event: WorkflowEvent<'_>,
+    command_selector: &WorkflowCommandSelector,
+    minimum_execution_interval: time::Duration,
+    outcome_log_matcher: Option<&bd_log_matcher::matcher::Tree>,
+    index: usize,
+    state_reader: &dyn bd_state::StateReader,
+    now: OffsetDateTime,
+    sampled_roll: u32,
+    match_context: MatchContext,
+    command_last_started_at_ns: &mut HashMap<String, i64>,
+    result: &mut TraversalResult<'a>,
+  ) {
+    if let Some(pending_command) = self.pending_command.as_ref() {
+      if pending_command.transition_index != index {
+        return;
+      }
+      let WorkflowEvent::CommandCompletion { log, token } = event else {
+        return;
+      };
+      if !pending_command.completion_received || token.0 != pending_command.completion_token {
+        return;
+      }
+
+      let outcome_matches = outcome_log_matcher.is_none_or(|matcher| {
+        matcher.do_match(
+          log.log_level,
+          log.log_type,
+          &log.message,
+          FieldsRef::new(&log.fields, &log.matching_fields),
+          state_reader,
+          &self.extractions.fields,
+          sampled_roll,
+          match_context,
+        )
+      });
+      if !outcome_matches {
+        // A terminal outcome can be evaluated only once. A nonmatching outcome abandons this
+        // traversal so it cannot be satisfied by a later command's result.
+        self.pending_command = None;
+        result.followed_transitions_count += 1;
+        return;
+      }
+
+      self.pending_command = None;
+      if let Some(actions) = config.inner().actions_for_traversal(self, index)
+        && let Some(next_state_index) = config.inner().next_state_index_for_traversal(self, index)
+      {
+        process_transition(
+          result,
+          self.do_log_extractions(config, index, log, state_reader),
+          actions,
+          FieldsRef::new(&log.fields, &log.matching_fields),
+          self.state_index,
+          next_state_index,
+          WorkflowDebugTransitionType::Normal(index as u64),
+          config,
+          now,
+        );
+      }
+      return;
+    }
+
+    // Outcome logs only resume their matching pending traversal; they must not recursively start
+    // a command in another traversal.
+    if matches!(event, WorkflowEvent::CommandCompletion { .. }) {
+      return;
+    }
+
+    let matcher_id = format!("{}/{}/{}", config.inner().id(), self.state_index, index);
+    let now_ns = i64::try_from(now.unix_timestamp_nanos()).unwrap_or(i64::MAX);
+    let interval_ns = minimum_execution_interval.whole_nanoseconds();
+    if command_last_started_at_ns
+      .get(&matcher_id)
+      .is_some_and(|last_started_at_ns| {
+        i128::from(now_ns).saturating_sub(i128::from(*last_started_at_ns)) < interval_ns
+      })
+    {
+      return;
+    }
+
+    let completion_token = WorkflowCommandCompletionToken(Uuid::new_v4().to_string());
+    self.pending_command = Some(PendingCommand {
+      completion_token: completion_token.0.clone(),
+      transition_index: index,
+      completion_received: false,
+    });
+    command_last_started_at_ns.insert(matcher_id, now_ns);
+    result
+      .triggered_actions
+      .push(TriggeredAction::RunCommand(TriggeredActionRunCommand {
+        command_selector: command_selector.clone(),
+        completion_token,
+      }));
   }
 
   /// Processes a log match for a single transition.
@@ -1873,6 +2136,7 @@ impl Traversal {
     self.state_index == 0
       && self.matched_logs_counts.iter().all(|&e| e == 0)
       && self.timeout_unix_ms.is_none()
+      && self.pending_command.is_none()
   }
 }
 
@@ -1888,6 +2152,13 @@ pub(crate) enum TriggeredAction<'a> {
   EmitMetricParallelRun(&'a ActionEmitMetric),
   SankeyDiagram(TriggeredActionEmitSankey<'a>),
   StartTracing,
+  RunCommand(TriggeredActionRunCommand),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TriggeredActionRunCommand {
+  pub(crate) command_selector: WorkflowCommandSelector,
+  pub(crate) completion_token: WorkflowCommandCompletionToken,
 }
 
 //
