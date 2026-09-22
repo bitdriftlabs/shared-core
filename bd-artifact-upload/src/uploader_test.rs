@@ -7,9 +7,9 @@
 
 use super::UploadClient;
 use crate::uploader::{
+  ARTIFACT_UPLOAD_DIRECTORY,
   Client,
   EnqueueError,
-  REPORT_DIRECTORY,
   REPORT_INDEX_FILE,
   SnappedFeatureFlag,
   UploadSource,
@@ -211,7 +211,7 @@ async fn basic_flow() {
   setup.upload_complete_rx.recv().await.unwrap();
 
   let files = setup.filesystem.files();
-  let index_file = &files[&super::REPORT_DIRECTORY
+  let index_file = &files[&super::ARTIFACT_UPLOAD_DIRECTORY
     .join(&*super::REPORT_INDEX_FILE)
     .to_str()
     .unwrap()
@@ -288,7 +288,7 @@ async fn feature_flags() {
   setup.upload_complete_rx.recv().await.unwrap();
 
   let files = setup.filesystem.files();
-  let index_file = &files[&super::REPORT_DIRECTORY
+  let index_file = &files[&super::ARTIFACT_UPLOAD_DIRECTORY
     .join(&*super::REPORT_INDEX_FILE)
     .to_str()
     .unwrap()
@@ -438,7 +438,7 @@ async fn inconsistent_state_missing_file() {
 
   setup
     .filesystem
-    .delete_file(&super::REPORT_DIRECTORY.join(id1.to_string()))
+    .delete_file(&super::ARTIFACT_UPLOAD_DIRECTORY.join(id1.to_string()))
     .await
     .unwrap();
 
@@ -483,7 +483,7 @@ async fn inconsistent_state_extra_file() {
   // Add another file that is not in the index.
   setup
     .filesystem
-    .write_file(&super::REPORT_DIRECTORY.join("other"), b"1")
+    .write_file(&super::ARTIFACT_UPLOAD_DIRECTORY.join("other"), b"1")
     .await
     .unwrap();
 
@@ -518,13 +518,13 @@ async fn inconsistent_state_extra_file() {
 
   let files = setup
     .filesystem
-    .list_files(&REPORT_DIRECTORY)
+    .list_files(&ARTIFACT_UPLOAD_DIRECTORY)
     .await
     .unwrap();
   assert_eq!(files.len(), 1);
   assert!(
     files[0].ends_with(
-      &super::REPORT_DIRECTORY
+      &super::ARTIFACT_UPLOAD_DIRECTORY
         .join(&*REPORT_INDEX_FILE)
         .to_str()
         .unwrap()
@@ -602,7 +602,7 @@ async fn inconsistent_state_missing_index() {
 
   setup
     .filesystem
-    .delete_file(&super::REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE))
+    .delete_file(&super::ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE))
     .await
     .unwrap();
 
@@ -644,7 +644,7 @@ async fn inconsistent_state_missing_index() {
   assert!(
     !setup
       .filesystem
-      .exists(&super::REPORT_DIRECTORY.join(id1.to_string()))
+      .exists(&super::ARTIFACT_UPLOAD_DIRECTORY.join(id1.to_string()))
       .await
       .unwrap()
   );
@@ -961,7 +961,7 @@ async fn corrupt_command_upload_completes_with_failure() {
   assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
     setup
       .filesystem
-      .write_file(&super::REPORT_DIRECTORY.join(id.to_string()), b"corrupt")
+      .write_file(&super::ARTIFACT_UPLOAD_DIRECTORY.join(id.to_string()), b"corrupt")
       .await
       .unwrap();
     intent.response_tx.send(IntentResponse {
@@ -1114,7 +1114,7 @@ async fn normalize_type_id_on_load() {
   setup
     .filesystem
     .write_file(
-      &super::REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE),
+      &super::ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE),
       &write_compressed_protobuf(&patched_index).unwrap(),
     )
     .await

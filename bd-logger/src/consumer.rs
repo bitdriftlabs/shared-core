@@ -1035,6 +1035,9 @@ impl BufferUploadManager {
               pending_upload.session_id.clone(),
             ),
             PersistedTriggerUploadSource::RemoteDeviceCommand(metadata) => {
+              // TODO(mattklein123): Device commands do not yet persist terminal updates. Do not
+              // rely on restart recovery to complete their server-side lifecycle until the
+              // follow-up durability work can replay those updates.
               TriggerUpload::new_recovered_device_command(
                 pending_upload.buffer_ids(),
                 metadata.clone(),

@@ -49,7 +49,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 /// Root directory for all files used for storage and uploading.
-pub static REPORT_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "report_uploads".into());
+pub static ARTIFACT_UPLOAD_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "report_uploads".into());
 
 /// The index file used for tracking all of the individual files.
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
@@ -464,7 +464,7 @@ impl Uploader {
           continue;
         }
 
-        let file_path = REPORT_DIRECTORY.join(&next.name);
+        let file_path = ARTIFACT_UPLOAD_DIRECTORY.join(&next.name);
         let Ok(contents) = self.file_system.read_file(&file_path).await else {
           log::debug!(
             "failed to read file for artifact {}, deleting and removing from index",
@@ -562,7 +562,6 @@ impl Uploader {
         result = maybe_await(&mut self.upload_task_handle) => {
             match result? {
               Ok(()) => {
-                #[allow(unused)]
                 let name = self.handle_upload_complete().await?;
                 self.complete_upload(&name, Ok(()));
 
@@ -584,7 +583,7 @@ impl Uploader {
 
   // Initialize the uploader from the index file on disk.
   async fn initialize(&mut self) {
-    let path = REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE);
+    let path = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
     log::debug!("initializing index: {}", path.display());
     self.index = match self
       .file_system
@@ -597,8 +596,14 @@ impl Uploader {
         log::debug!("unable to open index: {e}");
         log::debug!("creating new index");
 
-        let _ignored = self.file_system.remove_dir(&REPORT_DIRECTORY).await;
-        let _ignored = self.file_system.create_dir(&REPORT_DIRECTORY).await;
+        let _ignored = self
+          .file_system
+          .remove_dir(&ARTIFACT_UPLOAD_DIRECTORY)
+          .await;
+        let _ignored = self
+          .file_system
+          .create_dir(&ARTIFACT_UPLOAD_DIRECTORY)
+          .await;
         ArtifactUploadIndex::default()
       },
     }
@@ -617,7 +622,7 @@ impl Uploader {
     let mut new_index = VecDeque::default();
     let mut filenames = HashSet::new();
     for mut entry in self.index.drain(..) {
-      let file_path = REPORT_DIRECTORY.join(&entry.name);
+      let file_path = ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name);
       if !self
         .file_system
         .exists(&file_path)
@@ -652,7 +657,7 @@ impl Uploader {
     // index.
     let files = self
       .file_system
-      .list_files(&REPORT_DIRECTORY)
+      .list_files(&ARTIFACT_UPLOAD_DIRECTORY)
       .await
       .unwrap_or_default();
 
@@ -701,7 +706,7 @@ impl Uploader {
     self.stats.uploaded.inc();
 
     let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
-    let file_path = REPORT_DIRECTORY.join(&entry.name);
+    let file_path = ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name);
 
     if let Err(e) = self.file_system.delete_file(&file_path).await {
       log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
@@ -715,7 +720,7 @@ impl Uploader {
   async fn discard_upload(&mut self, entry: Artifact, error: String) {
     if let Err(delete_error) = self
       .file_system
-      .delete_file(&REPORT_DIRECTORY.join(&entry.name))
+      .delete_file(&ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name))
       .await
     {
       log::warn!(
@@ -797,7 +802,7 @@ impl Uploader {
 
     let uuid = uuid.to_string();
 
-    let target_path = REPORT_DIRECTORY.join(&uuid);
+    let target_path = ARTIFACT_UPLOAD_DIRECTORY.join(&uuid);
     let (write_result, storage_format) = match source {
       UploadSource::Bytes(bytes) => {
         let mut target_file = match self.file_system.create_file(&target_path).await {
@@ -964,7 +969,10 @@ impl Uploader {
       self
         .file_system
         .as_ref()
-        .write_file(&REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE), &compressed)
+        .write_file(
+          &ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE),
+          &compressed,
+        )
         .await
     }
     .await
@@ -985,7 +993,7 @@ impl Uploader {
     feature_flags: Vec<FeatureFlag>,
     command_id: Option<String>,
   ) -> Result<()> {
-    let path = REPORT_DIRECTORY.join(&name);
+    let path = ARTIFACT_UPLOAD_DIRECTORY.join(&name);
     log::debug!("uploading artifact: {}", path.display());
 
     // Use exponential backoff to avoid retrying over and over again in case something is going
