@@ -2050,19 +2050,19 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ary.timeline.v1\x1a,bitdrift/public/unary/common/v1/common.proto\x1a,bit\
     drift/public/unary/timeline/v1/logs.proto\x1a1bitdrift_public/protobuf/l\
     ogging/v1/payload.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17va\
-    lidate/validate.proto\"\xc2\r\n\x1cSessionAdvancedSearchRequest\x12(\n\n\
+    lidate/validate.proto\"\xc0\r\n\x1cSessionAdvancedSearchRequest\x12(\n\n\
     session_id\x18\x01\x20\x01(\tR\tsessionIdB\t\xfaB\x06r\x04\x10\x01\x18d\
     \x129\n\nstart_time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\
     \tstartTime\x125\n\x08end_time\x18\x03\x20\x01(\x0b2\x1a.google.protobuf\
     .TimestampR\x07endTime\x12%\n\x05limit\x18\x04\x20\x01(\rH\0R\x05limitB\
     \n\xfaB\x07*\x05\x18\x88'(\x01\x88\x01\x01\x12\x1b\n\x06offset\x18\x05\
     \x20\x01(\rH\x01R\x06offset\x88\x01\x01\x122\n\x15include_internal_logs\
-    \x18\x06\x20\x01(\x08R\x13includeInternalLogs\x12o\n\x08or_query\x18\x07\
+    \x18\x06\x20\x01(\x08R\x13includeInternalLogs\x12m\n\x08or_query\x18\x07\
     \x20\x03(\x0b2H.bitdrift.public.unary.timeline.v1.SessionAdvancedSearchR\
-    equest.AndQueryR\x07orQueryB\n\xfaB\x07\x92\x01\x04\x08\x01\x10\x14\x1a\
-    \xa8\x01\n\nFieldMatch\x12'\n\tjson_path\x18\x01\x20\x01(\tR\x08jsonPath\
-    B\n\xfaB\x07r\x05\x10\x01\x18\xf4\x03\x12O\n\x08operator\x18\x02\x20\x01\
-    (\x0e2).bitdrift.public.unary.common.v1.OperatorR\x08operatorB\x08\xfaB\
+    equest.AndQueryR\x07orQueryB\x08\xfaB\x05\x92\x01\x02\x10\x14\x1a\xa8\
+    \x01\n\nFieldMatch\x12'\n\tjson_path\x18\x01\x20\x01(\tR\x08jsonPathB\n\
+    \xfaB\x07r\x05\x10\x01\x18\xf4\x03\x12O\n\x08operator\x18\x02\x20\x01(\
+    \x0e2).bitdrift.public.unary.common.v1.OperatorR\x08operatorB\x08\xfaB\
     \x05\x82\x01\x02\x10\x01\x12\x20\n\x05value\x18\x03\x20\x01(\tR\x05value\
     B\n\xfaB\x07r\x05\x10\x01\x18\xe8\x07\x1a\xb2\x01\n\x0cLogTypeMatch\x12O\
     \n\x08operator\x18\x02\x20\x01(\x0e2).bitdrift.public.unary.common.v1.Op\

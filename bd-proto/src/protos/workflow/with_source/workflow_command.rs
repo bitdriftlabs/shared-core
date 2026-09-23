@@ -316,6 +316,9 @@ pub mod workflow_command_selector {
         // message fields
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.RegisteredCommand.registered_command_id)
         pub registered_command_id: ::std::string::String,
+        ///  Positional typed arguments passed to the registered command handler.
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.RegisteredCommand.arguments)
+        pub arguments: ::std::vec::Vec<super::super::payload::Data>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.RegisteredCommand.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -333,12 +336,17 @@ pub mod workflow_command_selector {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut fields = ::std::vec::Vec::with_capacity(2);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "registered_command_id",
                 |m: &RegisteredCommand| { &m.registered_command_id },
                 |m: &mut RegisteredCommand| { &mut m.registered_command_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "arguments",
+                |m: &RegisteredCommand| { &m.arguments },
+                |m: &mut RegisteredCommand| { &mut m.arguments },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<RegisteredCommand>(
                 "WorkflowCommandSelector.RegisteredCommand",
@@ -361,6 +369,9 @@ pub mod workflow_command_selector {
                     10 => {
                         self.registered_command_id = is.read_string()?;
                     },
+                    18 => {
+                        self.arguments.push(is.read_message()?);
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -376,6 +387,10 @@ pub mod workflow_command_selector {
             if !self.registered_command_id.is_empty() {
                 my_size += ::protobuf::rt::string_size(1, &self.registered_command_id);
             }
+            for value in &self.arguments {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -385,6 +400,9 @@ pub mod workflow_command_selector {
             if !self.registered_command_id.is_empty() {
                 os.write_string(1, &self.registered_command_id)?;
             }
+            for v in &self.arguments {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            };
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -403,12 +421,14 @@ pub mod workflow_command_selector {
 
         fn clear(&mut self) {
             self.registered_command_id.clear();
+            self.arguments.clear();
             self.special_fields.clear();
         }
 
         fn default_instance() -> &'static RegisteredCommand {
             static instance: RegisteredCommand = RegisteredCommand {
                 registered_command_id: ::std::string::String::new(),
+                arguments: ::std::vec::Vec::new(),
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -747,60 +767,67 @@ pub mod workflow_command_selector {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n;bitdrift_public/protobuf/workflow/v1/workflow_command.proto\x12$bitdr\
-    ift_public.protobuf.workflow.v1\x1a\x17validate/validate.proto\"\xc3\x04\
-    \n\x17WorkflowCommandSelector\x12w\n\x0fbuiltin_command\x18\x01\x20\x01(\
-    \x0b2L.bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.Buil\
-    tinCommandH\0R\x0ebuiltinCommand\x12\x80\x01\n\x12registered_command\x18\
-    \x02\x20\x01(\x0b2O.bitdrift_public.protobuf.workflow.v1.WorkflowCommand\
-    Selector.RegisteredCommandH\0R\x11registeredCommand\x1aP\n\x11Registered\
-    Command\x12;\n\x15registered_command_id\x18\x01\x20\x01(\tR\x13registere\
-    dCommandIdB\x07\xfaB\x04r\x02\x10\x01\x1a\xc0\x01\n\x0eBuiltinCommand\
-    \x12\x86\x01\n\x0ftake_screenshot\x18\x01\x20\x01(\x0b2[.bitdrift_public\
-    .protobuf.workflow.v1.WorkflowCommandSelector.BuiltinCommand.TakeScreens\
-    hotH\0R\x0etakeScreenshot\x1a\x10\n\x0eTakeScreenshotB\x13\n\x0ccommand_\
-    type\x12\x03\xf8B\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01J\xd5\n\
-    \n\x06\x12\x04\x07\0*\x01\n\xb8\x02\n\x01\x0c\x12\x03\x07\0\x122\xad\x02\
-    \x20api\x20-\x20bitdrift's\x20client/server\x20API\x20definitions\n\x20C\
-    opyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\
-    \x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\x20governed\x20by\
-    \x20a\x20source\x20available\x20license\x20that\x20can\x20be\x20found\
-    \x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://polyformpro\
-    ject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\
-    \x01\x02\x12\x03\t\0-\n\t\n\x02\x03\0\x12\x03\x0b\0!\nJ\n\x02\x04\0\x12\
-    \x04\x0e\0*\x01\x1a>\x20Selects\x20one\x20locally\x20registered\x20or\
-    \x20built-in\x20workflow\x20command.\n\n\n\n\x03\x04\0\x01\x12\x03\x0e\
-    \x08\x1f\n\xb5\x01\n\x04\x04\0\x03\0\x12\x04\x11\x02\x13\x03\x1a\xa6\x01\
-    \x20Selects\x20a\x20command\x20registered\x20by\x20the\x20embedding\x20a\
-    pplication.\x20Additional\x20command-specific\n\x20configuration\x20can\
-    \x20be\x20added\x20here\x20without\x20changing\x20the\x20selector's\x20o\
-    neof\x20shape.\n\n\x0c\n\x05\x04\0\x03\0\x01\x12\x03\x11\n\x1b\n\r\n\x06\
-    \x04\0\x03\0\x02\0\x12\x03\x12\x04K\n\x0e\n\x07\x04\0\x03\0\x02\0\x05\
-    \x12\x03\x12\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x01\x12\x03\x12\x0b\x20\
-    \n\x0e\n\x07\x04\0\x03\0\x02\0\x03\x12\x03\x12#$\n\x0e\n\x07\x04\0\x03\0\
-    \x02\0\x08\x12\x03\x12%J\n\x12\n\x0b\x04\0\x03\0\x02\0\x08\xaf\x08\x0e\
-    \x02\x12\x03\x12&I\nT\n\x04\x04\0\x03\x01\x12\x04\x16\x02\x1f\x03\x1aF\
-    \x20Built-in\x20commands\x20supported\x20directly\x20by\x20the\x20client\
-    \x20workflow\x20runtime.\n\n\x0c\n\x05\x04\0\x03\x01\x01\x12\x03\x16\n\
-    \x18\n\x0e\n\x06\x04\0\x03\x01\x08\0\x12\x04\x17\x04\x1c\x05\n\x0e\n\x07\
-    \x04\0\x03\x01\x08\0\x01\x12\x03\x17\n\x16\n\x0e\n\x07\x04\0\x03\x01\x08\
-    \0\x02\x12\x03\x18\x06(\n\x10\n\t\x04\0\x03\x01\x08\0\x02\xaf\x08\x12\
-    \x03\x18\x06(\n^\n\x06\x04\0\x03\x01\x02\0\x12\x03\x1b\x06)\x1aO\x20Capt\
-    ures\x20one\x20application\x20screenshot\x20using\x20the\x20platform's\
-    \x20configured\x20defaults.\n\n\x0e\n\x07\x04\0\x03\x01\x02\0\x06\x12\
-    \x03\x1b\x06\x14\n\x0e\n\x07\x04\0\x03\x01\x02\0\x01\x12\x03\x1b\x15$\n\
-    \x0e\n\x07\x04\0\x03\x01\x02\0\x03\x12\x03\x1b'(\n\r\n\x06\x04\0\x03\x01\
-    \x03\0\x12\x03\x1e\x04\x1d\n\x0e\n\x07\x04\0\x03\x01\x03\0\x01\x12\x03\
-    \x1e\x0c\x1a\n\x0c\n\x04\x04\0\x08\0\x12\x04!\x02)\x03\n\x0c\n\x05\x04\0\
-    \x08\0\x01\x12\x03!\x08\x18\n\x0c\n\x05\x04\0\x08\0\x02\x12\x03\"\x04&\n\
-    \x0e\n\x07\x04\0\x08\0\x02\xaf\x08\x12\x03\"\x04&\nS\n\x04\x04\0\x02\0\
-    \x12\x03%\x04'\x1aF\x20A\x20strongly\x20typed\x20command\x20implemented\
-    \x20by\x20the\x20client\x20workflow\x20runtime.\n\n\x0c\n\x05\x04\0\x02\
-    \0\x06\x12\x03%\x04\x12\n\x0c\n\x05\x04\0\x02\0\x01\x12\x03%\x13\"\n\x0c\
-    \n\x05\x04\0\x02\0\x03\x12\x03%%&\nB\n\x04\x04\0\x02\x01\x12\x03(\x04-\
-    \x1a5\x20A\x20command\x20implemented\x20by\x20the\x20embedding\x20applic\
-    ation.\n\n\x0c\n\x05\x04\0\x02\x01\x06\x12\x03(\x04\x15\n\x0c\n\x05\x04\
-    \0\x02\x01\x01\x12\x03(\x16(\n\x0c\n\x05\x04\0\x02\x01\x03\x12\x03(+,b\
-    \x06proto3\
+    ift_public.protobuf.workflow.v1\x1a1bitdrift_public/protobuf/logging/v1/\
+    payload.proto\x1a\x17validate/validate.proto\"\x8d\x05\n\x17WorkflowComm\
+    andSelector\x12w\n\x0fbuiltin_command\x18\x01\x20\x01(\x0b2L.bitdrift_pu\
+    blic.protobuf.workflow.v1.WorkflowCommandSelector.BuiltinCommandH\0R\x0e\
+    builtinCommand\x12\x80\x01\n\x12registered_command\x18\x02\x20\x01(\x0b2\
+    O.bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.Registere\
+    dCommandH\0R\x11registeredCommand\x1a\x99\x01\n\x11RegisteredCommand\x12\
+    ;\n\x15registered_command_id\x18\x01\x20\x01(\tR\x13registeredCommandIdB\
+    \x07\xfaB\x04r\x02\x10\x01\x12G\n\targuments\x18\x02\x20\x03(\x0b2).bitd\
+    rift_public.protobuf.logging.v1.DataR\targuments\x1a\xc0\x01\n\x0eBuilti\
+    nCommand\x12\x86\x01\n\x0ftake_screenshot\x18\x01\x20\x01(\x0b2[.bitdrif\
+    t_public.protobuf.workflow.v1.WorkflowCommandSelector.BuiltinCommand.Tak\
+    eScreenshotH\0R\x0etakeScreenshot\x1a\x10\n\x0eTakeScreenshotB\x13\n\x0c\
+    command_type\x12\x03\xf8B\x01B\x17\n\x10command_selector\x12\x03\xf8B\
+    \x01J\xf7\x0b\n\x06\x12\x04\x07\0.\x01\n\xb8\x02\n\x01\x0c\x12\x03\x07\0\
+    \x122\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\x20defin\
+    itions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\
+    \n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\x20gov\
+    erned\x20by\x20a\x20source\x20available\x20license\x20that\x20can\x20be\
+    \x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://po\
+    lyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\
+    \n\x08\n\x01\x02\x12\x03\t\0-\n\t\n\x02\x03\0\x12\x03\x0b\0;\n\t\n\x02\
+    \x03\x01\x12\x03\x0c\0!\nJ\n\x02\x04\0\x12\x04\x0f\0.\x01\x1a>\x20Select\
+    s\x20one\x20locally\x20registered\x20or\x20built-in\x20workflow\x20comma\
+    nd.\n\n\n\n\x03\x04\0\x01\x12\x03\x0f\x08\x1f\n\xb5\x01\n\x04\x04\0\x03\
+    \0\x12\x04\x12\x02\x17\x03\x1a\xa6\x01\x20Selects\x20a\x20command\x20reg\
+    istered\x20by\x20the\x20embedding\x20application.\x20Additional\x20comma\
+    nd-specific\n\x20configuration\x20can\x20be\x20added\x20here\x20without\
+    \x20changing\x20the\x20selector's\x20oneof\x20shape.\n\n\x0c\n\x05\x04\0\
+    \x03\0\x01\x12\x03\x12\n\x1b\n\r\n\x06\x04\0\x03\0\x02\0\x12\x03\x13\x04\
+    K\n\x0e\n\x07\x04\0\x03\0\x02\0\x05\x12\x03\x13\x04\n\n\x0e\n\x07\x04\0\
+    \x03\0\x02\0\x01\x12\x03\x13\x0b\x20\n\x0e\n\x07\x04\0\x03\0\x02\0\x03\
+    \x12\x03\x13#$\n\x0e\n\x07\x04\0\x03\0\x02\0\x08\x12\x03\x13%J\n\x12\n\
+    \x0b\x04\0\x03\0\x02\0\x08\xaf\x08\x0e\x02\x12\x03\x13&I\nU\n\x06\x04\0\
+    \x03\0\x02\x01\x12\x03\x16\x04D\x1aF\x20Positional\x20typed\x20arguments\
+    \x20passed\x20to\x20the\x20registered\x20command\x20handler.\n\n\x0e\n\
+    \x07\x04\0\x03\0\x02\x01\x04\x12\x03\x16\x04\x0c\n\x0e\n\x07\x04\0\x03\0\
+    \x02\x01\x06\x12\x03\x16\r5\n\x0e\n\x07\x04\0\x03\0\x02\x01\x01\x12\x03\
+    \x166?\n\x0e\n\x07\x04\0\x03\0\x02\x01\x03\x12\x03\x16BC\nT\n\x04\x04\0\
+    \x03\x01\x12\x04\x1a\x02#\x03\x1aF\x20Built-in\x20commands\x20supported\
+    \x20directly\x20by\x20the\x20client\x20workflow\x20runtime.\n\n\x0c\n\
+    \x05\x04\0\x03\x01\x01\x12\x03\x1a\n\x18\n\x0e\n\x06\x04\0\x03\x01\x08\0\
+    \x12\x04\x1b\x04\x20\x05\n\x0e\n\x07\x04\0\x03\x01\x08\0\x01\x12\x03\x1b\
+    \n\x16\n\x0e\n\x07\x04\0\x03\x01\x08\0\x02\x12\x03\x1c\x06(\n\x10\n\t\
+    \x04\0\x03\x01\x08\0\x02\xaf\x08\x12\x03\x1c\x06(\n^\n\x06\x04\0\x03\x01\
+    \x02\0\x12\x03\x1f\x06)\x1aO\x20Captures\x20one\x20application\x20screen\
+    shot\x20using\x20the\x20platform's\x20configured\x20defaults.\n\n\x0e\n\
+    \x07\x04\0\x03\x01\x02\0\x06\x12\x03\x1f\x06\x14\n\x0e\n\x07\x04\0\x03\
+    \x01\x02\0\x01\x12\x03\x1f\x15$\n\x0e\n\x07\x04\0\x03\x01\x02\0\x03\x12\
+    \x03\x1f'(\n\r\n\x06\x04\0\x03\x01\x03\0\x12\x03\"\x04\x1d\n\x0e\n\x07\
+    \x04\0\x03\x01\x03\0\x01\x12\x03\"\x0c\x1a\n\x0c\n\x04\x04\0\x08\0\x12\
+    \x04%\x02-\x03\n\x0c\n\x05\x04\0\x08\0\x01\x12\x03%\x08\x18\n\x0c\n\x05\
+    \x04\0\x08\0\x02\x12\x03&\x04&\n\x0e\n\x07\x04\0\x08\0\x02\xaf\x08\x12\
+    \x03&\x04&\nS\n\x04\x04\0\x02\0\x12\x03)\x04'\x1aF\x20A\x20strongly\x20t\
+    yped\x20command\x20implemented\x20by\x20the\x20client\x20workflow\x20run\
+    time.\n\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03)\x04\x12\n\x0c\n\x05\x04\0\
+    \x02\0\x01\x12\x03)\x13\"\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03)%&\nB\n\
+    \x04\x04\0\x02\x01\x12\x03,\x04-\x1a5\x20A\x20command\x20implemented\x20\
+    by\x20the\x20embedding\x20application.\n\n\x0c\n\x05\x04\0\x02\x01\x06\
+    \x12\x03,\x04\x15\n\x0c\n\x05\x04\0\x02\x01\x01\x12\x03,\x16(\n\x0c\n\
+    \x05\x04\0\x02\x01\x03\x12\x03,+,b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -817,7 +844,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(1);
+            let mut deps = ::std::vec::Vec::with_capacity(2);
+            deps.push(super::payload::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(4);
             messages.push(WorkflowCommandSelector::generated_message_descriptor_data());
