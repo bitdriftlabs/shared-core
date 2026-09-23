@@ -42,6 +42,7 @@ use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type;
 use bd_proto::protos::client::api::{
+  ArtifactPayloadEncoding,
   ClientStateUpdate,
   DebugDataRequest,
   DeviceCommandUpdate,
@@ -56,6 +57,8 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
+use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+use bd_proto::protos::workflow::workflow::workflow::{MatchRunCommand, Rule};
 use bd_proto::protos::workflow::workflow_command::{
   WorkflowCommandSelector,
   workflow_command_selector,
@@ -2921,6 +2924,32 @@ fn custom_device_command_configuration(
   )
 }
 
+fn workflow_command_rule(registered_command_id: &str) -> Rule {
+  Rule {
+    rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+      command_selector: Some(WorkflowCommandSelector {
+        command_selector: Some(
+          workflow_command_selector::Command_selector::RegisteredCommand(
+            workflow_command_selector::RegisteredCommand {
+              registered_command_id: registered_command_id.to_string(),
+              ..Default::default()
+            },
+          ),
+        ),
+        ..Default::default()
+      })
+      .into(),
+      minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+        seconds: 60,
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
 fn screenshot_device_command_configuration(
   command_id: &str,
 ) -> bd_proto::protos::client::api::ConfigurationUpdate {
@@ -2992,7 +3021,13 @@ fn screenshot_device_command_stages_correlated_attachment() {
     Some(artifact) => {
       assert_eq!(artifact.command_id.as_deref(), Some(command_id));
       assert_eq!(artifact.type_id, "screenshot");
-      assert_eq!(artifact.contents, screenshot);
+      assert_eq!(
+        artifact.payload_encoding.enum_value_or_default(),
+        ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+      );
+      let mut decoder = ZlibDecoder::new(Vec::new());
+      decoder.write_all(&artifact.contents).unwrap();
+      assert_eq!(decoder.finish().unwrap(), screenshot);
       artifact.artifact_id
     }
   );
@@ -3246,7 +3281,13 @@ fn registered_custom_device_command_stages_correlated_attachment() {
     Some(artifact) => {
       assert_eq!(artifact.command_id.as_deref(), Some(command_id));
       assert_eq!(artifact.type_id, "custom_attachment");
-      assert_eq!(artifact.contents, b"custom-command-attachment");
+      assert_eq!(
+        artifact.payload_encoding.enum_value_or_default(),
+        ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+      );
+      let mut decoder = ZlibDecoder::new(Vec::new());
+      decoder.write_all(&artifact.contents).unwrap();
+      assert_eq!(decoder.finish().unwrap(), b"custom-command-attachment");
       artifact.artifact_id
     }
   );
@@ -3261,6 +3302,86 @@ fn registered_custom_device_command_stages_correlated_attachment() {
         if artifact.artifact_id == artifact_id
     );
   });
+}
+
+#[test]
+fn workflow_command_attachment_uploads_zlib_and_releases_retained_payload() {
+  let registered_command_id = "com.example.workflow.attachment";
+  let attachment = b"workflow-command-attachment".to_vec();
+  let handler: Arc<dyn RegisteredCommandHandler> = Arc::new(TestDeviceCommandHandler {
+    result: Mutex::new(Some(CommandResult::Completed {
+      fields: [].into(),
+      attachment: Some(CommandAttachment {
+        source: bd_artifact_upload::UploadSource::Bytes(attachment.clone()),
+        type_id: "ignored-for-workflow-attachments".to_string(),
+        state: [].into(),
+      }),
+    })),
+  });
+  let mut setup = Setup::new_with_options(SetupOptions {
+    command_handlers: [(registered_command_id.to_string(), handler)].into(),
+    ..Default::default()
+  });
+  let session_id = setup.logger_handle.session_id().unwrap();
+  let terminal = state("terminal");
+  let command =
+    state("command").declare_transition(&terminal, workflow_command_rule(registered_command_id));
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+
+  assert!(
+    setup
+      .send_configuration_update(config_helper::configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          workflows: vec![WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).build()],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+  setup.upload_individual_logs();
+
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start".into(),
+    [].into(),
+    [].into(),
+  );
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "run command".into(),
+    [].into(),
+    [].into(),
+  );
+
+  let artifact = setup.server.blocking_next_artifact_upload().unwrap();
+  let artifact_id = uuid::Uuid::parse_str(&artifact.artifact_id).unwrap();
+  assert_eq!(artifact.type_id, "workflow_attachment");
+  assert_eq!(artifact.session_id, session_id.as_ref());
+  assert_eq!(
+    artifact.payload_encoding.enum_value_or_default(),
+    ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+  );
+  let mut decoder = ZlibDecoder::new(Vec::new());
+  decoder.write_all(&artifact.contents).unwrap();
+  assert_eq!(decoder.finish().unwrap(), attachment);
+
+  let payload_path = setup
+    .sdk_directory
+    .path()
+    .join("workflow-attachments")
+    .join(format!("{artifact_id}.payload"));
+  assert_eq!(
+    setup.wait_for_workflow_attachment_upload_completion(),
+    artifact_id
+  );
+  assert!(!payload_path.exists());
 }
 
 #[test]

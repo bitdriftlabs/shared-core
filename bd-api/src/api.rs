@@ -32,6 +32,7 @@ use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{
   Compression,
+  EncodeMode,
   Encoder,
   GRPC_ACCEPT_ENCODING_HEADER,
   GRPC_ENCODING_DEFLATE,
@@ -61,6 +62,7 @@ pub use bd_proto::protos::client::api::upload_artifact_intent_response::{
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
+  ArtifactPayloadEncoding,
   ClientKillFile,
   ClientStateUpdate,
   HandshakeRequest,
@@ -87,6 +89,8 @@ use time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 use tokio::time::{Instant, Sleep, sleep};
+
+const WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID: &str = "workflow_attachment";
 
 //
 // StreamClosureInfo
@@ -245,7 +249,19 @@ impl StreamState {
   }
 
   async fn send_request<R: IntoRequest>(&mut self, request: R) -> anyhow::Result<()> {
-    let framed_message = self.request_encoder.encode(&request.into_request())?;
+    self
+      .send_request_with_mode(request, EncodeMode::Default)
+      .await
+  }
+
+  async fn send_request_with_mode<R: IntoRequest>(
+    &mut self,
+    request: R,
+    mode: EncodeMode,
+  ) -> anyhow::Result<()> {
+    let framed_message = self
+      .request_encoder
+      .encode_with_mode(&request.into_request(), mode)?;
     self.stream_handle.send_data(&framed_message).await
   }
 
@@ -318,7 +334,15 @@ impl StreamState {
       },
       DataUpload::ArtifactUpload(tracked) => {
         let req = self.upload_state_tracker.track_upload(tracked);
-        self.send_request(req).await
+        let mode = if req.payload_encoding.enum_value_or_default()
+          == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+          && (req.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID || req.command_id.is_some())
+        {
+          EncodeMode::SkipCompression
+        } else {
+          EncodeMode::Default
+        };
+        self.send_request_with_mode(req, mode).await
       },
       DataUpload::DebugData(request) => self.send_request(request).await,
       DataUpload::DeviceCommandUpdate(update) => {

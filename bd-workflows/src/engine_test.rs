@@ -230,16 +230,22 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
     Err(WorkflowCommandCompletionError::UnknownToken)
   ));
 
+  let artifact_id = uuid::Uuid::new_v4();
   let outcome_log = engine
     .complete_workflow_command(
       &token,
-      WorkflowCommandOutcome::Succeeded {
+      WorkflowCommandOutcome::SucceededWithAttachment {
         message: Some("done".to_string()),
-        fields: LogFields::default(),
+        fields: [("_workflow_command_artifact_id".into(), "spoofed".into())].into(),
+        artifact_id,
       },
       OffsetDateTime::now_utc(),
     )
     .unwrap();
+  assert_eq!(
+    outcome_log.log.fields.get("_workflow_command_artifact_id"),
+    Some(&artifact_id.to_string().into())
+  );
   assert!(matches!(
     engine.complete_workflow_command(
       &token,

@@ -5,7 +5,15 @@
 // you may not use this file except in compliance with the License.
 
 use crate::code::Code;
-use crate::{Compression, DEFAULT_MAX_MESSAGE_BYTES, Decoder, Decompression, Encoder, OptimizeFor};
+use crate::{
+  Compression,
+  DEFAULT_MAX_MESSAGE_BYTES,
+  Decoder,
+  Decompression,
+  EncodeMode,
+  Encoder,
+  OptimizeFor,
+};
 use protobuf::Message;
 use protobuf::well_known_types::any::Any;
 use protobuf::well_known_types::struct_::{Struct, Value};
@@ -189,6 +197,34 @@ fn compression_gets_more_effective_as_streaming_progresses() {
   let encoder2_bytes2 = encoder2.encode(&message2).unwrap();
 
   assert!(encoder2_bytes2.len() < encoder1_bytes2.len());
+}
+
+#[rstest]
+#[case((Compression::StatefulZlib { level: 3 }, Decompression::StatefulZlib))]
+#[case((Compression::StatelessZlib { level: 3 }, Decompression::StatelessZlib))]
+fn skip_compression_does_not_disable_the_next_compressed_frame(
+  #[case] (compression, decompression): (Compression, Decompression),
+) {
+  let message = create_compressable_message();
+  let mut encoder = Encoder::<Struct>::new(Some(compression));
+  let skipped = encoder
+    .encode_with_mode(&message, EncodeMode::SkipCompression)
+    .unwrap();
+  let compressed = encoder.encode(&message).unwrap();
+
+  assert_eq!(skipped[0], 0);
+  assert_eq!(compressed[0], 1);
+
+  let mut decoder = Decoder::<Struct>::new(
+    Some(decompression),
+    Some(DEFAULT_MAX_MESSAGE_BYTES),
+    OptimizeFor::Cpu,
+  );
+  assert_eq!(
+    decoder.decode_data(&skipped).unwrap(),
+    vec![message.clone()]
+  );
+  assert_eq!(decoder.decode_data(&compressed).unwrap(), vec![message]);
 }
 
 fn create_compressable_message() -> Struct {

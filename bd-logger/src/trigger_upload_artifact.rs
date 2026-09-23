@@ -35,6 +35,13 @@ pub const TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY: &str = "trigger_upload_artifacts";
 pub struct PersistedTriggerUploadArtifactBatch {
   pub upload_uuid: String,
   pub logs: Vec<Vec<u8>>,
+  pub workflow_attachments: Vec<WorkflowAttachmentReference>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkflowAttachmentReference {
+  pub artifact_id: String,
+  pub session_id: String,
 }
 
 //
@@ -88,15 +95,25 @@ impl TriggerUploadArtifactStore {
     }
   }
 
+  #[cfg(test)]
   pub async fn stage_batch(
     &self,
     logs: Vec<Vec<u8>>,
+  ) -> anyhow::Result<PersistedTriggerUploadArtifactBatch> {
+    self.stage_batch_with_attachments(logs, Vec::new()).await
+  }
+
+  pub async fn stage_batch_with_attachments(
+    &self,
+    logs: Vec<Vec<u8>>,
+    workflow_attachments: Vec<WorkflowAttachmentReference>,
   ) -> anyhow::Result<PersistedTriggerUploadArtifactBatch> {
     // Staging is the durable handoff point between the live ring buffer and restart-safe replay.
     // The consumer writes the batch here before advancing the live buffer cursor.
     let batch = PersistedTriggerUploadArtifactBatch {
       upload_uuid: TrackedLogBatch::upload_uuid(),
       logs,
+      workflow_attachments,
     };
 
     self
@@ -231,6 +248,17 @@ struct PersistedTriggerUploadArtifactBatchRecord {
   upload_uuid: String,
   #[field(id = 2)]
   logs: Vec<PersistedTriggerUploadArtifactLog>,
+  #[field(id = 3)]
+  workflow_attachments: Vec<WorkflowAttachmentReferenceRecord>,
+}
+
+#[proto_serializable]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct WorkflowAttachmentReferenceRecord {
+  #[field(id = 1)]
+  artifact_id: String,
+  #[field(id = 2)]
+  session_id: String,
 }
 
 impl From<PersistedTriggerUploadArtifactBatchRecord> for PersistedTriggerUploadArtifactBatch {
@@ -238,6 +266,14 @@ impl From<PersistedTriggerUploadArtifactBatchRecord> for PersistedTriggerUploadA
     Self {
       upload_uuid: batch.upload_uuid,
       logs: batch.logs.into_iter().map(|log| log.data).collect(),
+      workflow_attachments: batch
+        .workflow_attachments
+        .into_iter()
+        .map(|reference| WorkflowAttachmentReference {
+          artifact_id: reference.artifact_id,
+          session_id: reference.session_id,
+        })
+        .collect(),
     }
   }
 }
@@ -250,6 +286,14 @@ impl From<PersistedTriggerUploadArtifactBatch> for PersistedTriggerUploadArtifac
         .logs
         .into_iter()
         .map(|data| PersistedTriggerUploadArtifactLog { data })
+        .collect(),
+      workflow_attachments: batch
+        .workflow_attachments
+        .into_iter()
+        .map(|reference| WorkflowAttachmentReferenceRecord {
+          artifact_id: reference.artifact_id,
+          session_id: reference.session_id,
+        })
         .collect(),
     }
   }

@@ -35,6 +35,9 @@ mod network;
 mod service;
 mod state_upload;
 mod trigger_upload_artifact;
+mod upload_coordination;
+mod workflow_attachment;
+mod workflow_attachment_upload;
 
 pub use state_upload::{SnapshotRef, StateUploadHandle};
 
@@ -101,7 +104,7 @@ fn write_log_to_buffer(
   log: &mut bd_log_primitives::EncodableLog,
   action_ids: &[&str],
   stream_ids: &[&str],
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
   match producer.reserve(
     log.compute_size(action_ids, stream_ids)?.to_u32_lossy(),
     true,
@@ -116,13 +119,13 @@ fn write_log_to_buffer(
       _,
     )) => {
       log::debug!("failed to write log to buffer: {e:?}");
-      Ok(())
+      Ok(false)
     },
-    Err(e) => Err(e),
+    Err(e) => Err(e.into()),
     Ok(reservation) => {
       log.serialize_to_bytes(action_ids, stream_ids, reservation)?;
-      producer.commit()
+      producer.commit()?;
+      Ok(true)
     },
-  }?;
-  Ok(())
+  }
 }

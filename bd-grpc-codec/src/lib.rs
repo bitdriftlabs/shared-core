@@ -89,6 +89,17 @@ enum Compressor {
 }
 
 //
+// EncodeMode
+//
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum EncodeMode {
+  #[default]
+  Default,
+  SkipCompression,
+}
+
+//
 // Encoder
 //
 
@@ -118,6 +129,11 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
 
   // Converts a Protobuf message into a gRPC frame, potentially compressing the message.
   pub fn encode(&mut self, message: &MessageType) -> Result<Bytes> {
+    self.encode_with_mode(message, EncodeMode::Default)
+  }
+
+  // Converts a Protobuf message into a gRPC frame using the requested compression behavior.
+  pub fn encode_with_mode(&mut self, message: &MessageType, mode: EncodeMode) -> Result<Bytes> {
     // Serialize the Protobuf message then prefix it with the compression byte and the length in big
     // endian (the default for BufMut).
     // See https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md#requests for an
@@ -129,25 +145,28 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
       .tx_bytes_uncompressed
       .inc_by(message_size + GRPC_MESSAGE_PREFIX_LEN);
 
-    let bytes = match (
-      &mut self.compressor,
-      message_size >= GRPC_MIN_MESSAGE_SIZE_COMPRESSION_THRESHOLD,
-    ) {
-      (Some(compressor), true) => match Self::encode_compressed(compressor, message) {
-        Ok(compressed) => compressed,
-        Err(e) => {
-          log::debug!(
-            "gRPC compression failed, falling back to uncompressed stream and disabling \
-             compression: {e}",
-          );
-          // Compression failed, fallback to uncompressed and nullify compressor so that
-          // the encoder doesn't make further attempt to compress incoming messages. This is to
-          // avoid compressing with the use of compressor that's potentially in a bad state.
-          self.compressor = None;
-          Self::encode_uncompressed(message)?
+    let bytes = match mode {
+      EncodeMode::SkipCompression => Self::encode_uncompressed(message)?,
+      EncodeMode::Default => match (
+        &mut self.compressor,
+        message_size >= GRPC_MIN_MESSAGE_SIZE_COMPRESSION_THRESHOLD,
+      ) {
+        (Some(compressor), true) => match Self::encode_compressed(compressor, message) {
+          Ok(compressed) => compressed,
+          Err(e) => {
+            log::debug!(
+              "gRPC compression failed, falling back to uncompressed stream and disabling \
+               compression: {e}",
+            );
+            // Compression failed, fallback to uncompressed and nullify compressor so that
+            // the encoder doesn't make further attempt to compress incoming messages. This is to
+            // avoid compressing with the use of compressor that's potentially in a bad state.
+            self.compressor = None;
+            Self::encode_uncompressed(message)?
+          },
         },
+        _ => Self::encode_uncompressed(message)?,
       },
-      _ => Self::encode_uncompressed(message)?,
     };
 
     self.tx_bytes.inc_by(bytes.len());

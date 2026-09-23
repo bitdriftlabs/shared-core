@@ -32,6 +32,12 @@ pub trait FileSystem: Send + Sync {
   /// Renames/moves a file relative to the SDK root.
   async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()>;
 
+  /// Shares a file within the SDK root without transferring ownership of the original path.
+  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()>;
+
+  /// Ensures a file and its directory entry survive a crash before acknowledging a lease.
+  async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()>;
+
   /// Deletes the directory if it exists.
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()>;
 
@@ -47,6 +53,14 @@ pub async fn write_file_atomic(path: &Path, data: &[u8]) -> anyhow::Result<()> {
   let tmp_path = path.with_extension("tmp");
   tokio::fs::write(&tmp_path, data).await?;
   tokio::fs::rename(&tmp_path, path).await?;
+  Ok(())
+}
+
+pub async fn sync_file_and_parent(path: &Path) -> anyhow::Result<()> {
+  tokio::fs::File::open(path).await?.sync_all().await?;
+  if let Some(parent) = path.parent() {
+    tokio::fs::File::open(parent).await?.sync_all().await?;
+  }
   Ok(())
 }
 
@@ -129,6 +143,18 @@ impl FileSystem for RealFileSystem {
 
   async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
     Ok(tokio::fs::rename(self.directory.join(from), self.directory.join(to)).await?)
+  }
+
+  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    let source = self.directory.join(from);
+    if !tokio::fs::symlink_metadata(&source).await?.is_file() {
+      anyhow::bail!("artifact source must be a regular file");
+    }
+    Ok(tokio::fs::hard_link(source, self.directory.join(to)).await?)
+  }
+
+  async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
+    sync_file_and_parent(&self.directory.join(path)).await
   }
 
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {

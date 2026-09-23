@@ -158,6 +158,10 @@ impl UninitializedLoggingContext {
     }
   }
 
+  pub(crate) fn sdk_directory(&self) -> &Path {
+    &self.sdk_directory
+  }
+
   pub(crate) async fn updated(self, config: ConfigUpdate) -> InitializedLoggingContext {
     let processing_pipeline = ProcessingPipeline::new(
       self.data_upload_tx,

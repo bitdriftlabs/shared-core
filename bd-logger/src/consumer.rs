@@ -23,7 +23,9 @@ use crate::state_upload::StateUploadHandle;
 use crate::trigger_upload_artifact::{
   PersistedTriggerUploadArtifactBatch,
   TriggerUploadArtifactStore,
+  WorkflowAttachmentReference,
 };
+use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use bd_api::upload::{LogBatch, TrackedLogUploadIntent};
 use bd_api::{
   DeviceCommandUploadAdmission,
@@ -39,6 +41,8 @@ use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
 use bd_log_primitives::EncodableLog;
+use bd_proto::protos::logging::payload::Log as ProtoLog;
+use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::Counter as _;
@@ -46,8 +50,10 @@ use bd_time::OffsetDateTimeExt;
 use bd_versioned_kv::RetentionHandle;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::future::try_join_all;
+use protobuf::Message as _;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::io::Read as _;
 use std::mem::take;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -60,6 +66,68 @@ use tracing::Instrument as _;
 use unwrap_infallible::UnwrapInfallible;
 
 const DEVICE_COMMAND_ADMISSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const MAX_DECOMPRESSED_LOG_BYTES: u64 = 2 * 1024 * 1024;
+const WORKFLOW_STAGING_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn workflow_artifact_ids_for_logs(logs: &[Vec<u8>]) -> anyhow::Result<HashMap<uuid::Uuid, String>> {
+  let mut ids = HashMap::new();
+  for bytes in logs {
+    let log = ProtoLog::parse_from_bytes(bytes)?;
+    let fields = if log.compressed_contents.is_empty() {
+      log.fields
+    } else {
+      let mut decoded = Vec::new();
+      flate2::read::ZlibDecoder::new(log.compressed_contents.as_slice())
+        .take(MAX_DECOMPRESSED_LOG_BYTES + 1)
+        .read_to_end(&mut decoded)?;
+      if decoded.len() as u64 > MAX_DECOMPRESSED_LOG_BYTES {
+        anyhow::bail!("compressed workflow log exceeds inspection limit");
+      }
+      CompressedContents::parse_from_bytes(&decoded)?.fields
+    };
+    for field in fields {
+      if field.key == bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD
+        && let Ok(id) = uuid::Uuid::parse_str(field.value.string_data())
+      {
+        ids.insert(id, log.session_id.clone());
+      }
+    }
+  }
+  Ok(ids)
+}
+
+fn workflow_artifact_ids_for_enabled_uploader(
+  handle: Option<&Arc<WorkflowAttachmentUploadHandle>>,
+  logs: &[Vec<u8>],
+) -> anyhow::Result<HashMap<uuid::Uuid, String>> {
+  handle.map_or_else(
+    || Ok(HashMap::new()),
+    |_| workflow_artifact_ids_for_logs(logs),
+  )
+}
+
+async fn stage_workflow_attachments(
+  handle: Option<&Arc<WorkflowAttachmentUploadHandle>>,
+  ids: HashMap<uuid::Uuid, String>,
+  shutdown: &mut ComponentShutdown,
+) -> anyhow::Result<bool> {
+  let Some(handle) = handle else {
+    return Ok(true);
+  };
+  loop {
+    tokio::select! {
+      result = handle.stage(ids.clone()) => match result {
+        Ok(()) => return Ok(true),
+        Err(error) => log::debug!("retrying workflow attachment staging: {error}"),
+      },
+      () = shutdown.cancelled() => return Ok(false),
+    }
+    tokio::select! {
+      () = sleep(WORKFLOW_STAGING_RETRY_INTERVAL) => {},
+      () = shutdown.cancelled() => return Ok(false),
+    }
+  }
+}
 
 // Feature flags used to control the upload parameters.
 #[derive(Clone)]
@@ -192,6 +260,7 @@ pub struct BufferUploadManager {
 
   // State upload handle for uploading state snapshots before logs.
   state_upload_handle: Option<Arc<StateUploadHandle>>,
+  workflow_upload_handle: Option<Arc<WorkflowAttachmentUploadHandle>>,
 
   // Durable registry of trigger uploads that have been scheduled but not yet completed.
   pending_trigger_uploads: PendingTriggerUploadsStore,
@@ -217,6 +286,7 @@ impl BufferUploadManager {
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
+    workflow_upload_handle: Option<Arc<WorkflowAttachmentUploadHandle>>,
     pending_trigger_uploads: PendingTriggerUploadsStore,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
     test_hooks: Option<Arc<dyn TestHooks>>,
@@ -243,6 +313,7 @@ impl BufferUploadManager {
       stream_buffer_shutdown_trigger: None,
       old_logs_dropped: stats.counter("old_logs_dropped"),
       state_upload_handle,
+      workflow_upload_handle,
       pending_trigger_uploads,
       process_local_pending_flush_state,
       test_hooks,
@@ -1131,6 +1202,7 @@ impl BufferUploadManager {
         shutdown_trigger.make_shutdown(),
         buffer_name.to_string(),
         self.state_upload_handle.clone(),
+        self.workflow_upload_handle.clone(),
       ),
       shutdown_trigger,
     ))
@@ -1158,6 +1230,8 @@ impl BufferUploadManager {
       buffer_name.to_string(),
       self.old_logs_dropped.clone(),
       self.state_upload_handle.clone(),
+      self.workflow_upload_handle.clone(),
+      self.shutdown.clone(),
       self.pending_trigger_uploads.clone(),
       trigger_upload_identity,
       command_stream_id,
@@ -1254,6 +1328,7 @@ struct ContinuousBufferUploader {
 
   // State upload handle for uploading state snapshots before logs.
   state_upload_handle: Option<Arc<StateUploadHandle>>,
+  workflow_upload_handle: Option<Arc<WorkflowAttachmentUploadHandle>>,
   retention_handle: RetentionHandle,
 }
 
@@ -1266,6 +1341,7 @@ impl ContinuousBufferUploader {
     shutdown: ComponentShutdown,
     buffer_id: String,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
+    workflow_upload_handle: Option<Arc<WorkflowAttachmentUploadHandle>>,
   ) -> Self {
     Self {
       consumer,
@@ -1276,6 +1352,7 @@ impl ContinuousBufferUploader {
       feature_flags,
       buffer_id,
       state_upload_handle,
+      workflow_upload_handle,
       retention_handle,
     }
   }
@@ -1325,6 +1402,18 @@ impl ContinuousBufferUploader {
     // Disarm the deadline which forces a partial flush to fire.
     self.flush_batch_sleep = None;
 
+    if !stage_workflow_attachments(
+      self.workflow_upload_handle.as_ref(),
+      workflow_artifact_ids_for_enabled_uploader(
+        self.workflow_upload_handle.as_ref(),
+        &self.batch_builder.logs,
+      )?,
+      &mut self.shutdown,
+    )
+    .await?
+    {
+      return Ok(());
+    }
     let timestamp_range = self.batch_builder.timestamp_range();
     let logs = self.batch_builder.take();
     let logs_len = logs.len();
@@ -1501,6 +1590,8 @@ struct CompleteBufferUpload {
 
   // State upload handle for uploading state snapshots before logs.
   state_upload_handle: Option<Arc<StateUploadHandle>>,
+  workflow_upload_handle: Option<Arc<WorkflowAttachmentUploadHandle>>,
+  shutdown: ComponentShutdown,
 
   // The trigger upload persists in two layers while it is in flight: the registry tracks lifecycle
   // and per-buffer progress, while the artifact store holds concrete log batches that are safe to
@@ -1567,6 +1658,8 @@ impl CompleteBufferUpload {
     buffer_id: String,
     old_logs_dropped: Counter,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
+    workflow_upload_handle: Option<Arc<WorkflowAttachmentUploadHandle>>,
+    shutdown: ComponentShutdown,
     pending_trigger_uploads: PendingTriggerUploadsStore,
     trigger_upload_identity: TriggerUploadIdentity,
     command_stream_id: Option<String>,
@@ -1589,6 +1682,8 @@ impl CompleteBufferUpload {
       lookback_window,
       old_logs_dropped,
       state_upload_handle,
+      workflow_upload_handle,
+      shutdown,
       pending_trigger_uploads,
       trigger_upload_identity,
       command_stream_id,
@@ -1732,9 +1827,31 @@ impl CompleteBufferUpload {
     // cursor, then promote the staged batch to the single inflight artifact. That guarantees a
     // crash cannot lose logs silently: after restart we will either find them still readable in the
     // buffer or recover them from the artifact store.
+    let workflow_attachment_ids = workflow_artifact_ids_for_enabled_uploader(
+      self.workflow_upload_handle.as_ref(),
+      &self.batch_builder.logs,
+    )?;
+    if !stage_workflow_attachments(
+      self.workflow_upload_handle.as_ref(),
+      workflow_attachment_ids.clone(),
+      &mut self.shutdown,
+    )
+    .await?
+    {
+      anyhow::bail!("workflow attachment staging interrupted by shutdown");
+    }
     self
       .artifact_store
-      .stage_batch(self.batch_builder.take())
+      .stage_batch_with_attachments(
+        self.batch_builder.take(),
+        workflow_attachment_ids
+          .into_iter()
+          .map(|(artifact_id, session_id)| WorkflowAttachmentReference {
+            artifact_id: artifact_id.to_string(),
+            session_id,
+          })
+          .collect(),
+      )
       .await?;
     self.consumer.finish_reads(self.pending_batch_reads)?;
     self.pending_batch_reads = 0;
@@ -1779,6 +1896,24 @@ impl CompleteBufferUpload {
     discard_recovered_prefix: bool,
   ) -> anyhow::Result<()> {
     let logs_len = u64::try_from(batch.logs.len()).unwrap_or(u64::MAX);
+    if !stage_workflow_attachments(
+      self.workflow_upload_handle.as_ref(),
+      batch
+        .workflow_attachments
+        .iter()
+        .map(|reference| {
+          Ok((
+            uuid::Uuid::parse_str(&reference.artifact_id)?,
+            reference.session_id.clone(),
+          ))
+        })
+        .collect::<Result<HashMap<_, _>, uuid::Error>>()?,
+      &mut self.shutdown,
+    )
+    .await?
+    {
+      anyhow::bail!("workflow attachment staging interrupted by shutdown");
+    }
     let uploaded_logs = batch.logs.clone();
     let timestamp_range = timestamp_range_for_logs(&batch.logs);
     log::debug!("flushing {logs_len} logs from trigger artifact");

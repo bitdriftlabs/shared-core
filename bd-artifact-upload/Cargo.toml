@@ -26,8 +26,10 @@ bd-stats-common.path        = "../bd-stats-common"
 bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 flatbuffers.workspace       = true
+flate2                      = { workspace = true, default-features = false, features = ["zlib"] }
 log.workspace               = true
 mockall.workspace           = true
+sha2.workspace              = true
 thiserror.workspace         = true
 time.workspace              = true
 tokio.workspace             = true

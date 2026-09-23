@@ -102,6 +102,20 @@ impl FileSystem for TestFileSystem {
     Ok(())
   }
 
+  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    Ok(
+      tokio::fs::hard_link(
+        self.directory.path().join(from),
+        self.directory.path().join(to),
+      )
+      .await?,
+    )
+  }
+
+  async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
+    crate::file_system::sync_file_and_parent(&self.directory.path().join(path)).await
+  }
+
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
     let dir_path = self.directory.path().join(path);
     if !dir_path.exists() {
@@ -167,6 +181,14 @@ impl FileSystem for Arc<TestFileSystem> {
 
   async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
     self.as_ref().rename_file(from, to).await
+  }
+
+  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    self.as_ref().link_file(from, to).await
+  }
+
+  async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
+    self.as_ref().sync_file_and_parent(path).await
   }
 
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {

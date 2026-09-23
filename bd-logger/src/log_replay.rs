@@ -59,6 +59,7 @@ pub struct LogReplayResult {
   pub workflow_commands_to_start: Vec<WorkflowCommandRequest>,
   pub workflow_debug_state: Vec<(String, WorkflowDebugStateMap)>,
   pub engine_has_debug_workflows: bool,
+  pub committed_workflow_attachment: bool,
 }
 
 //
@@ -303,16 +304,22 @@ impl ProcessingPipeline {
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
     self.filter_chain.process(&mut log, &state_reader);
     let mut log = EncodableLog::new(log, (*self.min_log_compression_size.read()).into());
+    let has_workflow_attachment = log
+      .log
+      .fields
+      .contains_key(bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD);
 
-    match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
-      Ok(streamed) => {
-        if streamed {
-          self.stats.streamed_logs.inc();
-        }
-      },
-      Err(e) => {
-        log::debug!("failed to stream log: {e:?}");
-      },
+    if !has_workflow_attachment {
+      match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
+        Ok(streamed) => {
+          if streamed {
+            self.stats.streamed_logs.inc();
+          }
+        },
+        Err(e) => {
+          log::debug!("failed to stream log: {e:?}");
+        },
+      }
     }
 
     let matching_buffers = self.buffer_selector.buffers(
@@ -337,13 +344,14 @@ impl ProcessingPipeline {
     self
       .is_tracing_active
       .store(result.is_tracing_active, Ordering::Relaxed);
-    let log_replay_result = LogReplayResult {
+    let mut log_replay_result = LogReplayResult {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()
         .collect(),
       workflow_commands_to_start: std::mem::take(&mut result.workflow_commands_to_start),
       workflow_debug_state: std::mem::take(&mut result.workflow_debug_state),
       engine_has_debug_workflows: result.has_debug_workflows,
+      committed_workflow_attachment: false,
     };
 
     log::debug!(
@@ -356,7 +364,7 @@ impl ProcessingPipeline {
     Self::handle_common_pre_buffer_write(&result.triggered_flush_buffers_action_ids);
 
     let mut written_to_buffers = TinySet::default();
-    if let Err(error) = Self::write_to_buffers(
+    let committed = match Self::write_to_buffers(
       &mut self.buffer_producers,
       &result.log_destination_buffer_ids,
       &mut log,
@@ -372,13 +380,16 @@ impl ProcessingPipeline {
         .collect_vec(),
       &mut written_to_buffers,
     ) {
-      warn_every!(
-        15.seconds(),
-        "failed to write log to buffer; dropping it: {error}"
-      );
-    }
-
-    Self::process_flush_buffers_actions(
+      Ok(committed) => committed,
+      Err(error) => {
+        warn_every!(
+          15.seconds(),
+          "failed to write log to buffer; dropping it: {error}"
+        );
+        false
+      },
+    };
+    let synthetic_committed = Self::process_flush_buffers_actions(
       &result.triggered_flush_buffers_action_ids,
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
@@ -388,6 +399,15 @@ impl ProcessingPipeline {
       &log.log.session_id,
       log.log.occurred_at,
     );
+    log_replay_result.committed_workflow_attachment =
+      (committed || synthetic_committed) && has_workflow_attachment;
+    if log_replay_result.committed_workflow_attachment {
+      match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
+        Ok(true) => self.stats.streamed_logs.inc(),
+        Ok(false) => {},
+        Err(error) => log::debug!("failed to stream workflow attachment log: {error:?}"),
+      }
+    }
 
     // Command execution is best-effort across restarts: persistence may be deferred or fail, so
     // an interrupted command may be lost or executed again after a restart.
@@ -440,6 +460,7 @@ impl ProcessingPipeline {
       workflow_commands_to_start: std::mem::take(&mut result.workflow_commands_to_start),
       workflow_debug_state: result.workflow_debug_state,
       engine_has_debug_workflows: result.has_debug_workflows,
+      committed_workflow_attachment: false,
     };
 
     log::debug!("processed {state_change:?} state change");
@@ -473,21 +494,25 @@ impl ProcessingPipeline {
     log: &mut EncodableLog,
     action_ids: &[&str],
     written_to_buffers: &mut TinySet<Cow<'a, str>>,
-  ) -> anyhow::Result<()> {
+  ) -> anyhow::Result<bool> {
     if matching_buffers.is_empty() {
-      return Ok(());
+      return Ok(false);
     }
 
+    let mut committed = false;
     for buffer in matching_buffers.iter() {
       // TODO(snowp): For both logger and buffer lookup we end up doing a map lookup, which
       // seems less than ideal in the logging path. Look into ways to optimize this,
       // possibly via vector indices instead of string keys.
       let producer = BufferProducers::producer(&mut buffers.buffers, buffer)?;
-      write_log_to_buffer(producer, log, action_ids, &[])?;
-      written_to_buffers.insert(buffer.clone());
+      let write_committed = write_log_to_buffer(producer, log, action_ids, &[])?;
+      committed |= write_committed;
+      if write_committed {
+        written_to_buffers.insert(buffer.clone());
+      }
     }
 
-    Ok(())
+    Ok(committed)
   }
 
   /// Processes flush buffer actions that were triggered by the log being processed.
@@ -503,9 +528,9 @@ impl ProcessingPipeline {
     log_fields: &LogFields,
     session_id: &str,
     occurred_at: OffsetDateTime,
-  ) {
+  ) -> bool {
     if triggered_flush_buffers_action_ids.is_empty() {
-      return;
+      return false;
     }
 
     // Indicates whether the log was written to any of the continuous buffers. Continuous buffers
@@ -541,7 +566,8 @@ impl ProcessingPipeline {
 
       if let Ok(buffer_producer) =
         BufferProducers::producer(&mut buffers.buffers, arbitrary_buffer_id_to_flush.as_str())
-        && let Err(e) = (|| {
+      {
+        let result = (|| {
           let action_ids: Vec<&str> = triggered_flush_buffers_action_ids
             .iter()
             .filter_map(|id| match id.as_ref() {
@@ -571,11 +597,15 @@ impl ProcessingPipeline {
           } // Drop CodedOutputStream before calling commit()
           buffer_producer.commit()?;
           Ok::<_, anyhow::Error>(())
-        })()
-      {
-        log::debug!("failed to write synthetic log to buffer: {e}");
+        })();
+        if let Err(error) = result {
+          log::debug!("failed to write synthetic log to buffer: {error}");
+        } else {
+          return true;
+        }
       }
     }
+    false
   }
 
   pub(crate) async fn run(&mut self) {

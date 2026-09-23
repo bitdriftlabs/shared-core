@@ -9,6 +9,7 @@ use super::{
   PersistedTriggerUploadArtifactBatch,
   TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY,
   TriggerUploadArtifactStore,
+  WorkflowAttachmentReference,
 };
 use std::io::ErrorKind;
 use std::path::PathBuf;
@@ -42,6 +43,7 @@ fn persisted_batch(logs: &[&[u8]], upload_uuid: &str) -> PersistedTriggerUploadA
   PersistedTriggerUploadArtifactBatch {
     upload_uuid: upload_uuid.to_string(),
     logs: logs.iter().map(|log| log.to_vec()).collect(),
+    workflow_attachments: Vec::new(),
   }
 }
 
@@ -60,8 +62,29 @@ async fn stage_batch_round_trips_queued_batch_from_disk() {
     Some(PersistedTriggerUploadArtifactBatch {
       upload_uuid: staged.upload_uuid.clone(),
       logs: vec![b"one".to_vec(), b"two".to_vec()],
+      workflow_attachments: Vec::new(),
     })
   );
+  assert_eq!(
+    make_store(&temp_dir).queued_batch().await.unwrap(),
+    Some(staged)
+  );
+}
+
+#[tokio::test]
+async fn stage_batch_round_trips_workflow_attachment_references() {
+  let temp_dir = TempDir::with_prefix("trigger-upload-artifact").unwrap();
+  let store = make_store(&temp_dir);
+  let reference = WorkflowAttachmentReference {
+    artifact_id: uuid::Uuid::new_v4().to_string(),
+    session_id: "session".to_string(),
+  };
+
+  let staged = store
+    .stage_batch_with_attachments(vec![b"one".to_vec()], vec![reference])
+    .await
+    .unwrap();
+
   assert_eq!(
     make_store(&temp_dir).queued_batch().await.unwrap(),
     Some(staged)

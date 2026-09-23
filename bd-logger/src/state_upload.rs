@@ -37,7 +37,15 @@
 #[path = "./state_upload_test.rs"]
 mod tests;
 
-use bd_artifact_upload::{Client as ArtifactClient, EnqueueError, UploadSource};
+use crate::upload_coordination::{
+  BACKPRESSURE_RETRY_INTERVAL,
+  Coalesced,
+  PersistedEnqueueError,
+  UploadNotifier,
+  UploadWake,
+  enqueue_and_wait_for_persistence,
+};
+use bd_artifact_upload::{Client as ArtifactClient, UploadSource};
 use bd_client_common::artifact::STATE_SNAPSHOT_ARTIFACT_TYPE_ID;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogFields;
@@ -50,10 +58,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use time::OffsetDateTime;
-use tokio::sync::mpsc;
-use tokio::time::{Duration, sleep};
+use tokio::time::sleep;
 
-const BACKPRESSURE_RETRY_INTERVAL: Duration = Duration::from_secs(30);
 static PENDING_UPLOAD_RANGE_KEY: bd_key_value::Key<StateSnapshotRange> =
   bd_key_value::Key::new("state_upload.pending_range.1");
 
@@ -72,18 +78,11 @@ struct PendingRange {
   newest_micros: u64,
 }
 
-impl PendingRange {
+impl Coalesced for PendingRange {
   fn merge(&mut self, other: Self) {
     self.oldest_micros = self.oldest_micros.min(other.oldest_micros);
     self.newest_micros = self.newest_micros.max(other.newest_micros);
   }
-}
-
-#[derive(Default)]
-struct PendingAccumulator {
-  range: Option<PendingRange>,
-  version: u64,
-  wake_queued: bool,
 }
 
 struct Stats {
@@ -113,10 +112,7 @@ impl Stats {
 /// All actual snapshot creation and upload logic is handled by the companion
 /// [`StateUploadWorker`], which runs as a single background task.
 pub struct StateUploadHandle {
-  /// Best-effort wake channel for nudging the background worker.
-  wake_tx: mpsc::Sender<()>,
-  /// Shared pending-range accumulator.
-  pending_accumulator: Arc<parking_lot::Mutex<PendingAccumulator>>,
+  coordination: UploadNotifier<PendingRange>,
 }
 
 impl StateUploadHandle {
@@ -137,17 +133,13 @@ impl StateUploadHandle {
   ) -> (Self, StateUploadWorker) {
     let stats = Stats::new(&stats_scope.scope("state_upload"));
 
-    let (wake_tx, wake_rx) = mpsc::channel(1);
-    let pending_accumulator = Arc::new(parking_lot::Mutex::new(PendingAccumulator::default()));
+    let (coordination, wake) = UploadWake::new();
     let retention_handle = match &retention_registry {
       Some(registry) => Some(registry.create_handle().await),
       None => None,
     };
 
-    let handle = Self {
-      wake_tx,
-      pending_accumulator: pending_accumulator.clone(),
-    };
+    let handle = Self { coordination };
 
     let worker = StateUploadWorker {
       last_snapshot_creation_micros: AtomicU64::new(0),
@@ -159,9 +151,7 @@ impl StateUploadHandle {
       state_store,
       time_provider,
       artifact_client,
-      wake_rx,
-      pending_accumulator,
-      pending_version_seen: 0,
+      wake,
       pending_range: None,
       stats,
     };
@@ -174,32 +164,10 @@ impl StateUploadHandle {
   /// This is non-blocking. The range is first merged into a shared accumulator, then the worker is
   /// nudged via a best-effort wake channel.
   pub fn notify_upload_needed(&self, batch_oldest_micros: u64, batch_newest_micros: u64) {
-    let should_wake = {
-      let mut pending = self.pending_accumulator.lock();
-      let incoming = PendingRange {
-        oldest_micros: batch_oldest_micros,
-        newest_micros: batch_newest_micros,
-      };
-      if let Some(existing) = &mut pending.range {
-        existing.merge(incoming);
-      } else {
-        pending.range = Some(incoming);
-      }
-      pending.version = pending.version.wrapping_add(1);
-      if pending.wake_queued {
-        false
-      } else {
-        pending.wake_queued = true;
-        true
-      }
-    };
-
-    if should_wake {
-      // If this fails there is already a pending wake in the channel so we don't have to worry
-      // about nudging the worker later - it will process the updated pending range when it wakes
-      // up.
-      let _ = self.wake_tx.try_send(());
-    }
+    self.coordination.notify(PendingRange {
+      oldest_micros: batch_oldest_micros,
+      newest_micros: batch_newest_micros,
+    });
   }
 }
 
@@ -231,9 +199,7 @@ pub struct StateUploadWorker {
   artifact_client: Arc<dyn ArtifactClient>,
 
   /// Used to coordinate updates to the pending range and best-effort wake signals from the handle.
-  wake_rx: mpsc::Receiver<()>,
-  pending_accumulator: Arc<parking_lot::Mutex<PendingAccumulator>>,
-  pending_version_seen: u64,
+  wake: UploadWake<PendingRange>,
   pending_range: Option<PendingRange>,
 
   stats: Stats,
@@ -272,7 +238,7 @@ impl StateUploadWorker {
 
     loop {
       tokio::select! {
-        Some(()) = self.wake_rx.recv() => {
+        Some(()) = self.wake.recv() => {
           self.drain_pending_accumulator();
           self.process_pending().await;
           while self.pending_version_changed() {
@@ -290,22 +256,12 @@ impl StateUploadWorker {
   }
 
   fn drain_pending_accumulator(&mut self) {
-    let mut pending = self.pending_accumulator.lock();
-    if let Some(incoming) = pending.range.take() {
-      if let Some(existing) = &mut self.pending_range {
-        existing.merge(incoming);
-      } else {
-        self.pending_range = Some(incoming);
-      }
-    }
-    self.pending_version_seen = pending.version;
-    pending.wake_queued = false;
+    self.wake.drain_into(&mut self.pending_range);
     self.persist_pending_range();
   }
 
   fn pending_version_changed(&self) -> bool {
-    let pending = self.pending_accumulator.lock();
-    pending.version != self.pending_version_seen
+    self.wake.version_changed()
   }
 
   async fn process_pending(&mut self) {
@@ -372,45 +328,35 @@ impl StateUploadWorker {
       )
       .ok();
 
-      let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
-      match self.artifact_client.enqueue_upload(
-        UploadSource::Path(snapshot_ref.path.clone()),
-        STATE_SNAPSHOT_ARTIFACT_TYPE_ID.to_string(),
-        LogFields::new(),
-        timestamp,
-        String::new(),
-        vec![],
-        Some(persisted_tx),
-      ) {
-        Ok(_uuid) => match persisted_rx.await {
-          Ok(Ok(())) => {
-            log::debug!(
-              "state snapshot persisted to artifact queue for timestamp {}",
-              snapshot_ref.timestamp_micros
-            );
-            self.stats.snapshots_uploaded.inc();
-            self.advance_pending_oldest_micros(snapshot_ref.timestamp_micros);
-          },
-          Ok(Err(e)) => {
-            log::warn!("failed to persist state snapshot upload entry: {e}");
-            self.stats.upload_failures.inc();
-            if matches!(e, EnqueueError::QueueFull) {
-              return ProcessResult::Backpressure;
-            }
-            return ProcessResult::Error;
-          },
-          Err(e) => {
-            log::warn!("state snapshot persistence ack channel dropped: {e}");
-            self.stats.upload_failures.inc();
-            return ProcessResult::Error;
-          },
+      match enqueue_and_wait_for_persistence(|persisted_tx| {
+        self.artifact_client.enqueue_upload(
+          UploadSource::Path(snapshot_ref.path.clone()),
+          STATE_SNAPSHOT_ARTIFACT_TYPE_ID.to_string(),
+          LogFields::new(),
+          timestamp,
+          String::new(),
+          vec![],
+          Some(persisted_tx),
+        )
+      })
+      .await
+      {
+        Ok(()) => {
+          log::debug!(
+            "state snapshot persisted to artifact queue for timestamp {}",
+            snapshot_ref.timestamp_micros
+          );
+          self.stats.snapshots_uploaded.inc();
+          self.advance_pending_oldest_micros(snapshot_ref.timestamp_micros);
         },
-        Err(e) => {
-          log::warn!("failed to enqueue state snapshot upload: {e}");
+        Err(PersistedEnqueueError::Backpressure) => {
+          log::warn!("artifact upload queue is full while persisting a state snapshot");
           self.stats.upload_failures.inc();
-          if matches!(e, EnqueueError::QueueFull) {
-            return ProcessResult::Backpressure;
-          }
+          return ProcessResult::Backpressure;
+        },
+        Err(error) => {
+          log::warn!("failed to persist state snapshot upload entry: {error}");
+          self.stats.upload_failures.inc();
           return ProcessResult::Error;
         },
       }

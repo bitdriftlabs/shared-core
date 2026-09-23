@@ -80,7 +80,11 @@ use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
-use bd_workflows::workflow::{WorkflowCommandCompletionToken, WorkflowCommandOutcome};
+use bd_workflows::workflow::{
+  WORKFLOW_COMMAND_ARTIFACT_ID_FIELD,
+  WorkflowCommandCompletionToken,
+  WorkflowCommandOutcome,
+};
 use futures_util::poll;
 use std::collections::{HashMap, VecDeque};
 use std::future;
@@ -2170,8 +2174,8 @@ async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads()
 
   buffer
     .process_workflow_command_outcome_logs(
-      [bd_workflows::engine::WorkflowCommandLog {
-        log: Log {
+      [(
+        Log {
           log_level: log_level::INFO,
           log_type: LogType::NORMAL,
           message: "Workflow command completed".into(),
@@ -2181,8 +2185,8 @@ async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads()
           session_id: "session".into(),
           capture_session: None,
         },
-        token: token.clone(),
-      }],
+        Some(token.clone()),
+      )],
       &state_store,
     )
     .await;
@@ -2208,6 +2212,52 @@ async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads()
       .get("outcome_metadata")
   );
   assert!(buffer.send_workflow_debug_state_delay.is_some());
+}
+
+#[tokio::test]
+async fn failed_workflow_outcome_replay_releases_attachment() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let attachment_store = buffer.workflow_attachment_store().get().await.unwrap();
+  let attachment = attachment_store
+    .admit(bd_artifact_upload::UploadSource::Bytes(
+      b"attachment".to_vec(),
+    ))
+    .await
+    .unwrap();
+  let payload_path = setup
+    .tmp_dir
+    .path()
+    .join("workflow-attachments")
+    .join(format!("{}.payload", attachment.id));
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+
+  buffer
+    .process_workflow_command_outcome_logs(
+      [(
+        Log {
+          log_level: log_level::ERROR,
+          log_type: LogType::NORMAL,
+          message: "Workflow command completed".into(),
+          session_id: "session".into(),
+          occurred_at: OffsetDateTime::now_utc(),
+          fields: [(
+            WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+            attachment.id.to_string().into(),
+          )]
+          .into(),
+          matching_fields: LogFields::default(),
+          capture_session: None,
+        },
+        None,
+      )],
+      &state_store,
+    )
+    .await;
+
+  assert!(!tokio::fs::try_exists(payload_path).await.unwrap());
 }
 
 #[tokio::test]

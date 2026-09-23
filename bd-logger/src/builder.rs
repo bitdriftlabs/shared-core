@@ -19,6 +19,7 @@ use crate::log_replay::LoggerReplay;
 use crate::logger::{Logger, PendingEntityIdUpdate, TestHooks};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
+use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use crate::{
   InitParams,
   LogAttributesOverrides,
@@ -395,46 +396,49 @@ impl LoggerBuilder {
     let pending_trigger_uploads = PendingTriggerUploadsStore::new(&self.params.sdk_directory);
     let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
 
-    let (async_log_buffer, async_log_buffer_communication_tx, remote_screenshot_capture_handler) =
-      AsyncLogBuffer::<LoggerReplay>::new(
-        UninitializedLoggingContext::new(
-          &self.params.sdk_directory,
-          &runtime_loader,
-          scope.clone(),
-          stats,
-          trigger_upload_tx.clone(),
-          remote_flush_streaming_rx,
-          data_upload_tx.clone(),
-          flush_buffers_tx,
-          flusher_trigger.clone(),
-          1024 * 1024,
-          is_tracing_active.clone(),
-          process_local_pending_flush_state.clone(),
-          self.test_hooks.clone(),
-        ),
-        LoggerReplay,
-        session_strategy.clone(),
-        self.params.metadata_provider.clone(),
-        self.params.initial_ootb_fields,
-        self.params.initial_custom_fields,
-        self.params.resource_utilization_target,
-        self.params.session_replay_target,
-        self.params.events_listener_target,
-        self.command_handlers.clone(),
-        config_update_rx,
-        report_proc_rx,
-        shutdown_handle.clone(),
+    let (
+      mut async_log_buffer,
+      async_log_buffer_communication_tx,
+      remote_screenshot_capture_handler,
+    ) = AsyncLogBuffer::<LoggerReplay>::new(
+      UninitializedLoggingContext::new(
+        &self.params.sdk_directory,
         &runtime_loader,
-        log_network_quality_provider,
-        aggregated_network_quality_provider,
-        self.params.device.id(),
-        &self.params.store,
-        time_provider.clone(),
-        init_lifecycle.clone(),
-        sdk_status_tracker.clone(),
+        scope.clone(),
+        stats,
+        trigger_upload_tx.clone(),
+        remote_flush_streaming_rx,
         data_upload_tx.clone(),
-        self.startup_replay_eligibility,
-      );
+        flush_buffers_tx,
+        flusher_trigger.clone(),
+        1024 * 1024,
+        is_tracing_active.clone(),
+        process_local_pending_flush_state.clone(),
+        self.test_hooks.clone(),
+      ),
+      LoggerReplay,
+      session_strategy.clone(),
+      self.params.metadata_provider.clone(),
+      self.params.initial_ootb_fields,
+      self.params.initial_custom_fields,
+      self.params.resource_utilization_target,
+      self.params.session_replay_target,
+      self.params.events_listener_target,
+      self.command_handlers.clone(),
+      config_update_rx,
+      report_proc_rx,
+      shutdown_handle.clone(),
+      &runtime_loader,
+      log_network_quality_provider,
+      aggregated_network_quality_provider,
+      self.params.device.id(),
+      &self.params.store,
+      time_provider.clone(),
+      init_lifecycle.clone(),
+      sdk_status_tracker.clone(),
+      data_upload_tx.clone(),
+      self.startup_replay_eligibility,
+    );
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
@@ -513,6 +517,7 @@ impl LoggerBuilder {
         result.previous_state,
         result.retention_registry,
       );
+      async_log_buffer.set_retention_registry(retention_registry.clone());
 
       let pending_entity_id = pending_entity_id.lock().take();
       initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
@@ -544,6 +549,13 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
+      let (workflow_upload_handle, workflow_upload_worker) =
+        WorkflowAttachmentUploadHandle::new_with_attachment_store_and_test_hooks(
+          artifact_client.clone(),
+          async_log_buffer.workflow_attachment_store(),
+          self.test_hooks.clone(),
+        );
+      let workflow_upload_handle = Arc::new(workflow_upload_handle);
 
       // Create state upload handle for uploading state snapshots alongside logs.
       // Gated by the `state.upload_enabled` runtime flag, which defaults to false as a
@@ -615,6 +627,7 @@ impl LoggerBuilder {
         &scope,
         log.clone(),
         state_upload_handle,
+        Some(workflow_upload_handle),
         pending_trigger_uploads,
         process_local_pending_flush_state,
         self.test_hooks.clone(),
@@ -713,6 +726,11 @@ impl LoggerBuilder {
             worker.run().await;
           }
           log::debug!("logger state upload worker stopped");
+          Ok(())
+        },
+        async move {
+          workflow_upload_worker.run().await;
+          log::debug!("logger workflow attachment worker stopped");
           Ok(())
         },
         async move {

@@ -49,13 +49,16 @@ bd-workflow-stats.path       = "../bd-workflow-stats"
 bd-workflows.path            = "../bd-workflows"
 bd-workspace-hack.workspace  = true
 flatbuffers.workspace        = true
+flate2.workspace             = true
 fs2.workspace                = true
 futures-util.workspace       = true
 itertools.workspace          = true
+libc.workspace               = true
 log.workspace                = true
 notify.workspace             = true
 parking_lot.workspace        = true
 protobuf.workspace           = true
+sha2.workspace               = true
 thiserror.workspace          = true
 time.workspace               = true
 tokio.workspace              = true
@@ -72,7 +75,6 @@ bd-test-helpers             = { path = "../bd-test-helpers", default-features = 
 bd-test-helpers-core.path   = "../bd-test-helpers-core"
 bd-workflows                = { path = "../bd-workflows", features = ["test"] }
 ctor.workspace              = true
-flate2.workspace            = true
 pretty_assertions.workspace = true
 tempfile.workspace          = true
 tokio-test.workspace        = true
