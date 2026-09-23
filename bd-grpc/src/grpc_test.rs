@@ -2146,3 +2146,37 @@ async fn connect_unary_error_stats() {
     },
   );
 }
+
+#[tokio::test]
+async fn unary_response_limit() {
+  let address = make_unary_server(Arc::new(EchoHandler::default()), |_| {}, None).await;
+  let client = Client::new_http(&address.to_string(), 10.seconds(), 1)
+    .unwrap()
+    .with_max_unary_response_bytes(128);
+  for (size, compression, expected_code) in [
+    (16, Compression::None, None),
+    (1024, Compression::None, Some(Code::ResourceExhausted)),
+    (
+      1024,
+      Compression::GRpc(bd_grpc_codec::Compression::StatelessZlib { level: 3 }),
+      Some(Code::ResourceExhausted),
+    ),
+  ] {
+    let result = client
+      .unary(
+        &service_method(),
+        None,
+        EchoRequest {
+          echo: "a".repeat(size),
+          ..Default::default()
+        },
+        10.seconds(),
+        compression,
+      )
+      .await;
+    assert_eq!(result.as_ref().err().map(Error::grpc_code), expected_code);
+    if let Ok(response) = result {
+      assert_eq!(response.echo.len(), size);
+    }
+  }
+}

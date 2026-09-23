@@ -20,7 +20,7 @@ use crate::{
   finalize_decompression,
 };
 use assert_matches::debug_assert_matches;
-use axum::body::Body;
+use axum::body::{Body, to_bytes};
 use axum::response::Response;
 use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{
@@ -37,7 +37,7 @@ use bytes::Bytes;
 use http::header::{CONTENT_ENCODING, CONTENT_TYPE, TRANSFER_ENCODING, USER_AGENT};
 use http::{HeaderMap, Uri};
 use http_body::Frame;
-use http_body_util::{BodyExt, StreamBody};
+use http_body_util::{LengthLimitError, StreamBody};
 use hyper::body::Incoming;
 use hyper_util::client::legacy::connect::{Connect, HttpConnector};
 use hyper_util::rt::TokioExecutor;
@@ -153,6 +153,7 @@ pub struct Client<C> {
   client: hyper_util::client::legacy::Client<C, Body>,
   address: AddressHelper,
   concurrency: Semaphore,
+  max_unary_response_bytes: Option<usize>,
 }
 
 impl Client<HttpConnector> {
@@ -187,7 +188,15 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       client,
       address: AddressHelper::new(address)?,
       concurrency: Semaphore::new(max_request_concurrency.try_into().unwrap()),
+      max_unary_response_bytes: None,
     })
+  }
+
+  /// Limit both the unary response body and the decoded protobuf message.
+  #[must_use]
+  pub const fn with_max_unary_response_bytes(mut self, max_bytes: usize) -> Self {
+    self.max_unary_response_bytes = Some(max_bytes);
+    self
   }
 
   // Common request generation for both unary and streaming requests.
@@ -315,33 +324,41 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       },
     };
 
-    // We don't support Connect for unary as we only need it for test and it's easier to test with
-    // reqwest for compression.
-    let response = match request_timeout
-      .timeout(self.common_request(service_method, extra_headers, body, None))
+    request_timeout
+      .timeout(async {
+        let response = self
+          .common_request(service_method, extra_headers, body, None)
+          .await?;
+        let mut decoder = Decoder::<IncomingType>::new(
+          finalize_decompression(response.headers()),
+          self.max_unary_response_bytes,
+          OptimizeFor::Cpu,
+        );
+        let body = to_bytes(
+          Body::new(response.into_body()),
+          self.max_unary_response_bytes.unwrap_or(usize::MAX),
+        )
+        .await
+        .map_err(|error| {
+          if StdError::source(&error).is_some_and(<dyn StdError>::is::<LengthLimitError>) {
+            Status::new(
+              Code::ResourceExhausted,
+              "Unary response exceeds configured byte limit",
+              None,
+            )
+            .into()
+          } else {
+            Error::BodyStream(error.into())
+          }
+        })?;
+        let mut messages = decoder.decode_data(&body)?;
+        if messages.len() != 1 {
+          return Err(Status::new(Code::Internal, "Invalid response body", None).into());
+        }
+        Ok(messages.remove(0))
+      })
       .await
-    {
-      Ok(response) => response?,
-      Err(_) => return Err(Error::RequestTimeout),
-    };
-    let mut decoder = Decoder::<IncomingType>::new(
-      finalize_decompression(response.headers()),
-      None,
-      OptimizeFor::Cpu,
-    );
-    let body = response
-      .into_body()
-      .collect()
-      .await
-      .map_err(|e| Error::BodyStream(e.into()))?
-      .to_bytes();
-    let mut messages = decoder.decode_data(&body)?;
-
-    if messages.len() != 1 {
-      return Err(Status::new(Code::Internal, "Invalid response body", None).into());
-    }
-
-    Ok(messages.remove(0))
+      .unwrap_or(Err(Error::RequestTimeout))
   }
 
   // Perform a bi-di streaming request.
