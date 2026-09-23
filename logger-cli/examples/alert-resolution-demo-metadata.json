@@ -1,0 +1,3 @@
+{
+  "description": "Short-lived staging workflow that verifies alert trigger and resolution notifications. Its logger-cli emitter sends a unique normal log every 20 seconds for five minutes, then stops so the five-minute basic count alert can resolve."
+}

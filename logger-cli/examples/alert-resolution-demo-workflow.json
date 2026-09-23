@@ -1,0 +1,38 @@
+{
+  "name": "Staging: alert-resolution notification demo",
+  "flows": [
+    {
+      "exclusive": {},
+      "steps": [
+        {
+          "match_rule": {
+            "match_id": "alert-resolution-demo-signal",
+            "generic_match": {
+              "base_matcher": {
+                "log_body": true,
+                "operator": "REGEX",
+                "string_value": "^alert-resolution-demo-U08ACDWL38A$"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "rule_id": "alert-resolution-demo-count",
+      "metric_chart_rule": {
+        "time_series": [
+          {
+            "count": {
+              "value": {
+                "match_id": "alert-resolution-demo-signal"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
