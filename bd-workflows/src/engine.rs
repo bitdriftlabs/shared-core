@@ -165,6 +165,7 @@ pub struct WorkflowsEngine<C, H> {
   configs: Vec<Config>,
   state: WorkflowsState,
   pending_workflow_command_index: HashMap<String, PendingWorkflowCommandLocation>,
+  pending_session_start: bool,
   // Tracks the immediately preceding session for detecting out-of-order logs that return to it.
   // This is process local as the most relevant case of this is during startup when sequencing
   // crash logs that occurred in a previous session.
@@ -263,6 +264,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       configs: vec![],
       state: WorkflowsState::default(),
       pending_workflow_command_index: HashMap::new(),
+      pending_session_start: false,
       previous_session_id: String::new(),
       stats: WorkflowsEngineStats::new(&scope),
       state_store,
@@ -610,6 +612,11 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
   fn remove_workflow(&mut self, workflow_index: usize) {
     self.configs.remove(workflow_index);
     let workflow = self.state.workflows.remove(workflow_index);
+    let workflow_key_prefix = format!("{}/", workflow.id());
+    self
+      .state
+      .command_last_started_at_ns
+      .retain(|key, _| !key.starts_with(&workflow_key_prefix));
 
     self.stats.workflow_stops_total.inc();
 
@@ -890,27 +897,31 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     let _timer = self.stats.process_log_duration.start_timer();
 
     let session_start_result = match event {
-      WorkflowEvent::Log(log) if self.maybe_update_session(&log.session_id) => {
-        let empty_buffer_ids = TinySet::default();
-        Some(PrecedingEventCarryover::from_result(
-          // TODO(mattklein123): Using the incoming log to provide the fields for this event is a
-          // hack. We should really only be providing the persisted field provider fields and OOTB
-          // fields. We can live with this for now as it's simpler.
-          self.process_event_inner(
-            WorkflowEvent::SessionStart(log),
-            &empty_buffer_ids,
-            state_reader,
-            now,
-          ),
-        ))
+      WorkflowEvent::Log(log) => {
+        let session_changed = self.maybe_update_session(&log.session_id);
+        if !session_changed && !self.pending_session_start {
+          None
+        } else {
+          self.pending_session_start = false;
+          let empty_buffer_ids = TinySet::default();
+          Some(PrecedingEventCarryover::from_result(
+            // TODO(mattklein123): Using the incoming log to provide the fields for this event is a
+            // hack. We should really only be providing the persisted field provider fields and
+            // OOTB fields. We can live with this for now as it's simpler.
+            self.process_event_inner(
+              WorkflowEvent::SessionStart(log),
+              &empty_buffer_ids,
+              state_reader,
+              now,
+            ),
+          ))
+        }
       },
       WorkflowEvent::StateChange(_, _, session_id) => {
-        self.maybe_update_session(session_id);
+        self.pending_session_start |= self.maybe_update_session(session_id);
         None
       },
-      WorkflowEvent::Log(_)
-      | WorkflowEvent::CommandCompletion { .. }
-      | WorkflowEvent::SessionStart(_) => None,
+      WorkflowEvent::CommandCompletion { .. } | WorkflowEvent::SessionStart(_) => None,
     };
 
     let result = self.process_event_inner(event, log_destination_buffer_ids, state_reader, now);

@@ -331,6 +331,40 @@ async fn state_change_command_uses_the_active_session() {
 }
 
 #[tokio::test]
+async fn state_change_preserves_session_start_for_the_first_log() {
+  let c = state("C");
+  let b = state("B").declare_transition(&c, rule!(message_equals("never")));
+  let a = state("A").declare_transition(&b, make_on_new_session_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&a, &b, &c]).make_config()],
+    ))
+    .await;
+  let state_change = StateChange::inserted(
+    bd_state::Scope::System,
+    "key",
+    bd_state::string_value("value"),
+    OffsetDateTime::now_utc(),
+  );
+  let fields = LogFields::default();
+  engine.engine.process_event(
+    WorkflowEvent::StateChange(
+      &state_change,
+      FieldsRef::new(&fields, &fields),
+      "state-change-session",
+    ),
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    state_change.timestamp,
+  );
+
+  engine.process_log(TestLog::new("first log").with_session("state-change-session"));
+
+  engine_assert_active_runs!(engine; 0; "A", "B");
+}
+
+#[tokio::test]
 async fn workflow_command_rejected_outcome_does_not_trigger_expired_timeout() {
   let terminal = state("terminal");
   let timeout = state("timeout");
@@ -804,6 +838,105 @@ async fn workflow_command_completion_uses_its_own_transition_after_cooldown() {
     second_at,
   );
   engine_assert_active_runs!(engine; 0; "start", "second");
+}
+
+#[tokio::test]
+async fn initial_command_start_replaces_the_previous_exclusive_run_after_cooldown() {
+  let terminal = state("terminal");
+  let active = state("active").declare_transition(&terminal, rule!(message_equals("never")));
+  let command = state("command").declare_transition(&active, workflow_command_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&command, &active, &terminal]).make_config()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let first_request = engine
+    .process_log(timed_command_log("first", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let first_outcome = engine
+    .complete_workflow_command(
+      &first_request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      started_at,
+    )
+    .unwrap();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &first_outcome.log,
+      token: &first_outcome.token,
+    },
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    started_at,
+  );
+
+  engine.process_log(timed_command_log(
+    "before cooldown",
+    started_at + 1.seconds(),
+  ));
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log(
+        "after cooldown",
+        started_at + 60.seconds()
+      ))
+      .workflow_commands_to_start
+      .len()
+  );
+  engine_assert_active_runs!(engine; 0; "command");
+}
+
+#[tokio::test]
+async fn workflow_replacement_does_not_reuse_a_previous_command_cooldown() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&command, &terminal]).make_config()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("first", started_at))
+      .workflow_commands_to_start
+      .len()
+  );
+
+  let mut updated_rule = workflow_command_rule();
+  let Some(Rule_type::MatchRunCommand(command_config)) = &mut updated_rule.rule_type else {
+    panic!("expected command matcher");
+  };
+  command_config.minimum_execution_interval =
+    Some(protobuf::well_known_types::duration::Duration {
+      seconds: 120,
+      ..Default::default()
+    })
+    .into();
+  let updated_command = state("command").declare_transition(&terminal, updated_rule);
+  engine
+    .engine
+    .update(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&updated_command, &terminal]).make_config()],
+    ));
+
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("updated", started_at + 1.seconds()))
+      .workflow_commands_to_start
+      .len()
+  );
 }
 
 #[tokio::test]

@@ -1324,8 +1324,12 @@ impl RunResult<'_> {
   }
 
   /// Whether run made any progress.
-  const fn did_make_progress(&self) -> bool {
+  fn did_make_progress(&self) -> bool {
     self.matched_logs_count > 0
+      || self
+        .triggered_actions
+        .iter()
+        .any(|action| matches!(action, TriggeredAction::RunCommand(_)))
   }
 }
 
