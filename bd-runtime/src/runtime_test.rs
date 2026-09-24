@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::runtime::workflow_attachment::MaxAttachmentBytes;
+use crate::runtime::attachment::MaxBytes;
 use crate::runtime::{ConfigLoader, FeatureFlag};
 use crate::{bool_feature_flag, duration_feature_flag, int_feature_flag};
 use bd_client_common::HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE;
@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 #[test]
 fn workflow_attachment_max_bytes_defaults_to_five_mebibytes() {
-  assert_eq!(MaxAttachmentBytes::default(), 5 * 1024 * 1024);
+  assert_eq!(MaxBytes::default(), 5 * 1024 * 1024);
 }
 
 #[tokio::test]

@@ -22,6 +22,8 @@ pub trait FileSystem: Send + Sync {
 
   async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>>;
 
+  async fn open_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File>;
+
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()>;
 
   async fn create_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File>;
@@ -127,6 +129,10 @@ impl FileSystem for RealFileSystem {
 
   async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
     Ok(tokio::fs::read(self.directory.join(path)).await?)
+  }
+
+  async fn open_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    Ok(tokio::fs::File::open(self.directory.join(path)).await?)
   }
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {

@@ -10,21 +10,20 @@
 mod tests;
 
 use bd_artifact_upload::UploadSource;
+use bd_client_common::file::read_and_compress_limited;
 use bd_client_common::file_system::delete_file_if_exists_async;
-use bd_runtime::runtime::{ConfigLoader, IntWatch, workflow_attachment};
+use bd_runtime::runtime::{ConfigLoader, IntWatch, attachment, workflow_attachment};
 use bd_shutdown::ComponentShutdown;
 use bd_time::OffsetDateTimeExt;
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
 use parking_lot::Mutex;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::fs::{self, File};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio::sync::{OnceCell, Semaphore};
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -143,7 +142,7 @@ pub struct AttachmentStore {
   oldest_timestamp: Mutex<Option<u64>>,
   cleanup_generation: AtomicU64,
   admissions: Semaphore,
-  max_attachment_bytes: IntWatch<workflow_attachment::MaxAttachmentBytes>,
+  max_attachment_bytes: IntWatch<attachment::MaxBytes>,
   max_owned_bytes: IntWatch<workflow_attachment::MaxOwnedBytes>,
   max_owned_files: IntWatch<workflow_attachment::MaxOwnedFiles>,
 }
@@ -512,19 +511,9 @@ impl AttachmentStore {
     let path = self.directory.join(format!("{id}.payload"));
     let ownership_marker = self.pending_path(id);
     let result: io::Result<AdmittedAttachment> = async {
-      let mut input = Vec::new();
-      reader
-        .take(max_attachment_bytes.saturating_add(1))
-        .read_to_end(&mut input)
-        .await?;
-      if input.len() as u64 > max_attachment_bytes
-        || input.len() as u64 > max_owned_bytes.saturating_sub(current_bytes)
-      {
-        return Err(io::Error::other("workflow attachment capacity exhausted"));
-      }
-      let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-      encoder.write_all(&input)?;
-      let compressed = encoder.finish()?;
+      let compressed = read_and_compress_limited(reader, max_attachment_bytes)
+        .await
+        .map_err(io::Error::other)?;
       if compressed.len() as u64 > max_owned_bytes.saturating_sub(current_bytes) {
         return Err(io::Error::other("workflow attachment capacity exhausted"));
       }

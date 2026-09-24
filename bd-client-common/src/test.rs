@@ -56,6 +56,13 @@ impl FileSystem for TestFileSystem {
       .map_err(|e| anyhow::anyhow!("failed to read file {}: {}", file_path.display(), e))
   }
 
+  async fn open_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    let file_path = self.directory.path().join(path);
+    tokio::fs::File::open(&file_path)
+      .await
+      .map_err(|e| anyhow::anyhow!("failed to open file {}: {}", file_path.display(), e))
+  }
+
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
     if self.disk_full.load(Ordering::Relaxed) {
       anyhow::bail!("disk full");
@@ -169,6 +176,10 @@ impl FileSystem for Arc<TestFileSystem> {
 
   async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
     self.as_ref().read_file(path).await
+  }
+
+  async fn open_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    self.as_ref().open_file(path).await
   }
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {

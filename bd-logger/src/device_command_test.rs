@@ -9,7 +9,7 @@ use super::{CommandAttachment, CommandResult, workflow_command_outcome};
 use crate::workflow_attachment::AttachmentStoreHandle;
 use bd_artifact_upload::UploadSource;
 use bd_log_primitives::LogFields;
-use bd_runtime::runtime::workflow_attachment::MaxAttachmentBytes;
+use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_workflows::workflow::WorkflowCommandOutcome;
@@ -31,7 +31,7 @@ async fn workflow_attachment_admission_failure_reports_command_failure() {
   let runtime = ConfigLoader::new(directory.path());
   runtime
     .update_snapshot(make_simple_update(vec![(
-      (MaxAttachmentBytes::path()),
+      (MaxBytes::path()),
       ValueKind::Int(1),
     )]))
     .await

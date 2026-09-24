@@ -26,7 +26,7 @@ use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
-use bd_runtime::runtime::{FeatureFlag as _, artifact_upload};
+use bd_runtime::runtime::{FeatureFlag as _, artifact_upload, attachment};
 use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::runtime::ValueKind;
 use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
@@ -887,6 +887,115 @@ async fn command_upload_intent_drop_completes_with_failure() {
   });
 
   assert_matches!(completion_rx.await.unwrap(), Err(error) if error.contains("intent negotiation"));
+}
+
+#[tokio::test]
+async fn command_upload_rejects_oversized_file_and_path_sources_before_persisting() {
+  let mut setup = Setup::new(1).await;
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_update(
+      vec![(attachment::MaxBytes::path(), ValueKind::Int(3))],
+      "attachment limit".to_string(),
+    ))
+    .await
+    .unwrap();
+
+  let (file_persisted_tx, file_persisted_rx) = tokio::sync::oneshot::channel();
+  let file_id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::File(setup.make_file(b"four")),
+      "attachment".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      Some(file_persisted_tx),
+      None,
+    )
+    .unwrap();
+  assert_matches!(
+    file_persisted_rx.await.unwrap(),
+    Err(EnqueueError::Other(_))
+  );
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    file_id.to_string()
+  );
+  assert!(
+    !setup
+      .filesystem
+      .exists(&ARTIFACT_UPLOAD_DIRECTORY.join(file_id.to_string()))
+      .await
+      .unwrap()
+  );
+
+  let (bytes_persisted_tx, bytes_persisted_rx) = tokio::sync::oneshot::channel();
+  let bytes_id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::Bytes(b"four".to_vec()),
+      "attachment".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      Some(bytes_persisted_tx),
+      None,
+    )
+    .unwrap();
+  assert_matches!(
+    bytes_persisted_rx.await.unwrap(),
+    Err(EnqueueError::Other(_))
+  );
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    bytes_id.to_string()
+  );
+  assert!(
+    !setup
+      .filesystem
+      .exists(&ARTIFACT_UPLOAD_DIRECTORY.join(bytes_id.to_string()))
+      .await
+      .unwrap()
+  );
+
+  let path = Path::new("command-attachment");
+  setup.filesystem.write_file(path, b"four").await.unwrap();
+  let (path_persisted_tx, path_persisted_rx) = tokio::sync::oneshot::channel();
+  let path_id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::Path(path.into()),
+      "attachment".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      Some(path_persisted_tx),
+      None,
+    )
+    .unwrap();
+  assert_matches!(
+    path_persisted_rx.await.unwrap(),
+    Err(EnqueueError::Other(_))
+  );
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    path_id.to_string()
+  );
+  assert!(setup.filesystem.exists(path).await.unwrap());
+  assert!(
+    !setup
+      .filesystem
+      .exists(&ARTIFACT_UPLOAD_DIRECTORY.join(path_id.to_string()))
+      .await
+      .unwrap()
+  );
 }
 
 #[tokio::test]

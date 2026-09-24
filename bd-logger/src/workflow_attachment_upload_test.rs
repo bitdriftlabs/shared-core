@@ -105,6 +105,44 @@ async fn queue_backpressure_does_not_stall_another_batch() {
 }
 
 #[tokio::test]
+async fn permanent_staging_failure_does_not_block_other_attachments() {
+  let failed_id = Uuid::new_v4();
+  let staged_id = Uuid::new_v4();
+  let mut mock_client = bd_artifact_upload::MockClient::new();
+  mock_client
+    .expect_enqueue_workflow_attachment()
+    .times(2)
+    .returning(move |id, _, _, persisted, _| {
+      let result = if id == failed_id {
+        Err(EnqueueError::Other(anyhow::anyhow!(
+          "missing retained payload"
+        )))
+      } else {
+        assert_eq!(id, staged_id);
+        Ok(())
+      };
+      persisted.unwrap().send(result).unwrap();
+      Ok(())
+    });
+
+  let (handle, worker) = WorkflowAttachmentUploadHandle::new(Arc::new(mock_client));
+  let worker = tokio::spawn(worker.run());
+  let failures = handle
+    .stage(HashMap::from([
+      (failed_id, "failed".to_string()),
+      (staged_id, "staged".to_string()),
+    ]))
+    .await
+    .unwrap();
+
+  assert_eq!(failures.len(), 1);
+  assert_eq!(failures[0].artifact_id, failed_id);
+  assert!(failures[0].error.contains("missing retained payload"));
+  drop(handle);
+  worker.await.unwrap();
+}
+
+#[tokio::test]
 async fn successful_upload_releases_the_retained_payload() {
   let directory = tempfile::tempdir().unwrap();
   let runtime = ConfigLoader::new(directory.path());

@@ -1082,12 +1082,11 @@ pub mod artifact_upload {
   );
 }
 
+pub mod attachment {
+  int_feature_flag!(MaxBytes, "attachment.max_bytes", 5 * 1024 * 1024);
+}
+
 pub mod workflow_attachment {
-  int_feature_flag!(
-    MaxAttachmentBytes,
-    "workflow_attachment.max_attachment_bytes",
-    5 * 1024 * 1024
-  );
   int_feature_flag!(
     MaxOwnedBytes,
     "workflow_attachment.max_owned_bytes",

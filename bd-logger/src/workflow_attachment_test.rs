@@ -11,7 +11,8 @@ use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::Runtime;
 use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::runtime::value::Type;
-use bd_runtime::runtime::workflow_attachment::{MaxAttachmentBytes, MaxOwnedBytes, MaxOwnedFiles};
+use bd_runtime::runtime::attachment::MaxBytes;
+use bd_runtime::runtime::workflow_attachment::{MaxOwnedBytes, MaxOwnedFiles};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_state::{RetentionHandle, RetentionRegistry};
 use flate2::read::ZlibDecoder;
@@ -95,7 +96,7 @@ async fn runtime_limits_apply_to_existing_store() {
       version_nonce: "limits".to_string(),
       runtime: Some(Runtime {
         values: [
-          (MaxAttachmentBytes::path().to_string(), integer(3)),
+          (MaxBytes::path().to_string(), integer(3)),
           (MaxOwnedBytes::path().to_string(), integer(64)),
           (MaxOwnedFiles::path().to_string(), integer(2)),
         ]
@@ -116,7 +117,7 @@ async fn runtime_limits_apply_to_existing_store() {
     .update_snapshot(RuntimeUpdate {
       version_nonce: "smaller limit".to_string(),
       runtime: Some(Runtime {
-        values: [(MaxAttachmentBytes::path().to_string(), integer(1))].into(),
+        values: [(MaxBytes::path().to_string(), integer(1))].into(),
         ..Default::default()
       })
       .into(),
@@ -218,13 +219,64 @@ async fn concurrent_admissions_respect_owned_byte_limit() {
 }
 
 #[tokio::test]
+async fn admits_compressible_attachment_that_fits_owned_byte_limit() {
+  let directory = tempfile::tempdir().unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  let store = Arc::new(
+    AttachmentStore::new(directory.path(), &runtime)
+      .await
+      .unwrap(),
+  );
+  let integer = |value| Value {
+    type_: Some(Type::UintValue(value)),
+    ..Default::default()
+  };
+  runtime
+    .update_snapshot(RuntimeUpdate {
+      version_nonce: "compressed capacity".to_string(),
+      runtime: Some(Runtime {
+        values: [
+          (MaxBytes::path().to_string(), integer(1024)),
+          (MaxOwnedBytes::path().to_string(), integer(64)),
+        ]
+        .into(),
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    })
+    .await
+    .unwrap();
+
+  let admitted = store
+    .admit(UploadSource::Bytes(vec![0; 1024]))
+    .await
+    .unwrap();
+  assert_eq!(
+    read_checked(&store, admitted.id).await.unwrap(),
+    vec![0; 1024]
+  );
+  assert!(store.capacity.lock().bytes <= 64);
+}
+
+#[tokio::test]
 async fn rejects_oversized_and_nonregular_sources_without_publishing() {
   let directory = tempfile::tempdir().unwrap();
   let store = Arc::new(new_store(&directory).await);
   let max_bytes = usize::try_from(*store.max_attachment_bytes.read()).unwrap();
+  let oversized_file = directory.path().join("oversized-file");
+  fs::write(&oversized_file, vec![0; max_bytes + 1])
+    .await
+    .unwrap();
   assert!(
     store
       .admit(UploadSource::Bytes(vec![0; max_bytes + 1]))
+      .await
+      .is_err()
+  );
+  assert!(
+    store
+      .admit(UploadSource::Path(oversized_file))
       .await
       .is_err()
   );

@@ -17,6 +17,7 @@ use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, STATE_SNAPSHOT_
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
   async_write_checksummed_data,
+  read_and_compress_limited,
   read_checksummed_data,
   read_compressed_protobuf,
   write_checksummed_data,
@@ -37,21 +38,18 @@ use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, StorageFormat};
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
-use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload};
+use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload, attachment};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
 use mockall::automock;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 #[cfg(test)]
 use tests::TestHooks;
 use time::OffsetDateTime;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -415,6 +413,7 @@ pub struct Uploader {
   upload_completions: HashMap<String, oneshot::Sender<std::result::Result<(), String>>>,
 
   max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
+  max_attachment_bytes: IntWatch<attachment::MaxBytes>,
   backoff_policy: RuntimeBackoffPolicy<
     bd_runtime::runtime::retry_backoff::InitialBackoffInterval,
     bd_runtime::runtime::retry_backoff::MaxBackoffInterval,
@@ -462,6 +461,7 @@ impl Uploader {
       index: VecDeque::default(),
       upload_completions: HashMap::default(),
       max_entries: runtime.register_int_watch(),
+      max_attachment_bytes: runtime.register_int_watch(),
       backoff_policy: RuntimeBackoffPolicy::new(runtime),
       upload_task_handle: None,
       intent_task_handle: None,
@@ -802,25 +802,19 @@ impl Uploader {
     target_path: &Path,
     path_source: &mut Option<(PathBuf, bool)>,
   ) -> anyhow::Result<()> {
-    let contents = match source {
-      UploadSource::Bytes(contents) => contents,
-      UploadSource::File(file) => {
-        let mut file = tokio::fs::File::from_std(file);
-        let mut contents = Vec::new();
-        file.read_to_end(&mut contents).await?;
-        contents
-      },
+    let max_attachment_bytes = u64::from(*self.max_attachment_bytes.read());
+    let reader: Box<dyn AsyncRead + Unpin + Send> = match source {
+      UploadSource::Bytes(contents) => Box::new(std::io::Cursor::new(contents)),
+      UploadSource::File(file) => Box::new(tokio::fs::File::from_std(file)),
       UploadSource::Path(source_path) => {
-        let contents = self.file_system.read_file(&source_path).await?;
+        let file = self.file_system.open_file(&source_path).await?;
         *path_source = Some((source_path, false));
-        contents
+        Box::new(file)
       },
       UploadSource::Retained(_) => anyhow::bail!("command attachments cannot use retained sources"),
     };
 
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(&contents)?;
-    let contents = encoder.finish()?;
+    let contents = read_and_compress_limited(reader, max_attachment_bytes).await?;
     let mut target_file = self.file_system.create_file(target_path).await?;
     target_file.write_all(&contents).await?;
     Ok(())

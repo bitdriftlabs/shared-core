@@ -66,7 +66,6 @@ use tracing::Instrument as _;
 use unwrap_infallible::UnwrapInfallible;
 
 const DEVICE_COMMAND_ADMISSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-const WORKFLOW_STAGING_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 
 fn workflow_artifact_ids_for_logs(logs: &[Vec<u8>]) -> anyhow::Result<HashMap<uuid::Uuid, String>> {
   let mut ids = HashMap::new();
@@ -113,18 +112,24 @@ async fn stage_workflow_attachments(
   let Some(handle) = handle else {
     return Ok(true);
   };
-  loop {
-    tokio::select! {
-      result = handle.stage(ids.clone()) => match result {
-        Ok(()) => return Ok(true),
-        Err(error) => log::debug!("retrying workflow attachment staging: {error}"),
+  tokio::select! {
+    result = handle.stage(ids) => match result {
+      Ok(failures) => {
+        for failure in failures {
+          log::warn!(
+            "dropping workflow attachment {} after permanent staging failure: {}",
+            failure.artifact_id,
+            failure.error
+          );
+        }
+        Ok(true)
       },
-      () = shutdown.cancelled() => return Ok(false),
-    }
-    tokio::select! {
-      () = sleep(WORKFLOW_STAGING_RETRY_INTERVAL) => {},
-      () = shutdown.cancelled() => return Ok(false),
-    }
+      Err(error) => {
+        log::warn!("dropping workflow attachments after staging worker stopped: {error}");
+        Ok(true)
+      },
+    },
+    () = shutdown.cancelled() => Ok(false),
   }
 }
 

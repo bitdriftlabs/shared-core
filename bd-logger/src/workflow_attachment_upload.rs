@@ -36,7 +36,7 @@ const MAX_PENDING_BATCHES: usize = 4;
 
 struct BatchRequest {
   ids: HashMap<Uuid, String>,
-  result_tx: oneshot::Sender<Result<(), String>>,
+  result_tx: oneshot::Sender<Vec<WorkflowAttachmentStagingFailure>>,
   _permit: OwnedSemaphorePermit,
 }
 
@@ -46,6 +46,11 @@ impl Coalesced for PendingBatches {
   fn merge(&mut self, mut other: Self) {
     self.0.append(&mut other.0);
   }
+}
+
+pub struct WorkflowAttachmentStagingFailure {
+  pub artifact_id: Uuid,
+  pub error: String,
 }
 
 //
@@ -85,9 +90,12 @@ impl WorkflowAttachmentUploadHandle {
     (handle, worker)
   }
 
-  pub async fn stage(&self, ids: HashMap<Uuid, String>) -> anyhow::Result<()> {
+  pub async fn stage(
+    &self,
+    ids: HashMap<Uuid, String>,
+  ) -> anyhow::Result<Vec<WorkflowAttachmentStagingFailure>> {
     if ids.is_empty() {
-      return Ok(());
+      return Ok(Vec::new());
     }
     let permit = self.slots.clone().acquire_owned().await?;
     let (result_tx, result_rx) = oneshot::channel();
@@ -96,9 +104,7 @@ impl WorkflowAttachmentUploadHandle {
       result_tx,
       _permit: permit,
     }]));
-    result_rx
-      .await?
-      .map_err(|error| anyhow::anyhow!("workflow attachment staging: {error}"))
+    Ok(result_rx.await?)
   }
 }
 
@@ -148,17 +154,34 @@ impl WorkflowAttachmentUploadWorker {
     attachment_store: Option<AttachmentStoreHandle>,
     test_hooks: Option<Arc<dyn TestHooks>>,
     ids: HashMap<Uuid, String>,
-  ) -> Result<(), String> {
+  ) -> Vec<WorkflowAttachmentStagingFailure> {
+    let mut failures = Vec::new();
     for (id, session_id) in ids {
-      if let Some(store) = &attachment_store
-        && store
-          .get()
-          .await
-          .map_err(|error| error.to_string())?
-          .is_uploaded(id)
-          .await
-          .map_err(|error| error.to_string())?
-      {
+      let already_uploaded = if let Some(store_handle) = &attachment_store {
+        let store = match store_handle.get().await {
+          Ok(store) => store,
+          Err(error) => {
+            failures.push(WorkflowAttachmentStagingFailure {
+              artifact_id: id,
+              error: error.to_string(),
+            });
+            continue;
+          },
+        };
+        match store.is_uploaded(id).await {
+          Ok(already_uploaded) => already_uploaded,
+          Err(error) => {
+            failures.push(WorkflowAttachmentStagingFailure {
+              artifact_id: id,
+              error: error.to_string(),
+            });
+            continue;
+          },
+        }
+      } else {
+        false
+      };
+      if already_uploaded {
         continue;
       }
       let source = PathBuf::from(format!("workflow-attachments/{id}.payload"));
@@ -180,11 +203,20 @@ impl WorkflowAttachmentUploadWorker {
         })
         .await
         {
-          Ok(()) => break completion_rx,
+          Ok(()) => break Some(completion_rx),
           Err(PersistedEnqueueError::Backpressure) => {},
-          Err(error) => return Err(error.to_string()),
+          Err(error) => {
+            failures.push(WorkflowAttachmentStagingFailure {
+              artifact_id: id,
+              error: error.to_string(),
+            });
+            break None;
+          },
         }
         sleep(BACKPRESSURE_RETRY_INTERVAL).await;
+      };
+      let Some(completion_rx) = completion_rx else {
+        continue;
       };
       if let (Some(store), Some(completion_rx)) = (attachment_store.clone(), completion_rx) {
         let test_hooks = test_hooks.clone();
@@ -210,6 +242,6 @@ impl WorkflowAttachmentUploadWorker {
         });
       }
     }
-    Ok(())
+    failures
   }
 }
