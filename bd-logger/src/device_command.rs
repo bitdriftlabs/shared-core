@@ -7,7 +7,7 @@
 
 #[cfg(test)]
 #[path = "./device_command_test.rs"]
-mod device_command_test;
+mod tests;
 
 use crate::workflow_attachment::AttachmentStoreHandle;
 use anyhow::anyhow;
@@ -324,31 +324,33 @@ async fn workflow_command_outcome(
   match result {
     CommandResult::Completed { fields, attachment } => {
       if let Some(attachment) = attachment {
-        match attachment_store.get().await {
-          Ok(store) => match store.admit(attachment.source).await {
-            Ok(admitted) => {
-              return WorkflowCommandOutcome::SucceededWithAttachment {
-                message: None,
-                fields,
-                artifact_id: admitted.id,
-              };
-            },
-            Err(error) => {
-              log::warn!("workflow attachment admission failed: {error}");
-              return WorkflowCommandOutcome::Failed {
-                message: Some(format!("workflow attachment admission failed: {error}")),
-                fields,
-              };
-            },
-          },
+        let store = match attachment_store.get().await {
+          Ok(store) => store,
           Err(error) => {
-            log::warn!("workflow attachment store unavailable: {error}");
+            let message = format!("workflow attachment store unavailable: {error}");
+            log::warn!("{message}");
             return WorkflowCommandOutcome::Failed {
-              message: Some(format!("workflow attachment store unavailable: {error}")),
+              message: Some(message),
               fields,
             };
           },
-        }
+        };
+        let admitted = match store.admit(attachment.source).await {
+          Ok(admitted) => admitted,
+          Err(error) => {
+            let message = format!("workflow attachment admission failed: {error}");
+            log::warn!("{message}");
+            return WorkflowCommandOutcome::Failed {
+              message: Some(message),
+              fields,
+            };
+          },
+        };
+        return WorkflowCommandOutcome::SucceededWithAttachment {
+          message: None,
+          fields,
+          artifact_id: admitted.id,
+        };
       }
       WorkflowCommandOutcome::Succeeded {
         message: None,
