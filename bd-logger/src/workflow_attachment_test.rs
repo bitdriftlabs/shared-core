@@ -18,6 +18,7 @@ use bd_state::{RetentionHandle, RetentionRegistry};
 use flate2::read::ZlibDecoder;
 use std::io::{self, Read};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use time::OffsetDateTime;
 use tokio::fs;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -74,7 +75,11 @@ async fn new_cleanup_worker(
   ));
   let retention_handle = retention_registry.create_handle().await;
   retention_handle.update_retention_micros(retention_micros);
-  let worker = WorkflowAttachmentCleanupWorker::new(store_handle.clone(), retention_registry);
+  let worker = WorkflowAttachmentCleanupWorker::new(
+    store_handle.clone(),
+    retention_registry,
+    Arc::new(AtomicBool::new(true)),
+  );
   (store_handle, retention_handle, worker)
 }
 
@@ -411,6 +416,43 @@ async fn cleanup_worker_rechecks_when_retention_changes() {
 }
 
 #[tokio::test]
+async fn cleanup_worker_waits_for_buffer_configuration() {
+  let directory = tempfile::tempdir().unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  let store_handle = AttachmentStoreHandle::new(directory.path().to_owned(), runtime);
+  let cleanup_ready = Arc::new(AtomicBool::new(false));
+  let retention_registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let mut worker = WorkflowAttachmentCleanupWorker::new(
+    store_handle.clone(),
+    retention_registry,
+    cleanup_ready.clone(),
+  );
+  let store = store_handle.get().await.unwrap();
+  let attachment = store
+    .admit(UploadSource::Bytes(b"recovered".to_vec()))
+    .await
+    .unwrap();
+  store
+    .record_timestamp(
+      attachment.id,
+      OffsetDateTime::from_unix_timestamp(10).unwrap(),
+    )
+    .await
+    .unwrap();
+  store.complete_upload(attachment.id).await.unwrap();
+
+  assert!(!worker.cleanup_once().await);
+  assert!(store.is_uploaded(attachment.id).await.unwrap());
+
+  cleanup_ready.store(true, Ordering::Release);
+
+  assert!(worker.cleanup_once().await);
+  assert!(!store.is_uploaded(attachment.id).await.unwrap());
+}
+
+#[tokio::test]
 async fn cleanup_worker_retires_attachments_without_retention() {
   let directory = tempfile::tempdir().unwrap();
   let runtime = ConfigLoader::new(directory.path());
@@ -418,7 +460,11 @@ async fn cleanup_worker_retires_attachments_without_retention() {
   let retention_registry = Arc::new(RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
-  let mut worker = WorkflowAttachmentCleanupWorker::new(store_handle.clone(), retention_registry);
+  let mut worker = WorkflowAttachmentCleanupWorker::new(
+    store_handle.clone(),
+    retention_registry,
+    Arc::new(AtomicBool::new(true)),
+  );
   let store = store_handle.get().await.unwrap();
   let attachment = store
     .admit(UploadSource::Bytes(b"unretained".to_vec()))
@@ -601,6 +647,40 @@ async fn restart_timestamps_admitted_attachments_without_outcome_metadata() {
   );
   assert!(
     !fs::try_exists(restarted.pending_path(admitted.id))
+      .await
+      .unwrap()
+  );
+}
+
+#[tokio::test]
+async fn restart_timestamps_uploaded_attachment_with_pending_marker() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  let admitted = store
+    .admit(UploadSource::Bytes(b"interrupted".to_vec()))
+    .await
+    .unwrap();
+  store.complete_upload(admitted.id).await.unwrap();
+
+  let restarted = new_store(&directory).await;
+
+  assert!(restarted.is_uploaded(admitted.id).await.unwrap());
+  assert!(
+    fs::try_exists(restarted.timestamp_path(admitted.id))
+      .await
+      .unwrap()
+  );
+  assert!(
+    !fs::try_exists(restarted.pending_path(admitted.id))
+      .await
+      .unwrap()
+  );
+
+  restarted.cleanup_all().await.unwrap();
+
+  assert!(!restarted.is_uploaded(admitted.id).await.unwrap());
+  assert!(
+    !fs::try_exists(restarted.timestamp_path(admitted.id))
       .await
       .unwrap()
   );

@@ -436,6 +436,7 @@ impl LoggerBuilder {
         data_upload_tx.clone(),
         self.startup_replay_eligibility,
       );
+    let workflow_attachment_cleanup_ready = async_log_buffer.workflow_attachment_cleanup_ready();
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
@@ -634,6 +635,7 @@ impl LoggerBuilder {
         &self.params.sdk_directory,
         LoggerUpdate::new(
           buffer_manager.clone(),
+          workflow_attachment_cleanup_ready,
           config_update_tx,
           data_upload_tx_clone.clone(),
           trigger_upload_tx.clone(),

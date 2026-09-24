@@ -87,6 +87,7 @@ use std::collections::{HashMap, VecDeque};
 use std::future::{Future, ready};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
@@ -538,6 +539,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   replayer: R,
   workflow_command_dispatcher: WorkflowCommandDispatcher,
   workflow_attachment_store: AttachmentStoreHandle,
+  workflow_attachment_cleanup_ready: Arc<AtomicBool>,
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
   logging_state: LoggingState,
@@ -654,6 +656,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       uninitialized_logging_context.sdk_directory().to_owned(),
       runtime_loader.clone(),
     );
+    let workflow_attachment_cleanup_ready = Arc::new(AtomicBool::new(false));
     let test_hooks = uninitialized_logging_context.test_hooks();
     let (workflow_command_completion_tx, workflow_command_completion_rx) = mpsc::channel(16);
 
@@ -726,6 +729,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           workflow_attachment_store.clone(),
         ),
         workflow_attachment_store,
+        workflow_attachment_cleanup_ready,
 
         session_strategy: session_strategy.clone(),
         metadata_provider: metadata_provider.clone(),
@@ -779,12 +783,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self.workflow_attachment_store.clone()
   }
 
+  pub(crate) fn workflow_attachment_cleanup_ready(&self) -> Arc<AtomicBool> {
+    self.workflow_attachment_cleanup_ready.clone()
+  }
+
   pub(crate) fn set_retention_registry(
     &self,
     retention_registry: Arc<bd_state::RetentionRegistry>,
   ) {
     let store_handle = self.workflow_attachment_store();
-    let cleanup_worker = WorkflowAttachmentCleanupWorker::new(store_handle, retention_registry);
+    let cleanup_worker = WorkflowAttachmentCleanupWorker::new(
+      store_handle,
+      retention_registry,
+      self.workflow_attachment_cleanup_ready(),
+    );
     tokio::spawn(cleanup_worker.run(self.shutdown_trigger_handle.make_shutdown()));
   }
 

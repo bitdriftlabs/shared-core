@@ -19,7 +19,7 @@ use parking_lot::Mutex;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::fs::{self, File};
@@ -80,6 +80,7 @@ impl AttachmentStoreHandle {
 pub struct WorkflowAttachmentCleanupWorker {
   store_handle: AttachmentStoreHandle,
   retention_registry: Arc<bd_state::RetentionRegistry>,
+  cleanup_ready: Arc<AtomicBool>,
   previous_cleanup_key: Option<(Option<u64>, u64)>,
 }
 
@@ -87,10 +88,12 @@ impl WorkflowAttachmentCleanupWorker {
   pub fn new(
     store_handle: AttachmentStoreHandle,
     retention_registry: Arc<bd_state::RetentionRegistry>,
+    cleanup_ready: Arc<AtomicBool>,
   ) -> Self {
     Self {
       store_handle,
       retention_registry,
+      cleanup_ready,
       previous_cleanup_key: None,
     }
   }
@@ -114,6 +117,9 @@ impl WorkflowAttachmentCleanupWorker {
         return false;
       },
     };
+    if !self.cleanup_ready.load(Ordering::Acquire) {
+      return false;
+    }
     let cleanup_key = (retention, store.cleanup_generation());
     if self.previous_cleanup_key == Some(cleanup_key) {
       return false;
@@ -253,9 +259,12 @@ impl AttachmentStore {
       let timestamp_path = directory.join(format!("{id}.timestamp"));
       if fs::try_exists(&timestamp_path).await? {
         fs::remove_file(marker_path).await?;
-      } else if fs::try_exists(directory.join(format!("{id}.payload"))).await? {
-        // An admitted attachment may outlive a crash before its outcome log timestamp is recorded.
-        // Use its durable admission time as a best-effort retirement fallback after restart.
+      } else if fs::try_exists(directory.join(format!("{id}.payload"))).await?
+        || fs::try_exists(directory.join(format!("{id}.uploaded"))).await?
+      {
+        // An admitted or uploaded attachment may outlive a crash before its outcome log timestamp
+        // is recorded. Use its durable admission time as a best-effort retirement fallback after
+        // restart.
         let timestamp = read_timestamp(&marker_path).await?;
         fs::rename(marker_path, &timestamp_path).await?;
         oldest_timestamp = Some(oldest_timestamp.map_or(timestamp, |oldest| oldest.min(timestamp)));
