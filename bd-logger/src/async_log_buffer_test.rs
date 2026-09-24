@@ -75,7 +75,7 @@ use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::rule;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::session::in_memory_store;
-use bd_test_helpers::workflow::{WorkflowBuilder, state};
+use bd_test_helpers::workflow::{WorkflowBuilder, make_flush_buffers_action, state};
 use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
@@ -176,6 +176,7 @@ impl crate::TestHooks for AsyncLogBufferTestHooks {
 
 struct Setup {
   buffer_manager: Arc<bd_buffer::Manager>,
+  buffer_event_rx: Option<tokio::sync::mpsc::Receiver<bd_buffer::BufferEventWithResponse>>,
   runtime: Arc<ConfigLoader>,
   collector: Collector,
   stats: Arc<Stats>,
@@ -205,17 +206,18 @@ impl Setup {
     let stats = Stats::new(collector.clone());
     let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
     let session_strategy = no_timeout(tmp_dir.path()).strategy();
+    let (buffer_manager, buffer_event_rx) = bd_buffer::Manager::new(
+      tmp_dir.path().join("buffer"),
+      &collector.scope(""),
+      runtime,
+      Arc::new(bd_versioned_kv::RetentionRegistry::new(
+        bd_runtime::runtime::IntWatch::new_for_testing(0),
+      )),
+    );
 
     Self {
-      buffer_manager: bd_buffer::Manager::new(
-        tmp_dir.path().join("buffer"),
-        &collector.scope(""),
-        runtime,
-        Arc::new(bd_versioned_kv::RetentionRegistry::new(
-          bd_runtime::runtime::IntWatch::new_for_testing(0),
-        )),
-      )
-      .0,
+      buffer_manager,
+      buffer_event_rx: Some(buffer_event_rx),
       runtime: Self::make_runtime(&tmp_dir),
       collector,
       stats,
@@ -235,6 +237,11 @@ impl Setup {
       sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker::new(),
       test_hooks: None,
     }
+  }
+
+  fn drain_buffer_events(&mut self) {
+    let mut buffer_event_rx = self.buffer_event_rx.take().unwrap();
+    tokio::spawn(async move { while buffer_event_rx.recv().await.is_some() {} });
   }
 
   fn shutdown_in(&mut self, duration: time::Duration) {
@@ -1984,6 +1991,55 @@ async fn workflow_command_start_survives_buffer_write_failure() {
     .unwrap();
 
   assert_eq!(1, result.workflow_commands_to_start.len());
+}
+
+#[tokio::test]
+async fn failed_log_write_uses_synthetic_log_for_workflow_flush() {
+  let mut setup = Setup::new();
+  setup.drain_buffer_events();
+  std::fs::create_dir_all(setup.tmp_dir.path().join("buffer")).unwrap();
+  let trigger_config = BufferConfigList {
+    buffer_config: vec![default_buffer_config(BufferType::TRIGGER, None)],
+    ..Default::default()
+  };
+  setup
+    .buffer_manager
+    .update_from_config(&trigger_config, false)
+    .await
+    .unwrap();
+
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let start = state("start").declare_transition_with_actions(
+    &terminal,
+    rule!(message_equals("flush")),
+    &[make_flush_buffers_action(&["default"], None, "flush")],
+  );
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut config_update = setup.make_config_update(workflows);
+  let mut missing_buffer =
+    default_buffer_config(BufferType::CONTINUOUS, Some(match_message("flush")));
+  missing_buffer.id = "missing".to_string();
+  config_update.buffer_selector = BufferSelector::new(&BufferConfigList {
+    buffer_config: vec![missing_buffer],
+    ..Default::default()
+  })
+  .unwrap();
+  let mut buffer = buffer.update(config_update, &state_store).await;
+
+  buffer
+    .process_log(normal_log("flush"), &state_store, None, None)
+    .await
+    .unwrap();
+
+  let trigger_buffer = setup.buffer_manager.buffers().remove("default").unwrap().1;
+  let mut consumer = trigger_buffer.new_consumer().unwrap();
+  assert!(!consumer.start_read(false).unwrap().is_empty());
 }
 
 #[tokio::test]
