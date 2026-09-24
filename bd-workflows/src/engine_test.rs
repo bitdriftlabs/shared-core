@@ -12,7 +12,7 @@ use super::engine_test_helpers::{
   assert_workflow_debug_state,
   make_runtime,
 };
-use crate::config::{Action, FlushBufferId, WorkflowDebugMode, WorkflowsConfiguration};
+use crate::config::{Action, Config, FlushBufferId, WorkflowDebugMode, WorkflowsConfiguration};
 use crate::engine::{ProcessLocalPendingFlushState, WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{
@@ -31,7 +31,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
 use bd_log_matcher::builder::{field_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{Log, LogFields, LogMessage, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogFields, LogMessage, log_level};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyPathUploadRequest, log_upload_intent_request};
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
@@ -59,6 +59,7 @@ use bd_proto::protos::workflow::workflow_command::{
 };
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::workflows::JsonPathStringMatchingEnabled;
+use bd_state::StateChange;
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::sankey_value;
@@ -119,6 +120,25 @@ fn workflow_command_rule() -> Rule {
     })),
     ..Default::default()
   }
+}
+
+#[test]
+fn workflow_command_rule_requires_a_selector_variant() {
+  let terminal = state("terminal");
+  let mut command_rule = workflow_command_rule();
+  let Some(Rule_type::MatchRunCommand(command_rule_config)) = &mut command_rule.rule_type else {
+    panic!("expected command matcher");
+  };
+  command_rule_config.command_selector = Some(WorkflowCommandSelector::default()).into();
+  let command = state("command").declare_transition(&terminal, command_rule);
+  let config = WorkflowBuilder::new("workflow", &[&command, &terminal]).build();
+
+  assert_eq!(
+    "invalid workflow command matcher configuration: missing command selector",
+    Config::new(config, WorkflowDebugMode::None)
+      .unwrap_err()
+      .to_string()
+  );
 }
 
 fn timed_command_log(message: &str, now: OffsetDateTime) -> TestLog {
@@ -272,6 +292,42 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
       .contains_key(&token.0)
   );
   engine_assert_active_runs!(engine; 0; "start");
+}
+
+#[tokio::test]
+async fn state_change_command_uses_the_active_session() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&command, &terminal]).make_config()],
+    ))
+    .await;
+  let state_change = StateChange::inserted(
+    bd_state::Scope::System,
+    "key",
+    bd_state::string_value("value"),
+    OffsetDateTime::now_utc(),
+  );
+  let fields = LogFields::default();
+  let empty_buffer_ids = TinySet::default();
+  let result = engine.engine.process_event(
+    WorkflowEvent::StateChange(
+      &state_change,
+      FieldsRef::new(&fields, &fields),
+      "state-change-session",
+    ),
+    &empty_buffer_ids,
+    &bd_state::InMemoryStateReader::default(),
+    state_change.timestamp,
+  );
+
+  assert_eq!(1, result.workflow_commands_to_start.len());
+  assert_eq!(
+    "state-change-session",
+    result.workflow_commands_to_start[0].session_id
+  );
 }
 
 #[tokio::test]
@@ -2436,6 +2492,41 @@ async fn exclusive_workflow_duration_limit() {
   // * The new run matches a log and advances.
   workflows_engine.process_log(TestLog::new("foo").with_occurred_at(now + Duration::from_secs(4)));
   engine_assert_active_runs!(workflows_engine; 0; "B");
+}
+
+#[tokio::test]
+async fn duration_expired_command_does_not_consume_its_cooldown() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let config = WorkflowBuilder::new("workflow", &[&start, &command, &terminal])
+    .with_duration_limit(1.seconds())
+    .make_config();
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![config],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let expired_at = started_at + 2.seconds();
+
+  engine.process_log(timed_command_log("start", started_at));
+  assert!(
+    engine
+      .process_log(timed_command_log("execute", expired_at))
+      .workflow_commands_to_start
+      .is_empty()
+  );
+
+  engine.process_log(timed_command_log("start", expired_at));
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("execute", expired_at))
+      .workflow_commands_to_start
+      .len()
+  );
 }
 
 #[tokio::test]

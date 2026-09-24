@@ -321,8 +321,8 @@ pub enum WorkflowEvent<'a> {
   /// This shares the triggering log payload so transition actions and extractions can reuse the
   /// same fields and body without copying them.
   SessionStart(&'a Log),
-  /// A state change occurred, with optional global metadata fields
-  StateChange(&'a bd_state::StateChange, FieldsRef<'a>),
+  /// A state change occurred, with the active session and optional global metadata fields.
+  StateChange(&'a bd_state::StateChange, FieldsRef<'a>, &'a str),
 }
 
 impl WorkflowEvent<'_> {
@@ -340,7 +340,7 @@ impl WorkflowEvent<'_> {
       WorkflowEvent::Log(log)
       | WorkflowEvent::CommandCompletion { log, .. }
       | WorkflowEvent::SessionStart(log) => log.occurred_at,
-      WorkflowEvent::StateChange(state_change, _) => state_change.timestamp,
+      WorkflowEvent::StateChange(state_change, ..) => state_change.timestamp,
     }
   }
 }
@@ -1043,6 +1043,29 @@ impl Run {
     match_context: MatchContext,
     command_last_started_at_ns: &mut HashMap<String, i64>,
   ) -> RunResult<'a> {
+    if let Some(duration_limit) = config.inner().duration_limit()
+      && let Some(first_progress_occurred_at) = self.first_progress_occurred_at
+    {
+      let duration_since_first_progress = event.occurred_at() - first_progress_occurred_at;
+      if duration_since_first_progress > duration_limit {
+        log::debug!(
+          "run stopped due to exceeding duration limit ({duration_limit:?}), duration since the \
+           run first made progress progress: {duration_since_first_progress:?}"
+        );
+        return RunResult {
+          state: RunState::Stopped,
+          triggered_actions: vec![],
+          matched_logs_count: 0,
+          processed_timeout: false,
+          workflow_debug_state: vec![],
+          logs_to_inject: TinyMap::default(),
+          tracing_started: 0,
+          tracing_ended: u32::from(self.tracing_active),
+          tracing_carryover_flush_action_ids: TinySet::default(),
+        };
+      }
+    }
+
     // Optimize for the case when no traversal is advanced as it's
     // the most common situation.
 
@@ -1088,31 +1111,6 @@ impl Run {
         // A given workflow run has already matched more logs than its log counts limit allows for.
         // Mark it as stopped which will effectively get it removed.
         if self.matched_logs_count > matched_logs_count_limit {
-          return RunResult {
-            state: RunState::Stopped,
-            triggered_actions: vec![],
-            matched_logs_count: run_matched_logs_count,
-            processed_timeout: run_processed_timeout,
-            workflow_debug_state,
-            logs_to_inject: TinyMap::default(),
-            tracing_started: 0,
-            tracing_ended: u32::from(self.tracing_active),
-            tracing_carryover_flush_action_ids: TinySet::default(),
-          };
-        }
-      }
-
-      if let Some(duration_limit) = config.inner().duration_limit()
-        && let Some(first_progress_occurred_at) = self.first_progress_occurred_at
-      {
-        let current_time = event.occurred_at();
-
-        let duration_since_first_progress = current_time - first_progress_occurred_at;
-        if duration_since_first_progress > duration_limit {
-          log::debug!(
-            "run stopped due to exceeding duration limit ({duration_limit:?}), duration since the \
-             run first made progress progress: {duration_since_first_progress:?}"
-          );
           return RunResult {
             state: RunState::Stopped,
             triggered_actions: vec![],
@@ -1559,7 +1557,7 @@ impl Traversal {
             state_change_match,
             extra_matcher,
           },
-          WorkflowEvent::StateChange(state_change, fields),
+          WorkflowEvent::StateChange(state_change, fields, _),
         ) => {
           self.process_state_change_match(
             config,
@@ -1629,7 +1627,7 @@ impl Traversal {
         WorkflowEvent::Log(log)
         | WorkflowEvent::CommandCompletion { log, .. }
         | WorkflowEvent::SessionStart(log) => FieldsRef::new(&log.fields, &log.matching_fields),
-        WorkflowEvent::StateChange(_, fields) => fields,
+        WorkflowEvent::StateChange(_, fields, _) => fields,
       };
 
       process_transition(

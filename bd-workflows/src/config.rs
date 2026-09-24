@@ -629,6 +629,9 @@ impl Transition {
           .ok_or_else(|| {
             anyhow!("invalid workflow command matcher configuration: missing command selector")
           })?;
+        if command_selector.command_selector.is_none() {
+          bail!("invalid workflow command matcher configuration: missing command selector");
+        }
         let minimum_execution_interval =
           command.minimum_execution_interval.as_ref().ok_or_else(|| {
             anyhow!("invalid workflow command matcher configuration: missing minimum interval")

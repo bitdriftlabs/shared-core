@@ -414,6 +414,7 @@ impl ProcessingPipeline {
       bd_workflows::workflow::WorkflowEvent::StateChange(
         &state_change,
         FieldsRef::new(fields, matching_fields),
+        session_id,
       ),
       &empty_set,
       &state_reader,

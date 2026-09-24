@@ -187,6 +187,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
       WorkflowEvent::StateChange(
         state_change,
         bd_log_primitives::FieldsRef::new(&empty_fields, &empty_fields),
+        &self.session_id,
       ),
       &EMPTY_BUFFER_IDS,
       state_reader,

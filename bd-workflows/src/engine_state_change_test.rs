@@ -699,7 +699,7 @@ async fn state_change_extra_json_matcher_respects_runtime_flag() {
 
   // Enabled: the nested matcher succeeds, so its negation prevents the transition.
   engine.engine.process_event(
-    crate::workflow::WorkflowEvent::StateChange(&state_change, fields),
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields, "state_change_session"),
     &super::engine_test_helpers::EMPTY_BUFFER_IDS,
     &bd_state::InMemoryStateReader::default(),
     state_change.timestamp,
@@ -718,7 +718,7 @@ async fn state_change_extra_json_matcher_respects_runtime_flag() {
     .await
     .unwrap();
   engine.engine.process_event(
-    crate::workflow::WorkflowEvent::StateChange(&state_change, fields),
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields, "state_change_session"),
     &super::engine_test_helpers::EMPTY_BUFFER_IDS,
     &bd_state::InMemoryStateReader::default(),
     state_change.timestamp,
@@ -734,7 +734,7 @@ async fn state_change_extra_json_matcher_respects_runtime_flag() {
     .await
     .unwrap();
   engine.engine.process_event(
-    crate::workflow::WorkflowEvent::StateChange(&state_change, fields),
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields, "state_change_session"),
     &super::engine_test_helpers::EMPTY_BUFFER_IDS,
     &bd_state::InMemoryStateReader::default(),
     state_change.timestamp,
@@ -949,7 +949,7 @@ async fn state_change_matches_on_global_metadata_fields() {
   // Process state change with fields
   let fields_ref = bd_log_primitives::FieldsRef::new(&fields, &matching_fields);
   engine.engine.process_event(
-    crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref),
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref, "state_change_session"),
     &super::engine_test_helpers::EMPTY_BUFFER_IDS,
     &bd_state::InMemoryStateReader::default(),
     state_change.timestamp,
@@ -1015,7 +1015,7 @@ async fn state_change_extracts_global_metadata_fields() {
   // Process state change with fields
   let fields_ref = bd_log_primitives::FieldsRef::new(&fields, &matching_fields);
   engine.engine.process_event(
-    crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref),
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref, "state_change_session"),
     &super::engine_test_helpers::EMPTY_BUFFER_IDS,
     &bd_state::InMemoryStateReader::default(),
     state_change.timestamp,
@@ -1096,7 +1096,7 @@ async fn state_change_includes_fields_in_generated_log() {
   // Process state change with fields
   let fields_ref = bd_log_primitives::FieldsRef::new(&fields, &matching_fields);
   let result = engine.engine.process_event(
-    crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref),
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref, "state_change_session"),
     &super::engine_test_helpers::EMPTY_BUFFER_IDS,
     &bd_state::InMemoryStateReader::default(),
     state_change.timestamp,

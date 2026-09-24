@@ -889,23 +889,28 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
-    let session_start_result = if let WorkflowEvent::Log(log) = event
-      && self.maybe_update_session(&log.session_id)
-    {
-      let empty_buffer_ids = TinySet::default();
-      Some(PrecedingEventCarryover::from_result(
-        // TODO(mattklein123): Using the incoming log to provide the fields for this event is a
-        // hack. We should really only be providing the persisted field provider fields and OOTB
-        // fields. We can live with this for now as it's simpler.
-        self.process_event_inner(
-          WorkflowEvent::SessionStart(log),
-          &empty_buffer_ids,
-          state_reader,
-          now,
-        ),
-      ))
-    } else {
-      None
+    let session_start_result = match event {
+      WorkflowEvent::Log(log) if self.maybe_update_session(&log.session_id) => {
+        let empty_buffer_ids = TinySet::default();
+        Some(PrecedingEventCarryover::from_result(
+          // TODO(mattklein123): Using the incoming log to provide the fields for this event is a
+          // hack. We should really only be providing the persisted field provider fields and OOTB
+          // fields. We can live with this for now as it's simpler.
+          self.process_event_inner(
+            WorkflowEvent::SessionStart(log),
+            &empty_buffer_ids,
+            state_reader,
+            now,
+          ),
+        ))
+      },
+      WorkflowEvent::StateChange(_, _, session_id) => {
+        self.maybe_update_session(session_id);
+        None
+      },
+      WorkflowEvent::Log(_)
+      | WorkflowEvent::CommandCompletion { .. }
+      | WorkflowEvent::SessionStart(_) => None,
     };
 
     let result = self.process_event_inner(event, log_destination_buffer_ids, state_reader, now);

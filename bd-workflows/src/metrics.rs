@@ -144,7 +144,7 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
         "log_type" => Some((log.log_type as u32).to_string().into()),
         key => log.field_value(key),
       },
-      WorkflowEvent::StateChange(_state_change, fields) => fields.field_value(key),
+      WorkflowEvent::StateChange(_state_change, fields, _) => fields.field_value(key),
     }
   }
 
