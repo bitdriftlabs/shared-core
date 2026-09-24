@@ -94,8 +94,10 @@ impl AttachmentStore {
     let directory = sdk_directory.join("workflow-attachments");
     fs::create_dir_all(&directory).await?;
     let mut capacity = Capacity::default();
+    let mut recovered_sidecar = false;
     let mut entries = fs::read_dir(&directory).await?;
     while let Some(entry) = entries.next_entry().await? {
+      let entry_path = entry.path();
       if entry
         .path()
         .extension()
@@ -107,12 +109,24 @@ impl AttachmentStore {
           .and_then(|stem| stem.strip_prefix('.'))
           .is_some_and(|stem| Uuid::parse_str(stem).is_ok())
       {
-        fs::remove_file(entry.path()).await?;
+        fs::remove_file(entry_path).await?;
         log::debug!("removed interrupted workflow attachment admission");
         continue;
       }
-      if entry
-        .path()
+      if let Some(sidecar_path) = sidecar_staging_target(&entry_path) {
+        if !fs::symlink_metadata(&entry_path).await?.is_file() {
+          return Err(io::Error::other("invalid workflow attachment sidecar"));
+        }
+        if fs::try_exists(&sidecar_path).await? {
+          fs::remove_file(entry_path).await?;
+        } else {
+          fs::rename(entry_path, &sidecar_path).await?;
+        }
+        recovered_sidecar = true;
+        log::debug!("recovered interrupted workflow attachment sidecar write");
+        continue;
+      }
+      if entry_path
         .extension()
         .is_none_or(|extension| extension != "payload")
       {
@@ -129,7 +143,7 @@ impl AttachmentStore {
           "invalid attachment name",
         ));
       }
-      let metadata = fs::symlink_metadata(entry.path()).await?;
+      let metadata = fs::symlink_metadata(entry_path).await?;
       if !metadata.is_file() {
         return Err(io::Error::new(
           io::ErrorKind::InvalidData,
@@ -138,6 +152,9 @@ impl AttachmentStore {
       }
       capacity.bytes = capacity.bytes.saturating_add(metadata.len());
       capacity.files = capacity.files.saturating_add(1);
+    }
+    if recovered_sidecar {
+      File::open(&directory).await?.sync_all().await?;
     }
     Ok(Self {
       directory,
@@ -202,6 +219,15 @@ impl AttachmentStore {
   /// order. Out-of-order or replayed timestamps may therefore retain data too long or delete it
   /// too early. TODO: replace timestamp retirement with exact per-buffer append ownership.
   pub async fn cleanup_before(&self, cutoff_micros: u64) -> io::Result<()> {
+    self.cleanup(Some(cutoff_micros)).await
+  }
+
+  /// Retires all timestamped attachment state when no log buffers still retain it.
+  pub async fn cleanup_all(&self) -> io::Result<()> {
+    self.cleanup(None).await
+  }
+
+  async fn cleanup(&self, cutoff_micros: Option<u64>) -> io::Result<()> {
     let _permit = self.admissions.acquire().await.map_err(io::Error::other)?;
     let mut entries = fs::read_dir(&self.directory).await?;
     while let Some(entry) = entries.next_entry().await? {
@@ -233,7 +259,7 @@ impl AttachmentStore {
           continue;
         },
       };
-      if timestamp >= cutoff_micros {
+      if cutoff_micros.is_some_and(|cutoff_micros| timestamp >= cutoff_micros) {
         continue;
       }
       self.remove_payload_async(id, true).await?;
@@ -243,7 +269,11 @@ impl AttachmentStore {
       delete_file_if_exists_async(&path)
         .await
         .map_err(io::Error::other)?;
-      log::debug!("retired workflow attachment {id} before timestamp {cutoff_micros}");
+      if let Some(cutoff_micros) = cutoff_micros {
+        log::debug!("retired workflow attachment {id} before timestamp {cutoff_micros}");
+      } else {
+        log::debug!("retired workflow attachment {id} with no retention requirement");
+      }
     }
     File::open(&self.directory).await?.sync_all().await
   }
@@ -381,7 +411,7 @@ impl AttachmentStore {
 }
 
 async fn write_sidecar(path: &Path, contents: &[u8]) -> io::Result<()> {
-  let staging_path = path.with_extension("partial");
+  let staging_path = sidecar_staging_path(path)?;
   fs::write(&staging_path, contents).await?;
   File::open(&staging_path).await?.sync_all().await?;
   fs::rename(staging_path, path).await?;
@@ -389,6 +419,23 @@ async fn write_sidecar(path: &Path, contents: &[u8]) -> io::Result<()> {
     .parent()
     .ok_or_else(|| io::Error::other("sidecar has no parent"))?;
   File::open(directory).await?.sync_all().await
+}
+
+fn sidecar_staging_path(path: &Path) -> io::Result<PathBuf> {
+  let extension = path
+    .extension()
+    .and_then(|extension| extension.to_str())
+    .ok_or_else(|| io::Error::other("workflow attachment sidecar has no extension"))?;
+  Ok(path.with_extension(format!("{extension}.partial")))
+}
+
+fn sidecar_staging_target(path: &Path) -> Option<PathBuf> {
+  let file_name = path.file_name()?.to_str()?;
+  let (stem, extension) = file_name.strip_suffix(".partial")?.rsplit_once('.')?;
+  if !matches!(extension, "timestamp" | "uploaded") || Uuid::parse_str(stem).is_err() {
+    return None;
+  }
+  Some(path.with_file_name(format!("{stem}.{extension}")))
 }
 
 async fn open_regular_file_async(path: &Path) -> io::Result<tokio::fs::File> {

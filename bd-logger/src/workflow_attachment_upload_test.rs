@@ -9,8 +9,19 @@ use super::*;
 use crate::workflow_attachment::AttachmentStoreHandle;
 use bd_artifact_upload::{EnqueueError, UploadSource};
 use bd_runtime::runtime::ConfigLoader;
-use std::time::Duration;
-use tokio::time::timeout;
+use std::sync::Mutex;
+
+struct UploadCompletionHook {
+  completion_tx: Mutex<Option<oneshot::Sender<Uuid>>>,
+}
+
+impl TestHooks for UploadCompletionHook {
+  fn workflow_attachment_upload_completed(&self, artifact_id: Uuid) {
+    if let Some(completion_tx) = self.completion_tx.lock().unwrap().take() {
+      let _ignored = completion_tx.send(artifact_id);
+    }
+  }
+}
 
 #[tokio::test]
 async fn stage_waits_for_indexed_lease_ack() {
@@ -121,9 +132,13 @@ async fn successful_upload_releases_the_retained_payload() {
       Ok(())
     });
 
-  let (handle, worker) = WorkflowAttachmentUploadHandle::new_with_attachment_store(
+  let (upload_completed_tx, upload_completed_rx) = oneshot::channel();
+  let (handle, worker) = WorkflowAttachmentUploadHandle::new_with_attachment_store_and_test_hooks(
     Arc::new(mock_client),
     attachment_store,
+    Some(Arc::new(UploadCompletionHook {
+      completion_tx: Mutex::new(Some(upload_completed_tx)),
+    })),
   );
   let worker = tokio::spawn(worker.run());
   handle
@@ -132,25 +147,18 @@ async fn successful_upload_releases_the_retained_payload() {
     .unwrap();
   completion_rx.await.unwrap().send(Ok(())).unwrap();
 
-  timeout(Duration::from_secs(1), async {
-    loop {
-      if store.is_uploaded(admitted.id).await.unwrap()
-        && !tokio::fs::try_exists(
-          directory
-            .path()
-            .join("workflow-attachments")
-            .join(format!("{}.payload", admitted.id)),
-        )
-        .await
-        .unwrap()
-      {
-        break;
-      }
-      tokio::task::yield_now().await;
-    }
-  })
-  .await
-  .unwrap();
+  assert_eq!(upload_completed_rx.await.unwrap(), admitted.id);
+  assert!(store.is_uploaded(admitted.id).await.unwrap());
+  assert!(
+    !tokio::fs::try_exists(
+      directory
+        .path()
+        .join("workflow-attachments")
+        .join(format!("{}.payload", admitted.id)),
+    )
+    .await
+    .unwrap()
+  );
   drop(handle);
   worker.await.unwrap();
 }

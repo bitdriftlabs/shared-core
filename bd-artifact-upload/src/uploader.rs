@@ -811,7 +811,7 @@ impl Uploader {
         contents
       },
       UploadSource::Path(source_path) => {
-        let contents = tokio::fs::read(&source_path).await?;
+        let contents = self.file_system.read_file(&source_path).await?;
         *path_source = Some((source_path, false));
         contents
       },

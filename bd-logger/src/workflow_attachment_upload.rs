@@ -74,14 +74,6 @@ impl WorkflowAttachmentUploadHandle {
     )
   }
 
-  #[cfg(test)]
-  pub fn new_with_attachment_store(
-    artifact_client: Arc<dyn ArtifactClient>,
-    attachment_store: AttachmentStoreHandle,
-  ) -> (Self, WorkflowAttachmentUploadWorker) {
-    Self::new_with_attachment_store_and_test_hooks(artifact_client, attachment_store, None)
-  }
-
   pub fn new_with_attachment_store_and_test_hooks(
     artifact_client: Arc<dyn ArtifactClient>,
     attachment_store: AttachmentStoreHandle,

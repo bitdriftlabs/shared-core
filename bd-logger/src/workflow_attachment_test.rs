@@ -309,6 +309,33 @@ async fn timestamp_cleanup_retires_only_strictly_older_attachments() {
 }
 
 #[tokio::test]
+async fn cleanup_all_retires_timestamped_attachments() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  let admitted = store
+    .admit(UploadSource::Bytes(b"attachment".to_vec()))
+    .await
+    .unwrap();
+  store
+    .record_timestamp(
+      admitted.id,
+      OffsetDateTime::from_unix_timestamp(10).unwrap(),
+    )
+    .await
+    .unwrap();
+  store.complete_upload(admitted.id).await.unwrap();
+
+  store.cleanup_all().await.unwrap();
+
+  assert!(!store.is_uploaded(admitted.id).await.unwrap());
+  assert!(
+    !fs::try_exists(store.timestamp_path(admitted.id))
+      .await
+      .unwrap()
+  );
+}
+
+#[tokio::test]
 async fn rejects_tampered_payload_after_restart() {
   let directory = tempfile::tempdir().unwrap();
   let store = Arc::new(new_store(&directory).await);
@@ -378,4 +405,32 @@ async fn restart_reclaims_interrupted_admissions() {
   let restarted = new_store(&directory).await;
   assert!(!fs::try_exists(&pending).await.unwrap());
   assert_eq!(restarted.capacity.lock().files, 0);
+}
+
+#[tokio::test]
+async fn restart_finalizes_interrupted_sidecar_writes() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = new_store(&directory).await;
+  let timestamp_id = Uuid::new_v4();
+  let timestamp_staging_path =
+    super::sidecar_staging_path(&store.timestamp_path(timestamp_id)).unwrap();
+  fs::write(&timestamp_staging_path, b"100").await.unwrap();
+  let uploaded_id = Uuid::new_v4();
+  let uploaded_staging_path =
+    super::sidecar_staging_path(&store.uploaded_path(uploaded_id)).unwrap();
+  fs::write(&uploaded_staging_path, b"uploaded")
+    .await
+    .unwrap();
+
+  let restarted = new_store(&directory).await;
+
+  assert_eq!(
+    fs::read_to_string(restarted.timestamp_path(timestamp_id))
+      .await
+      .unwrap(),
+    "100"
+  );
+  assert!(restarted.is_uploaded(uploaded_id).await.unwrap());
+  assert!(!fs::try_exists(timestamp_staging_path).await.unwrap());
+  assert!(!fs::try_exists(uploaded_staging_path).await.unwrap());
 }

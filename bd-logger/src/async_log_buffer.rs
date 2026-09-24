@@ -1121,12 +1121,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     store_handle: AttachmentStoreHandle,
     retention_registry: Arc<bd_state::RetentionRegistry>,
   ) {
-    let Some(cutoff_micros) = retention_registry.min_retention_timestamp().await else {
-      return;
-    };
     match store_handle.get().await {
       Ok(store) => {
-        if let Err(error) = store.cleanup_before(cutoff_micros).await {
+        let cleanup_result = match retention_registry.min_retention_timestamp().await {
+          Some(cutoff_micros) => store.cleanup_before(cutoff_micros).await,
+          None => store.cleanup_all().await,
+        };
+        if let Err(error) = cleanup_result {
           log::warn!("failed to clean up expired workflow attachments: {error}");
         }
       },
