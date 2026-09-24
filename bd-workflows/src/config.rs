@@ -630,6 +630,7 @@ impl Transition {
             anyhow!("invalid workflow command matcher configuration: missing command selector")
           })?;
         let minimum_execution_interval =
+          command.minimum_execution_interval.as_ref().ok_or_else(|| {
             anyhow!("invalid workflow command matcher configuration: missing minimum interval")
           })?;
         let minimum_execution_interval = Duration::new(
@@ -652,7 +653,6 @@ impl Transition {
             .transpose()?,
         }
       },
->>>>>>> 6a9f7b59 (workflow commands: base workflow changes)
     };
 
     let actions = transition
