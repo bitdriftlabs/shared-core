@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::AttachmentStore;
+use super::{AttachmentStore, AttachmentStoreHandle, WorkflowAttachmentCleanupWorker};
 use bd_artifact_upload::UploadSource;
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::Runtime;
@@ -13,6 +13,7 @@ use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::runtime::value::Type;
 use bd_runtime::runtime::workflow_attachment::{MaxAttachmentBytes, MaxOwnedBytes, MaxOwnedFiles};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
+use bd_state::{RetentionHandle, RetentionRegistry};
 use flate2::read::ZlibDecoder;
 use std::io::{self, Read};
 use std::sync::Arc;
@@ -55,6 +56,25 @@ async fn new_store(directory: &tempfile::TempDir) -> AttachmentStore {
   AttachmentStore::new(directory.path(), &runtime)
     .await
     .unwrap()
+}
+
+async fn new_cleanup_worker(
+  directory: &tempfile::TempDir,
+  retention_micros: u64,
+) -> (
+  AttachmentStoreHandle,
+  RetentionHandle,
+  WorkflowAttachmentCleanupWorker,
+) {
+  let runtime = ConfigLoader::new(directory.path());
+  let store_handle = AttachmentStoreHandle::new(directory.path().to_owned(), runtime);
+  let retention_registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let retention_handle = retention_registry.create_handle().await;
+  retention_handle.update_retention_micros(retention_micros);
+  let worker = WorkflowAttachmentCleanupWorker::new(store_handle.clone(), retention_registry);
+  (store_handle, retention_handle, worker)
 }
 
 #[tokio::test]
@@ -273,6 +293,102 @@ async fn uploaded_attachments_keep_a_timestamp_marker_without_the_payload() {
       .unwrap()
   );
   assert_eq!(store.capacity.lock().files, 0);
+}
+
+#[tokio::test]
+async fn cleanup_worker_rechecks_when_timestamp_generation_changes() {
+  let directory = tempfile::tempdir().unwrap();
+  let (store_handle, _retention_handle, mut worker) =
+    new_cleanup_worker(&directory, 20_000_000).await;
+  let store = store_handle.get().await.unwrap();
+
+  assert!(worker.cleanup_once().await);
+  assert!(!worker.cleanup_once().await);
+
+  let attachment = store
+    .admit(UploadSource::Bytes(b"expired".to_vec()))
+    .await
+    .unwrap();
+  store
+    .record_timestamp(
+      attachment.id,
+      OffsetDateTime::from_unix_timestamp(10).unwrap(),
+    )
+    .await
+    .unwrap();
+  store.complete_upload(attachment.id).await.unwrap();
+
+  assert!(worker.cleanup_once().await);
+  assert!(!store.is_uploaded(attachment.id).await.unwrap());
+  assert!(
+    !fs::try_exists(store.timestamp_path(attachment.id))
+      .await
+      .unwrap()
+  );
+  assert!(!worker.cleanup_once().await);
+}
+
+#[tokio::test]
+async fn cleanup_worker_rechecks_when_retention_changes() {
+  let directory = tempfile::tempdir().unwrap();
+  let (store_handle, retention_handle, mut worker) =
+    new_cleanup_worker(&directory, 10_000_000).await;
+  let store = store_handle.get().await.unwrap();
+  let attachment = store
+    .admit(UploadSource::Bytes(b"retained".to_vec()))
+    .await
+    .unwrap();
+  store
+    .record_timestamp(
+      attachment.id,
+      OffsetDateTime::from_unix_timestamp(20).unwrap(),
+    )
+    .await
+    .unwrap();
+  store.complete_upload(attachment.id).await.unwrap();
+
+  assert!(worker.cleanup_once().await);
+  assert!(store.is_uploaded(attachment.id).await.unwrap());
+  assert!(!worker.cleanup_once().await);
+
+  retention_handle.update_retention_micros(30_000_000);
+
+  assert!(worker.cleanup_once().await);
+  assert!(!store.is_uploaded(attachment.id).await.unwrap());
+  assert!(!worker.cleanup_once().await);
+}
+
+#[tokio::test]
+async fn cleanup_worker_retires_attachments_without_retention() {
+  let directory = tempfile::tempdir().unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  let store_handle = AttachmentStoreHandle::new(directory.path().to_owned(), runtime);
+  let retention_registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let mut worker = WorkflowAttachmentCleanupWorker::new(store_handle.clone(), retention_registry);
+  let store = store_handle.get().await.unwrap();
+  let attachment = store
+    .admit(UploadSource::Bytes(b"unretained".to_vec()))
+    .await
+    .unwrap();
+  store
+    .record_timestamp(
+      attachment.id,
+      OffsetDateTime::from_unix_timestamp(10).unwrap(),
+    )
+    .await
+    .unwrap();
+  store.complete_upload(attachment.id).await.unwrap();
+
+  assert!(worker.cleanup_once().await);
+  assert!(!store.is_uploaded(attachment.id).await.unwrap());
+  assert!(
+    !fs::try_exists(store.timestamp_path(attachment.id))
+      .await
+      .unwrap()
+  );
+  assert!(!worker.cleanup_once().await);
 }
 
 #[tokio::test]

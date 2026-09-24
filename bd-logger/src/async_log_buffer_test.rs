@@ -2521,47 +2521,6 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
 }
 
 #[tokio::test]
-async fn no_retention_requirement_retires_workflow_attachments() {
-  let directory = tempfile::tempdir().unwrap();
-  let runtime = ConfigLoader::new(directory.path());
-  let attachment_store =
-    crate::workflow_attachment::AttachmentStoreHandle::new(directory.path().to_owned(), runtime);
-  let store = attachment_store.get().await.unwrap();
-  let attachment = store
-    .admit(bd_artifact_upload::UploadSource::Bytes(
-      b"attachment".to_vec(),
-    ))
-    .await
-    .unwrap();
-  store
-    .record_timestamp(attachment.id, OffsetDateTime::now_utc())
-    .await
-    .unwrap();
-  store.complete_upload(attachment.id).await.unwrap();
-  let retention_registry = Arc::new(bd_state::RetentionRegistry::new(
-    bd_runtime::runtime::IntWatch::new_for_testing(0),
-  ));
-
-  AsyncLogBuffer::<TestReplay>::cleanup_expired_workflow_attachments(
-    attachment_store,
-    retention_registry,
-  )
-  .await;
-
-  assert!(!store.is_uploaded(attachment.id).await.unwrap());
-  assert!(
-    !tokio::fs::try_exists(
-      directory
-        .path()
-        .join("workflow-attachments")
-        .join(format!("{}.timestamp", attachment.id))
-    )
-    .await
-    .unwrap()
-  );
-}
-
-#[tokio::test]
 async fn previous_run_log_does_not_override_system_session_id() {
   let mut setup = Setup::new();
 

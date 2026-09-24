@@ -21,7 +21,7 @@ use crate::logger::{
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
-use crate::workflow_attachment::AttachmentStoreHandle;
+use crate::workflow_attachment::{AttachmentStoreHandle, WorkflowAttachmentCleanupWorker};
 use crate::{Block, battery, internal_report, network};
 use bd_api::DataUpload;
 use bd_buffer::BuffersWithAck;
@@ -91,9 +91,7 @@ use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, watch};
-use tokio::time::{Sleep, sleep};
-
-const WORKFLOW_ATTACHMENT_CLEANUP_INTERVAL: StdDuration = StdDuration::from_secs(1);
+use tokio::time::Sleep;
 
 //
 // WorkflowAttachmentReplayError
@@ -786,26 +784,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     retention_registry: Arc<bd_state::RetentionRegistry>,
   ) {
     let store_handle = self.workflow_attachment_store();
-    let mut shutdown = self.shutdown_trigger_handle.make_shutdown();
-    tokio::spawn(async move {
-      let mut previous_retention = None;
-      loop {
-        let retention = retention_registry.min_retention_timestamp().await;
-        if previous_retention != Some(retention)
-          && Self::cleanup_expired_workflow_attachments(
-            store_handle.clone(),
-            retention_registry.clone(),
-          )
-          .await
-        {
-          previous_retention = Some(retention);
-        }
-        tokio::select! {
-          () = sleep(WORKFLOW_ATTACHMENT_CLEANUP_INTERVAL) => {},
-          () = shutdown.cancelled() => return,
-        }
-      }
-    });
+    let cleanup_worker = WorkflowAttachmentCleanupWorker::new(store_handle, retention_registry);
+    tokio::spawn(cleanup_worker.run(self.shutdown_trigger_handle.make_shutdown()));
   }
 
   pub fn enqueue_log(
@@ -1170,30 +1150,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         }
       },
       Err(error) => log::warn!("failed to open workflow attachment store for timestamp: {error}"),
-    }
-  }
-
-  async fn cleanup_expired_workflow_attachments(
-    store_handle: AttachmentStoreHandle,
-    retention_registry: Arc<bd_state::RetentionRegistry>,
-  ) -> bool {
-    match store_handle.get().await {
-      Ok(store) => {
-        let cleanup_result = match retention_registry.min_retention_timestamp().await {
-          Some(cutoff_micros) => store.cleanup_before(cutoff_micros).await,
-          None => store.cleanup_all().await,
-        };
-        if let Err(error) = cleanup_result {
-          log::warn!("failed to clean up expired workflow attachments: {error}");
-          false
-        } else {
-          true
-        }
-      },
-      Err(error) => {
-        log::warn!("failed to open workflow attachment store for cleanup: {error}");
-        false
-      },
     }
   }
 

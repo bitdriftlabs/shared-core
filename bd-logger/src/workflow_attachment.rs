@@ -12,6 +12,7 @@ mod tests;
 use bd_artifact_upload::UploadSource;
 use bd_client_common::file_system::delete_file_if_exists_async;
 use bd_runtime::runtime::{ConfigLoader, IntWatch, workflow_attachment};
+use bd_shutdown::ComponentShutdown;
 use bd_time::OffsetDateTimeExt;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
@@ -19,11 +20,16 @@ use parking_lot::Mutex;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::fs::{self, File};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{OnceCell, Semaphore};
+use tokio::time::sleep;
 use uuid::Uuid;
+
+const CLEANUP_INTERVAL: Duration = Duration::from_secs(1);
 
 //
 // Capacity
@@ -69,6 +75,64 @@ impl AttachmentStoreHandle {
 }
 
 //
+// WorkflowAttachmentCleanupWorker
+//
+
+pub struct WorkflowAttachmentCleanupWorker {
+  store_handle: AttachmentStoreHandle,
+  retention_registry: Arc<bd_state::RetentionRegistry>,
+  previous_cleanup_key: Option<(Option<u64>, u64)>,
+}
+
+impl WorkflowAttachmentCleanupWorker {
+  pub fn new(
+    store_handle: AttachmentStoreHandle,
+    retention_registry: Arc<bd_state::RetentionRegistry>,
+  ) -> Self {
+    Self {
+      store_handle,
+      retention_registry,
+      previous_cleanup_key: None,
+    }
+  }
+
+  pub async fn run(mut self, mut shutdown: ComponentShutdown) {
+    loop {
+      self.cleanup_once().await;
+      tokio::select! {
+        () = sleep(CLEANUP_INTERVAL) => {},
+        () = shutdown.cancelled() => return,
+      }
+    }
+  }
+
+  async fn cleanup_once(&mut self) -> bool {
+    let retention = self.retention_registry.min_retention_timestamp().await;
+    let store = match self.store_handle.get().await {
+      Ok(store) => store,
+      Err(error) => {
+        log::warn!("failed to open workflow attachment store for cleanup: {error}");
+        return false;
+      },
+    };
+    let cleanup_key = (retention, store.cleanup_generation());
+    if self.previous_cleanup_key == Some(cleanup_key) {
+      return false;
+    }
+    let cleanup_result = match retention {
+      Some(cutoff_micros) => store.cleanup_before(cutoff_micros).await,
+      None => store.cleanup_all().await,
+    };
+    if let Err(error) = cleanup_result {
+      log::warn!("failed to clean up expired workflow attachments: {error}");
+      return false;
+    }
+    self.previous_cleanup_key = Some(cleanup_key);
+    true
+  }
+}
+
+//
 // AttachmentStore
 //
 
@@ -77,6 +141,7 @@ pub struct AttachmentStore {
   directory: PathBuf,
   capacity: Mutex<Capacity>,
   oldest_timestamp: Mutex<Option<u64>>,
+  cleanup_generation: AtomicU64,
   admissions: Semaphore,
   max_attachment_bytes: IntWatch<workflow_attachment::MaxAttachmentBytes>,
   max_owned_bytes: IntWatch<workflow_attachment::MaxOwnedBytes>,
@@ -209,6 +274,7 @@ impl AttachmentStore {
       directory,
       capacity: Mutex::new(capacity),
       oldest_timestamp: Mutex::new(oldest_timestamp),
+      cleanup_generation: AtomicU64::new(0),
       admissions: Semaphore::new(1),
       max_attachment_bytes: runtime.register_int_watch(),
       max_owned_bytes: runtime.register_int_watch(),
@@ -257,6 +323,7 @@ impl AttachmentStore {
     File::open(&self.directory).await?.sync_all().await?;
     let mut oldest_timestamp = self.oldest_timestamp.lock();
     *oldest_timestamp = Some(oldest_timestamp.map_or(micros, |oldest| oldest.min(micros)));
+    self.cleanup_generation.fetch_add(1, Ordering::Release);
     Ok(())
   }
 
@@ -271,6 +338,10 @@ impl AttachmentStore {
 
   pub async fn is_uploaded(&self, id: Uuid) -> io::Result<bool> {
     fs::try_exists(self.uploaded_path(id)).await
+  }
+
+  fn cleanup_generation(&self) -> u64 {
+    self.cleanup_generation.load(Ordering::Acquire)
   }
 
   /// Retires timestamped attachment state older than the ring-buffer retention watermark.

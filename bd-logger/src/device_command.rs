@@ -5,6 +5,10 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./device_command_test.rs"]
+mod device_command_test;
+
 use crate::workflow_attachment::AttachmentStoreHandle;
 use anyhow::anyhow;
 use bd_api::upload::TrackedDeviceCommandUpdate;
@@ -286,9 +290,21 @@ async fn workflow_command_outcome(
                 artifact_id: admitted.id,
               };
             },
-            Err(error) => log::warn!("workflow attachment admission failed: {error}"),
+            Err(error) => {
+              log::warn!("workflow attachment admission failed: {error}");
+              return WorkflowCommandOutcome::Failed {
+                message: Some(format!("workflow attachment admission failed: {error}")),
+                fields,
+              };
+            },
           },
-          Err(error) => log::warn!("workflow attachment store unavailable: {error}"),
+          Err(error) => {
+            log::warn!("workflow attachment store unavailable: {error}");
+            return WorkflowCommandOutcome::Failed {
+              message: Some(format!("workflow attachment store unavailable: {error}")),
+              fields,
+            };
+          },
         }
       }
       WorkflowCommandOutcome::Succeeded {
