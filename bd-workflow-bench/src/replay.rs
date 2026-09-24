@@ -104,7 +104,7 @@ impl WorkflowReplay {
     }
   }
 
-  pub fn process_log(&mut self, log: &Log) -> WorkflowsEngineResult<'_> {
+  pub fn process_log(&mut self, log: &Log) -> WorkflowsEngineResult<'static> {
     self.engine.process_event(
       WorkflowEvent::Log(log),
       &self.buffer_ids,
