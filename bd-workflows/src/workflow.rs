@@ -1602,6 +1602,12 @@ impl Traversal {
       }
     }
 
+    // A command outcome consumes its pending transition, even when its matcher rejects the log.
+    // Do not also process the source state's timeout for the same event.
+    if pending_transition_index.is_some() {
+      return result;
+    }
+
     // Timeout handling: Check timeouts for both logs and state changes.
     // Timeout transitions use default extractions and don't extract from the triggering event,
     // so this works correctly for both event types.

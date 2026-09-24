@@ -45,7 +45,12 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   KeyOrIndex,
   key_or_index,
 };
-use bd_proto::protos::value_matcher::value_matcher::{JsonPathValueMatch, Operator};
+use bd_proto::protos::value_matcher::value_matcher::{
+  JsonPathValueMatch,
+  Operator,
+  StringValueMatch,
+  string_value_match,
+};
 use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
 use bd_proto::protos::workflow::workflow::workflow::{MatchRunCommand, Rule};
 use bd_proto::protos::workflow::workflow_command::{
@@ -118,6 +123,27 @@ fn workflow_command_rule() -> Rule {
 
 fn timed_command_log(message: &str, now: OffsetDateTime) -> TestLog {
   TestLog::new(message).with_now(now).with_occurred_at(now)
+}
+
+fn message_matcher(message: &str) -> LogMatcher {
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(base_log_matcher::Match_type::MessageMatch(
+        base_log_matcher::MessageMatch {
+          string_value_match: protobuf::MessageField::from_option(Some(StringValueMatch {
+            operator: Operator::OPERATOR_EQUALS.into(),
+            string_value_match_type: Some(string_value_match::String_value_match_type::MatchValue(
+              message.to_string(),
+            )),
+            ..Default::default()
+          })),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
 }
 
 #[tokio::test]
@@ -245,6 +271,60 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
       .pending_workflow_command_index
       .contains_key(&token.0)
   );
+  engine_assert_active_runs!(engine; 0; "start");
+}
+
+#[tokio::test]
+async fn workflow_command_rejected_outcome_does_not_trigger_expired_timeout() {
+  let terminal = state("terminal");
+  let timeout = state("timeout");
+  let mut command_rule = workflow_command_rule();
+  let Some(Rule_type::MatchRunCommand(command_rule_config)) = &mut command_rule.rule_type else {
+    panic!("expected command matcher");
+  };
+  command_rule_config.outcome_log_matcher = Some(message_matcher("accepted")).into();
+  let command = state("command")
+    .declare_transition(&terminal, command_rule)
+    .with_timeout(&timeout, 1.seconds(), &[]);
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &terminal, &timeout]).make_config(),
+      ],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+  let request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let completed_at = started_at + 1.seconds();
+  let outcome = engine
+    .complete_workflow_command(
+      &request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: Some("rejected".to_string()),
+        fields: LogFields::default(),
+      },
+      completed_at,
+    )
+    .unwrap();
+
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &outcome.log,
+      token: &outcome.token,
+    },
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    completed_at,
+  );
+
   engine_assert_active_runs!(engine; 0; "start");
 }
 

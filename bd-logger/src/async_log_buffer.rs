@@ -76,7 +76,11 @@ use bd_state::{
 use bd_stats_common::{Counter as _, Histogram as _, labels};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
-use bd_workflows::workflow::{WorkflowCommandRequest, WorkflowDebugStateMap};
+use bd_workflows::workflow::{
+  WorkflowCommandCompletionToken,
+  WorkflowCommandRequest,
+  WorkflowDebugStateMap,
+};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use std::collections::{HashMap, VecDeque};
 use std::future::{Future, ready};
@@ -820,19 +824,34 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     state_store: &bd_state::Store,
     context: Option<EventContext>,
   ) -> anyhow::Result<()> {
+    self
+      .process_all_logs_with_completion(log, state_store, context, None)
+      .await
+  }
+
+  async fn process_all_logs_with_completion(
+    &mut self,
+    log: LogLine,
+    state_store: &bd_state::Store,
+    context: Option<EventContext>,
+    completion_token: Option<WorkflowCommandCompletionToken>,
+  ) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
-    logs.push_back((log, context));
-    while let Some((log, context)) = logs.pop_front() {
+    logs.push_back((log, context, completion_token));
+    while let Some((log, context, completion_token)) = logs.pop_front() {
       let source_context = context.clone();
       let source_attributes_overrides = log.attributes_overrides.clone();
-      let log_replay_result = self.process_log(log, state_store, context).await?;
+      let log_replay_result = self
+        .process_log(log, state_store, context, completion_token.as_ref())
+        .await?;
       let logs_to_inject = self.handle_log_replay_result(log_replay_result);
       logs.extend(logs_to_inject.into_iter().map(|log| {
-        workflow_generated_log(
+        let (log, context) = workflow_generated_log(
           log,
           source_context.clone(),
           source_attributes_overrides.clone(),
-        )
+        );
+        (log, context, None)
       }));
     }
     Ok(())
@@ -913,20 +932,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     logs: impl IntoIterator<Item = bd_workflows::engine::WorkflowCommandLog>,
     state_store: &bd_state::Store,
   ) {
-    let mut logs: VecDeque<_> = logs
-      .into_iter()
-      .map(|event| (event.log, Some(event.token)))
-      .collect();
-    while let Some((log, completion_token)) = logs.pop_front() {
-      match self.write_log(log, completion_token, state_store).await {
-        Ok(result) => {
-          self.dispatch_workflow_commands(result.workflow_commands_to_start);
-          logs.extend(result.logs_to_inject.into_iter().map(|log| (log, None)));
-          self
-            .pending_workflow_debug_state
-            .extend(result.workflow_debug_state);
-        },
-        Err(error) => log::warn!("failed to replay workflow command outcome; dropping it: {error}"),
+    for event in logs {
+      let occurred_at = event.log.occurred_at;
+      let (log, context) = workflow_generated_log(
+        event.log,
+        None,
+        Some(LogAttributesOverrides::OccurredAt(occurred_at)),
+      );
+      if let Err(error) = self
+        .process_all_logs_with_completion(log, state_store, context, Some(event.token))
+        .await
+      {
+        log::warn!("failed to replay workflow command outcome; dropping it: {error}");
       }
     }
   }
@@ -936,6 +953,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     log: LogLine,
     state_store: &bd_state::Store,
     context: Option<EventContext>,
+    completion_token: Option<&WorkflowCommandCompletionToken>,
   ) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
@@ -1054,7 +1072,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, None, state_store).await
+        self
+          .write_log(processed_log, completion_token.cloned(), state_store)
+          .await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these

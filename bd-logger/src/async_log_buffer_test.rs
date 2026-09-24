@@ -77,9 +77,9 @@ use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
-use bd_workflows::workflow::WorkflowCommandOutcome;
+use bd_workflows::workflow::{WorkflowCommandCompletionToken, WorkflowCommandOutcome};
 use futures_util::poll;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -1073,6 +1073,8 @@ struct TestReplay {
   logs_notify: Arc<Notify>,
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  completion_tokens: Arc<parking_lot::Mutex<Vec<Option<WorkflowCommandCompletionToken>>>>,
+  results: Arc<parking_lot::Mutex<VecDeque<LogReplayResult>>>,
 }
 
 struct StaticReportProcessor(parking_lot::Mutex<Vec<bd_crash_handler::CrashLog>>);
@@ -1165,6 +1167,8 @@ impl TestReplay {
       logs_notify: Arc::new(Notify::new()),
       logs: Arc::new(parking_lot::Mutex::new(vec![])),
       fields: Arc::new(parking_lot::Mutex::new(vec![])),
+      completion_tokens: Arc::new(parking_lot::Mutex::new(vec![])),
+      results: Arc::new(parking_lot::Mutex::new(VecDeque::new())),
     }
   }
 }
@@ -1174,7 +1178,7 @@ impl LogReplay for TestReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    _completion_token: Option<bd_workflows::workflow::WorkflowCommandCompletionToken>,
+    completion_token: Option<WorkflowCommandCompletionToken>,
     _processing_pipeline: &mut ProcessingPipeline,
     _state: &bd_state::Store,
     _now: OffsetDateTime,
@@ -1184,10 +1188,11 @@ impl LogReplay for TestReplay {
     }
 
     self.fields.lock().push(log.fields);
+    self.completion_tokens.lock().push(completion_token);
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     self.logs_notify.notify_waiters();
 
-    Ok(LogReplayResult::default())
+    Ok(self.results.lock().pop_front().unwrap_or_default())
   }
 
   async fn replay_state_change(
@@ -1873,11 +1878,11 @@ async fn workflow_command_survives_live_config_update() {
     .update(setup.make_config_update(workflows.clone()), &state_store)
     .await;
   buffer
-    .process_log(normal_log("start"), &state_store, None)
+    .process_log(normal_log("start"), &state_store, None, None)
     .await
     .unwrap();
   let result = buffer
-    .process_log(normal_log("execute"), &state_store, None)
+    .process_log(normal_log("execute"), &state_store, None, None)
     .await
     .unwrap();
   assert_eq!(1, result.workflow_commands_to_start.len());
@@ -1901,6 +1906,121 @@ async fn workflow_command_survives_live_config_update() {
       )
       .is_ok()
   );
+}
+
+#[tokio::test]
+async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    Rule {
+      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+        command_selector: Some(WorkflowCommandSelector {
+          command_selector: Some(
+            workflow_command_selector::Command_selector::RegisteredCommand(
+              workflow_command_selector::RegisteredCommand {
+                registered_command_id: "handler".to_string(),
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        })
+        .into(),
+        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+          seconds: 60,
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    },
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  buffer = buffer
+    .update(
+      setup.make_config_update(WorkflowsConfiguration::default()),
+      &state_store,
+    )
+    .await;
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut workflow_buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  workflow_buffer = workflow_buffer
+    .update(setup.make_config_update(workflows), &state_store)
+    .await;
+  buffer
+    .metadata_collector
+    .add_field(
+      "outcome_metadata".into(),
+      DataValue::String("metadata_value".to_string()),
+    )
+    .unwrap();
+  workflow_buffer
+    .process_log(normal_log("start"), &state_store, None, None)
+    .await
+    .unwrap();
+  let request = workflow_buffer
+    .process_log(normal_log("execute"), &state_store, None, None)
+    .await
+    .unwrap()
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let token = request.completion_token();
+  buffer.replayer.results.lock().push_back(LogReplayResult {
+    engine_has_debug_workflows: true,
+    ..Default::default()
+  });
+
+  buffer
+    .process_workflow_command_outcome_logs(
+      [bd_workflows::engine::WorkflowCommandLog {
+        log: Log {
+          log_level: log_level::INFO,
+          log_type: LogType::NORMAL,
+          message: "Workflow command completed".into(),
+          fields: LogFields::default(),
+          matching_fields: LogFields::default(),
+          occurred_at: OffsetDateTime::UNIX_EPOCH,
+          session_id: "session".into(),
+          capture_session: None,
+        },
+        token: token.clone(),
+      }],
+      &state_store,
+    )
+    .await;
+
+  assert_eq!(
+    Some(token),
+    buffer
+      .replayer
+      .completion_tokens
+      .lock()
+      .last()
+      .cloned()
+      .unwrap()
+  );
+  assert_eq!(
+    Some(&DataValue::String("metadata_value".to_string())),
+    buffer
+      .replayer
+      .fields
+      .lock()
+      .last()
+      .unwrap()
+      .get("outcome_metadata")
+  );
+  assert!(buffer.send_workflow_debug_state_delay.is_some());
 }
 
 #[tokio::test]
