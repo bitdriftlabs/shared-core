@@ -12,5 +12,6 @@ source_info_gated_mod! {
 }
 
 use super::log_matcher::log_matcher;
+pub use super::logging::payload;
 use super::state::{matcher, scope};
 use bd_pgv::generated::protos::validate;
