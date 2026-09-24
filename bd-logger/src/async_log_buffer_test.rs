@@ -2043,6 +2043,59 @@ async fn failed_log_write_uses_synthetic_log_for_workflow_flush() {
 }
 
 #[tokio::test]
+async fn partially_written_log_does_not_add_synthetic_log_for_workflow_flush() {
+  let mut setup = Setup::new();
+  setup.drain_buffer_events();
+  std::fs::create_dir_all(setup.tmp_dir.path().join("buffer")).unwrap();
+  let trigger_config = BufferConfigList {
+    buffer_config: vec![default_buffer_config(BufferType::TRIGGER, None)],
+    ..Default::default()
+  };
+  setup
+    .buffer_manager
+    .update_from_config(&trigger_config, false)
+    .await
+    .unwrap();
+
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let start = state("start").declare_transition_with_actions(
+    &terminal,
+    rule!(message_equals("flush")),
+    &[make_flush_buffers_action(&["default"], None, "flush")],
+  );
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut config_update = setup.make_config_update(workflows);
+  let mut missing_buffer =
+    default_buffer_config(BufferType::CONTINUOUS, Some(match_message("flush")));
+  missing_buffer.id = "missing".to_string();
+  config_update.buffer_selector = BufferSelector::new(&BufferConfigList {
+    buffer_config: vec![
+      default_buffer_config(BufferType::TRIGGER, Some(match_message("flush"))),
+      missing_buffer,
+    ],
+    ..Default::default()
+  })
+  .unwrap();
+  let mut buffer = buffer.update(config_update, &state_store).await;
+
+  buffer
+    .process_log(normal_log("flush"), &state_store, None, None)
+    .await
+    .unwrap();
+
+  let trigger_buffer = setup.buffer_manager.buffers().remove("default").unwrap().1;
+  let mut consumer = trigger_buffer.new_consumer().unwrap();
+  assert!(!consumer.start_read(false).unwrap().is_empty());
+  assert!(consumer.start_read(false).is_err());
+}
+
+#[tokio::test]
 async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads() {
   let mut setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);

@@ -355,8 +355,8 @@ impl ProcessingPipeline {
 
     Self::handle_common_pre_buffer_write(&result.triggered_flush_buffers_action_ids);
 
-    let empty_set = TinySet::default();
-    let written_to_buffers = match Self::write_to_buffers(
+    let mut written_to_buffers = TinySet::default();
+    if let Err(error) = Self::write_to_buffers(
       &mut self.buffer_producers,
       &result.log_destination_buffer_ids,
       &mut log,
@@ -370,22 +370,19 @@ impl ProcessingPipeline {
         })
         .map(std::convert::AsRef::as_ref)
         .collect_vec(),
+      &mut written_to_buffers,
     ) {
-      Ok(()) => &result.log_destination_buffer_ids,
-      Err(error) => {
-        warn_every!(
-          15.seconds(),
-          "failed to write log to buffer; dropping it: {error}"
-        );
-        &empty_set
-      },
-    };
+      warn_every!(
+        15.seconds(),
+        "failed to write log to buffer; dropping it: {error}"
+      );
+    }
 
     Self::process_flush_buffers_actions(
       &result.triggered_flush_buffers_action_ids,
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
-      written_to_buffers,
+      &written_to_buffers,
       &log.log.message,
       &log.log.fields,
       &log.log.session_id,
@@ -470,11 +467,12 @@ impl ProcessingPipeline {
     log_replay_result
   }
 
-  fn write_to_buffers(
+  fn write_to_buffers<'a>(
     buffers: &mut BufferProducers,
-    matching_buffers: &TinySet<Cow<'_, str>>,
+    matching_buffers: &TinySet<Cow<'a, str>>,
     log: &mut EncodableLog,
     action_ids: &[&str],
+    written_to_buffers: &mut TinySet<Cow<'a, str>>,
   ) -> anyhow::Result<()> {
     if matching_buffers.is_empty() {
       return Ok(());
@@ -486,6 +484,7 @@ impl ProcessingPipeline {
       // possibly via vector indices instead of string keys.
       let producer = BufferProducers::producer(&mut buffers.buffers, buffer)?;
       write_log_to_buffer(producer, log, action_ids, &[])?;
+      written_to_buffers.insert(buffer.clone());
     }
 
     Ok(())
