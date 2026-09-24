@@ -40,6 +40,10 @@ use uuid::Uuid;
 const WORKFLOW_COMMAND_STATUS_FIELD: &str = "_workflow_command_status";
 const WORKFLOW_COMMAND_MESSAGE_FIELD: &str = "_workflow_command_message";
 
+pub(crate) fn workflow_command_cooldown_key_prefix(workflow_id: &str) -> String {
+  format!("{}:{workflow_id}:", workflow_id.len())
+}
+
 /// An opaque capability used to complete exactly one pending workflow command.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkflowCommandCompletionToken(pub(crate) String);
@@ -1599,6 +1603,9 @@ impl Traversal {
             command_last_started_at_ns,
             &mut result,
           );
+          if self.pending_command.is_some() {
+            break;
+          }
         },
         _ => { /* No match, continue to next transition */ },
       }
@@ -1732,7 +1739,12 @@ impl Traversal {
       return;
     }
 
-    let matcher_id = format!("{}/{}/{}", config.inner().id(), self.state_index, index);
+    let matcher_id = format!(
+      "{}{}/{}",
+      workflow_command_cooldown_key_prefix(config.inner().id()),
+      self.state_index,
+      index
+    );
     let now_ns = i64::try_from(now.unix_timestamp_nanos()).unwrap_or(i64::MAX);
     let interval_ns = minimum_execution_interval.whole_nanoseconds();
     if command_last_started_at_ns

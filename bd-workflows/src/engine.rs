@@ -48,6 +48,7 @@ use crate::workflow::{
   WorkflowCommandRequest,
   WorkflowDebugStateMap,
   WorkflowEvent,
+  workflow_command_cooldown_key_prefix,
 };
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUploadStreaming};
@@ -612,18 +613,21 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
   fn remove_workflow(&mut self, workflow_index: usize) {
     self.configs.remove(workflow_index);
     let workflow = self.state.workflows.remove(workflow_index);
-    let workflow_key_prefix = format!("{}/", workflow.id());
+    let workflow_key_prefix = workflow_command_cooldown_key_prefix(workflow.id());
+    let cooldown_count_before_removal = self.state.command_last_started_at_ns.len();
     self
       .state
       .command_last_started_at_ns
       .retain(|key, _| !key.starts_with(&workflow_key_prefix));
+    let removed_cooldown =
+      cooldown_count_before_removal != self.state.command_last_started_at_ns.len();
 
     self.stats.workflow_stops_total.inc();
 
     log::debug!("workflow={}: workflow removed", workflow.id());
 
     // If there exists a run that is not in an initial state.
-    if !workflow.is_in_initial_state() {
+    if removed_cooldown || !workflow.is_in_initial_state() {
       log::debug!(
         "workflow={}: workflow removed, marking state as dirty",
         workflow.id()

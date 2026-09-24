@@ -841,6 +841,45 @@ async fn workflow_command_completion_uses_its_own_transition_after_cooldown() {
 }
 
 #[tokio::test]
+async fn workflow_command_prevents_sibling_transition_from_discarding_completion_token() {
+  let terminal = state("terminal");
+  let sibling = state("sibling").declare_transition(&terminal, rule!(message_equals("never")));
+  let command = state("command")
+    .declare_transition(&terminal, workflow_command_rule())
+    .declare_transition(&sibling, rule!(message_equals("execute")));
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &sibling, &terminal]).make_config(),
+      ],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+
+  let request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+
+  assert!(
+    engine
+      .complete_workflow_command(
+        &request.completion_token(),
+        WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+        started_at,
+      )
+      .is_ok()
+  );
+}
+
+#[tokio::test]
 async fn initial_command_start_replaces_the_previous_exclusive_run_after_cooldown() {
   let terminal = state("terminal");
   let active = state("active").declare_transition(&terminal, rule!(message_equals("never")));
@@ -936,6 +975,114 @@ async fn workflow_replacement_does_not_reuse_a_previous_command_cooldown() {
       .process_log(timed_command_log("updated", started_at + 1.seconds()))
       .workflow_commands_to_start
       .len()
+  );
+}
+
+#[tokio::test]
+async fn workflow_removal_persists_cooldown_cleanup_when_workflow_is_initial() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&command, &terminal]).make_config()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let request = engine
+    .process_log(timed_command_log("start", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let outcome = engine
+    .complete_workflow_command(
+      &request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      started_at,
+    )
+    .unwrap();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &outcome.log,
+      token: &outcome.token,
+    },
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    started_at,
+  );
+  engine.maybe_persist(true).await;
+
+  engine
+    .engine
+    .update(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![],
+    ));
+
+  assert!(engine.engine.needs_state_persistence);
+  engine.maybe_persist(true).await;
+  let workflows_state = setup.make_state_store().load().await.unwrap();
+  assert!(workflows_state.command_last_started_at_ns.is_empty());
+}
+
+#[tokio::test]
+async fn workflow_removal_does_not_clear_slash_prefixed_workflow_cooldown() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let foo_bar_config = WorkflowBuilder::new("foo/bar", &[&command, &terminal]).make_config();
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("foo", &[&command, &terminal]).make_config(),
+        foo_bar_config.clone(),
+      ],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let requests = engine
+    .process_log(timed_command_log("start", started_at))
+    .workflow_commands_to_start;
+  assert_eq!(2, requests.len());
+
+  for request in requests {
+    let outcome = engine
+      .complete_workflow_command(
+        &request.completion_token(),
+        WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+        started_at,
+      )
+      .unwrap();
+    engine.engine.process_event(
+      WorkflowEvent::CommandCompletion {
+        log: &outcome.log,
+        token: &outcome.token,
+      },
+      &TinySet::default(),
+      &bd_state::InMemoryStateReader::default(),
+      started_at,
+    );
+  }
+
+  engine
+    .engine
+    .update(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![foo_bar_config],
+    ));
+
+  assert!(
+    engine
+      .process_log(timed_command_log(
+        "before cooldown",
+        started_at + 1.seconds()
+      ))
+      .workflow_commands_to_start
+      .is_empty()
   );
 }
 
