@@ -25,6 +25,7 @@ use tokio::io::AsyncWriteExt as _;
 pub struct TestFileSystem {
   directory: tempfile::TempDir,
   pub disk_full: AtomicBool,
+  pub fail_next_sync: AtomicBool,
 }
 
 #[async_trait]
@@ -113,6 +114,9 @@ impl FileSystem for TestFileSystem {
   }
 
   async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
+    if self.fail_next_sync.swap(false, Ordering::Relaxed) {
+      anyhow::bail!("injected sync failure");
+    }
     crate::file_system::sync_file_and_parent(&self.directory.path().join(path)).await
   }
 
@@ -212,6 +216,7 @@ impl TestFileSystem {
     Self {
       directory: tempfile::tempdir().expect("failed to create temp dir"),
       disk_full: AtomicBool::new(false),
+      fail_next_sync: AtomicBool::new(false),
     }
   }
 

@@ -66,7 +66,6 @@ use tracing::Instrument as _;
 use unwrap_infallible::UnwrapInfallible;
 
 const DEVICE_COMMAND_ADMISSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-const MAX_DECOMPRESSED_LOG_BYTES: u64 = 2 * 1024 * 1024;
 const WORKFLOW_STAGING_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 
 fn workflow_artifact_ids_for_logs(logs: &[Vec<u8>]) -> anyhow::Result<HashMap<uuid::Uuid, String>> {
@@ -78,11 +77,9 @@ fn workflow_artifact_ids_for_logs(logs: &[Vec<u8>]) -> anyhow::Result<HashMap<uu
     } else {
       let mut decoded = Vec::new();
       flate2::read::ZlibDecoder::new(log.compressed_contents.as_slice())
-        .take(MAX_DECOMPRESSED_LOG_BYTES + 1)
         .read_to_end(&mut decoded)?;
-      if decoded.len() as u64 > MAX_DECOMPRESSED_LOG_BYTES {
-        anyhow::bail!("compressed workflow log exceeds inspection limit");
-      }
+      // TODO: Persist workflow attachment references alongside staged logs to avoid decoding
+      // compressed payloads during upload preparation.
       CompressedContents::parse_from_bytes(&decoded)?.fields
     };
     for field in fields {

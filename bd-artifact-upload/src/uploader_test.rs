@@ -31,6 +31,7 @@ use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::runtime::ValueKind;
 use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
 use std::io::{Read, Seek, Write};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
@@ -220,6 +221,61 @@ async fn basic_flow() {
     .to_string()];
   let index_file: ArtifactUploadIndex = read_compressed_protobuf(index_file).unwrap();
   assert_eq!(index_file, ArtifactUploadIndex::default());
+}
+
+#[tokio::test]
+async fn retained_source_can_retry_after_sync_failure() {
+  let mut setup = Setup::new(10).await;
+  let artifact_id = Uuid::new_v4();
+  let source_path = format!("workflow-attachments/{artifact_id}.payload");
+  setup
+    .filesystem
+    .create_dir(Path::new("workflow-attachments"))
+    .await
+    .unwrap();
+  setup
+    .filesystem
+    .write_file(Path::new(&source_path), b"attachment")
+    .await
+    .unwrap();
+  setup
+    .filesystem
+    .fail_next_sync
+    .store(true, Ordering::Relaxed);
+
+  let (first_persisted_tx, first_persisted_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_workflow_attachment(
+      artifact_id,
+      source_path.clone().into(),
+      "session".to_string(),
+      Some(first_persisted_tx),
+      None,
+    )
+    .unwrap();
+  assert!(first_persisted_rx.await.unwrap().is_err());
+  setup.entry_received_rx.recv().await.unwrap();
+  assert!(
+    !setup
+      .filesystem
+      .exists(&ARTIFACT_UPLOAD_DIRECTORY.join(artifact_id.to_string()))
+      .await
+      .unwrap()
+  );
+
+  let (retry_persisted_tx, retry_persisted_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_workflow_attachment(
+      artifact_id,
+      source_path.into(),
+      "session".to_string(),
+      Some(retry_persisted_tx),
+      None,
+    )
+    .unwrap();
+  assert!(retry_persisted_rx.await.unwrap().is_ok());
 }
 
 #[tokio::test]

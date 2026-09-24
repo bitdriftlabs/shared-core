@@ -92,7 +92,9 @@ use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, watch};
-use tokio::time::Sleep;
+use tokio::time::{Sleep, sleep};
+
+const WORKFLOW_ATTACHMENT_CLEANUP_INTERVAL: StdDuration = StdDuration::from_secs(1);
 
 //
 // ReportProcessor
@@ -530,7 +532,6 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   replayer: R,
   workflow_command_dispatcher: WorkflowCommandDispatcher,
   workflow_attachment_store: AttachmentStoreHandle,
-  retention_registry: Option<Arc<bd_state::RetentionRegistry>>,
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
   logging_state: LoggingState,
@@ -719,7 +720,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           workflow_attachment_store.clone(),
         ),
         workflow_attachment_store,
-        retention_registry: None,
 
         session_strategy: session_strategy.clone(),
         metadata_provider: metadata_provider.clone(),
@@ -774,10 +774,29 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   }
 
   pub(crate) fn set_retention_registry(
-    &mut self,
+    &self,
     retention_registry: Arc<bd_state::RetentionRegistry>,
   ) {
-    self.retention_registry = Some(retention_registry);
+    let store_handle = self.workflow_attachment_store();
+    let mut shutdown = self.shutdown_trigger_handle.make_shutdown();
+    tokio::spawn(async move {
+      let mut previous_retention = None;
+      loop {
+        let retention = retention_registry.min_retention_timestamp().await;
+        if previous_retention != Some(retention) {
+          Self::cleanup_expired_workflow_attachments(
+            store_handle.clone(),
+            retention_registry.clone(),
+          )
+          .await;
+          previous_retention = Some(retention);
+        }
+        tokio::select! {
+          () = sleep(WORKFLOW_ATTACHMENT_CLEANUP_INTERVAL) => {},
+          () = shutdown.cancelled() => return,
+        }
+      }
+    });
   }
 
   pub fn enqueue_log(
@@ -880,13 +899,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         );
         (log, context, None)
       }));
-    }
-    if let Some(retention_registry) = self.retention_registry.clone() {
-      Self::cleanup_expired_workflow_attachments(
-        self.workflow_attachment_store(),
-        retention_registry,
-      )
-      .await;
     }
     Ok(committed_workflow_attachment)
   }

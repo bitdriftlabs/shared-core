@@ -1010,7 +1010,16 @@ impl Uploader {
             .file_system
             .link_file(&source_path, &target_path)
             .await?;
-          self.file_system.sync_file_and_parent(&target_path).await
+          if let Err(error) = self.file_system.sync_file_and_parent(&target_path).await {
+            if let Err(cleanup_error) = self.file_system.delete_file(&target_path).await {
+              log::warn!(
+                "failed to remove unsynced retained artifact {}: {cleanup_error}",
+                target_path.display()
+              );
+            }
+            return Err(error);
+          }
+          Ok(())
         }
         .await,
         StorageFormat::RAW,

@@ -716,16 +716,19 @@ fn make_test_log(t: time::OffsetDateTime) -> Vec<u8> {
 #[test]
 fn workflow_artifact_ids_are_found_in_raw_and_compressed_batches() {
   let artifact_id = uuid::Uuid::new_v4();
-  let encode = |compression_threshold| {
+  let encode = |compression_threshold, padding: String| {
     let mut log = EncodableLog::new(
       Log {
         log_level: log_level::INFO,
         log_type: LogType::NORMAL,
         message: "workflow outcome".into(),
-        fields: [(
-          bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
-          artifact_id.to_string().into(),
-        )]
+        fields: [
+          (
+            bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+            artifact_id.to_string().into(),
+          ),
+          ("padding".into(), padding.into()),
+        ]
         .into(),
         matching_fields: [].into(),
         session_id: "session".into(),
@@ -742,7 +745,11 @@ fn workflow_artifact_ids_are_found_in_raw_and_compressed_batches() {
     output
   };
 
-  let ids = super::workflow_artifact_ids_for_logs(&[encode(u64::MAX), encode(0)]).unwrap();
+  let ids = super::workflow_artifact_ids_for_logs(&[
+    encode(u64::MAX, String::new()),
+    encode(0, "x".repeat(3 * 1024 * 1024)),
+  ])
+  .unwrap();
   assert_eq!(ids.get(&artifact_id).map(String::as_str), Some("session"));
   assert_eq!(ids.len(), 1);
 }

@@ -73,8 +73,10 @@ impl AttachmentStoreHandle {
 //
 
 pub struct AttachmentStore {
+  sdk_directory: PathBuf,
   directory: PathBuf,
   capacity: Mutex<Capacity>,
+  oldest_timestamp: Mutex<Option<u64>>,
   admissions: Semaphore,
   max_attachment_bytes: IntWatch<workflow_attachment::MaxAttachmentBytes>,
   max_owned_bytes: IntWatch<workflow_attachment::MaxOwnedBytes>,
@@ -94,7 +96,9 @@ impl AttachmentStore {
     let directory = sdk_directory.join("workflow-attachments");
     fs::create_dir_all(&directory).await?;
     let mut capacity = Capacity::default();
+    let mut oldest_timestamp: Option<u64> = None;
     let mut recovered_sidecar = false;
+    let mut pending_ownership = Vec::new();
     let mut entries = fs::read_dir(&directory).await?;
     while let Some(entry) = entries.next_entry().await? {
       let entry_path = entry.path();
@@ -128,6 +132,29 @@ impl AttachmentStore {
       }
       if entry_path
         .extension()
+        .is_some_and(|extension| extension == "pending")
+        && entry_path
+          .file_stem()
+          .and_then(|stem| stem.to_str())
+          .is_some_and(|stem| Uuid::parse_str(stem).is_ok())
+      {
+        if !fs::symlink_metadata(&entry_path).await?.is_file() {
+          return Err(io::Error::other(
+            "invalid workflow attachment ownership marker",
+          ));
+        }
+        pending_ownership.push(entry_path);
+        continue;
+      }
+      if entry_path
+        .extension()
+        .is_some_and(|extension| extension == "timestamp")
+      {
+        let timestamp = read_timestamp(&entry_path).await?;
+        oldest_timestamp = Some(oldest_timestamp.map_or(timestamp, |oldest| oldest.min(timestamp)));
+      }
+      if entry_path
+        .extension()
         .is_none_or(|extension| extension != "payload")
       {
         continue;
@@ -153,12 +180,35 @@ impl AttachmentStore {
       capacity.bytes = capacity.bytes.saturating_add(metadata.len());
       capacity.files = capacity.files.saturating_add(1);
     }
+    for marker_path in pending_ownership {
+      let id = marker_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(|stem| Uuid::parse_str(stem).ok())
+        .ok_or_else(|| io::Error::other("invalid workflow attachment ownership marker"))?;
+      let timestamp_path = directory.join(format!("{id}.timestamp"));
+      if fs::try_exists(&timestamp_path).await? {
+        fs::remove_file(marker_path).await?;
+      } else if fs::try_exists(directory.join(format!("{id}.payload"))).await? {
+        // An admitted attachment may outlive a crash before its outcome log timestamp is recorded.
+        // Use its durable admission time as a best-effort retirement fallback after restart.
+        let timestamp = read_timestamp(&marker_path).await?;
+        fs::rename(marker_path, &timestamp_path).await?;
+        oldest_timestamp = Some(oldest_timestamp.map_or(timestamp, |oldest| oldest.min(timestamp)));
+        log::warn!("recovered workflow attachment {id} with its admission timestamp");
+      } else {
+        fs::remove_file(marker_path).await?;
+      }
+      recovered_sidecar = true;
+    }
     if recovered_sidecar {
       File::open(&directory).await?.sync_all().await?;
     }
     Ok(Self {
+      sdk_directory: sdk_directory.to_owned(),
       directory,
       capacity: Mutex::new(capacity),
+      oldest_timestamp: Mutex::new(oldest_timestamp),
       admissions: Semaphore::new(1),
       max_attachment_bytes: runtime.register_int_watch(),
       max_owned_bytes: runtime.register_int_watch(),
@@ -184,6 +234,9 @@ impl AttachmentStore {
     delete_file_if_exists_async(&self.uploaded_path(id))
       .await
       .map_err(io::Error::other)?;
+    delete_file_if_exists_async(&self.pending_path(id))
+      .await
+      .map_err(io::Error::other)?;
     File::open(&self.directory).await?.sync_all().await?;
     log::debug!("released workflow attachment {id}");
     Ok(())
@@ -197,7 +250,14 @@ impl AttachmentStore {
   ) -> io::Result<()> {
     let _permit = self.admissions.acquire().await.map_err(io::Error::other)?;
     let micros = u64::try_from(occurred_at.unix_timestamp_micros()).map_err(io::Error::other)?;
-    write_sidecar(&self.timestamp_path(id), micros.to_string().as_bytes()).await
+    write_sidecar(&self.timestamp_path(id), micros.to_string().as_bytes()).await?;
+    delete_file_if_exists_async(&self.pending_path(id))
+      .await
+      .map_err(io::Error::other)?;
+    File::open(&self.directory).await?.sync_all().await?;
+    let mut oldest_timestamp = self.oldest_timestamp.lock();
+    *oldest_timestamp = Some(oldest_timestamp.map_or(micros, |oldest| oldest.min(micros)));
+    Ok(())
   }
 
   /// Marks an artifact uploaded and drops the retained payload while preserving timestamp metadata.
@@ -219,17 +279,28 @@ impl AttachmentStore {
   /// order. Out-of-order or replayed timestamps may therefore retain data too long or delete it
   /// too early. TODO: replace timestamp retirement with exact per-buffer append ownership.
   pub async fn cleanup_before(&self, cutoff_micros: u64) -> io::Result<()> {
+    if self
+      .oldest_timestamp
+      .lock()
+      .is_none_or(|oldest| oldest >= cutoff_micros)
+    {
+      return Ok(());
+    }
     self.cleanup(Some(cutoff_micros)).await
   }
 
   /// Retires all timestamped attachment state when no log buffers still retain it.
   pub async fn cleanup_all(&self) -> io::Result<()> {
+    if self.oldest_timestamp.lock().is_none() {
+      return Ok(());
+    }
     self.cleanup(None).await
   }
 
   async fn cleanup(&self, cutoff_micros: Option<u64>) -> io::Result<()> {
     let _permit = self.admissions.acquire().await.map_err(io::Error::other)?;
     let mut entries = fs::read_dir(&self.directory).await?;
+    let mut oldest_timestamp: Option<u64> = None;
     while let Some(entry) = entries.next_entry().await? {
       let path = entry.path();
       if path
@@ -249,17 +320,9 @@ impl AttachmentStore {
         );
         continue;
       };
-      let timestamp = match fs::read_to_string(&path).await?.trim().parse::<u64>() {
-        Ok(timestamp) => timestamp,
-        Err(error) => {
-          log::warn!(
-            "invalid workflow attachment timestamp sidecar {}: {error}",
-            path.display()
-          );
-          continue;
-        },
-      };
+      let timestamp = read_timestamp(&path).await?;
       if cutoff_micros.is_some_and(|cutoff_micros| timestamp >= cutoff_micros) {
+        oldest_timestamp = Some(oldest_timestamp.map_or(timestamp, |oldest| oldest.min(timestamp)));
         continue;
       }
       self.remove_payload_async(id, true).await?;
@@ -275,7 +338,9 @@ impl AttachmentStore {
         log::debug!("retired workflow attachment {id} with no retention requirement");
       }
     }
-    File::open(&self.directory).await?.sync_all().await
+    File::open(&self.directory).await?.sync_all().await?;
+    *self.oldest_timestamp.lock() = oldest_timestamp;
+    Ok(())
   }
 
   fn payload_path(&self, id: Uuid) -> PathBuf {
@@ -288,6 +353,10 @@ impl AttachmentStore {
 
   fn uploaded_path(&self, id: Uuid) -> PathBuf {
     self.directory.join(format!("{id}.uploaded"))
+  }
+
+  fn pending_path(&self, id: Uuid) -> PathBuf {
+    self.directory.join(format!("{id}.pending"))
   }
 
   async fn remove_payload_async(&self, id: Uuid, allow_missing: bool) -> io::Result<()> {
@@ -351,6 +420,11 @@ impl AttachmentStore {
         Box::new(file)
       },
       UploadSource::Path(path) => {
+        let path = if path.is_absolute() {
+          path
+        } else {
+          self.sdk_directory.join(path)
+        };
         let file = open_regular_file_async(&path).await?;
         validate_file(&file, max_attachment_bytes).await?;
         Box::new(file)
@@ -365,6 +439,7 @@ impl AttachmentStore {
     let id = Uuid::new_v4();
     let pending = self.directory.join(format!(".{id}.partial"));
     let path = self.directory.join(format!("{id}.payload"));
+    let ownership_marker = self.pending_path(id);
     let result: io::Result<AdmittedAttachment> = async {
       let mut input = Vec::new();
       reader.read_to_end(&mut input).await?;
@@ -386,6 +461,9 @@ impl AttachmentStore {
         .await?;
       output.write_all(&compressed).await?;
       output.sync_all().await?;
+      let admission_micros = u64::try_from(OffsetDateTime::now_utc().unix_timestamp_micros())
+        .map_err(io::Error::other)?;
+      write_sidecar(&ownership_marker, admission_micros.to_string().as_bytes()).await?;
       // Publish only after verifying the staged bytes; a crash before rename leaves no visible ID.
       tokio::fs::rename(&pending, &path).await?;
       tokio::fs::File::open(&self.directory)
@@ -405,6 +483,7 @@ impl AttachmentStore {
     if result.is_err() {
       let _ = tokio::fs::remove_file(&pending).await;
       let _ = tokio::fs::remove_file(&path).await;
+      let _ = tokio::fs::remove_file(&ownership_marker).await;
     }
     result
   }
@@ -432,10 +511,23 @@ fn sidecar_staging_path(path: &Path) -> io::Result<PathBuf> {
 fn sidecar_staging_target(path: &Path) -> Option<PathBuf> {
   let file_name = path.file_name()?.to_str()?;
   let (stem, extension) = file_name.strip_suffix(".partial")?.rsplit_once('.')?;
-  if !matches!(extension, "timestamp" | "uploaded") || Uuid::parse_str(stem).is_err() {
+  if !matches!(extension, "pending" | "timestamp" | "uploaded") || Uuid::parse_str(stem).is_err() {
     return None;
   }
   Some(path.with_file_name(format!("{stem}.{extension}")))
+}
+
+async fn read_timestamp(path: &Path) -> io::Result<u64> {
+  fs::read_to_string(path)
+    .await?
+    .trim()
+    .parse::<u64>()
+    .map_err(|error| {
+      io::Error::other(format!(
+        "invalid workflow attachment timestamp {}: {error}",
+        path.display()
+      ))
+    })
 }
 
 async fn open_regular_file_async(path: &Path) -> io::Result<tokio::fs::File> {

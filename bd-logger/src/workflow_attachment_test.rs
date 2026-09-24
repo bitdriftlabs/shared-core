@@ -149,7 +149,15 @@ async fn admits_bytes_and_path_and_counts_owned_files_after_restart() {
     b"second"
   );
   assert!(fs::try_exists(&input).await.unwrap());
-  assert_eq!(restarted.capacity.lock().files, 2);
+
+  let relative_input = directory.path().join("relative-input");
+  fs::write(&relative_input, b"third").await.unwrap();
+  let third = restarted
+    .admit(UploadSource::Path("relative-input".into()))
+    .await
+    .unwrap();
+  assert_eq!(read_checked(&restarted, third.id).await.unwrap(), b"third");
+  assert_eq!(restarted.capacity.lock().files, 3);
 }
 
 #[tokio::test]
@@ -405,6 +413,29 @@ async fn restart_reclaims_interrupted_admissions() {
   let restarted = new_store(&directory).await;
   assert!(!fs::try_exists(&pending).await.unwrap());
   assert_eq!(restarted.capacity.lock().files, 0);
+}
+
+#[tokio::test]
+async fn restart_timestamps_admitted_attachments_without_outcome_metadata() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  let admitted = store
+    .admit(UploadSource::Bytes(b"interrupted".to_vec()))
+    .await
+    .unwrap();
+
+  let restarted = new_store(&directory).await;
+
+  assert!(
+    fs::try_exists(restarted.timestamp_path(admitted.id))
+      .await
+      .unwrap()
+  );
+  assert!(
+    !fs::try_exists(restarted.pending_path(admitted.id))
+      .await
+      .unwrap()
+  );
 }
 
 #[tokio::test]
