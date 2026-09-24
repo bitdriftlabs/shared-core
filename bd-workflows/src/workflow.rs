@@ -72,7 +72,7 @@ impl WorkflowCommandRequest {
 }
 
 /// The terminal outcome reported by a workflow command executor.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum WorkflowCommandOutcome {
   Succeeded {
     message: Option<String>,

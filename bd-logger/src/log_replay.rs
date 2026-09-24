@@ -262,15 +262,23 @@ impl ProcessingPipeline {
     self.workflows_engine.update(workflows_engine_config);
   }
 
-  pub(crate) fn complete_workflow_command(
-    &mut self,
-    token: &WorkflowCommandCompletionToken,
+  pub(crate) fn workflow_command_outcome_log(
+    &self,
     outcome: WorkflowCommandOutcome,
     now: OffsetDateTime,
-  ) -> Result<WorkflowCommandLog, WorkflowCommandCompletionError> {
+  ) -> Log {
     self
       .workflows_engine
-      .complete_workflow_command(token, outcome, now)
+      .workflow_command_outcome_log(outcome, now)
+  }
+
+  pub(crate) fn accept_workflow_command_completion(
+    &mut self,
+    token: &WorkflowCommandCompletionToken,
+  ) -> Result<(), WorkflowCommandCompletionError> {
+    self
+      .workflows_engine
+      .accept_workflow_command_completion(token)
   }
 
   pub(crate) fn fail_recovered_workflow_commands(

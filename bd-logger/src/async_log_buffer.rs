@@ -897,22 +897,67 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     completion: WorkflowCommandCompletion,
     state_store: &bd_state::Store,
   ) {
-    let log = match &mut self.logging_state {
-      LoggingState::Initialized(context) => context.processing_pipeline.complete_workflow_command(
-        &completion.token,
-        completion.outcome,
-        self.time_provider.now(),
-      ),
+    let WorkflowCommandCompletion { token, outcome } = completion;
+    let now = self.time_provider.now();
+    let outcome_log = match &self.logging_state {
+      LoggingState::Initialized(context) => context
+        .processing_pipeline
+        .workflow_command_outcome_log(outcome.clone(), now),
       LoggingState::Uninitialized(_) => return,
     };
-    let Ok(log) = log else {
-      log::debug!("discarding duplicate or unknown workflow command completion");
-      return;
+
+    let occurred_at = outcome_log.occurred_at;
+    let (log, context) = workflow_generated_log(
+      outcome_log,
+      None,
+      Some(LogAttributesOverrides::OccurredAt(occurred_at)),
+    );
+    let log = match self.normalize_log(log, state_store, context.clone()).await {
+      Ok(log) => log,
+      Err(error) => {
+        let fallback_log = match &self.logging_state {
+          LoggingState::Initialized(context) => context
+            .processing_pipeline
+            .workflow_command_outcome_log(outcome, now),
+          LoggingState::Uninitialized(_) => return,
+        };
+        log::warn!(
+          "failed to normalize workflow command outcome; replaying without provider metadata: \
+           {error}"
+        );
+        fallback_log
+      },
     };
 
-    self
-      .process_workflow_command_outcome_logs(Vec::from([log]), state_store)
-      .await;
+    let accepted = match &mut self.logging_state {
+      LoggingState::Initialized(context) => context
+        .processing_pipeline
+        .accept_workflow_command_completion(&token),
+      LoggingState::Uninitialized(_) => return,
+    };
+    if accepted.is_err() {
+      log::debug!("discarding duplicate or unknown workflow command completion");
+      return;
+    }
+
+    // The workflow engine may consume the completion while replaying this log. A later replay
+    // error therefore cannot be retried safely without transactional workflow processing.
+    let result = self.write_log(log, Some(token), state_store).await;
+    match result {
+      Ok(result) => {
+        for log in self.handle_log_replay_result(result) {
+          let (log, context) = workflow_generated_log(
+            log,
+            context.clone(),
+            Some(LogAttributesOverrides::OccurredAt(occurred_at)),
+          );
+          if let Err(error) = self.process_all_logs(log, state_store, context).await {
+            log::warn!("failed to replay injected workflow command log; dropping it: {error}");
+          }
+        }
+      },
+      Err(error) => log::warn!("failed to replay workflow command outcome; dropping it: {error}"),
+    }
   }
 
   async fn recover_workflow_commands(&mut self, state_store: &bd_state::Store) {
@@ -955,6 +1000,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     context: Option<EventContext>,
     completion_token: Option<&WorkflowCommandCompletionToken>,
   ) -> anyhow::Result<LogReplayResult> {
+    let normalized_log = self.normalize_log(log, state_store, context).await?;
+    self
+      .write_log(normalized_log, completion_token.cloned(), state_store)
+      .await
+  }
+
+  async fn normalize_log(
+    &mut self,
+    log: LogLine,
+    state_store: &bd_state::Store,
+    context: Option<EventContext>,
+  ) -> anyhow::Result<Log> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       match context {
@@ -1072,9 +1129,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self
-          .write_log(processed_log, completion_token.cloned(), state_store)
-          .await
+        Ok(processed_log)
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these

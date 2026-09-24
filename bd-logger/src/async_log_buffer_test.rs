@@ -21,8 +21,10 @@ use crate::async_log_buffer::{
 };
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
+use crate::device_command::WorkflowCommandCompletion;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
+use crate::metadata::MetadataCollector;
 use crate::{Block, InitializationState, StartupReplayEligibility};
 use bd_api::{DataUpload, SimpleNetworkQualityProvider};
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
@@ -1692,7 +1694,7 @@ async fn logs_are_replayed_in_order() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run(state_store, ()).await;
+    _ = Box::pin(buffer.run(state_store, ())).await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -1837,7 +1839,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 }
 
 #[tokio::test]
-async fn workflow_command_survives_live_config_update() {
+async fn workflow_command_completion_survives_metadata_failure() {
   let setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
   let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
@@ -1875,7 +1877,7 @@ async fn workflow_command_survives_live_config_update() {
   let state_store = TestStore::new().await;
   let state_store = (*state_store).clone();
   let mut buffer = buffer
-    .update(setup.make_config_update(workflows.clone()), &state_store)
+    .update(setup.make_config_update(workflows), &state_store)
     .await;
   buffer
     .process_log(normal_log("start"), &state_store, None, None)
@@ -1888,8 +1890,22 @@ async fn workflow_command_survives_live_config_update() {
   assert_eq!(1, result.workflow_commands_to_start.len());
   let token = result.workflow_commands_to_start[0].completion_token();
 
-  let mut buffer = buffer
-    .update(setup.make_config_update(workflows), &state_store)
+  buffer.metadata_collector = MetadataCollector::new(
+    Arc::new(FailingMetadataProvider),
+    LogFields::default(),
+    LogFields::default(),
+  );
+  buffer
+    .process_workflow_command_completion(
+      WorkflowCommandCompletion {
+        token: token.clone(),
+        outcome: WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+      },
+      &state_store,
+    )
     .await;
   assert!(
     buffer
@@ -1904,7 +1920,7 @@ async fn workflow_command_survives_live_config_update() {
         },
         OffsetDateTime::now_utc(),
       )
-      .is_ok()
+      .is_err()
   );
 }
 

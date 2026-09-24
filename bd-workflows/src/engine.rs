@@ -661,6 +661,27 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     outcome: WorkflowCommandOutcome,
     now: OffsetDateTime,
   ) -> Result<WorkflowCommandLog, WorkflowCommandCompletionError> {
+    let log = self.workflow_command_outcome_log(outcome, now);
+    self.accept_workflow_command_completion(token)?;
+    Ok(WorkflowCommandLog {
+      log,
+      token: token.clone(),
+    })
+  }
+
+  #[must_use]
+  pub fn workflow_command_outcome_log(
+    &self,
+    outcome: WorkflowCommandOutcome,
+    now: OffsetDateTime,
+  ) -> Log {
+    outcome.into_log(self.state.session_id.clone(), now)
+  }
+
+  pub fn accept_workflow_command_completion(
+    &mut self,
+    token: &WorkflowCommandCompletionToken,
+  ) -> Result<(), WorkflowCommandCompletionError> {
     let Some(location) = self.pending_workflow_command_index.get(&token.0).copied() else {
       return Err(WorkflowCommandCompletionError::UnknownToken);
     };
@@ -680,10 +701,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
 
     pending_command.completion_received = true;
     self.needs_state_persistence = true;
-    Ok(WorkflowCommandLog {
-      log: outcome.into_log(self.state.session_id.clone(), now),
-      token: token.clone(),
-    })
+    Ok(())
   }
 
   /// Returns terminal failure logs for commands that were pending when the previous process
