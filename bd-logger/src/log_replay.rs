@@ -46,6 +46,7 @@ use bd_workflows::workflow::{
 use itertools::Itertools;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
+use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -61,6 +62,30 @@ pub struct LogReplayResult {
   pub engine_has_debug_workflows: bool,
   pub committed_workflow_attachment: bool,
 }
+
+//
+// BufferWriteError
+//
+
+#[derive(Debug)]
+pub struct BufferWriteError {
+  pub(crate) committed: bool,
+  error: anyhow::Error,
+}
+
+impl BufferWriteError {
+  fn new(error: anyhow::Error, committed: bool) -> Self {
+    Self { committed, error }
+  }
+}
+
+impl Display for BufferWriteError {
+  fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+    self.error.fmt(formatter)
+  }
+}
+
+impl std::error::Error for BufferWriteError {}
 
 //
 // LogReplay
@@ -494,7 +519,7 @@ impl ProcessingPipeline {
     log: &mut EncodableLog,
     action_ids: &[&str],
     written_to_buffers: &mut TinySet<Cow<'a, str>>,
-  ) -> anyhow::Result<bool> {
+  ) -> Result<bool, BufferWriteError> {
     if matching_buffers.is_empty() {
       return Ok(false);
     }
@@ -504,8 +529,10 @@ impl ProcessingPipeline {
       // TODO(snowp): For both logger and buffer lookup we end up doing a map lookup, which
       // seems less than ideal in the logging path. Look into ways to optimize this,
       // possibly via vector indices instead of string keys.
-      let producer = BufferProducers::producer(&mut buffers.buffers, buffer)?;
-      let write_committed = write_log_to_buffer(producer, log, action_ids, &[])?;
+      let producer = BufferProducers::producer(&mut buffers.buffers, buffer)
+        .map_err(|error| BufferWriteError::new(error, committed))?;
+      let write_committed = write_log_to_buffer(producer, log, action_ids, &[])
+        .map_err(|error| BufferWriteError::new(error, committed))?;
       committed |= write_committed;
       if write_committed {
         written_to_buffers.insert(buffer.clone());

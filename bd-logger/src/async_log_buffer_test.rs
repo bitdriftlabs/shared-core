@@ -1088,7 +1088,7 @@ struct TestReplay {
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
   completion_tokens: Arc<parking_lot::Mutex<Vec<Option<WorkflowCommandCompletionToken>>>>,
-  results: Arc<parking_lot::Mutex<VecDeque<LogReplayResult>>>,
+  results: Arc<parking_lot::Mutex<VecDeque<anyhow::Result<LogReplayResult>>>>,
 }
 
 struct StaticReportProcessor(parking_lot::Mutex<Vec<bd_crash_handler::CrashLog>>);
@@ -1206,7 +1206,11 @@ impl LogReplay for TestReplay {
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     self.logs_notify.notify_waiters();
 
-    Ok(self.results.lock().pop_front().unwrap_or_default())
+    self
+      .results
+      .lock()
+      .pop_front()
+      .unwrap_or_else(|| Ok(LogReplayResult::default()))
   }
 
   async fn replay_state_change(
@@ -2167,10 +2171,14 @@ async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads()
     .pop()
     .unwrap();
   let token = request.completion_token();
-  buffer.replayer.results.lock().push_back(LogReplayResult {
-    engine_has_debug_workflows: true,
-    ..Default::default()
-  });
+  buffer
+    .replayer
+    .results
+    .lock()
+    .push_back(Ok(LogReplayResult {
+      engine_has_debug_workflows: true,
+      ..Default::default()
+    }));
 
   buffer
     .process_workflow_command_outcome_logs(
@@ -2258,6 +2266,74 @@ async fn failed_workflow_outcome_replay_releases_attachment() {
     .await;
 
   assert!(!tokio::fs::try_exists(payload_path).await.unwrap());
+}
+
+#[tokio::test]
+async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let attachment_store = buffer.workflow_attachment_store().get().await.unwrap();
+  let attachment = attachment_store
+    .admit(bd_artifact_upload::UploadSource::Bytes(
+      b"attachment".to_vec(),
+    ))
+    .await
+    .unwrap();
+  let attachment_directory = setup.tmp_dir.path().join("workflow-attachments");
+  let payload_path = attachment_directory.join(format!("{}.payload", attachment.id));
+  let timestamp_path = attachment_directory.join(format!("{}.timestamp", attachment.id));
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  buffer = buffer
+    .update(
+      setup.make_config_update(WorkflowsConfiguration::default()),
+      &state_store,
+    )
+    .await;
+  buffer.replayer.results.lock().extend([
+    Ok(LogReplayResult {
+      logs_to_inject: vec![Log {
+        log_level: log_level::INFO,
+        log_type: LogType::NORMAL,
+        message: "Injected workflow log".into(),
+        fields: LogFields::default(),
+        matching_fields: LogFields::default(),
+        occurred_at: OffsetDateTime::now_utc(),
+        session_id: "session".into(),
+        capture_session: None,
+      }],
+      committed_workflow_attachment: true,
+      ..Default::default()
+    }),
+    Err(anyhow::anyhow!("injected workflow log replay failed")),
+  ]);
+
+  buffer
+    .process_workflow_command_outcome_logs(
+      [(
+        Log {
+          log_level: log_level::ERROR,
+          log_type: LogType::NORMAL,
+          message: "Workflow command completed".into(),
+          session_id: "session".into(),
+          occurred_at: OffsetDateTime::now_utc(),
+          fields: [(
+            WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+            attachment.id.to_string().into(),
+          )]
+          .into(),
+          matching_fields: LogFields::default(),
+          capture_session: None,
+        },
+        None,
+      )],
+      &state_store,
+    )
+    .await;
+
+  assert!(tokio::fs::try_exists(payload_path).await.unwrap());
+  assert!(tokio::fs::try_exists(timestamp_path).await.unwrap());
 }
 
 #[tokio::test]

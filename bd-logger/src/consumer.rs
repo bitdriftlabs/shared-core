@@ -82,6 +82,8 @@ fn workflow_artifact_ids_for_logs(logs: &[Vec<u8>]) -> anyhow::Result<HashMap<uu
       // compressed payloads during upload preparation.
       CompressedContents::parse_from_bytes(&decoded)?.fields
     };
+    // TODO(mattklein123): Authenticate workflow attachment provenance instead of relying on this
+    // reserved field being unavailable to public logger callers.
     for field in fields {
       if field.key == bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD
         && let Ok(id) = uuid::Uuid::parse_str(field.value.string_data())

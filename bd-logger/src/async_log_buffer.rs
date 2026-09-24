@@ -11,7 +11,7 @@ mod async_log_buffer_test;
 
 use crate::device_command::{WorkflowCommandCompletion, WorkflowCommandDispatcher};
 use crate::device_id::DeviceIdInterceptor;
-use crate::log_replay::{LogReplay, LogReplayResult};
+use crate::log_replay::{BufferWriteError, LogReplay, LogReplayResult};
 use crate::logger::{
   ReportProcessingRequest,
   StartupReplayEligibility,
@@ -23,7 +23,6 @@ use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::workflow_attachment::AttachmentStoreHandle;
 use crate::{Block, battery, internal_report, network};
-use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
@@ -95,6 +94,15 @@ use tokio::sync::{mpsc, watch};
 use tokio::time::{Sleep, sleep};
 
 const WORKFLOW_ATTACHMENT_CLEANUP_INTERVAL: StdDuration = StdDuration::from_secs(1);
+
+//
+// WorkflowAttachmentReplayError
+//
+
+struct WorkflowAttachmentReplayError {
+  error: anyhow::Error,
+  committed_workflow_attachment: bool,
+}
 
 //
 // ReportProcessor
@@ -783,12 +791,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       let mut previous_retention = None;
       loop {
         let retention = retention_registry.min_retention_timestamp().await;
-        if previous_retention != Some(retention) {
-          Self::cleanup_expired_workflow_attachments(
+        if previous_retention != Some(retention)
+          && Self::cleanup_expired_workflow_attachments(
             store_handle.clone(),
             retention_registry.clone(),
           )
-          .await;
+          .await
+        {
           previous_retention = Some(retention);
         }
         tokio::select! {
@@ -868,6 +877,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self
       .process_all_logs_with_completion(log, state_store, context, None)
       .await
+      .map_err(|error| error.error)
       .map(|_| ())
   }
 
@@ -877,19 +887,29 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     state_store: &bd_state::Store,
     context: Option<EventContext>,
     completion_token: Option<WorkflowCommandCompletionToken>,
-  ) -> anyhow::Result<bool> {
+  ) -> Result<bool, WorkflowAttachmentReplayError> {
     let mut committed_workflow_attachment = false;
     let mut logs = VecDeque::new();
     logs.push_back((log, context, completion_token));
     while let Some((log, context, completion_token)) = logs.pop_front() {
       let source_context = context.clone();
       let source_attributes_overrides = log.attributes_overrides.clone();
-      let log_replay_result = self
+      let log_replay_result = match self
         .process_log(log, state_store, context, completion_token.as_ref())
-        .await?;
-      if completion_token.is_some() {
-        committed_workflow_attachment = log_replay_result.committed_workflow_attachment;
-      }
+        .await
+      {
+        Ok(log_replay_result) => log_replay_result,
+        Err(error) => {
+          return Err(WorkflowAttachmentReplayError {
+            committed_workflow_attachment: committed_workflow_attachment
+              || error
+                .downcast_ref::<BufferWriteError>()
+                .is_some_and(|error| error.committed),
+            error,
+          });
+        },
+      };
+      committed_workflow_attachment |= log_replay_result.committed_workflow_attachment;
       let logs_to_inject = self.handle_log_replay_result(log_replay_result);
       logs.extend(logs_to_inject.into_iter().map(|log| {
         let (log, context) = workflow_generated_log(
@@ -1033,7 +1053,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       },
       Err(error) => {
         if let Some(id) = artifact_id {
-          Self::release_workflow_attachment(self.workflow_attachment_store(), id).await;
+          if error
+            .downcast_ref::<BufferWriteError>()
+            .is_some_and(|error| error.committed)
+          {
+            Self::record_workflow_attachment_timestamp(
+              self.workflow_attachment_store(),
+              id,
+              occurred_at,
+            )
+            .await;
+          } else {
+            Self::release_workflow_attachment(self.workflow_attachment_store(), id).await;
+          }
         }
         log::warn!("failed to replay workflow command outcome; dropping it: {error}");
       },
@@ -1106,9 +1138,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
         Err(error) => {
           if let Some(id) = artifact_id {
-            Self::release_workflow_attachment(self.workflow_attachment_store(), id).await;
+            if error.committed_workflow_attachment {
+              Self::record_workflow_attachment_timestamp(
+                self.workflow_attachment_store(),
+                id,
+                occurred_at,
+              )
+              .await;
+            } else {
+              Self::release_workflow_attachment(self.workflow_attachment_store(), id).await;
+            }
           }
-          log::warn!("failed to replay workflow command outcome; dropping it: {error}");
+          log::warn!(
+            "failed to replay workflow command outcome; dropping it: {}",
+            error.error
+          );
         },
       }
     }
@@ -1132,7 +1176,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn cleanup_expired_workflow_attachments(
     store_handle: AttachmentStoreHandle,
     retention_registry: Arc<bd_state::RetentionRegistry>,
-  ) {
+  ) -> bool {
     match store_handle.get().await {
       Ok(store) => {
         let cleanup_result = match retention_registry.min_retention_timestamp().await {
@@ -1141,9 +1185,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         };
         if let Err(error) = cleanup_result {
           log::warn!("failed to clean up expired workflow attachments: {error}");
+          false
+        } else {
+          true
         }
       },
-      Err(error) => log::warn!("failed to open workflow attachment store for cleanup: {error}"),
+      Err(error) => {
+        log::warn!("failed to open workflow attachment store for cleanup: {error}");
+        false
+      },
     }
   }
 
@@ -1304,17 +1354,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       LoggingState::Uninitialized(_) => {
         anyhow::bail!("EventBuffer delivered a log before the processing pipeline was initialized");
       },
-      LoggingState::Initialized(initialized_logging_context) => self
-        .replayer
-        .replay_log(
-          log,
-          completion_token,
-          &mut initialized_logging_context.processing_pipeline,
-          state_store,
-          self.time_provider.now(),
-        )
-        .await
-        .map_err(|e| anyhow!("failed to replay async log buffer log: {e}"))?,
+      LoggingState::Initialized(initialized_logging_context) => {
+        self
+          .replayer
+          .replay_log(
+            log,
+            completion_token,
+            &mut initialized_logging_context.processing_pipeline,
+            state_store,
+            self.time_provider.now(),
+          )
+          .await?
+      },
     };
 
     Ok(log_replay_result)

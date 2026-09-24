@@ -407,7 +407,7 @@ impl AttachmentStore {
       return Err(io::Error::other("workflow attachment capacity exhausted"));
     }
 
-    let mut reader: Box<dyn AsyncRead + Unpin + Send> = match source {
+    let reader: Box<dyn AsyncRead + Unpin + Send> = match source {
       UploadSource::Bytes(bytes) => {
         if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_attachment_bytes {
           return Err(io::Error::other("workflow attachment exceeds size limit"));
@@ -442,7 +442,10 @@ impl AttachmentStore {
     let ownership_marker = self.pending_path(id);
     let result: io::Result<AdmittedAttachment> = async {
       let mut input = Vec::new();
-      reader.read_to_end(&mut input).await?;
+      reader
+        .take(max_attachment_bytes.saturating_add(1))
+        .read_to_end(&mut input)
+        .await?;
       if input.len() as u64 > max_attachment_bytes
         || input.len() as u64 > max_owned_bytes.saturating_sub(current_bytes)
       {
