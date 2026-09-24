@@ -196,6 +196,19 @@ impl AttachmentStore {
         } else {
           fs::rename(entry_path, &sidecar_path).await?;
         }
+        match sidecar_path
+          .extension()
+          .and_then(|extension| extension.to_str())
+        {
+          Some("timestamp") => {
+            let timestamp = read_timestamp(&sidecar_path).await?;
+            oldest_timestamp =
+              Some(oldest_timestamp.map_or(timestamp, |oldest| oldest.min(timestamp)));
+          },
+          Some("pending") => pending_ownership.push(sidecar_path),
+          Some("uploaded") => {},
+          _ => return Err(io::Error::other("invalid workflow attachment sidecar")),
+        }
         recovered_sidecar = true;
         log::debug!("recovered interrupted workflow attachment sidecar write");
         continue;

@@ -712,4 +712,12 @@ async fn restart_finalizes_interrupted_sidecar_writes() {
   assert!(restarted.is_uploaded(uploaded_id).await.unwrap());
   assert!(!fs::try_exists(timestamp_staging_path).await.unwrap());
   assert!(!fs::try_exists(uploaded_staging_path).await.unwrap());
+
+  restarted.cleanup_all().await.unwrap();
+
+  assert!(
+    !fs::try_exists(restarted.timestamp_path(timestamp_id))
+      .await
+      .unwrap()
+  );
 }
