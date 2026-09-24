@@ -11,6 +11,11 @@ source_info_gated_mod! {
   workflow_command => "with_source/workflow_command.rs",
 }
 
+// The generated workflow command imports logging's `payload.proto` as `super::payload`.
+pub mod payload {
+  pub use crate::protos::logging::payload::{Data, file_descriptor};
+}
+
 use super::log_matcher::log_matcher;
 pub use super::logging::payload;
 use super::state::{matcher, scope};

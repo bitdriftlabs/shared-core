@@ -40,7 +40,9 @@ use std::collections::HashMap;
 // Version 43: Added support for sending trigger UUIDs in log uploads to allow the server to
 //             associate logs with the flush that generated them.
 // Version 44: Added support for remote device commands.
-const CONFIGURATION_VERSION: &str = "44";
+// Version 45: Added support for workflow commands.
+// Version 46: Added support for typed workflow command arguments.
+const CONFIGURATION_VERSION: &str = "46";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

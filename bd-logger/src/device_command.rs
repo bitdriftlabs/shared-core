@@ -130,6 +130,7 @@ pub struct CommandInvocation {
   /// Present only when the command was directly dispatched to the device.
   pub command_id: Option<Uuid>,
   pub registered_command_id: String,
+  pub arguments: Vec<Data>,
   pub session_id: String,
 }
 
@@ -232,6 +233,7 @@ impl WorkflowCommandDispatcher {
               .execute(CommandInvocation {
                 command_id: None,
                 registered_command_id: command.registered_command_id,
+                arguments: command.arguments,
                 session_id,
               })
               .await
@@ -389,6 +391,7 @@ async fn execute_device_command(
         execute_custom_device_command(
           command_id,
           command.registered_command_id.clone(),
+          command.arguments,
           data_upload_tx,
           session_strategy,
           artifact_client,
@@ -601,6 +604,7 @@ async fn execute_buffer_dump_device_command(
 async fn execute_custom_device_command(
   command_id: String,
   registered_command_id: String,
+  arguments: Vec<Data>,
   data_upload_tx: Sender<DataUpload>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -651,6 +655,7 @@ async fn execute_custom_device_command(
     .execute(CommandInvocation {
       command_id: Some(command_id_uuid),
       registered_command_id,
+      arguments,
       session_id: session_id.clone(),
     })
     .await;
