@@ -1,0 +1,32 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE.polyform"
+name         = "bd-otlp-metrics"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dependencies]
+anyhow.workspace            = true
+async-trait.workspace       = true
+backoff                     = { version = "0.4.0", features = ["tokio"] }
+base64ct.workspace           = true
+bd-workspace-hack.workspace = true
+bytes.workspace             = true
+futures.workspace           = true
+http.workspace              = true
+hyper-util.workspace        = true
+log.workspace               = true
+mockall.workspace           = true
+parking_lot.workspace       = true
+protobuf.workspace          = true
+serde.workspace             = true
+snap.workspace              = true
+thiserror.workspace         = true
+time.workspace              = true
+tokio.workspace             = true
+
+[build-dependencies]
+protobuf-codegen.workspace = true

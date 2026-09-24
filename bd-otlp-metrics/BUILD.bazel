@@ -1,0 +1,18 @@
+load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("//tools/rust:tests.bzl", "rust_library_with_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library_with_test(
+    name = "bd-otlp-metrics",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**/*.rs"],
+    ),
+    aliases = aliases(),
+    crate_features = ["default"],
+    crate_name = "bd_otlp_metrics",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True),
+)
