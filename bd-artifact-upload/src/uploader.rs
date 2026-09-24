@@ -856,14 +856,12 @@ impl Uploader {
         && type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
         && existing.session_id == session_id;
       if let Some(tx) = persisted_tx {
-        let result = if existing.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
-          && !matching_workflow_attachment
-        {
+        let result = if matching_workflow_attachment {
+          Ok(())
+        } else {
           Err(EnqueueError::Other(anyhow::anyhow!(
             "workflow attachment ID belongs to another session or artifact type"
           )))
-        } else {
-          Ok(())
         };
         if result.is_ok()
           && matching_workflow_attachment

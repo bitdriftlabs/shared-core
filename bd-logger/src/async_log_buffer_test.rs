@@ -2269,6 +2269,83 @@ async fn failed_workflow_outcome_replay_releases_attachment() {
 }
 
 #[tokio::test]
+async fn partially_written_workflow_outcome_keeps_attachment() {
+  let mut setup = Setup::new();
+  setup.drain_buffer_events();
+  std::fs::create_dir_all(setup.tmp_dir.path().join("buffer")).unwrap();
+  setup
+    .buffer_manager
+    .update_from_config(
+      &BufferConfigList {
+        buffer_config: vec![default_buffer_config(BufferType::CONTINUOUS, None)],
+        ..Default::default()
+      },
+      false,
+    )
+    .await
+    .unwrap();
+
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  let attachment_store = buffer.workflow_attachment_store().get().await.unwrap();
+  let attachment = attachment_store
+    .admit(bd_artifact_upload::UploadSource::Bytes(
+      b"attachment".to_vec(),
+    ))
+    .await
+    .unwrap();
+  let attachment_directory = setup.tmp_dir.path().join("workflow-attachments");
+  let payload_path = attachment_directory.join(format!("{}.payload", attachment.id));
+  let timestamp_path = attachment_directory.join(format!("{}.timestamp", attachment.id));
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let mut missing_buffer = default_buffer_config(
+    BufferType::CONTINUOUS,
+    Some(match_message("Workflow command completed")),
+  );
+  missing_buffer.id = "missing".to_string();
+  config_update.buffer_selector = BufferSelector::new(&BufferConfigList {
+    buffer_config: vec![
+      default_buffer_config(
+        BufferType::CONTINUOUS,
+        Some(match_message("Workflow command completed")),
+      ),
+      missing_buffer,
+    ],
+    ..Default::default()
+  })
+  .unwrap();
+  let mut buffer = buffer.update(config_update, &state_store).await;
+
+  buffer
+    .process_workflow_command_outcome_logs(
+      [(
+        Log {
+          log_level: log_level::ERROR,
+          log_type: LogType::NORMAL,
+          message: "Workflow command completed".into(),
+          session_id: "session".into(),
+          occurred_at: OffsetDateTime::now_utc(),
+          fields: [(
+            WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+            attachment.id.to_string().into(),
+          )]
+          .into(),
+          matching_fields: LogFields::default(),
+          capture_session: None,
+        },
+        None,
+      )],
+      &state_store,
+    )
+    .await;
+
+  assert!(tokio::fs::try_exists(payload_path).await.unwrap());
+  assert!(tokio::fs::try_exists(timestamp_path).await.unwrap());
+}
+
+#[tokio::test]
 async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure() {
   let mut setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);

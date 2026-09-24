@@ -1487,6 +1487,43 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
 }
 
 #[tokio::test]
+async fn workflow_upload_rejects_id_owned_by_another_artifact_type() {
+  let mut setup = Setup::new(2).await;
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::Bytes(b"existing artifact".to_vec()),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(persisted_tx),
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  persisted_rx.await.unwrap().unwrap();
+
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_workflow_attachment(
+      id,
+      std::path::PathBuf::from(format!("workflow-attachments/{id}.payload")),
+      "session_id".to_string(),
+      Some(persisted_tx),
+      None,
+    )
+    .unwrap();
+
+  assert_matches!(persisted_rx.await.unwrap(), Err(EnqueueError::Other(_)));
+}
+
+#[tokio::test]
 async fn path_upload_restores_source_if_index_persistence_fails() {
   let setup = Setup::new(2).await;
   let source_path = std::path::PathBuf::from("retryable_snapshot.zz");

@@ -411,7 +411,7 @@ impl ProcessingPipeline {
           15.seconds(),
           "failed to write log to buffer; dropping it: {error}"
         );
-        false
+        error.committed
       },
     };
     let synthetic_committed = Self::process_flush_buffers_actions(
