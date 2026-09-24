@@ -104,6 +104,45 @@ async fn queue_backpressure_does_not_stall_another_batch() {
   worker.await.unwrap();
 }
 
+#[tokio::test(start_paused = true)]
+async fn retryable_persistence_failure_is_retried() {
+  let artifact_id = Uuid::new_v4();
+  let (first_attempt_tx, first_attempt_rx) = oneshot::channel();
+  let mut first_attempt_tx = Some(first_attempt_tx);
+  let mut mock_client = bd_artifact_upload::MockClient::new();
+  mock_client
+    .expect_enqueue_workflow_attachment()
+    .times(2)
+    .returning(move |_, _, _, persisted, _| {
+      let persisted = persisted.unwrap();
+      if let Some(first_attempt_tx) = first_attempt_tx.take() {
+        persisted
+          .send(Err(EnqueueError::RetryablePersistence(anyhow::anyhow!(
+            "injected sync failure"
+          ))))
+          .unwrap();
+        first_attempt_tx.send(()).unwrap();
+      } else {
+        persisted.send(Ok(())).unwrap();
+      }
+      Ok(())
+    });
+
+  let (handle, worker) = WorkflowAttachmentUploadHandle::new(Arc::new(mock_client));
+  let worker = tokio::spawn(worker.run());
+  let stage = tokio::spawn(async move {
+    handle
+      .stage(HashMap::from([(artifact_id, "session".to_string())]))
+      .await
+  });
+
+  first_attempt_rx.await.unwrap();
+  tokio::task::yield_now().await;
+  tokio::time::advance(BACKPRESSURE_RETRY_INTERVAL).await;
+  assert!(stage.await.unwrap().unwrap().is_empty());
+  worker.await.unwrap();
+}
+
 #[tokio::test]
 async fn permanent_staging_failure_does_not_block_other_attachments() {
   let failed_id = Uuid::new_v4();

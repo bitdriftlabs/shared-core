@@ -204,7 +204,12 @@ impl WorkflowAttachmentUploadWorker {
         .await
         {
           Ok(()) => break Some(completion_rx),
-          Err(PersistedEnqueueError::Backpressure) => {},
+          Err(
+            PersistedEnqueueError::Backpressure
+            | PersistedEnqueueError::Enqueue(bd_artifact_upload::EnqueueError::RetryablePersistence(
+              _,
+            )),
+          ) => {},
           Err(error) => {
             failures.push(WorkflowAttachmentStagingFailure {
               artifact_id: id,

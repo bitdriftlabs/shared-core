@@ -208,8 +208,21 @@ pub enum EnqueueError {
   QueueFull,
   #[error("upload channel closed")]
   Closed,
+  #[error("retryable persistence failure: {0}")]
+  RetryablePersistence(anyhow::Error),
   #[error(transparent)]
   Other(#[from] anyhow::Error),
+}
+
+fn retained_persistence_error(error: anyhow::Error) -> EnqueueError {
+  if error
+    .downcast_ref::<std::io::Error>()
+    .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+  {
+    EnqueueError::Other(error)
+  } else {
+    EnqueueError::RetryablePersistence(error)
+  }
 }
 
 #[automock]
@@ -1023,9 +1036,14 @@ impl Uploader {
     if let Err(e) = write_result {
       log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
       if let Some(tx) = persisted_tx.take() {
-        let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
-          "failed to write artifact to disk {uuid}: {e}"
-        ))));
+        let error = if retained {
+          retained_persistence_error(e)
+        } else {
+          EnqueueError::Other(anyhow::anyhow!(
+            "failed to write artifact to disk {uuid}: {e}"
+          ))
+        };
+        let _ = tx.send(Err(error));
       }
 
       #[cfg(test)]
@@ -1099,7 +1117,12 @@ impl Uploader {
         log::warn!("failed to remove unindexed artifact {uuid}: {delete_error}");
       }
       if let Some(tx) = persisted_tx {
-        let _ = tx.send(Err(EnqueueError::Other(error)));
+        let error = if retained {
+          retained_persistence_error(error)
+        } else {
+          EnqueueError::Other(error)
+        };
+        let _ = tx.send(Err(error));
       }
       return;
     }

@@ -13,6 +13,7 @@ use crate::uploader::{
   REPORT_INDEX_FILE,
   SnappedFeatureFlag,
   UploadSource,
+  retained_persistence_error,
 };
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
@@ -254,7 +255,10 @@ async fn retained_source_can_retry_after_sync_failure() {
       None,
     )
     .unwrap();
-  assert!(first_persisted_rx.await.unwrap().is_err());
+  assert_matches!(
+    first_persisted_rx.await.unwrap(),
+    Err(EnqueueError::RetryablePersistence(_))
+  );
   setup.entry_received_rx.recv().await.unwrap();
   assert!(
     !setup
@@ -276,6 +280,14 @@ async fn retained_source_can_retry_after_sync_failure() {
     )
     .unwrap();
   assert!(retry_persisted_rx.await.unwrap().is_ok());
+}
+
+#[test]
+fn missing_retained_source_is_not_retryable() {
+  assert_matches!(
+    retained_persistence_error(std::io::Error::from(std::io::ErrorKind::NotFound).into()),
+    EnqueueError::Other(_)
+  );
 }
 
 #[tokio::test]
