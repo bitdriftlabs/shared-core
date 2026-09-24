@@ -979,6 +979,57 @@ async fn workflow_replacement_does_not_reuse_a_previous_command_cooldown() {
 }
 
 #[tokio::test]
+async fn restored_cooldown_for_removed_workflow_is_not_reused_when_readded() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let workflows = vec![WorkflowBuilder::new("workflow", &[&command, &terminal]).make_config()];
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
+
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("start", started_at))
+      .workflow_commands_to_start
+      .len()
+  );
+  engine.maybe_persist(true).await;
+  drop(engine);
+
+  let restored_setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let mut restored_engine = restored_setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![],
+    ))
+    .await;
+  assert!(
+    restored_engine
+      .engine
+      .state
+      .command_last_started_at_ns
+      .is_empty()
+  );
+  restored_engine
+    .engine
+    .update(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ));
+
+  assert_eq!(
+    1,
+    restored_engine
+      .process_log(timed_command_log("re-added", started_at + 1.seconds()))
+      .workflow_commands_to_start
+      .len()
+  );
+}
+
+#[tokio::test]
 async fn workflow_removal_persists_cooldown_cleanup_when_workflow_is_initial() {
   let terminal = state("terminal");
   let command = state("command").declare_transition(&terminal, workflow_command_rule());

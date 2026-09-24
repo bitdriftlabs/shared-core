@@ -68,6 +68,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
 use bd_stats_common::labels;
+use bd_test_helpers::config_helper::{BufferType, default_buffer_config, match_message};
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
@@ -1922,6 +1923,67 @@ async fn workflow_command_completion_survives_metadata_failure() {
       )
       .is_err()
   );
+}
+
+#[tokio::test]
+async fn workflow_command_start_survives_buffer_write_failure() {
+  let setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    Rule {
+      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+        command_selector: Some(WorkflowCommandSelector {
+          command_selector: Some(
+            workflow_command_selector::Command_selector::RegisteredCommand(
+              workflow_command_selector::RegisteredCommand {
+                registered_command_id: "handler".to_string(),
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        })
+        .into(),
+        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+          seconds: 60,
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    },
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut config_update = setup.make_config_update(workflows);
+  config_update.buffer_selector = BufferSelector::new(&BufferConfigList {
+    buffer_config: vec![default_buffer_config(
+      BufferType::CONTINUOUS,
+      Some(match_message("execute")),
+    )],
+    ..Default::default()
+  })
+  .unwrap();
+  let mut buffer = buffer.update(config_update, &state_store).await;
+
+  buffer
+    .process_log(normal_log("start"), &state_store, None, None)
+    .await
+    .unwrap();
+  let result = buffer
+    .process_log(normal_log("execute"), &state_store, None, None)
+    .await
+    .unwrap();
+
+  assert_eq!(1, result.workflow_commands_to_start.len());
 }
 
 #[tokio::test]

@@ -20,6 +20,7 @@ use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{EncodableLog, FieldsRef, Log, LogMessage, LossyIntToU32, log_level};
+use bd_log_util::warn_every;
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
@@ -49,6 +50,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use time::OffsetDateTime;
+use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 #[derive(Default)]
@@ -353,7 +355,7 @@ impl ProcessingPipeline {
 
     Self::handle_common_pre_buffer_write(&result.triggered_flush_buffers_action_ids);
 
-    Self::write_to_buffers(
+    if let Err(e) = Self::write_to_buffers(
       &mut self.buffer_producers,
       &result.log_destination_buffer_ids,
       &mut log,
@@ -367,7 +369,12 @@ impl ProcessingPipeline {
         })
         .map(std::convert::AsRef::as_ref)
         .collect_vec(),
-    )?;
+    ) {
+      warn_every!(
+        15.seconds(),
+        "failed to write log to buffer; dropping it: {e}"
+      );
+    }
 
     Self::process_flush_buffers_actions(
       &result.triggered_flush_buffers_action_ids,

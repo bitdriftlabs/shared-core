@@ -353,7 +353,23 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       self.state.pending_sankey_actions = state.pending_sankey_actions;
 
       self.state.session_id.clone_from(&state.session_id);
-      self.state.command_last_started_at_ns = state.command_last_started_at_ns;
+      let restored_cooldown_count = state.command_last_started_at_ns.len();
+      self.state.command_last_started_at_ns = state
+        .command_last_started_at_ns
+        .into_iter()
+        .filter(|(key, _)| {
+          config
+            .workflows_configuration
+            .workflows
+            .iter()
+            .any(|workflow| {
+              key.starts_with(&workflow_command_cooldown_key_prefix(workflow.inner().id()))
+            })
+        })
+        .collect();
+      if self.state.command_last_started_at_ns.len() != restored_cooldown_count {
+        self.needs_state_persistence = true;
+      }
       self.add_workflows(
         config.workflows_configuration.workflows,
         Some(state.workflows),
