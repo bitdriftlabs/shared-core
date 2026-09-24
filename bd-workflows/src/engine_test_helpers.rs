@@ -146,7 +146,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
     }
   }
 
-  pub fn process_log(&mut self, log: TestLog) -> WorkflowsEngineResult<'static> {
+  pub fn process_log(&mut self, log: TestLog) -> WorkflowsEngineResult<'_> {
     self.engine.process_event(
       WorkflowEvent::Log(&bd_log_primitives::Log {
         log_type: LogType::NORMAL,
@@ -170,7 +170,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
   pub fn process_state_change(
     &mut self,
     state_change: &bd_state::StateChange,
-  ) -> WorkflowsEngineResult<'static> {
+  ) -> WorkflowsEngineResult<'_> {
     self.process_state_change_with_reader(state_change, &bd_state::InMemoryStateReader::default())
   }
 
@@ -178,7 +178,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
     &mut self,
     state_change: &bd_state::StateChange,
     state_reader: &dyn bd_state::StateReader,
-  ) -> WorkflowsEngineResult<'static> {
+  ) -> WorkflowsEngineResult<'_> {
     // State changes don't write to log buffers, so use the static empty set
     // Most tests use empty fields for simplicity. Tests that need to verify global metadata
     // fields should call engine.process_event() directly with custom fields.

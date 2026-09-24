@@ -826,31 +826,45 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       let source_context = context.clone();
       let source_attributes_overrides = log.attributes_overrides.clone();
       let log_replay_result = self.process_log(log, state_store, context).await?;
-      self.dispatch_workflow_commands(log_replay_result.workflow_commands_to_start);
-      logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
+      let logs_to_inject = self.handle_log_replay_result(log_replay_result);
+      logs.extend(logs_to_inject.into_iter().map(|log| {
         workflow_generated_log(
           log,
           source_context.clone(),
           source_attributes_overrides.clone(),
         )
       }));
-
-      self
-        .pending_workflow_debug_state
-        .extend(log_replay_result.workflow_debug_state);
-      // We send a periodic workflow debug state update even if there have been no transitions.
-      // For an active debugging session this allows us to allow the UI to know we are actually
-      // attached and debugging.
-      if log_replay_result.engine_has_debug_workflows
-        && self.send_workflow_debug_state_delay.is_none()
-      {
-        // TODO(mattklein123): In a perfect world every time we transition from not debugging to
-        // debugging we should immediately send a debug update so that the server can get the
-        // baseline state and begin debugging properly. We can do this in a follow up.
-        self.send_workflow_debug_state_delay = Some(Box::pin(1.seconds().sleep()));
-      }
     }
     Ok(())
+  }
+
+  fn handle_log_replay_result(&mut self, result: LogReplayResult) -> Vec<Log> {
+    self.dispatch_workflow_commands(result.workflow_commands_to_start);
+    self
+      .pending_workflow_debug_state
+      .extend(result.workflow_debug_state);
+    if result.engine_has_debug_workflows && self.send_workflow_debug_state_delay.is_none() {
+      // We send a periodic workflow debug state update even if there have been no transitions.
+      // For an active debugging session this allows the UI to know we are attached and debugging.
+      // TODO(mattklein123): Send a baseline update when debugging starts so the server can begin
+      // debugging properly without waiting for the periodic update.
+      self.send_workflow_debug_state_delay = Some(Box::pin(1.seconds().sleep()));
+    }
+
+    result.logs_to_inject
+  }
+
+  async fn process_state_change_replay_result(
+    &mut self,
+    result: LogReplayResult,
+    state_store: &bd_state::Store,
+  ) {
+    for log in self.handle_log_replay_result(result) {
+      let (log, context) = workflow_generated_log(log, None, None);
+      if let Err(error) = self.process_all_logs(log, state_store, context).await {
+        log::warn!("failed to replay workflow state-change log; dropping it: {error}");
+      }
+    }
   }
 
   fn dispatch_workflow_commands(&self, requests: Vec<WorkflowCommandRequest>) {
@@ -1480,7 +1494,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     } = context;
     if let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state {
       // Initialized: update state store and replay through workflows.
-      initialized_logging_context
+      let result = initialized_logging_context
         .handle_state_insert(
           state_store,
           &self.metadata_collector,
@@ -1494,6 +1508,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           provider,
         )
         .await;
+      if let Some(result) = result {
+        self
+          .process_state_change_replay_result(result, state_store)
+          .await;
+      }
     } else {
       log::debug!("EventBuffer delivered feature-flag state before pipeline initialization");
     }

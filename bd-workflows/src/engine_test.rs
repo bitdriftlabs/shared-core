@@ -297,6 +297,29 @@ async fn workflow_command_blocks_other_transitions_until_completion() {
 }
 
 #[tokio::test]
+async fn debug_only_workflow_command_does_not_become_pending() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &terminal])
+          .make_config_with_debug_mode(WorkflowDebugMode::DebugOnly),
+      ],
+    ))
+    .await;
+
+  engine.process_log(TestLog::new("start"));
+  let result = engine.process_log(TestLog::new("execute"));
+
+  assert!(result.workflow_commands_to_start.is_empty());
+  assert!(engine.engine.pending_workflow_command_index.is_empty());
+  engine_assert_active_runs!(engine; 0; "start", "command");
+}
+
+#[tokio::test]
 async fn workflow_command_interval_applies_to_successive_runs() {
   let terminal = state("terminal");
   let command = state("command").declare_transition(&terminal, workflow_command_rule());

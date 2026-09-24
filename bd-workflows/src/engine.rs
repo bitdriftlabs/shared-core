@@ -867,7 +867,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
-  ) -> WorkflowsEngineResult<'static> {
+  ) -> WorkflowsEngineResult<'a> {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
@@ -904,14 +904,14 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
-  ) -> WorkflowsEngineResult<'static> {
+  ) -> WorkflowsEngineResult<'a> {
     let match_context = bd_log_matcher::matcher::MatchContext {
       json_path_string_matching_enabled: self
         .json_path_string_matching_enabled
         .as_ref()
         .is_none_or(|flag| *flag.read()),
     };
-    // Return early if there's no work to avoid unnecessary copies.
+    // Return early if there's no work to process.
     // In order to support explicit session capture even when there are no workflows we need to
     // proceed with the processing if either this is a log requesting a session capture or if there
     // is an active streaming action.
@@ -919,12 +919,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       && event.capture_session().is_none()
       && self.state.streaming_actions.is_empty()
     {
-      let log_destination_buffer_ids: TinySet<Cow<'static, str>> = log_destination_buffer_ids
-        .iter()
-        .map(|buffer_id| Cow::Owned(buffer_id.to_string()))
-        .collect();
       return WorkflowsEngineResult {
-        log_destination_buffer_ids: Cow::Owned(log_destination_buffer_ids),
+        log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
         triggered_flushes_buffer_ids: TinySet::default(),
         triggered_flush_buffers_action_ids: BTreeSet::default(),
         is_tracing_active: self.state.is_tracing_active(),
@@ -936,7 +932,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     }
 
     let mut prepared_actions = PreparedActions::default();
-    let mut logs_to_inject: TinyMap<String, Log> = TinyMap::default();
+    let mut logs_to_inject: TinyMap<&'a str, Log> = TinyMap::default();
     let mut all_cumulative_workflow_debug_state = vec![];
     let mut all_incremental_workflow_debug_state = vec![];
     let mut tracing_carryover_flush_action_ids: TinySet<FlushBufferId> = TinySet::default();
@@ -1036,11 +1032,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       if !matches!(config.mode(), WorkflowDebugMode::DebugOnly) {
         prepared_actions.incorporate_workflow_actions(index, triggered_actions);
       }
-      logs_to_inject.extend(
-        workflow_logs_to_inject
-          .into_iter()
-          .map(|(log_id, log)| (log_id.to_string(), log)),
-      );
+      logs_to_inject.extend(workflow_logs_to_inject);
       if let Some(cumulative_workflow_debug_state) = cumulative_workflow_debug_state {
         all_cumulative_workflow_debug_state
           .push((workflow.id().to_string(), cumulative_workflow_debug_state));
@@ -1184,36 +1176,17 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       self.needs_state_persistence = true;
     }
 
-    let log_destination_buffer_ids: Cow<'static, TinySet<Cow<'static, str>>> = Cow::Owned(
-      result
-        .log_destination_buffer_ids
-        .into_iter()
-        .map(|buffer_id| Cow::Owned(buffer_id.into_owned()))
-        .collect(),
-    );
-    let triggered_flush_buffers_action_ids: BTreeSet<Cow<'static, FlushBufferId>> =
-      flush_buffers_actions_processing_result
-        .triggered_flush_buffers_action_ids
-        .into_iter()
-        .map(|action_id| Cow::Owned(action_id.into_owned()))
-        .collect();
-    let triggered_flushes_buffer_ids: TinySet<Cow<'static, str>> =
-      flush_buffers_actions_processing_result
-        .triggered_flushes_buffer_ids
-        .into_iter()
-        .map(|buffer_id| Cow::Owned(buffer_id.into_owned()))
-        .collect();
-    let logs_to_inject: TinyMap<Cow<'static, str>, Log> = logs_to_inject
-      .into_iter()
-      .map(|(log_id, log)| (Cow::Owned(log_id), log))
-      .collect();
-
     WorkflowsEngineResult {
-      log_destination_buffer_ids,
-      triggered_flush_buffers_action_ids,
-      triggered_flushes_buffer_ids,
+      log_destination_buffer_ids: Cow::Owned(result.log_destination_buffer_ids),
+      triggered_flush_buffers_action_ids: flush_buffers_actions_processing_result
+        .triggered_flush_buffers_action_ids,
+      triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
+        .triggered_flushes_buffer_ids,
       is_tracing_active: self.state.is_tracing_active(),
-      logs_to_inject,
+      logs_to_inject: logs_to_inject
+        .into_iter()
+        .map(|(log_id, log)| (Cow::Borrowed(log_id), log))
+        .collect(),
       workflow_commands_to_start: workflow_commands_to_start
         .into_iter()
         .map(|action| {

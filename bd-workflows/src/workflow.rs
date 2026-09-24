@@ -1720,6 +1720,10 @@ impl Traversal {
       return;
     }
 
+    if matches!(config.mode(), WorkflowDebugMode::DebugOnly) {
+      return;
+    }
+
     let matcher_id = format!("{}/{}/{}", config.inner().id(), self.state_index, index);
     let now_ns = i64::try_from(now.unix_timestamp_nanos()).unwrap_or(i64::MAX);
     let interval_ns = minimum_execution_interval.whole_nanoseconds();
