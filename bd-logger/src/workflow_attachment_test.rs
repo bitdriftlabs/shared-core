@@ -8,6 +8,7 @@
 use super::{AttachmentStore, AttachmentStoreHandle, WorkflowAttachmentCleanupWorker};
 use bd_artifact_upload::UploadSource;
 use bd_buffer::Buffer as RingBuffer;
+use bd_buffer::buffer::NonVolatileFileHeader;
 use bd_client_stats_store::Collector;
 use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::RuntimeUpdate;
@@ -29,6 +30,26 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use uuid::Uuid;
 
 const MIN_READ_LIMIT_BYTES: u64 = 32 * 1024 * 1024;
+
+fn make_log_bytes(timestamp: OffsetDateTime) -> Vec<u8> {
+  let mut log = EncodableLog::new(
+    Log {
+      log_level: log_level::INFO,
+      log_type: LogType::NORMAL,
+      message: "workflow outcome".into(),
+      fields: [].into(),
+      matching_fields: [].into(),
+      session_id: String::new().into(),
+      occurred_at: timestamp,
+      capture_session: None,
+    },
+    u64::MAX,
+  );
+  let size = usize::try_from(log.compute_size(&[], &[]).unwrap()).unwrap();
+  let mut bytes = vec![0; size];
+  log.serialize_to_bytes(&[], &[], &mut bytes).unwrap();
+  bytes
+}
 
 async fn read_checked(store: &AttachmentStore, id: Uuid) -> io::Result<Vec<u8>> {
   let path = store.payload_path(id);
@@ -463,33 +484,15 @@ async fn cleanup_worker_keeps_attachment_referenced_by_fresh_trigger_buffer() {
     Collector::default().scope("test").counter("overwrite"),
     Collector::default().scope("test").counter("corruption"),
     Collector::default().scope("test").counter("data_loss"),
-    None,
-    None,
     retention_handle,
   )
   .unwrap()
   .0;
   let timestamp = OffsetDateTime::now_utc();
-  let mut log = EncodableLog::new(
-    Log {
-      log_level: log_level::INFO,
-      log_type: LogType::NORMAL,
-      message: "workflow outcome".into(),
-      fields: [].into(),
-      matching_fields: [].into(),
-      session_id: String::new().into(),
-      occurred_at: timestamp,
-      capture_session: None,
-    },
-    u64::MAX,
-  );
-  let size = usize::try_from(log.compute_size(&[], &[]).unwrap()).unwrap();
-  let mut bytes = vec![0; size];
-  log.serialize_to_bytes(&[], &[], &mut bytes).unwrap();
   buffer
     .new_thread_local_producer()
     .unwrap()
-    .write(&bytes)
+    .write(&make_log_bytes(timestamp))
     .unwrap();
 
   let store = store_handle.get().await.unwrap();
@@ -510,6 +513,80 @@ async fn cleanup_worker_keeps_attachment_referenced_by_fresh_trigger_buffer() {
   assert!(worker.cleanup_once().await);
   assert!(
     fs::try_exists(store.payload_path(attachment.id))
+      .await
+      .unwrap()
+  );
+}
+
+#[tokio::test]
+async fn cleanup_worker_retires_attachment_after_trigger_disk_overwrite() {
+  let directory = tempfile::tempdir().unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  let store_handle = AttachmentStoreHandle::new(directory.path().to_owned(), runtime);
+  let retention_registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let retention_handle = retention_registry.create_handle().await;
+  let timestamps: Vec<_> = (10 .. 14)
+    .map(|seconds| OffsetDateTime::from_unix_timestamp(seconds).unwrap())
+    .collect();
+  let logs: Vec<_> = timestamps.iter().copied().map(make_log_bytes).collect();
+  let record_size = u32::try_from(logs[0].len()).unwrap();
+  let buffer = RingBuffer::new(
+    "trigger",
+    (record_size + 4) * 2,
+    directory.path().join("trigger"),
+    (record_size + 8) * 3 + u32::try_from(std::mem::size_of::<NonVolatileFileHeader>()).unwrap(),
+    true,
+    Collector::default().scope("test").counter("write"),
+    Collector::default().scope("test").counter("write_failure"),
+    Collector::default().scope("test").counter("overwrite"),
+    Collector::default().scope("test").counter("corruption"),
+    Collector::default().scope("test").counter("data_loss"),
+    retention_handle,
+  )
+  .unwrap()
+  .0;
+  let store = store_handle.get().await.unwrap();
+  let mut attachments = Vec::new();
+  for timestamp in timestamps.iter().take(2) {
+    let attachment = store
+      .admit(UploadSource::Bytes(b"attachment".to_vec()))
+      .await
+      .unwrap();
+    store
+      .record_timestamp(attachment.id, *timestamp)
+      .await
+      .unwrap();
+    attachments.push(attachment);
+  }
+  let mut worker = WorkflowAttachmentCleanupWorker::new(
+    store_handle,
+    retention_registry,
+    Arc::new(AtomicBool::new(true)),
+  );
+  let mut producer = buffer.new_thread_local_producer().unwrap();
+  for log in &logs[.. 3] {
+    producer.write(log).unwrap();
+    buffer.flush();
+  }
+  assert!(worker.cleanup_once().await);
+  assert!(
+    fs::try_exists(store.payload_path(attachments[0].id))
+      .await
+      .unwrap()
+  );
+
+  producer.write(&logs[3]).unwrap();
+  buffer.flush();
+  assert!(worker.cleanup_once().await);
+  assert!(
+    !fs::try_exists(store.payload_path(attachments[0].id))
+      .await
+      .unwrap()
+  );
+  assert!(
+    fs::try_exists(store.payload_path(attachments[1].id))
       .await
       .unwrap()
   );

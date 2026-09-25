@@ -73,10 +73,14 @@ impl Helper {
     let temp_dir = TempDir::with_prefix("buffer_test").unwrap();
     let stats = StatsTestHelper::new(&Collector::default().scope(""));
     let buffer = match test_type {
-      TestType::Volatile => {
-        VolatileRingBuffer::new("test".to_string(), size, stats.stats.clone(), |_| {})
-          as Arc<dyn RingBuffer>
-      },
+      TestType::Volatile => VolatileRingBuffer::new(
+        "test".to_string(),
+        size,
+        stats.stats.clone(),
+        |_| {},
+        |_| {},
+        None::<fn(Option<&[u8]>)>,
+      ) as Arc<dyn RingBuffer>,
       TestType::NonVolatile => NonVolatileRingBuffer::new(
         "test".to_string(),
         temp_dir.path().join("buffer"),
@@ -86,6 +90,7 @@ impl Helper {
         PerRecordCrc32Check::No,
         stats.stats.clone(),
         |_| {},
+        None::<fn()>,
       )
       .unwrap() as Arc<dyn RingBuffer>,
       TestType::Aggregate => AggregateRingBuffer::new(
@@ -98,6 +103,12 @@ impl Helper {
         Arc::new(RingBufferStats::default()),
         stats.stats.clone(),
         |_| {},
+        |_| {},
+        |_| {},
+        None::<fn(Option<&[u8]>)>,
+        None::<fn() -> bool>,
+        None::<fn(Option<&[u8]>)>,
+        None::<fn()>,
       )
       .unwrap() as Arc<dyn RingBuffer>,
     };

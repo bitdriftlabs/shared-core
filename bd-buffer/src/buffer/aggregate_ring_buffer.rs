@@ -40,9 +40,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // SharedData
 //
 
+type RecordFlushedCallback = Box<dyn Fn(Option<&[u8]>) + Send + Sync>;
+
 struct SharedData {
   volatile_buffer: Arc<VolatileRingBuffer>,
   non_volatile_buffer: Arc<NonVolatileRingBuffer>,
+  on_record_flushed_cb: Option<RecordFlushedCallback>,
+  should_inspect_oldest_cb: Option<Box<dyn Fn() -> bool + Send + Sync>>,
   shutdown_flush_thread: AtomicBool,
   allow_overwrite: AllowOverwrite,
 
@@ -81,6 +85,15 @@ impl SharedData {
         Ok(write_reservation) => {
           write_reservation.copy_from_slice(read_reservation);
           producer.as_mut().commit()?;
+          // An append to a nonempty disk ring leaves its oldest record unchanged.
+          if let Some(callback) = &self.on_record_flushed_cb
+            && self
+              .should_inspect_oldest_cb
+              .as_ref()
+              .is_none_or(|should_inspect| should_inspect())
+          {
+            self.non_volatile_buffer.inspect_oldest_record(callback)?;
+          }
         },
         Err(Error::AbslStatus(AbslCode::Unavailable, ref message)) => {
           // In this case we drop the write if the buffer is unavailable due to total data loss
@@ -134,33 +147,13 @@ impl RingBufferImpl {
     allow_overwrite: AllowOverwrite,
     volatile_stats: Arc<RingBufferStats>,
     non_volatile_stats: Arc<RingBufferStats>,
-    on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
-  ) -> Result<Arc<Self>> {
-    Self::new_with_record_committed_callback(
-      name,
-      volatile_size,
-      non_volatile_filename,
-      non_volatile_size,
-      per_record_crc32_check,
-      allow_overwrite,
-      volatile_stats,
-      non_volatile_stats,
-      |_| {},
-      on_record_evicted_cb,
-    )
-  }
-
-  pub fn new_with_record_committed_callback<P: AsRef<Path>>(
-    name: &str,
-    volatile_size: u32,
-    non_volatile_filename: P,
-    non_volatile_size: u32,
-    per_record_crc32_check: PerRecordCrc32Check,
-    allow_overwrite: AllowOverwrite,
-    volatile_stats: Arc<RingBufferStats>,
-    non_volatile_stats: Arc<RingBufferStats>,
     on_record_committed_cb: impl Fn(&[u8]) + Send + Sync + 'static,
-    on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
+    on_volatile_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
+    on_non_volatile_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
+    on_record_flushed_cb: Option<impl Fn(Option<&[u8]>) + Send + Sync + 'static>,
+    should_inspect_oldest_cb: Option<impl Fn() -> bool + Send + Sync + 'static>,
+    on_oldest_volatile_record_cb: Option<impl Fn(Option<&[u8]>) + Send + Sync + 'static>,
+    on_non_volatile_reset_cb: Option<impl Fn() + Send + Sync + 'static>,
   ) -> Result<Arc<Self>> {
     // For aggregate buffers, the size of the file (after subtracting header space) must be >= the
     // size of RAM. This is to avoid situations in which we accept a record into RAM but cannot ever
@@ -189,24 +182,24 @@ impl RingBufferImpl {
       BlockWhenReservingIntoConcurrentRead::Yes,
       per_record_crc32_check,
       non_volatile_stats,
-      // TODO: Move `on_record_evicted_cb` here. Trigger-buffer retention must advance when a
-      // durable record is overwritten, not when its volatile copy is evicted after flushing.
-      // Keep `on_record_committed_cb` on the volatile buffer to protect accepted records before
-      // the asynchronous flush persists them.
-      |_| {},
+      on_non_volatile_record_evicted_cb,
+      on_non_volatile_reset_cb,
     )?;
 
-    let volatile_buffer = VolatileRingBuffer::new_with_record_committed_callback(
+    let volatile_buffer = VolatileRingBuffer::new(
       format!("{name}-volatile"),
       volatile_size,
       volatile_stats,
       on_record_committed_cb,
-      on_record_evicted_cb,
+      on_volatile_record_evicted_cb,
+      on_oldest_volatile_record_cb,
     );
 
     let shared_data = Arc::new(SharedData {
       volatile_buffer,
       non_volatile_buffer,
+      on_record_flushed_cb: on_record_flushed_cb.map(|callback| Box::new(callback) as _),
+      should_inspect_oldest_cb: should_inspect_oldest_cb.map(|callback| Box::new(callback) as _),
       shutdown_flush_thread: AtomicBool::new(false),
       allow_overwrite,
 

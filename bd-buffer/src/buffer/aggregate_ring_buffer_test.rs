@@ -22,7 +22,9 @@ use crate::buffer::{RingBuffer, RingBufferStats, StatsTestHelper};
 use bd_client_stats_store::Collector;
 use bd_log_primitives::LossyIntToU32;
 use futures::poll;
+use parking_lot::Mutex;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tempfile::TempDir;
 
 struct Helper {
@@ -55,6 +57,12 @@ impl Helper {
       Arc::new(RingBufferStats::default()),
       stats.stats.clone(),
       |_| {},
+      |_| {},
+      |_| {},
+      None::<fn(Option<&[u8]>)>,
+      None::<fn() -> bool>,
+      None::<fn(Option<&[u8]>)>,
+      None::<fn()>,
     )
     .unwrap();
     Self {
@@ -88,6 +96,12 @@ impl Helper {
         Arc::new(RingBufferStats::default()),
         self.stats.stats.clone(),
         |_| {},
+        |_| {},
+        |_| {},
+        None::<fn(Option<&[u8]>)>,
+        None::<fn() -> bool>,
+        None::<fn(Option<&[u8]>)>,
+        None::<fn()>,
       )?,
       self.cursor,
     ));
@@ -112,6 +126,63 @@ impl Helper {
 }
 
 // TODO(mattklein123): Port AggregateMpScRingBufferImplFailureTest from the C++ code.
+
+#[test]
+fn durable_overwrite_reports_eviction_without_volatile_overwrite() {
+  let directory = TempDir::new().unwrap();
+  let volatile_evictions = Arc::new(Mutex::new(Vec::new()));
+  let durable_evictions = Arc::new(Mutex::new(Vec::new()));
+  let disk_head_dirty = Arc::new(AtomicBool::new(true));
+  let disk_head_inspections = Arc::new(AtomicUsize::new(0));
+  let buffer = RingBufferImpl::new(
+    "test",
+    18,
+    directory.path().join("buffer"),
+    30 + std::mem::size_of::<FileHeader>().to_u32_lossy(),
+    PerRecordCrc32Check::Yes,
+    AllowOverwrite::Yes,
+    Arc::new(RingBufferStats::default()),
+    Arc::new(RingBufferStats::default()),
+    |_| {},
+    {
+      let evictions = volatile_evictions.clone();
+      move |record| evictions.lock().push(record.to_vec())
+    },
+    {
+      let evictions = durable_evictions.clone();
+      let disk_head_dirty = disk_head_dirty.clone();
+      move |record| {
+        disk_head_dirty.store(true, Ordering::Relaxed);
+        evictions.lock().push(record.to_vec());
+      }
+    },
+    Some({
+      let disk_head_inspections = disk_head_inspections.clone();
+      move |oldest: Option<&[u8]>| {
+        assert!(oldest.is_some());
+        disk_head_inspections.fetch_add(1, Ordering::Relaxed);
+      }
+    }),
+    Some(move || disk_head_dirty.swap(false, Ordering::Relaxed)),
+    None::<fn(Option<&[u8]>)>,
+    None::<fn()>,
+  )
+  .unwrap();
+  let mut helper = CommonHelper::new(buffer, Cursor::No);
+
+  for record in ["aa", "bb", "cc"] {
+    helper.reserve_and_commit(record);
+    helper.buffer.flush();
+  }
+  assert_eq!(disk_head_inspections.load(Ordering::Relaxed), 1);
+
+  helper.reserve_and_commit("dd");
+  helper.buffer.flush();
+
+  assert!(volatile_evictions.lock().is_empty());
+  assert_eq!(*durable_evictions.lock(), vec![b"aa".to_vec()]);
+  assert_eq!(disk_head_inspections.load(Ordering::Relaxed), 2);
+}
 
 // Verify that writing into a concurrent read will block until the reader clears.
 #[test]

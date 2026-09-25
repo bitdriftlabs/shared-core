@@ -32,6 +32,7 @@ use bd_stats_common::labels;
 use bd_time::OffsetDateTimeExt as _;
 use bd_versioned_kv::{RetentionHandle, RetentionRegistry};
 use futures::future::join_all;
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -153,9 +154,6 @@ type AllBuffers = (
 );
 
 // Responsible for managing multiple ring buffers and applying dynamic configuration updates.
-/// Callback invoked when a record is evicted from a buffer to make room for new data.
-pub type EvictedRecordCallback = Arc<dyn Fn(&[u8]) + Send + Sync + 'static>;
-
 pub struct Manager {
   // Both the file-based ring buffers and the RAM-only stream buffer are kept within a mutex in
   // order to allow modifications to be done in the updater while allowing the flush channel
@@ -287,28 +285,7 @@ impl Manager {
            non_volatile_size={non_volatile_buffer_size}"
         );
 
-        let retention_registry = self.retention_registry.clone();
-        let allow_overwrite_for_cb = allow_overwrite;
-        let retention_handle = retention_registry.create_handle().await;
-        let retention_handle_for_cb = retention_handle.clone();
-
-        // Only install the eviction callback if we are allowed to overwrite, as it's only
-        // meaningful to update the retention based on evicted records in that mode. This maps to
-        // the "trigger buffer" mode, where logs are retained on disk for some period of time in
-        // case they must be updated. In the other mode the ring buffer serves more as an upload
-        // queue and so old records are never evicted in normal operation.
-        let on_record_evicted_cb = if allow_overwrite_for_cb {
-          let callback: EvictedRecordCallback = Arc::new(move |record_data: &[u8]| {
-            if let Some(ts) = EncodableLog::extract_timestamp(record_data)
-              && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
-            {
-              retention_handle_for_cb.update_retention_micros(micros);
-            }
-          });
-          Some(callback)
-        } else {
-          None
-        };
+        let retention_handle = self.retention_registry.create_handle().await;
         let (ring_buffer, _) = RingBuffer::new(
           &buffer.name,
           volatile_buffer_size,
@@ -330,23 +307,8 @@ impl Manager {
           self
             .scope
             .counter_with_labels("total_data_loss", labels! {"buffer_id" => &buffer.id}),
-          None,
-          on_record_evicted_cb,
           retention_handle.clone(),
         )?;
-
-        match ring_buffer.buffer.peek_oldest_record(|record_data| {
-          EncodableLog::extract_timestamp(record_data)
-            .and_then(|ts| u64::try_from(ts.unix_timestamp_micros()).ok())
-        }) {
-          Ok(Some(Some(micros))) => retention_handle.update_retention_micros(micros),
-          Ok(Some(None) | None) => {
-            retention_handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
-          },
-          Err(error) => {
-            log::debug!("failed to peek oldest record for retention init: {error}");
-          },
-        }
 
         updated_buffers.insert(buffer.id.clone(), (buffer_type, ring_buffer.clone()));
         new_buffers.push((buffer.id.clone(), (buffer_type, ring_buffer)));
@@ -493,6 +455,8 @@ impl Manager {
           *self.stream_buffer_size_flag.read(),
           Arc::new(RingBufferStats::default()),
           |_| {},
+          |_| {},
+          None::<fn(Option<&[u8]>)>,
         ));
 
         Some(BufferEventWithResponse::new(
@@ -574,7 +538,11 @@ impl CursorConsumer {
     self
       .consumer
       .advance_read_pointers(1)
-      .map_err(|e| anyhow!("cursor consumer buffer read error occurred: {e}"))
+      .map_err(|e| anyhow!("cursor consumer buffer read error occurred: {e}"))?;
+    if self.buffer.trigger_retention.is_some() {
+      self.buffer.refresh_disk_retention();
+    }
+    Ok(())
   }
 
   #[must_use]
@@ -637,11 +605,17 @@ impl Consumer {
   }
 
   pub fn finish_read(&mut self) -> Result<()> {
-    self.cursor_consumer.advance_read_pointers(1)
+    self.cursor_consumer.advance_read_pointers(1)?;
+    self.buffer.refresh_disk_retention();
+    Ok(())
   }
 
   pub fn finish_reads(&mut self, count: usize) -> Result<()> {
-    self.cursor_consumer.advance_read_pointers(count)
+    self.cursor_consumer.advance_read_pointers(count)?;
+    if count > 0 {
+      self.buffer.refresh_disk_retention();
+    }
+    Ok(())
   }
 
   pub fn try_read(&mut self) -> Result<Vec<u8>> {
@@ -654,6 +628,113 @@ impl Consumer {
     self.cursor_consumer.read().await.map(<[u8]>::to_vec)
   }
 }
+
+//
+// TriggerRetention
+//
+
+struct TriggerRetentionState {
+  oldest_disk: u64,
+  oldest_ram: u64,
+}
+
+// Trigger buffers retain both durable logs and accepted logs awaiting the flush thread. A single
+// timestamp per tier tracks the front of each ring; the registry sees the earlier timestamp so
+// neither tier can prematurely release attachments or state. Callbacks only take this mutex while
+// holding their own ring lock, never the other ring's lock.
+// This assumes timestamps follow ring order. Logs with older event times behind newer records can
+// still lose attachment or state retention prematurely when the front advances; fixing that known
+// limitation requires moving to a non-timestamp based solution which will be done in a follow up.
+struct TriggerRetention {
+  handle: RetentionHandle,
+  state: Mutex<TriggerRetentionState>,
+  disk_head_dirty: AtomicBool,
+}
+
+impl TriggerRetention {
+  fn new(handle: RetentionHandle) -> Self {
+    Self {
+      handle,
+      state: Mutex::new(TriggerRetentionState {
+        oldest_disk: RetentionHandle::RETENTION_PENDING,
+        oldest_ram: RetentionHandle::RETENTION_NONE,
+      }),
+      disk_head_dirty: AtomicBool::new(true),
+    }
+  }
+
+  fn timestamp(record: &[u8]) -> u64 {
+    EncodableLog::extract_timestamp(record)
+      .and_then(|ts| u64::try_from(ts.unix_timestamp_micros()).ok())
+      .unwrap_or(0)
+  }
+
+  fn publish(&self, state: &TriggerRetentionState) {
+    // TODO: If coordinator contention remains costly, coalesce forward-only releases with an idle
+    // timer. A new or earlier retention requirement must still be published synchronously.
+    let retention = if state.oldest_disk == RetentionHandle::RETENTION_PENDING {
+      RetentionHandle::RETENTION_PENDING
+    } else {
+      state.oldest_ram.min(state.oldest_disk)
+    };
+    self.handle.update_retention_micros(retention);
+  }
+
+  // Commit protects a log immediately, even before it becomes visible to the flush thread. A
+  // later overwrite or finish_read notification replaces this bound with the actual RAM front.
+  fn committed(&self, record: &[u8]) {
+    let mut state = self.state.lock();
+    state.oldest_ram = state.oldest_ram.min(Self::timestamp(record));
+    self.publish(&state);
+  }
+
+  // Invoked under the volatile lock after overwrite or finish_read. finish_read runs for both
+  // successful flushes and records dropped during a non-volatile reset, so either way the RAM
+  // bound cannot keep a retired record alive indefinitely.
+  fn oldest_ram_changed(&self, oldest: Option<&[u8]>) {
+    let mut state = self.state.lock();
+    state.oldest_ram = oldest.map_or(RetentionHandle::RETENTION_NONE, Self::timestamp);
+    self.publish(&state);
+  }
+
+  fn evicted_from_disk(&self, record: &[u8]) {
+    let mut state = self.state.lock();
+    self.disk_head_dirty.store(true, Ordering::Relaxed);
+    if state.oldest_disk != RetentionHandle::RETENTION_PENDING {
+      state.oldest_disk = state.oldest_disk.max(Self::timestamp(record));
+      self.publish(&state);
+    }
+  }
+
+  // Disk commit precedes volatile finish_read, so the new durable bound is published before RAM
+  // releases its copy. No cross-buffer lock is acquired from either callback.
+  // TODO: Report a changed disk head during the existing disk lock to avoid re-locking it here.
+  fn flushed(&self, oldest_disk_record: Option<&[u8]>) {
+    let mut state = self.state.lock();
+    self
+      .disk_head_dirty
+      .store(oldest_disk_record.is_none(), Ordering::Relaxed);
+    state.oldest_disk = oldest_disk_record.map_or(RetentionHandle::RETENTION_NONE, Self::timestamp);
+    self.publish(&state);
+  }
+
+  fn should_inspect_disk_head(&self) -> bool {
+    self.disk_head_dirty.swap(false, Ordering::Relaxed)
+  }
+
+  fn set_disk(&self, oldest: Option<u64>) {
+    let mut state = self.state.lock();
+    self
+      .disk_head_dirty
+      .store(oldest.is_none(), Ordering::Relaxed);
+    state.oldest_disk = oldest.unwrap_or(RetentionHandle::RETENTION_NONE);
+    self.publish(&state);
+  }
+}
+
+//
+// RingBuffer
+//
 
 // A wrapper around a ring buffer. A shared type is used here to support being able to write
 // into any kind of buffer, regardless of upload strategy.
@@ -668,6 +749,7 @@ pub struct RingBuffer {
   buffer: Arc<AggregateRingBuffer>,
 
   retention_handle: RetentionHandle,
+  trigger_retention: Option<Arc<TriggerRetention>>,
 }
 
 impl Debug for RingBuffer {
@@ -688,9 +770,7 @@ impl RingBuffer {
     total_data_loss_counter: Counter,
     volatile_records_written: Counter,
     volatile_records_refused: Counter,
-    non_volatile_records_written: Option<Counter>,
-    on_record_evicted_cb: Option<EvictedRecordCallback>,
-    on_record_committed_cb: Option<EvictedRecordCallback>,
+    trigger_retention: Option<Arc<TriggerRetention>>,
   ) -> Result<Arc<AggregateRingBuffer>> {
     // TODO(mattklein123): Right now we expose a very limited set of stats. Given it's much easier
     // now to inject stats we can consider exposing the rest. For now just duplicate what we
@@ -704,11 +784,10 @@ impl RingBuffer {
     let non_volatile_stats = RingBufferStats {
       records_corrupted: Some(corrupted_record_counter),
       total_data_loss: Some(total_data_loss_counter),
-      records_written: non_volatile_records_written,
       ..Default::default()
     };
 
-    AggregateRingBuffer::new_with_record_committed_callback(
+    AggregateRingBuffer::new(
       name,
       volatile_size,
       filename,
@@ -721,16 +800,33 @@ impl RingBuffer {
       },
       Arc::new(volatile_stats),
       Arc::new(non_volatile_stats),
-      move |record_data| {
-        if let Some(callback) = on_record_committed_cb.as_ref() {
-          callback(record_data);
+      {
+        let retention = trigger_retention.clone();
+        move |record_data| {
+          if let Some(retention) = retention.as_ref() {
+            retention.committed(record_data);
+          }
         }
       },
-      move |record_data| {
-        if let Some(callback) = on_record_evicted_cb.as_ref() {
-          callback(record_data);
+      |_| {},
+      {
+        let retention = trigger_retention.clone();
+        move |record_data| {
+          if let Some(retention) = retention.as_ref() {
+            retention.evicted_from_disk(record_data);
+          }
         }
       },
+      trigger_retention
+        .clone()
+        .map(|retention| move |oldest: Option<&[u8]>| retention.flushed(oldest)),
+      trigger_retention
+        .clone()
+        .map(|retention| move || retention.should_inspect_disk_head()),
+      trigger_retention
+        .clone()
+        .map(|retention| move |oldest: Option<&[u8]>| retention.oldest_ram_changed(oldest)),
+      trigger_retention.map(|retention| move || retention.set_disk(None)),
     )
   }
 
@@ -747,8 +843,6 @@ impl RingBuffer {
     overwrite_counter: Counter,
     corrupted_record_counter: Counter,
     total_data_loss_counter: Counter,
-    non_volatile_records_written: Option<Counter>,
-    on_record_evicted_cb: Option<EvictedRecordCallback>,
     retention_handle: RetentionHandle,
   ) -> Result<(Arc<Self>, bool)> {
     let filename = non_volatile_filename
@@ -756,19 +850,8 @@ impl RingBuffer {
       .ok_or(Error::InvalidFileName)?
       .to_string();
 
-    let on_record_evicted_cb = on_record_evicted_cb;
-    let on_record_committed_cb = allow_overwrite.then(|| {
-      let retention_handle = retention_handle.clone();
-      Arc::new(move |record_data: &[u8]| {
-        if retention_handle.get_retention() != RetentionHandle::RETENTION_NONE {
-          return;
-        }
-        let retention = EncodableLog::extract_timestamp(record_data)
-          .and_then(|timestamp| u64::try_from(timestamp.unix_timestamp_micros()).ok())
-          .unwrap_or(RetentionHandle::RETENTION_PENDING);
-        retention_handle.update_retention_micros(retention);
-      }) as EvictedRecordCallback
-    });
+    let trigger_retention =
+      allow_overwrite.then(|| Arc::new(TriggerRetention::new(retention_handle.clone())));
     let mut buffer = Self::make_buffer(
       name,
       volatile_size,
@@ -780,9 +863,7 @@ impl RingBuffer {
       total_data_loss_counter.clone(),
       write_counter.clone(),
       write_failure_counter.clone(),
-      non_volatile_records_written.clone(),
-      on_record_evicted_cb.clone(),
-      on_record_committed_cb.clone(),
+      trigger_retention.clone(),
     );
 
     let mut deleted = false;
@@ -812,25 +893,42 @@ impl RingBuffer {
         total_data_loss_counter,
         write_counter,
         write_failure_counter,
-        non_volatile_records_written,
-        None,
-        on_record_committed_cb,
+        trigger_retention.clone(),
       );
     }
 
     buffer
       .map_err(|e| Error::BufferCreation(non_volatile_filename.clone(), Box::new(e)))
       .map(|buffer| {
-        (
-          Arc::new(Self {
-            filename: non_volatile_filename,
-            delete_on_drop: AtomicBool::new(false),
-            buffer,
-            retention_handle,
-          }),
-          deleted,
-        )
+        let result = Arc::new(Self {
+          filename: non_volatile_filename,
+          delete_on_drop: AtomicBool::new(false),
+          buffer,
+          retention_handle,
+          trigger_retention,
+        });
+        result.refresh_disk_retention();
+        (result, deleted)
       })
+  }
+
+  fn refresh_disk_retention(&self) {
+    let result = self
+      .buffer
+      .non_volatile_buffer()
+      .inspect_oldest_record(|oldest| {
+        let oldest = oldest.map(TriggerRetention::timestamp);
+        if let Some(retention) = &self.trigger_retention {
+          retention.set_disk(oldest);
+        } else {
+          self
+            .retention_handle
+            .update_retention_micros(oldest.unwrap_or(RetentionHandle::RETENTION_NONE));
+        }
+      });
+    if let Err(error) = result {
+      log::debug!("failed to peek oldest record for retention update: {error}");
+    }
   }
 
   // Returns a new thread local producer that can be used to write new entries into the ring buffer.

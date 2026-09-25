@@ -170,7 +170,9 @@ impl BufferState {
         "test".to_string(),
         test_case.buffer_size,
         stats,
+        |_| {},
         on_record_evicted_cb,
+        None::<fn(Option<&[u8]>)>,
       ),
       BufferType::NonVolatile => {
         // TODO(mattklein123): fuzz no overwrite in non-cursor mode.
@@ -187,6 +189,7 @@ impl BufferState {
           PerRecordCrc32Check::Yes,
           stats,
           on_record_evicted_cb,
+          None::<fn()>,
         ) {
           Ok(buffer) => buffer as Arc<dyn RingBuffer>,
           Err(e) => {
@@ -220,7 +223,13 @@ impl BufferState {
           },
           stats.clone(),
           stats,
+          |_| {},
           on_record_evicted_cb,
+          |_| {},
+          None::<fn(Option<&[u8]>)>,
+          None::<fn() -> bool>,
+          None::<fn(Option<&[u8]>)>,
+          None::<fn()>,
         ) {
           Ok(buffer) => buffer as Arc<dyn RingBuffer>,
           Err(e) => {

@@ -8,11 +8,13 @@
 use crate::buffer::common_ring_buffer::Cursor;
 use crate::buffer::test::{Helper, reserve_no_commit};
 use crate::buffer::volatile_ring_buffer::RingBufferImpl;
-use crate::buffer::{RingBufferProducer, RingBufferStats};
+use crate::buffer::{RingBuffer, RingBufferProducer, RingBufferStats};
 use crate::{AbslCode, Error};
 use assert_matches::assert_matches;
 use bd_log_primitives::LossyIntToU32;
 use itertools::Itertools;
+use parking_lot::Mutex;
+use std::sync::Arc;
 
 fn make_helper(size: u32) -> Helper {
   Helper::new(
@@ -21,6 +23,8 @@ fn make_helper(size: u32) -> Helper {
       size,
       RingBufferStats::default().into(),
       |_| {},
+      |_| {},
+      None::<fn(Option<&[u8]>)>,
     ),
     Cursor::No,
   )
@@ -105,6 +109,42 @@ fn concurrent_reservations_out_of_order() {
   // Verify reads.
   helper.read_and_verify("abcdef");
   helper.read_and_verify("ghijkl");
+}
+
+#[test]
+fn committed_reservation_still_retained_when_visible_records_drain() {
+  let oldest = Arc::new(Mutex::new(None));
+  let buffer = RingBufferImpl::new(
+    "test".to_string(),
+    64,
+    RingBufferStats::default().into(),
+    |_| {},
+    |_| {},
+    Some({
+      let oldest = oldest.clone();
+      move |record: Option<&[u8]>| *oldest.lock() = record.map(<[u8]>::to_vec)
+    }),
+  );
+  let mut first = buffer.clone().register_producer().unwrap();
+  first.write(b"first").unwrap();
+  let mut consumer = buffer.clone().register_consumer().unwrap();
+  assert_eq!(consumer.start_read(false).unwrap(), b"first");
+
+  let mut blocked = buffer.clone().register_producer().unwrap();
+  reserve_no_commit(blocked.as_mut(), "second");
+  let _retained_buffer = buffer.clone();
+  let mut later = buffer.register_producer().unwrap();
+  reserve_no_commit(later.as_mut(), "third");
+  later.commit().unwrap();
+  consumer.finish_read().unwrap();
+  assert_eq!(*oldest.lock(), Some(b"third".to_vec()));
+
+  blocked.commit().unwrap();
+  assert_eq!(consumer.start_read(false).unwrap(), b"second");
+  consumer.finish_read().unwrap();
+  assert_eq!(consumer.start_read(false).unwrap(), b"third");
+  consumer.finish_read().unwrap();
+  assert_eq!(*oldest.lock(), None);
 }
 
 // 2 producers that reserve over a wrap, and then commit in order, using aligned writes.
