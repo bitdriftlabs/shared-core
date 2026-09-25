@@ -53,9 +53,9 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
-use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::CompressedContents;
+use bd_proto::protos::logging::payload::{Data, LogType};
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
 use bd_proto::protos::workflow::workflow::workflow::{MatchRunCommand, Rule};
@@ -122,9 +122,9 @@ use protobuf::Message;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::ops::Add;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use std::sync::{Arc, mpsc};
+use std::time::{Duration, Instant};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
@@ -140,6 +140,11 @@ struct TestDeviceCommandHandler {
 
 struct CountingDeviceCommandHandler {
   calls: AtomicUsize,
+}
+
+struct ArgumentCapturingDeviceCommandHandler {
+  arguments: Mutex<Vec<Vec<Data>>>,
+  invoked_tx: mpsc::Sender<()>,
 }
 
 struct TestScreenshotTarget {
@@ -161,6 +166,18 @@ impl RegisteredCommandHandler for TestDeviceCommandHandler {
 impl RegisteredCommandHandler for CountingDeviceCommandHandler {
   async fn execute(&self, _invocation: CommandInvocation) -> CommandResult {
     self.calls.fetch_add(1, Ordering::SeqCst);
+    CommandResult::Completed {
+      fields: LogFields::default(),
+      attachment: None,
+    }
+  }
+}
+
+#[async_trait::async_trait]
+impl RegisteredCommandHandler for ArgumentCapturingDeviceCommandHandler {
+  async fn execute(&self, invocation: CommandInvocation) -> CommandResult {
+    self.arguments.lock().push(invocation.arguments);
+    let _ = self.invoked_tx.send(());
     CommandResult::Completed {
       fields: LogFields::default(),
       attachment: None,
@@ -2890,6 +2907,14 @@ fn custom_device_command_configuration(
   command_id: &str,
   registered_command_id: &str,
 ) -> bd_proto::protos::client::api::ConfigurationUpdate {
+  custom_device_command_configuration_with_arguments(command_id, registered_command_id, vec![])
+}
+
+fn custom_device_command_configuration_with_arguments(
+  command_id: &str,
+  registered_command_id: &str,
+  arguments: Vec<Data>,
+) -> bd_proto::protos::client::api::ConfigurationUpdate {
   configuration_update(
     "custom-command",
     StateOfTheWorld {
@@ -2904,6 +2929,7 @@ fn custom_device_command_configuration(
                   workflow_command_selector::Command_selector::RegisteredCommand(
                     workflow_command_selector::RegisteredCommand {
                       registered_command_id: registered_command_id.to_string(),
+                      arguments,
                       ..Default::default()
                     },
                   ),
@@ -2925,6 +2951,10 @@ fn custom_device_command_configuration(
 }
 
 fn workflow_command_rule(registered_command_id: &str) -> Rule {
+  workflow_command_rule_with_arguments(registered_command_id, vec![])
+}
+
+fn workflow_command_rule_with_arguments(registered_command_id: &str, arguments: Vec<Data>) -> Rule {
   Rule {
     rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
       command_selector: Some(WorkflowCommandSelector {
@@ -2932,6 +2962,7 @@ fn workflow_command_rule(registered_command_id: &str) -> Rule {
           workflow_command_selector::Command_selector::RegisteredCommand(
             workflow_command_selector::RegisteredCommand {
               registered_command_id: registered_command_id.to_string(),
+              arguments,
               ..Default::default()
             },
           ),
@@ -3173,6 +3204,64 @@ fn registered_custom_device_command_completes_without_attachment() {
 }
 
 #[test]
+fn registered_custom_device_command_delivers_arguments() {
+  let command_id = "a52206b4-d8f7-4d7d-a3f4-55ded4f82f9a";
+  let registered_command_id = "com.example.capture.arguments";
+  let arguments = vec![
+    Data {
+      data_type: Some(Data_type::StringData("capture".to_string())),
+      ..Default::default()
+    },
+    Data {
+      data_type: Some(Data_type::IntData(42)),
+      ..Default::default()
+    },
+    Data {
+      data_type: Some(Data_type::BoolData(true)),
+      ..Default::default()
+    },
+  ];
+  let (invoked_tx, invoked_rx) = mpsc::channel();
+  let handler = Arc::new(ArgumentCapturingDeviceCommandHandler {
+    arguments: Mutex::new(vec![]),
+    invoked_tx,
+  });
+  let registered_handler: Arc<dyn RegisteredCommandHandler> = handler.clone();
+  let mut setup = Setup::new_with_options(SetupOptions {
+    command_handlers: [(registered_command_id.to_string(), registered_handler)].into(),
+    ..Default::default()
+  });
+
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration_with_arguments(
+        command_id,
+        registered_command_id,
+        arguments.clone(),
+      ))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 2,
+      update_type: Some(device_command_update::Update_type::Completed(_)),
+      ..
+    })
+  );
+  assert!(invoked_rx.recv_timeout(Duration::from_secs(5)).is_ok());
+  assert_eq!(*handler.arguments.lock(), vec![arguments]);
+}
+
+#[test]
 fn removed_device_command_id_can_be_reused() {
   let command_id = "f4b6d461-4bfe-4bc6-a8b9-3bf16d83c62e";
   let registered_command_id = "com.example.reused";
@@ -3410,6 +3499,75 @@ fn workflow_command_attachment_uploads_zlib_and_releases_retained_payload() {
     artifact_id
   );
   assert!(!payload_path.exists());
+}
+
+#[test]
+fn workflow_registered_command_delivers_arguments() {
+  let registered_command_id = "com.example.workflow.arguments";
+  let arguments = vec![
+    Data {
+      data_type: Some(Data_type::StringData("workflow".to_string())),
+      ..Default::default()
+    },
+    Data {
+      data_type: Some(Data_type::DoubleData(3.5)),
+      ..Default::default()
+    },
+    Data {
+      data_type: Some(Data_type::BoolData(false)),
+      ..Default::default()
+    },
+  ];
+  let (invoked_tx, invoked_rx) = mpsc::channel();
+  let handler = Arc::new(ArgumentCapturingDeviceCommandHandler {
+    arguments: Mutex::new(vec![]),
+    invoked_tx,
+  });
+  let registered_handler: Arc<dyn RegisteredCommandHandler> = handler.clone();
+  let mut setup = Setup::new_with_options(SetupOptions {
+    command_handlers: [(registered_command_id.to_string(), registered_handler)].into(),
+    ..Default::default()
+  });
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    workflow_command_rule_with_arguments(registered_command_id, arguments.clone()),
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+
+  assert!(
+    setup
+      .send_configuration_update(config_helper::configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          workflows: vec![WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).build()],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+  setup.upload_individual_logs();
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start".into(),
+    [].into(),
+    [].into(),
+  );
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "run command".into(),
+    [].into(),
+    [].into(),
+  );
+
+  assert!(invoked_rx.recv_timeout(Duration::from_secs(5)).is_ok());
+  assert_eq!(*handler.arguments.lock(), vec![arguments]);
 }
 
 #[test]
