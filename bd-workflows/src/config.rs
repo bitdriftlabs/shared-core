@@ -620,6 +620,7 @@ impl Transition {
       },
       Rule_type::OnNewSession(_) => Predicate::OnNewSession,
       Rule_type::OnReport(_) => Predicate::OnReport,
+      Rule_type::MatchRunCommand(_) => Predicate::MatchRunCommand,
     };
 
     let actions = transition
@@ -699,6 +700,9 @@ pub(crate) enum Predicate {
   /// TODO(snowp): Dispatch an event for report-triggered transitions once report handoff support
   /// is implemented. Until then, the existing unmatched-transition path intentionally ignores it.
   OnReport,
+  /// Command execution is implemented by a later stack layer. Keep this inert in the base proto
+  /// layer so clients can parse configurations before the execution machinery lands.
+  MatchRunCommand,
   StateChangeMatch {
     state_change_match: StateChangeMatch,
     extra_matcher: Option<Tree>,
