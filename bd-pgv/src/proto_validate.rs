@@ -1125,3 +1125,12 @@ fn validate_impl(
 
   Ok(())
 }
+
+/// Check a field's omitted representation using the same rules as runtime validation.
+/// Contract coherence tests use this without constructing unrelated required sibling fields.
+pub fn validate_omitted_field(field: &FieldDescriptor) -> error::Result<()> {
+  let descriptor = field.containing_message();
+  let message = descriptor.new_instance();
+  let formatter = ErrorNameFormatter::new(ValidationOptions::default());
+  validate_field(field, &descriptor, &*message, &formatter).map(|_| ())
+}
