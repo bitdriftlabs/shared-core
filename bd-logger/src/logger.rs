@@ -673,6 +673,8 @@ pub trait TestHooks: Send + Sync {
 
   fn remote_streaming_trigger_upload_completed(&self) {}
 
+  fn workflow_attachment_upload_completed(&self, _artifact_id: uuid::Uuid) {}
+
   fn workflow_event_processed(&self) {}
 
   fn startup_gate_ready(&self) {}

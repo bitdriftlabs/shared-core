@@ -151,6 +151,7 @@ impl SetupSingleConsumer {
       shutdown_trigger.make_shutdown(),
       "buffer".to_string(),
       None,
+      None,
     );
 
     tokio::spawn(async move { uploader.consume_continuous_logs().await });
@@ -419,6 +420,7 @@ async fn continuous_buffer_sets_retention_none_when_batch_drains_buffer() {
     make_flags(&runtime_loader),
     shutdown_trigger.make_shutdown(),
     "buffer".to_string(),
+    None,
     None,
   );
   tokio::spawn(async move { uploader.consume_continuous_logs().await.unwrap() });
@@ -711,6 +713,47 @@ fn make_test_log(t: time::OffsetDateTime) -> Vec<u8> {
   output
 }
 
+#[test]
+fn workflow_artifact_ids_are_found_in_raw_and_compressed_batches() {
+  let artifact_id = uuid::Uuid::new_v4();
+  let encode = |compression_threshold, padding: String| {
+    let mut log = EncodableLog::new(
+      Log {
+        log_level: log_level::INFO,
+        log_type: LogType::NORMAL,
+        message: "workflow outcome".into(),
+        fields: [
+          (
+            bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+            artifact_id.to_string().into(),
+          ),
+          ("padding".into(), padding.into()),
+        ]
+        .into(),
+        matching_fields: [].into(),
+        session_id: "session".into(),
+        occurred_at: time::OffsetDateTime::now_utc(),
+        capture_session: None,
+      },
+      compression_threshold,
+    );
+    let mut output = Vec::new();
+    log.compute_size(&[], &[]).unwrap();
+    log
+      .serialize_to_stream(&[], &[], &mut CodedOutputStream::vec(&mut output))
+      .unwrap();
+    output
+  };
+
+  let ids = super::workflow_artifact_ids_for_logs(&[
+    encode(u64::MAX, String::new()),
+    encode(0, "x".repeat(3 * 1024 * 1024)),
+  ])
+  .unwrap();
+  assert_eq!(ids.get(&artifact_id).map(String::as_str), Some("session"));
+  assert_eq!(ids.len(), 1);
+}
+
 struct PendingFlushStateTestEvents {
   state_changed_tx: UnboundedSender<(FlushBufferId, bool)>,
 }
@@ -786,6 +829,7 @@ impl SetupMultiConsumer {
         remote_flush_streaming_tx,
         &collector_clone.scope("consumer"),
         bd_internal_logging::NoopLogger::new(),
+        None,
         None,
         PendingTriggerUploadsStore::new(&sdk_directory_clone),
         process_local_pending_flush_state_clone,

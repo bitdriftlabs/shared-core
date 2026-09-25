@@ -39,6 +39,7 @@ use uuid::Uuid;
 
 const WORKFLOW_COMMAND_STATUS_FIELD: &str = "_workflow_command_status";
 const WORKFLOW_COMMAND_MESSAGE_FIELD: &str = "_workflow_command_message";
+pub const WORKFLOW_COMMAND_ARTIFACT_ID_FIELD: &str = "_workflow_command_artifact_id";
 
 pub(crate) fn workflow_command_cooldown_key_prefix(workflow_id: &str) -> String {
   format!("{}:{workflow_id}:", workflow_id.len())
@@ -82,6 +83,11 @@ pub enum WorkflowCommandOutcome {
     message: Option<String>,
     fields: bd_log_primitives::LogFields,
   },
+  SucceededWithAttachment {
+    message: Option<String>,
+    fields: bd_log_primitives::LogFields,
+    artifact_id: Uuid,
+  },
   Failed {
     message: Option<String>,
     fields: bd_log_primitives::LogFields,
@@ -90,9 +96,14 @@ pub enum WorkflowCommandOutcome {
 
 impl WorkflowCommandOutcome {
   pub(crate) fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
-    let (succeeded, message, mut fields) = match self {
-      Self::Succeeded { message, fields } => (true, message, fields),
-      Self::Failed { message, fields } => (false, message, fields),
+    let (succeeded, message, mut fields, artifact_id) = match self {
+      Self::Succeeded { message, fields } => (true, message, fields, None),
+      Self::SucceededWithAttachment {
+        message,
+        fields,
+        artifact_id,
+      } => (true, message, fields, Some(artifact_id)),
+      Self::Failed { message, fields } => (false, message, fields, None),
     };
 
     fields.retain(|key, _| !key.starts_with("_workflow_command_"));
@@ -103,6 +114,12 @@ impl WorkflowCommandOutcome {
     );
     if let Some(message) = message {
       fields.insert(WORKFLOW_COMMAND_MESSAGE_FIELD.into(), message.into());
+    }
+    if let Some(artifact_id) = artifact_id {
+      fields.insert(
+        WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+        artifact_id.to_string().into(),
+      );
     }
 
     Log {

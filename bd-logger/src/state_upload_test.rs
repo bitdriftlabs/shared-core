@@ -397,11 +397,10 @@ async fn notify_upload_needed_keeps_range_when_wake_channel_is_full() {
   )
   .await;
 
-  handle.wake_tx.try_send(()).unwrap();
+  handle.coordination.fill_wake_channel();
 
   handle.notify_upload_needed(100, 200);
-  let pending = handle.pending_accumulator.lock();
-  let range = pending.range.unwrap();
+  let range = handle.coordination.pending_value().unwrap();
   assert_eq!(range.oldest_micros, 100);
   assert_eq!(range.newest_micros, 200);
 }

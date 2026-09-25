@@ -46,6 +46,7 @@ use protobuf::Chars;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc::Sender;
 
 // Helper trait to make it easier to test the internals without having to broadcast to an actual
@@ -254,6 +255,7 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate f
 // Update handle that updates the buffer configuration and thread local state for a given logger.
 pub struct LoggerUpdate {
   buffer_manager: Arc<bd_buffer::Manager>,
+  workflow_attachment_cleanup_ready: Arc<AtomicBool>,
   config_update_tx: Sender<ConfigUpdate>,
   device_command_dispatcher: DeviceCommandDispatcher,
   stream_config_parse_failure: Counter,
@@ -263,6 +265,7 @@ pub struct LoggerUpdate {
 impl LoggerUpdate {
   pub(crate) fn new(
     buffer_manager: Arc<bd_buffer::Manager>,
+    workflow_attachment_cleanup_ready: Arc<AtomicBool>,
     config_update_tx: Sender<ConfigUpdate>,
     data_upload_tx: Sender<DataUpload>,
     trigger_upload_tx: Sender<TriggerUpload>,
@@ -274,6 +277,7 @@ impl LoggerUpdate {
   ) -> Self {
     Self {
       buffer_manager,
+      workflow_attachment_cleanup_ready,
       config_update_tx,
       device_command_dispatcher: DeviceCommandDispatcher::new(
         data_upload_tx,
@@ -344,6 +348,9 @@ impl ApplyConfig for LoggerUpdate {
       .buffer_manager
       .update_from_config(&buffer, has_active_tail_streams)
       .await?;
+    self
+      .workflow_attachment_cleanup_ready
+      .store(true, Ordering::Release);
 
     debug_assert_eq!(maybe_stream_buffer.is_some(), has_active_tail_streams);
 

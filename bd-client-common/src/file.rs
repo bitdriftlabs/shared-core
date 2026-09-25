@@ -18,7 +18,7 @@ use fs2::FileExt;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 /// Ensures a file is sized and physically allocated before it is writable memory-mapped.
 pub fn prepare_file_for_mmap(
@@ -72,6 +72,23 @@ pub fn write_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
   let mut compressed_bytes = Vec::new();
   encoder.read_to_end(&mut compressed_bytes)?;
   Ok(compressed_bytes)
+}
+
+/// Reads a complete, bounded attachment before compressing it off the async executor.
+///
+/// The extra byte is used only to detect an oversized input; oversized data is never returned or
+/// written as a truncated attachment.
+pub async fn read_and_compress_limited(
+  reader: impl AsyncRead + Unpin,
+  max_input_bytes: u64,
+) -> anyhow::Result<Vec<u8>> {
+  let mut reader = reader.take(max_input_bytes.saturating_add(1));
+  let mut input = Vec::new();
+  reader.read_to_end(&mut input).await?;
+  if u64::try_from(input.len()).unwrap_or(u64::MAX) > max_input_bytes {
+    anyhow::bail!("attachment exceeds size limit");
+  }
+  tokio::task::spawn_blocking(move || write_compressed(&input)).await?
 }
 
 pub fn read_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {

@@ -1082,6 +1082,19 @@ pub mod artifact_upload {
   );
 }
 
+pub mod attachment {
+  int_feature_flag!(MaxBytes, "attachment.max_bytes", 5 * 1024 * 1024);
+}
+
+pub mod workflow_attachment {
+  int_feature_flag!(
+    MaxOwnedBytes,
+    "workflow_attachment.max_owned_bytes",
+    32 * 1024 * 1024
+  );
+  int_feature_flag!(MaxOwnedFiles, "workflow_attachment.max_owned_files", 64);
+}
+
 pub mod session_capture {
   // How many logs should be streamed as part of an explicit session capture request.
   //

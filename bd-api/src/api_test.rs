@@ -39,6 +39,7 @@ use bd_proto::protos::client::api::handshake_response::StreamSettings;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
+  ArtifactPayloadEncoding,
   ClientKillFile,
   ClientStateUpdate,
   ConfigurationUpdate,
@@ -53,6 +54,7 @@ use bd_proto::protos::client::api::{
   StateUpdateResponse,
   StatsUploadRequest,
   StatsUploadResponse,
+  UploadArtifactRequest,
   client_state_update,
   device_command_update,
 };
@@ -1386,6 +1388,80 @@ async fn data_idle_timeout_data_resets_timeout() {
   assert_eq!(
     setup.network_quality_provider.get_network_quality(),
     NetworkQuality::Online
+  );
+}
+
+#[tokio::test]
+async fn zlib_workflow_and_command_artifacts_skip_grpc_compression() {
+  let mut setup = Setup::new().await;
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+
+  let zlib_upload = UploadArtifactRequest {
+    type_id: "workflow_attachment".to_string(),
+    contents: vec![b'a'; 1000],
+    payload_encoding: ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB.into(),
+    ..Default::default()
+  };
+  setup
+    .data_tx
+    .send(DataUpload::ArtifactUpload(
+      Tracked::new("zlib".to_string(), zlib_upload).0,
+    ))
+    .await
+    .unwrap();
+  let skipped_frame = setup.send_data_rx.recv().await.unwrap();
+  assert_eq!(skipped_frame[0], 0);
+  assert_matches!(
+    setup.decode(&skipped_frame).unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request))
+      if request.payload_encoding.enum_value_or_default()
+        == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+  );
+
+  let zlib_command_upload = UploadArtifactRequest {
+    type_id: "screenshot".to_string(),
+    command_id: Some("command_id".to_string()),
+    contents: vec![b'a'; 1000],
+    payload_encoding: ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB.into(),
+    ..Default::default()
+  };
+  setup
+    .data_tx
+    .send(DataUpload::ArtifactUpload(
+      Tracked::new("zlib-command".to_string(), zlib_command_upload).0,
+    ))
+    .await
+    .unwrap();
+  let skipped_frame = setup.send_data_rx.recv().await.unwrap();
+  assert_eq!(skipped_frame[0], 0);
+  assert_matches!(
+    setup.decode(&skipped_frame).unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request))
+      if request.command_id.as_deref() == Some("command_id")
+        && request.payload_encoding.enum_value_or_default()
+          == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+  );
+
+  let ordinary_upload = UploadArtifactRequest {
+    type_id: "client_report".to_string(),
+    contents: vec![b'a'; 1000],
+    ..Default::default()
+  };
+  setup
+    .data_tx
+    .send(DataUpload::ArtifactUpload(
+      Tracked::new("ordinary".to_string(), ordinary_upload).0,
+    ))
+    .await
+    .unwrap();
+  let compressed_frame = setup.send_data_rx.recv().await.unwrap();
+  assert_eq!(compressed_frame[0], 1);
+  assert_matches!(
+    setup.decode(&compressed_frame).unwrap().request_type,
+    Some(Request_type::ArtifactUpload(_))
   );
 }
 

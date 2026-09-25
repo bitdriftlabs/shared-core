@@ -17,6 +17,7 @@ use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, STATE_SNAPSHOT_
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
   async_write_checksummed_data,
+  read_and_compress_limited,
   read_checksummed_data,
   read_compressed_protobuf,
   write_checksummed_data,
@@ -28,23 +29,27 @@ use bd_client_stats_store::{Collector, Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::LogFields;
 use bd_macros::ApproximateSize;
-use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
+use bd_proto::protos::client::api::{
+  ArtifactPayloadEncoding,
+  UploadArtifactIntentRequest,
+  UploadArtifactRequest,
+};
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, StorageFormat};
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
-use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload};
+use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload, attachment};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use mockall::automock;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 #[cfg(test)]
 use tests::TestHooks;
 use time::OffsetDateTime;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncWriteExt};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -53,6 +58,8 @@ pub static ARTIFACT_UPLOAD_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "repo
 
 /// The index file used for tracking all of the individual files.
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
+
+pub const WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID: &str = "workflow_attachment";
 
 #[derive(Default, Clone, Copy)]
 pub enum ArtifactType {
@@ -142,6 +149,8 @@ pub enum UploadSource {
   // intended for use cases where the data format is already self-validating (e.g. crc checksum or
   // zlib compression).
   Path(PathBuf),
+  // A checksum-verified SDK payload shared with the upload queue using a hard link.
+  Retained(PathBuf),
 }
 
 // Used for bounded_buffer logs
@@ -162,7 +171,7 @@ impl ApproximateSize for UploadSource {
       // File descriptors own no heap storage attributable to this queue entry. PathBuf exposes
       // the capacity of its owned path buffer, so account for its retained allocation directly.
       Self::File(_) => 0,
-      Self::Path(path) => path.capacity(),
+      Self::Path(path) | Self::Retained(path) => path.capacity(),
     }
   }
 }
@@ -199,12 +208,34 @@ pub enum EnqueueError {
   QueueFull,
   #[error("upload channel closed")]
   Closed,
+  #[error("retryable persistence failure: {0}")]
+  RetryablePersistence(anyhow::Error),
   #[error(transparent)]
   Other(#[from] anyhow::Error),
 }
 
+fn retained_persistence_error(error: anyhow::Error) -> EnqueueError {
+  if error
+    .downcast_ref::<std::io::Error>()
+    .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+  {
+    EnqueueError::Other(error)
+  } else {
+    EnqueueError::RetryablePersistence(error)
+  }
+}
+
 #[automock]
 pub trait Client: Send + Sync {
+  fn enqueue_workflow_attachment(
+    &self,
+    artifact_id: Uuid,
+    source_path: PathBuf,
+    session_id: String,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+  ) -> std::result::Result<(), EnqueueError>;
+
   fn enqueue_upload(
     &self,
     source: UploadSource,
@@ -238,6 +269,7 @@ pub struct UploadClient {
 impl UploadClient {
   fn enqueue(
     &self,
+    uuid: Uuid,
     source: UploadSource,
     type_id: String,
     state: LogFields,
@@ -248,8 +280,6 @@ impl UploadClient {
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
-    let uuid = uuid::Uuid::new_v4();
-
     let result = self
       .upload_tx
       .try_send(NewUpload {
@@ -277,6 +307,34 @@ impl UploadClient {
 }
 
 impl Client for UploadClient {
+  fn enqueue_workflow_attachment(
+    &self,
+    artifact_id: Uuid,
+    source_path: PathBuf,
+    session_id: String,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+  ) -> std::result::Result<(), EnqueueError> {
+    if source_path != Path::new(&format!("workflow-attachments/{artifact_id}.payload")) {
+      return Err(EnqueueError::Other(anyhow::anyhow!(
+        "invalid workflow attachment path"
+      )));
+    }
+    self.enqueue(
+      artifact_id,
+      UploadSource::Retained(source_path),
+      WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID.to_string(),
+      LogFields::default(),
+      None,
+      session_id,
+      Vec::new(),
+      None,
+      persisted_tx,
+      completion_tx,
+    )?;
+    Ok(())
+  }
+
   /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
   fn enqueue_upload(
     &self,
@@ -289,6 +347,7 @@ impl Client for UploadClient {
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
     self.enqueue(
+      Uuid::new_v4(),
       source,
       type_id,
       state,
@@ -314,6 +373,7 @@ impl Client for UploadClient {
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
     self.enqueue(
+      Uuid::new_v4(),
       source,
       type_id,
       state,
@@ -366,6 +426,7 @@ pub struct Uploader {
   upload_completions: HashMap<String, oneshot::Sender<std::result::Result<(), String>>>,
 
   max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
+  max_attachment_bytes: IntWatch<attachment::MaxBytes>,
   backoff_policy: RuntimeBackoffPolicy<
     bd_runtime::runtime::retry_backoff::InitialBackoffInterval,
     bd_runtime::runtime::retry_backoff::MaxBackoffInterval,
@@ -413,6 +474,7 @@ impl Uploader {
       index: VecDeque::default(),
       upload_completions: HashMap::default(),
       max_entries: runtime.register_int_watch(),
+      max_attachment_bytes: runtime.register_int_watch(),
       backoff_policy: RuntimeBackoffPolicy::new(runtime),
       upload_task_handle: None,
       intent_task_handle: None,
@@ -477,29 +539,21 @@ impl Uploader {
           continue;
         };
 
-        // For client reports we copy the file into a new file with a CRC checksum appended to allow
-        // for integrity checking. For state snapshot since they are already zlib encoded we bypass
-        // this check. TODO(snowp): Consider consolidating the behavior here, but keeping
-        // reports the same for now to avoid more changes than necessary.
         let contents = if next.storage_format.enum_value_or_default() == StorageFormat::RAW {
-          // TODO(snowp): Should we consider validating the file here in some way?
-          contents
+          Some(contents)
         } else {
-          let Ok(contents) = read_checksummed_data(&contents) else {
-            log::debug!(
-              "failed to validate CRC checksum for artifact {}, deleting and removing from index",
-              next.name
-            );
-            let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
-            self
-              .discard_upload(
-                entry,
-                "artifact upload file failed integrity validation".to_string(),
-              )
-              .await;
-            continue;
-          };
-          contents
+          read_checksummed_data(&contents).ok()
+        };
+        let Some(contents) = contents else {
+          log::warn!("artifact {} failed integrity validation", next.name);
+          let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
+          self
+            .discard_upload(
+              entry,
+              "artifact upload file failed integrity validation".to_string(),
+            )
+            .await;
+          continue;
         };
         log::debug!("starting file upload for {:?}", next.name);
         self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
@@ -513,6 +567,7 @@ impl Uploader {
           next.metadata.clone(),
           next.feature_flags.clone(),
           next.command_id.clone(),
+          next.payload_encoding.enum_value_or_default(),
         )));
       }
 
@@ -649,8 +704,8 @@ impl Uploader {
 
     self.index = new_index;
 
-    if modified {
-      self.write_index().await;
+    if modified && let Err(error) = self.write_index().await {
+      log::warn!("failed to write artifact index: {error}");
     }
 
     // Remove any files left in the directory that isn't the index or a file referenced by the
@@ -696,7 +751,9 @@ impl Uploader {
         let entry = self.index.front_mut().ok_or(InvariantError::Invariant)?;
         // Mark the file as being ready for uploads and persist this to the index.
         entry.pending_intent_negotiation = false;
-        self.write_index().await;
+        if let Err(error) = self.write_index().await {
+          log::warn!("failed to write artifact index: {error}");
+        }
       },
     }
     Ok(())
@@ -712,7 +769,9 @@ impl Uploader {
       log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
     }
 
-    self.write_index().await;
+    if let Err(error) = self.write_index().await {
+      log::warn!("failed to write artifact index: {error}");
+    }
 
     Ok(entry.name)
   }
@@ -729,7 +788,9 @@ impl Uploader {
         delete_error
       );
     }
-    self.write_index().await;
+    if let Err(error) = self.write_index().await {
+      log::warn!("failed to write artifact index: {error}");
+    }
     self.complete_upload(&entry.name, Err(error));
   }
 
@@ -748,6 +809,30 @@ impl Uploader {
     }
   }
 
+  async fn write_command_attachment(
+    &self,
+    source: UploadSource,
+    target_path: &Path,
+    path_source: &mut Option<(PathBuf, bool)>,
+  ) -> anyhow::Result<()> {
+    let max_attachment_bytes = u64::from(*self.max_attachment_bytes.read());
+    let reader: Box<dyn AsyncRead + Unpin + Send> = match source {
+      UploadSource::Bytes(contents) => Box::new(std::io::Cursor::new(contents)),
+      UploadSource::File(file) => Box::new(tokio::fs::File::from_std(file)),
+      UploadSource::Path(source_path) => {
+        let file = self.file_system.open_file(&source_path).await?;
+        *path_source = Some((source_path, false));
+        Box::new(file)
+      },
+      UploadSource::Retained(_) => anyhow::bail!("command attachments cannot use retained sources"),
+    };
+
+    let contents = read_and_compress_limited(reader, max_attachment_bytes).await?;
+    let mut target_file = self.file_system.create_file(target_path).await?;
+    target_file.write_all(&contents).await?;
+    Ok(())
+  }
+
   async fn track_new_upload(
     &mut self,
     uuid: Uuid,
@@ -761,6 +846,36 @@ impl Uploader {
     mut persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) {
+    if let Some(existing) = self
+      .index
+      .iter()
+      .find(|entry| entry.name == uuid.to_string())
+    {
+      let matching_workflow_attachment = existing.type_id.as_deref()
+        == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
+        && type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
+        && existing.session_id == session_id;
+      if let Some(tx) = persisted_tx {
+        let result = if matching_workflow_attachment {
+          Ok(())
+        } else {
+          Err(EnqueueError::Other(anyhow::anyhow!(
+            "workflow attachment ID belongs to another session or artifact type"
+          )))
+        };
+        if result.is_ok()
+          && matching_workflow_attachment
+          && let Some(completion_tx) = completion_tx
+        {
+          self
+            .upload_completions
+            .entry(uuid.to_string())
+            .or_insert(completion_tx);
+        }
+        let _ = tx.send(result);
+      }
+      return;
+    }
     // Previously we would always drop the oldest entry when we hit capacity, but for state
     // snapshots this would result in us dropping uploads that we know we need to hydrate logs
     // that were scheduled for uploads. To mitigate this we treat state snapshots differently
@@ -777,6 +892,7 @@ impl Uploader {
     if self.index.len() == usize::try_from(*self.max_entries.read()).unwrap_or_default() {
       if let Some(index_to_drop) = self.index.iter().position(|entry| {
         entry.type_id.as_deref() != Some(ArtifactType::StateSnapshot.to_type_id())
+          && entry.type_id.as_deref() != Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
       }) {
         log::debug!("upload queue is full, dropping oldest non-state upload");
         self.stats.dropped.inc();
@@ -800,10 +916,25 @@ impl Uploader {
       }
     }
 
+    let retained = matches!(source, UploadSource::Retained(_));
+    let command_attachment = command_id.is_some();
+    let payload_encoding =
+      if command_attachment || (retained && type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID) {
+        ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+      } else {
+        ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
+      };
     let uuid = uuid.to_string();
 
     let target_path = ARTIFACT_UPLOAD_DIRECTORY.join(&uuid);
+    let mut path_source = None;
     let (write_result, storage_format) = match source {
+      source if command_attachment => (
+        self
+          .write_command_attachment(source, &target_path, &mut path_source)
+          .await,
+        StorageFormat::RAW,
+      ),
       UploadSource::Bytes(bytes) => {
         let mut target_file = match self.file_system.create_file(&target_path).await {
           Ok(file) => file,
@@ -856,20 +987,11 @@ impl Uploader {
           .await
         {
           log::debug!("failed to move artifact source, falling back to copy: {e}");
-          match std::fs::File::open(&source_path) {
+          match tokio::fs::File::open(&source_path).await {
             Ok(source_file) => match self.file_system.create_file(&target_path).await {
               Ok(target_file) => {
-                let result =
-                  async_write_checksummed_data(tokio::fs::File::from_std(source_file), target_file)
-                    .await;
-                if result.is_ok()
-                  && let Err(e) = self.file_system.delete_file(&source_path).await
-                {
-                  log::debug!(
-                    "failed to delete moved source file {}: {e}",
-                    source_path.display()
-                  );
-                }
+                let result = async_write_checksummed_data(source_file, target_file).await;
+                path_source = Some((source_path, false));
                 result
               },
               Err(e) => Err(e),
@@ -881,19 +1003,45 @@ impl Uploader {
             )),
           }
         } else {
+          path_source = Some((source_path, true));
           Ok(())
         };
 
         (result, StorageFormat::RAW)
       },
+      UploadSource::Retained(source_path) => (
+        async {
+          self
+            .file_system
+            .link_file(&source_path, &target_path)
+            .await?;
+          if let Err(error) = self.file_system.sync_file_and_parent(&target_path).await {
+            if let Err(cleanup_error) = self.file_system.delete_file(&target_path).await {
+              log::warn!(
+                "failed to remove unsynced retained artifact {}: {cleanup_error}",
+                target_path.display()
+              );
+            }
+            return Err(error);
+          }
+          Ok(())
+        }
+        .await,
+        StorageFormat::RAW,
+      ),
     };
 
     if let Err(e) = write_result {
       log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
       if let Some(tx) = persisted_tx.take() {
-        let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
-          "failed to write artifact to disk {uuid}: {e}"
-        ))));
+        let error = if retained {
+          retained_persistence_error(e)
+        } else {
+          EnqueueError::Other(anyhow::anyhow!(
+            "failed to write artifact to disk {uuid}: {e}"
+          ))
+        };
+        let _ = tx.send(Err(error));
       }
 
       #[cfg(test)]
@@ -939,10 +1087,51 @@ impl Uploader {
         )
         .collect(),
       command_id,
+      payload_encoding: payload_encoding.into(),
       ..Default::default()
     });
 
-    self.write_index().await;
+    let mut write_result = self.write_index().await;
+    if write_result.is_ok() && retained {
+      write_result = self
+        .file_system
+        .sync_file_and_parent(&ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE))
+        .await;
+    }
+    if let Err(error) = write_result {
+      self.index.pop_back();
+      if let Some((source_path, true)) = path_source.as_ref() {
+        if let Err(restore_error) = self
+          .file_system
+          .rename_file(&target_path, source_path)
+          .await
+        {
+          log::warn!(
+            "failed to restore artifact source {}: {restore_error}",
+            source_path.display()
+          );
+        }
+      } else if let Err(delete_error) = self.file_system.delete_file(&target_path).await {
+        log::warn!("failed to remove unindexed artifact {uuid}: {delete_error}");
+      }
+      if let Some(tx) = persisted_tx {
+        let error = if retained {
+          retained_persistence_error(error)
+        } else {
+          EnqueueError::Other(error)
+        };
+        let _ = tx.send(Err(error));
+      }
+      return;
+    }
+    if let Some((source_path, false)) = path_source
+      && let Err(error) = self.file_system.delete_file(&source_path).await
+    {
+      log::warn!(
+        "failed to delete copied source {}: {error}",
+        source_path.display()
+      );
+    }
     if let Some(tx) = persisted_tx {
       let _ = tx.send(Ok(()));
     }
@@ -956,7 +1145,7 @@ impl Uploader {
     }
   }
 
-  async fn write_index(&self) {
+  async fn write_index(&self) -> anyhow::Result<()> {
     log::debug!("writing index to disk");
 
     let index = ArtifactUploadIndex {
@@ -964,21 +1153,18 @@ impl Uploader {
       ..Default::default()
     };
 
-    if let Err(e) = async {
-      let compressed = write_compressed_protobuf(&index)?;
-      self
-        .file_system
-        .as_ref()
-        .write_file(
-          &ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE),
-          &compressed,
-        )
-        .await
-    }
-    .await
-    {
-      log::debug!("failed to write index: {e}");
-    }
+    let compressed = write_compressed_protobuf(&index)?;
+    let index_path = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
+    let staging_path = index_path.with_extension("tmp");
+    self
+      .file_system
+      .write_file(&staging_path, &compressed)
+      .await?;
+    self
+      .file_system
+      .rename_file(&staging_path, &index_path)
+      .await?;
+    Ok(())
   }
 
   async fn upload_artifact(
@@ -992,6 +1178,7 @@ impl Uploader {
     state_metadata: HashMap<String, Data>,
     feature_flags: Vec<FeatureFlag>,
     command_id: Option<String>,
+    payload_encoding: ArtifactPayloadEncoding,
   ) -> Result<()> {
     let path = ARTIFACT_UPLOAD_DIRECTORY.join(&name);
     log::debug!("uploading artifact: {}", path.display());
@@ -1014,6 +1201,7 @@ impl Uploader {
           state_metadata: state_metadata.clone(),
           feature_flags: feature_flags.clone(),
           command_id: command_id.clone(),
+          payload_encoding: payload_encoding.into(),
           ..Default::default()
         },
       );

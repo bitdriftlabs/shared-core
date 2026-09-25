@@ -19,6 +19,7 @@ use crate::log_replay::LoggerReplay;
 use crate::logger::{Logger, PendingEntityIdUpdate, TestHooks};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
+use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use crate::{
   InitParams,
   LogAttributesOverrides,
@@ -435,6 +436,7 @@ impl LoggerBuilder {
         data_upload_tx.clone(),
         self.startup_replay_eligibility,
       );
+    let workflow_attachment_cleanup_ready = async_log_buffer.workflow_attachment_cleanup_ready();
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
@@ -513,6 +515,7 @@ impl LoggerBuilder {
         result.previous_state,
         result.retention_registry,
       );
+      async_log_buffer.set_retention_registry(retention_registry.clone());
 
       let pending_entity_id = pending_entity_id.lock().take();
       initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
@@ -544,6 +547,13 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
+      let (workflow_upload_handle, workflow_upload_worker) =
+        WorkflowAttachmentUploadHandle::new_with_attachment_store_and_test_hooks(
+          artifact_client.clone(),
+          async_log_buffer.workflow_attachment_store(),
+          self.test_hooks.clone(),
+        );
+      let workflow_upload_handle = Arc::new(workflow_upload_handle);
 
       // Create state upload handle for uploading state snapshots alongside logs.
       // Gated by the `state.upload_enabled` runtime flag, which defaults to false as a
@@ -615,6 +625,7 @@ impl LoggerBuilder {
         &scope,
         log.clone(),
         state_upload_handle,
+        Some(workflow_upload_handle),
         pending_trigger_uploads,
         process_local_pending_flush_state,
         self.test_hooks.clone(),
@@ -624,6 +635,7 @@ impl LoggerBuilder {
         &self.params.sdk_directory,
         LoggerUpdate::new(
           buffer_manager.clone(),
+          workflow_attachment_cleanup_ready,
           config_update_tx,
           data_upload_tx_clone.clone(),
           trigger_upload_tx.clone(),
@@ -713,6 +725,11 @@ impl LoggerBuilder {
             worker.run().await;
           }
           log::debug!("logger state upload worker stopped");
+          Ok(())
+        },
+        async move {
+          workflow_upload_worker.run().await;
+          log::debug!("logger workflow attachment worker stopped");
           Ok(())
         },
         async move {

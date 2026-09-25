@@ -81,6 +81,7 @@ struct SetupTestHooks {
   remote_streaming_action_processed_tx: StdSender<()>,
   remote_streaming_trigger_upload_completed_tx: StdSender<()>,
   startup_replay_gate_opened_tx: StdSender<()>,
+  workflow_attachment_upload_completed_tx: StdSender<uuid::Uuid>,
   workflow_event_processed_tx: std::sync::mpsc::SyncSender<()>,
 }
 
@@ -95,6 +96,12 @@ impl TestHooks for SetupTestHooks {
 
   fn remote_streaming_trigger_upload_completed(&self) {
     let _ignored = self.remote_streaming_trigger_upload_completed_tx.send(());
+  }
+
+  fn workflow_attachment_upload_completed(&self, artifact_id: uuid::Uuid) {
+    let _ignored = self
+      .workflow_attachment_upload_completed_tx
+      .send(artifact_id);
   }
 
   fn startup_replay_gate_opened(&self) {
@@ -172,6 +179,7 @@ pub struct Setup {
   remote_streaming_action_processed_rx: StdReceiver<()>,
   remote_streaming_trigger_upload_completed_rx: StdReceiver<()>,
   startup_replay_gate_opened_rx: StdReceiver<()>,
+  workflow_attachment_upload_completed_rx: StdReceiver<uuid::Uuid>,
   workflow_event_processed_rx: StdReceiver<()>,
 
   _shutdown: ComponentShutdownTrigger,
@@ -244,6 +252,8 @@ impl Setup {
       remote_streaming_trigger_upload_completed_rx,
     ) = std_channel();
     let (startup_replay_gate_opened_tx, startup_replay_gate_opened_rx) = std_channel();
+    let (workflow_attachment_upload_completed_tx, workflow_attachment_upload_completed_rx) =
+      std_channel();
     let (workflow_event_processed_tx, workflow_event_processed_rx) =
       std::sync::mpsc::sync_channel(1);
     let session_replay_target = options
@@ -282,6 +292,7 @@ impl Setup {
       remote_streaming_action_processed_tx,
       remote_streaming_trigger_upload_completed_tx,
       startup_replay_gate_opened_tx,
+      workflow_attachment_upload_completed_tx,
       workflow_event_processed_tx,
     })));
     for (registered_command_id, handler) in options.command_handlers {
@@ -308,6 +319,7 @@ impl Setup {
       remote_streaming_action_processed_rx,
       remote_streaming_trigger_upload_completed_rx,
       startup_replay_gate_opened_rx,
+      workflow_attachment_upload_completed_rx,
       workflow_event_processed_rx,
       _shutdown: shutdown,
       stats_flush_tx: flush_tick_tx,
@@ -346,6 +358,13 @@ impl Setup {
       .startup_replay_gate_opened_rx
       .recv_timeout(std::time::Duration::from_secs(5))
       .expect("timed out waiting for startup replay gate opening");
+  }
+
+  pub fn wait_for_workflow_attachment_upload_completion(&self) -> uuid::Uuid {
+    self
+      .workflow_attachment_upload_completed_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for workflow attachment upload completion")
   }
 
   pub fn wait_for_workflow_event_processing(&self) {

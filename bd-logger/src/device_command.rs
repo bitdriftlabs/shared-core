@@ -5,6 +5,11 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./device_command_test.rs"]
+mod device_command_test;
+
+use crate::workflow_attachment::AttachmentStoreHandle;
 use anyhow::anyhow;
 use bd_api::upload::TrackedDeviceCommandUpdate;
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadCompletion};
@@ -189,16 +194,19 @@ pub struct WorkflowCommandCompletion {
 pub struct WorkflowCommandDispatcher {
   command_dispatcher: RegisteredCommandDispatcher,
   completion_tx: Sender<WorkflowCommandCompletion>,
+  attachment_store: AttachmentStoreHandle,
 }
 
 impl WorkflowCommandDispatcher {
   pub fn new(
     handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
     completion_tx: Sender<WorkflowCommandCompletion>,
+    attachment_store: AttachmentStoreHandle,
   ) -> Self {
     Self {
       command_dispatcher: RegisteredCommandDispatcher::new(handlers),
       completion_tx,
+      attachment_store,
     }
   }
 
@@ -212,6 +220,7 @@ impl WorkflowCommandDispatcher {
       Some(workflow_command_selector::Command_selector::BuiltinCommand(_)) | None => None,
     };
     let command_dispatcher = self.command_dispatcher.clone();
+    let attachment_store = self.attachment_store.clone();
     let session_id = request.session_id.clone();
 
     tokio::task::spawn(async move {
@@ -227,7 +236,7 @@ impl WorkflowCommandDispatcher {
               .await
           });
           match execution.await {
-            Ok(result) => workflow_command_outcome(result),
+            Ok(result) => workflow_command_outcome(result, &attachment_store).await,
             Err(error) if error.is_panic() => {
               workflow_command_failure("workflow command handler panicked")
             },
@@ -237,11 +246,21 @@ impl WorkflowCommandDispatcher {
         Some(_) => workflow_command_failure("unregistered workflow command"),
         None => workflow_command_failure("unsupported workflow command"),
       };
-      if completion_tx
+      if let Err(error) = completion_tx
         .send(WorkflowCommandCompletion { token, outcome })
         .await
-        .is_err()
       {
+        if let WorkflowCommandOutcome::SucceededWithAttachment { artifact_id, .. } = error.0.outcome
+        {
+          match attachment_store.get().await {
+            Ok(store) => {
+              if let Err(error) = store.release(artifact_id).await {
+                log::warn!("failed to release undelivered workflow attachment: {error}");
+              }
+            },
+            Err(error) => log::warn!("workflow attachment store unavailable for release: {error}"),
+          }
+        }
         log::debug!("workflow command completion receiver dropped");
       }
     });
@@ -255,13 +274,43 @@ fn workflow_command_failure(message: &str) -> WorkflowCommandOutcome {
   }
 }
 
-fn workflow_command_outcome(result: CommandResult) -> WorkflowCommandOutcome {
+async fn workflow_command_outcome(
+  result: CommandResult,
+  attachment_store: &AttachmentStoreHandle,
+) -> WorkflowCommandOutcome {
   match result {
-    // TODO: Preserve and upload workflow command attachments instead of silently dropping them;
-    // add an artifact ID to the outcome log once the workflow artifact path is available.
-    CommandResult::Completed { fields, .. } => WorkflowCommandOutcome::Succeeded {
-      message: None,
-      fields,
+    CommandResult::Completed { fields, attachment } => {
+      if let Some(attachment) = attachment {
+        match attachment_store.get().await {
+          Ok(store) => match store.admit(attachment.source).await {
+            Ok(admitted) => {
+              return WorkflowCommandOutcome::SucceededWithAttachment {
+                message: None,
+                fields,
+                artifact_id: admitted.id,
+              };
+            },
+            Err(error) => {
+              log::warn!("workflow attachment admission failed: {error}");
+              return WorkflowCommandOutcome::Failed {
+                message: Some(format!("workflow attachment admission failed: {error}")),
+                fields,
+              };
+            },
+          },
+          Err(error) => {
+            log::warn!("workflow attachment store unavailable: {error}");
+            return WorkflowCommandOutcome::Failed {
+              message: Some(format!("workflow attachment store unavailable: {error}")),
+              fields,
+            };
+          },
+        }
+      }
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields,
+      }
     },
     CommandResult::Failed { error, fields } => WorkflowCommandOutcome::Failed {
       message: Some(error),

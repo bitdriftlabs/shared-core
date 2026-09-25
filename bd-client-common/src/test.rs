@@ -25,6 +25,7 @@ use tokio::io::AsyncWriteExt as _;
 pub struct TestFileSystem {
   directory: tempfile::TempDir,
   pub disk_full: AtomicBool,
+  pub fail_next_sync: AtomicBool,
 }
 
 #[async_trait]
@@ -53,6 +54,13 @@ impl FileSystem for TestFileSystem {
     tokio::fs::read(&file_path)
       .await
       .map_err(|e| anyhow::anyhow!("failed to read file {}: {}", file_path.display(), e))
+  }
+
+  async fn open_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    let file_path = self.directory.path().join(path);
+    tokio::fs::File::open(&file_path)
+      .await
+      .map_err(|e| anyhow::anyhow!("failed to open file {}: {}", file_path.display(), e))
   }
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
@@ -100,6 +108,23 @@ impl FileSystem for TestFileSystem {
     })?;
 
     Ok(())
+  }
+
+  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    Ok(
+      tokio::fs::hard_link(
+        self.directory.path().join(from),
+        self.directory.path().join(to),
+      )
+      .await?,
+    )
+  }
+
+  async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
+    if self.fail_next_sync.swap(false, Ordering::Relaxed) {
+      anyhow::bail!("injected sync failure");
+    }
+    crate::file_system::sync_file_and_parent(&self.directory.path().join(path)).await
   }
 
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
@@ -153,6 +178,10 @@ impl FileSystem for Arc<TestFileSystem> {
     self.as_ref().read_file(path).await
   }
 
+  async fn open_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    self.as_ref().open_file(path).await
+  }
+
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
     self.as_ref().write_file(path, data).await
   }
@@ -167,6 +196,14 @@ impl FileSystem for Arc<TestFileSystem> {
 
   async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
     self.as_ref().rename_file(from, to).await
+  }
+
+  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    self.as_ref().link_file(from, to).await
+  }
+
+  async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
+    self.as_ref().sync_file_and_parent(path).await
   }
 
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
@@ -190,6 +227,7 @@ impl TestFileSystem {
     Self {
       directory: tempfile::tempdir().expect("failed to create temp dir"),
       disk_full: AtomicBool::new(false),
+      fail_next_sync: AtomicBool::new(false),
     }
   }
 
