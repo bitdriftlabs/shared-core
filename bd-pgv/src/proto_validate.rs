@@ -1126,9 +1126,19 @@ fn validate_impl(
   Ok(())
 }
 
-/// Check a field's omitted representation using the same rules as runtime validation.
-/// Contract coherence tests use this without constructing unrelated required sibling fields.
-pub fn validate_omitted_field(field: &FieldDescriptor) -> error::Result<()> {
+/// Check whether leaving this field unset satisfies its own PGV rules.
+///
+/// Uses a fresh, empty message: implicit-presence scalars have their protobuf defaults,
+/// repeated/map fields are empty, and fields with presence remain absent. For example, an
+/// omitted string fails `min_len = 1` but passes `max_len = 2`.
+///
+/// Returns the same field-validation error as runtime PGV. Checks only this field, ignoring
+/// sibling fields and the containing message's required-oneof rules. Absent message fields
+/// are checked for required presence without validating their descendants.
+///
+/// Useful when checking whether an API may hide a field from callers without requiring a
+/// value for it. This does not establish that the containing message is valid.
+pub fn validate_field_can_be_omitted(field: &FieldDescriptor) -> error::Result<()> {
   let descriptor = field.containing_message();
   let message = descriptor.new_instance();
   let formatter = ErrorNameFormatter::new(ValidationOptions::default());
