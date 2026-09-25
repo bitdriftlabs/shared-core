@@ -590,9 +590,16 @@ async fn aggregate_trigger_retention_advances_ram_without_durable_records() {
   producer.write(&logs[1]).unwrap();
   sync.barrier_on("thread_func_start_read");
 
-  let mut consumer = buffer.new_consumer().unwrap();
+  let mut consumer = buffer
+    .buffer
+    .non_volatile_buffer()
+    .clone()
+    .register_consumer()
+    .unwrap();
   while let Some(oldest) = buffer.peek_oldest_record().unwrap() {
-    assert_eq!(consumer.try_read().unwrap(), oldest);
+    assert_eq!(consumer.start_read(false).unwrap(), oldest);
+    consumer.finish_read().unwrap();
+    buffer.refresh_disk_retention();
   }
   assert_eq!(buffer.peek_oldest_record().unwrap(), None);
   drop(consumer);
