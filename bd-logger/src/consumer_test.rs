@@ -110,7 +110,6 @@ struct SetupSingleConsumer {
   buffer: Arc<Buffer>,
   producer: bd_buffer::Producer,
   batch_deadline: Duration,
-  records_written_counter: Counter,
   runtime_loader: Arc<ConfigLoader>,
   collector: Collector,
 
@@ -121,13 +120,8 @@ impl SetupSingleConsumer {
   async fn new() -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
-    let records_written_counter = Counter::default();
-
-    let (buffer, producer) = create_continuous_buffer(
-      sdk_directory.path().join("buffer").as_path(),
-      records_written_counter.clone(),
-    )
-    .await;
+    let (buffer, producer) =
+      create_continuous_buffer(sdk_directory.path().join("buffer").as_path()).await;
 
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
 
@@ -164,19 +158,8 @@ impl SetupSingleConsumer {
       runtime_loader,
       data_upload_rx,
       batch_deadline: Duration::from_secs(3),
-      records_written_counter,
       collector,
       _sdk_directory: sdk_directory,
-    }
-  }
-
-  // Waits until we've recorded N logs written to the non-volatile buffer.
-  async fn await_logs_flushed(&self, n: u64) {
-    loop {
-      if self.records_written_counter.get() == n {
-        break;
-      }
-      tokio::time::sleep(Duration::from_millis(100)).await;
     }
   }
 
@@ -399,7 +382,6 @@ async fn continuous_buffer_sets_retention_none_when_batch_drains_buffer() {
 
   let (buffer, mut producer) = create_continuous_buffer_with_retention(
     sdk_directory.path().join("buffer").as_path(),
-    Counter::default(),
     retention_handle.clone(),
   );
 
@@ -481,7 +463,7 @@ async fn uploading_full_batch_failure() {
     setup.producer.write(&[i]).unwrap();
   }
 
-  setup.await_logs_flushed(11).await;
+  setup.buffer.flush();
 
   // The first upload should contain 10 (batch size) logs, starting at the start of the buffer.
   let log_upload = setup.next_upload().await;
@@ -546,7 +528,7 @@ async fn uploading_partial_batch_failure() {
     setup.producer.write(&[i]).unwrap();
   }
 
-  setup.await_logs_flushed(4).await;
+  setup.buffer.flush();
 
   // We haven't reached the batch limit, but awaiting will have us hit the time deadline once there
   // are no more logs to read.
@@ -596,7 +578,7 @@ async fn total_batch_upload_timeout() {
 
   setup.producer.write(&[1]).unwrap();
 
-  setup.await_logs_flushed(2).await;
+  setup.buffer.flush();
 
   let log_upload = setup.next_upload().await;
   assert_eq!(log_upload.payload.log_upload().proto_logs.len(), 2);
@@ -975,17 +957,11 @@ async fn upload_multiple_continuous_buffers() {
   let directory = tempfile::TempDir::with_prefix("consumer-").unwrap();
   let mut setup = SetupMultiConsumer::new(1, 1000).await;
 
-  let (buffer_a, mut producer_a) = create_continuous_buffer(
-    &directory.path().join(PathBuf::from("buffer.a")),
-    Counter::default(),
-  )
-  .await;
+  let (buffer_a, mut producer_a) =
+    create_continuous_buffer(&directory.path().join(PathBuf::from("buffer.a"))).await;
 
-  let (buffer_b, mut producer_b) = create_continuous_buffer(
-    &directory.path().join(PathBuf::from("buffer.b")),
-    Counter::default(),
-  )
-  .await;
+  let (buffer_b, mut producer_b) =
+    create_continuous_buffer(&directory.path().join(PathBuf::from("buffer.b"))).await;
 
   setup
     .buffer_event_tx
@@ -2783,6 +2759,8 @@ async fn log_streaming() {
     1024 * 1024,
     Arc::new(RingBufferStats::default()),
     |_| {},
+    |_| {},
+    None::<fn(Option<&[u8]>)>,
   );
 
   let mut producer = buffer.clone().register_producer().unwrap();
@@ -2833,6 +2811,8 @@ async fn streaming_batch_size_flag() {
     1024 * 1024,
     Arc::new(bd_buffer::RingBufferStats::default()),
     |_| {},
+    |_| {},
+    None::<fn(Option<&[u8]>)>,
   );
 
   let mut producer = buffer.clone().register_producer().unwrap();
@@ -2891,6 +2871,8 @@ async fn log_streaming_shutdown() {
     1024 * 1024,
     Arc::new(RingBufferStats::default()),
     |_| {},
+    |_| {},
+    None::<fn(Option<&[u8]>)>,
   );
 
   let mut producer = buffer.clone().register_producer().unwrap();
@@ -2938,42 +2920,32 @@ async fn log_streaming_shutdown() {
   task_handle.await.unwrap();
 }
 
-async fn create_continuous_buffer(
-  buffer: &Path,
-  records_written: Counter,
-) -> (Arc<Buffer>, bd_buffer::Producer) {
+async fn create_continuous_buffer(buffer: &Path) -> (Arc<Buffer>, bd_buffer::Producer) {
   let retention_registry = Arc::new(RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
   let retention_handle = retention_registry.create_handle().await;
   retention_handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
-  create_buffer(false, buffer, records_written, retention_handle)
+  create_buffer(false, buffer, retention_handle)
 }
 
 fn create_continuous_buffer_with_retention(
   buffer: &Path,
-  records_written: Counter,
   retention_handle: RetentionHandle,
 ) -> (Arc<Buffer>, bd_buffer::Producer) {
-  create_buffer(false, buffer, records_written, retention_handle)
+  create_buffer(false, buffer, retention_handle)
 }
 
 async fn create_trigger_buffer(buffer: &Path) -> (Arc<Buffer>, bd_buffer::Producer) {
   let retention_registry = Arc::new(RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
-  create_buffer(
-    true,
-    buffer,
-    Counter::default(),
-    retention_registry.create_handle().await,
-  )
+  create_buffer(true, buffer, retention_registry.create_handle().await)
 }
 
 fn create_buffer(
   trigger_buffer: bool,
   buffer: &Path,
-  records_written: Counter,
   retention_handle: RetentionHandle,
 ) -> (Arc<Buffer>, bd_buffer::Producer) {
   let buffer_name = buffer
@@ -2991,8 +2963,6 @@ fn create_buffer(
     Counter::default(),
     Counter::default(),
     Counter::default(),
-    Some(records_written),
-    None,
     retention_handle,
   )
   .unwrap();

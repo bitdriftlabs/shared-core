@@ -35,7 +35,6 @@ pub use ring_buffer::{
   BuffersWithAck,
   Consumer,
   CursorConsumer,
-  EvictedRecordCallback,
   Manager,
   RingBuffer as Buffer,
 };

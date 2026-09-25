@@ -49,6 +49,7 @@ struct Reservation {
 }
 
 type RecordCommittedCallback = Box<dyn Fn(&[u8]) + Send + Sync>;
+type OldestRecordCallback = Box<dyn Fn(Option<&[u8]>) + Send + Sync>;
 
 //
 // ProducerImpl
@@ -125,12 +126,16 @@ impl RingBufferProducer for ProducerImpl {
       ));
     }
 
+    let oldest_before_write = *common_ring_buffer.next_read_start();
     LockedData::advance_next_read_due_to_write(
       &mut common_ring_buffer,
       &parent.common_ring_buffer.conditions,
       &temp_reservation_data,
       block,
     )?;
+    if oldest_before_write != *common_ring_buffer.next_read_start() {
+      parent.notify_oldest_record(&mut common_ring_buffer)?;
+    }
 
     // We delay all actual state changes to this point (other than moving next read start in the
     // previous stanza) because we don't want to make any state changes until we know for sure that
@@ -361,6 +366,7 @@ impl RingBufferConsumer for ConsumerImpl {
       &parent.common_ring_buffer.conditions,
       &reservation.ok_or(InvariantError::Invariant)?,
     )?;
+    parent.notify_oldest_record(&mut common_ring_buffer)?;
     Ok(())
   }
 }
@@ -446,6 +452,7 @@ pub struct RingBufferImpl {
   common_ring_buffer: CommonRingBuffer<ExtraLockedData>,
   no_reservations_condition: Condvar,
   on_record_committed_cb: RecordCommittedCallback,
+  on_oldest_record_cb: Option<OldestRecordCallback>,
 }
 
 impl RingBufferImpl {
@@ -454,18 +461,9 @@ impl RingBufferImpl {
     name: String,
     size: u32,
     stats: Arc<RingBufferStats>,
-    on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
-  ) -> Arc<Self> {
-    Self::new_with_record_committed_callback(name, size, stats, |_| {}, on_record_evicted_cb)
-  }
-
-  #[must_use]
-  pub fn new_with_record_committed_callback(
-    name: String,
-    size: u32,
-    stats: Arc<RingBufferStats>,
     on_record_committed_cb: impl Fn(&[u8]) + Send + Sync + 'static,
     on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
+    on_oldest_record_cb: Option<impl Fn(Option<&[u8]>) + Send + Sync + 'static>,
   ) -> Arc<Self> {
     let mut memory_do_not_use = Vec::with_capacity(size as usize);
     memory_do_not_use.spare_capacity_mut(); // Appease clippy.
@@ -513,7 +511,35 @@ impl RingBufferImpl {
       common_ring_buffer,
       no_reservations_condition: Condvar::default(),
       on_record_committed_cb: Box::new(on_record_committed_cb),
+      on_oldest_record_cb: on_oldest_record_cb.map(|callback| Box::new(callback) as _),
     })
+  }
+
+  fn notify_oldest_record(
+    &self,
+    guard: &mut MutexGuard<'_, LockedData<ExtraLockedData>>,
+  ) -> Result<()> {
+    if let Some(callback) = &self.on_oldest_record_cb {
+      let oldest = guard.peek_next_read_record_range(Cursor::No)?;
+      // A committed reservation can wait behind an earlier uncommitted one after the read
+      // pointer reaches the end of visible records. It still needs retention until it is read.
+      let record = if let Some(range) = oldest {
+        Some(&guard.const_memory()[range.start as usize .. (range.start + range.size) as usize])
+      } else {
+        let committed = guard
+          .extra_locked_data
+          .reservations
+          .iter()
+          .find(|reservation| reservation.committed)
+          .map(|reservation| reservation.range.clone());
+        committed
+          .as_ref()
+          .map(|range| guard.record_data(range))
+          .transpose()?
+      };
+      callback(record);
+    }
+    Ok(())
   }
 }
 

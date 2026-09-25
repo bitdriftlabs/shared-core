@@ -669,6 +669,7 @@ struct ProducerData {
 struct ExtraLockedData {
   producer: Option<ProducerData>,
   consumer: Option<ConsumerType>,
+  on_total_data_loss_cb: Option<Box<dyn Fn() + Send + Sync>>,
   unread_payload_bytes: SendSyncNonNull<u64>,
   unread_record_count: SendSyncNonNull<u64>,
   crc32: SendSyncNonNull<u32>,
@@ -730,6 +731,9 @@ impl ExtraLockedData {
       *self.unread_record_count.0.as_mut() = 0;
     }
     write_header_crc32_worker(self, 0, None, None, None, 0, 0);
+    if let Some(callback) = &self.on_total_data_loss_cb {
+      callback();
+    }
   }
 }
 
@@ -790,6 +794,7 @@ impl RingBufferImpl {
     per_record_crc32_check: PerRecordCrc32Check,
     stats: Arc<RingBufferStats>,
     on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
+    on_total_data_loss_cb: Option<impl Fn() + Send + Sync + 'static>,
   ) -> Result<Arc<Self>> {
     // The following static asserts verify that FileHeader is a known size with all field offsets
     // known. This is done to avoid the use of #pragma pack(1) which may lead to poor performance on
@@ -934,6 +939,7 @@ impl RingBufferImpl {
         ExtraLockedData {
           producer: None,
           consumer: None,
+          on_total_data_loss_cb: on_total_data_loss_cb.map(|callback| Box::new(callback) as _),
           unread_payload_bytes: SendSyncNonNull((&file_header.unread_payload_bytes).into()),
           unread_record_count: SendSyncNonNull((&file_header.unread_record_count).into()),
           crc32: SendSyncNonNull((&file_header.crc32).into()),
@@ -1030,13 +1036,12 @@ impl RingBufferImpl {
     Ok((unread_payload_bytes, unread_record_count))
   }
 
-  /// Runs `f` against the oldest record while holding the buffer lock.
-  ///
-  /// The closure must be non-blocking and must not await.
-  pub fn peek_oldest_record<T>(&self, f: impl FnOnce(&[u8]) -> T) -> Result<Option<T>> {
+  /// Runs `f` against the oldest record, if any, while holding the buffer lock.
+  /// The closure must not block or await.
+  pub fn inspect_oldest_record<T>(&self, f: impl FnOnce(Option<&[u8]>) -> T) -> Result<T> {
     let mut common_ring_buffer = self.common_ring_buffer.locked_data.lock();
     let Some(record_range) = common_ring_buffer.peek_next_read_record_range(Cursor::No)? else {
-      return Ok(None);
+      return Ok(f(None));
     };
 
     let record_start = record_range.start as usize;
@@ -1049,7 +1054,13 @@ impl RingBufferImpl {
       ));
     }
 
-    Ok(Some(f(&memory[record_start .. record_end])))
+    Ok(f(Some(&memory[record_start .. record_end])))
+  }
+
+  /// Runs `f` against the oldest record while holding the buffer lock.
+  /// The closure must be non-blocking and must not await.
+  pub fn peek_oldest_record<T>(&self, f: impl FnOnce(&[u8]) -> T) -> Result<Option<T>> {
+    self.inspect_oldest_record(|record| record.map(f))
   }
 }
 

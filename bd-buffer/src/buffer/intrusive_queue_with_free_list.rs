@@ -72,6 +72,13 @@ impl<T> IntrusiveQueueWithFreeList<T> {
     })
   }
 
+  pub fn iter(&self) -> impl Iterator<Item = &T> {
+    self.queue.iter().map(|item| unsafe {
+      // Safety: See comment above for UnsafeCell.
+      &*item.value.get()
+    })
+  }
+
   // Pop the first item from the queue, if any, and put it on the free list.
   pub fn pop_front(&mut self) {
     if let Some(front) = self.queue.pop_front() {

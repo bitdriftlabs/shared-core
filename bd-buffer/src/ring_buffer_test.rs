@@ -14,7 +14,7 @@ use crate::buffer::{
   RingBuffer as BufferRingBuffer,
   RingBufferStats,
 };
-use crate::ring_buffer::{Manager, RingBuffer};
+use crate::ring_buffer::{Manager, RingBuffer, TriggerRetention};
 use crate::{AbslCode, Error};
 use assert_matches::assert_matches;
 use bd_client_stats_store::test::StatsHelper;
@@ -80,8 +80,6 @@ async fn test_create_ring_buffer() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
-    None,
-    None,
     test_retention_handle().await,
   )
   .unwrap();
@@ -108,8 +106,6 @@ async fn test_new_consumer_allows_bulk_one_off_reads_on_overwrite_buffers() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
-    None,
-    None,
     test_retention_handle().await,
   )
   .unwrap();
@@ -146,8 +142,6 @@ async fn locked_consumer_snapshot_does_not_consume_records() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
-    None,
-    None,
     test_retention_handle().await,
   )
   .unwrap();
@@ -190,8 +184,6 @@ async fn test_create_ring_buffer_illegal_path() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
-    None,
-    None,
     test_retention_handle().await,
   );
 
@@ -224,8 +216,6 @@ async fn corrupted_buffer() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
-    None,
-    None,
     test_retention_handle().await,
   )
   .unwrap();
@@ -248,8 +238,6 @@ async fn corrupted_buffer() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
-    None,
-    None,
     test_retention_handle().await,
   )
   .unwrap();
@@ -437,6 +425,7 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
     PerRecordCrc32Check::No,
     Arc::new(RingBufferStats::default()),
     on_record_evicted_cb,
+    None::<fn()>,
   )
   .unwrap();
 
@@ -458,6 +447,275 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
     u64::try_from(second_time.unix_timestamp_micros()).expect("timestamp micros fits u64");
   assert!(retained >= first_micros);
   assert!(retained <= second_micros);
+}
+
+#[tokio::test]
+async fn aggregate_trigger_retention_tracks_oldest_durable_record() {
+  let directory = tmp_dir();
+  let retention_handle = test_retention_handle().await;
+  let start = OffsetDateTime::now_utc();
+  let logs: Vec<_> = (0 .. 4)
+    .map(|offset| make_test_log_bytes(start + time::Duration::seconds(offset)))
+    .collect();
+  let record_size = u32::try_from(logs[0].len()).unwrap();
+  let (buffer, _) = RingBuffer::new(
+    "trigger",
+    (record_size + 4) * 2,
+    directory.path().join("trigger"),
+    (record_size + 8) * 3 + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy(),
+    true,
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    retention_handle.clone(),
+  )
+  .unwrap();
+  assert_eq!(
+    retention_handle.get_retention(),
+    RetentionHandle::RETENTION_NONE
+  );
+
+  let mut producer = buffer.new_thread_local_producer().unwrap();
+  for log in &logs[.. 3] {
+    producer.write(log).unwrap();
+    buffer.flush();
+  }
+  let timestamp = |log: &[u8]| {
+    u64::try_from(
+      EncodableLog::extract_timestamp(log)
+        .unwrap()
+        .unix_timestamp_micros(),
+    )
+    .unwrap()
+  };
+  assert_eq!(retention_handle.get_retention(), timestamp(&logs[0]));
+
+  producer.write(&logs[3]).unwrap();
+  buffer.flush();
+  assert_eq!(retention_handle.get_retention(), timestamp(&logs[1]));
+  assert_eq!(buffer.peek_oldest_record().unwrap(), Some(logs[1].clone()));
+
+  let mut consumer = buffer.new_consumer().unwrap();
+  assert_eq!(consumer.try_read().unwrap(), logs[1]);
+  assert_eq!(retention_handle.get_retention(), timestamp(&logs[2]));
+  assert_eq!(consumer.try_read().unwrap(), logs[2]);
+  assert_eq!(consumer.try_read().unwrap(), logs[3]);
+  assert_eq!(
+    retention_handle.get_retention(),
+    RetentionHandle::RETENTION_NONE
+  );
+}
+
+#[tokio::test]
+async fn aggregate_trigger_retention_keeps_older_disk_record_during_ram_overwrite() {
+  let directory = tmp_dir();
+  let retention_handle = test_retention_handle().await;
+  let start = OffsetDateTime::now_utc();
+  let logs: Vec<_> = (0 .. 6)
+    .map(|offset| make_test_log_bytes(start + time::Duration::seconds(offset)))
+    .collect();
+  let record_size = u32::try_from(logs[0].len()).unwrap();
+  let (buffer, _) = RingBuffer::new(
+    "trigger",
+    (record_size + 4) * 3,
+    directory.path().join("trigger"),
+    (record_size + 8) * 3 + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy(),
+    true,
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    retention_handle.clone(),
+  )
+  .unwrap();
+  let mut producer = buffer.new_thread_local_producer().unwrap();
+  producer.write(&logs[0]).unwrap();
+  buffer.flush();
+  let sync = buffer.thread_synchronizer();
+  sync.wait_on("thread_func_start_read");
+  producer.write(&logs[1]).unwrap();
+  sync.barrier_on("thread_func_start_read");
+
+  for log in &logs[2 ..] {
+    producer.write(log).unwrap();
+  }
+  let timestamp = |log: &[u8]| {
+    u64::try_from(
+      EncodableLog::extract_timestamp(log)
+        .unwrap()
+        .unix_timestamp_micros(),
+    )
+    .unwrap()
+  };
+  assert_eq!(retention_handle.get_retention(), timestamp(&logs[0]));
+  assert_eq!(buffer.peek_oldest_record().unwrap(), Some(logs[0].clone()));
+
+  sync.signal("thread_func_start_read");
+  buffer.flush();
+  assert_eq!(retention_handle.get_retention(), timestamp(&logs[3]));
+  assert_eq!(buffer.peek_oldest_record().unwrap(), Some(logs[3].clone()));
+}
+
+#[tokio::test]
+async fn aggregate_trigger_retention_advances_ram_without_durable_records() {
+  let directory = tmp_dir();
+  let retention_handle = test_retention_handle().await;
+  let start = OffsetDateTime::now_utc();
+  let logs: Vec<_> = (0 .. 5)
+    .map(|offset| make_test_log_bytes(start + time::Duration::seconds(offset)))
+    .collect();
+  let record_size = u32::try_from(logs[0].len()).unwrap();
+  let (buffer, _) = RingBuffer::new(
+    "trigger",
+    (record_size + 4) * 2,
+    directory.path().join("trigger"),
+    (record_size + 8) * 3 + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy(),
+    true,
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    retention_handle.clone(),
+  )
+  .unwrap();
+  let mut producer = buffer.new_thread_local_producer().unwrap();
+  producer.write(&logs[0]).unwrap();
+  buffer.flush();
+  let sync = buffer.thread_synchronizer();
+  sync.wait_on("thread_func_start_read");
+  producer.write(&logs[1]).unwrap();
+  sync.barrier_on("thread_func_start_read");
+
+  let mut consumer = buffer
+    .buffer
+    .non_volatile_buffer()
+    .clone()
+    .register_consumer()
+    .unwrap();
+  while let Some(oldest) = buffer.peek_oldest_record().unwrap() {
+    assert_eq!(consumer.start_read(false).unwrap(), oldest);
+    consumer.finish_read().unwrap();
+    buffer.refresh_disk_retention();
+  }
+  assert_eq!(buffer.peek_oldest_record().unwrap(), None);
+  drop(consumer);
+  let timestamp = |log: &[u8]| {
+    u64::try_from(
+      EncodableLog::extract_timestamp(log)
+        .unwrap()
+        .unix_timestamp_micros(),
+    )
+    .unwrap()
+  };
+  for log in &logs[2 ..] {
+    producer.write(log).unwrap();
+  }
+  assert_eq!(retention_handle.get_retention(), timestamp(&logs[3]));
+
+  sync.signal("thread_func_start_read");
+  buffer.flush();
+  assert_eq!(retention_handle.get_retention(), timestamp(&logs[3]));
+}
+
+#[tokio::test]
+async fn trigger_retention_releases_record_dropped_without_disk_commit() {
+  let handle = test_retention_handle().await;
+  let retention = TriggerRetention::new(handle.clone());
+  retention.set_disk(None);
+  let log = make_test_log_bytes(OffsetDateTime::now_utc());
+  retention.committed(&log);
+  assert_eq!(
+    handle.get_retention(),
+    u64::try_from(
+      EncodableLog::extract_timestamp(&log)
+        .unwrap()
+        .unix_timestamp_micros(),
+    )
+    .unwrap()
+  );
+
+  retention.oldest_ram_changed(None);
+  assert_eq!(handle.get_retention(), RetentionHandle::RETENTION_NONE);
+}
+
+#[tokio::test]
+async fn trigger_retention_only_inspects_disk_after_head_changes() {
+  let retention = TriggerRetention::new(test_retention_handle().await);
+  let first = make_test_log_bytes(OffsetDateTime::now_utc());
+  assert!(retention.should_inspect_disk_head());
+  retention.flushed(Some(&first));
+  assert!(!retention.should_inspect_disk_head());
+
+  retention.evicted_from_disk(&first);
+  assert!(retention.should_inspect_disk_head());
+  retention.flushed(None);
+  assert!(retention.should_inspect_disk_head());
+  retention.set_disk(Some(TriggerRetention::timestamp(&first)));
+  assert!(!retention.should_inspect_disk_head());
+  retention.set_disk(None);
+  assert!(retention.should_inspect_disk_head());
+}
+
+#[tokio::test]
+async fn aggregate_trigger_retention_clears_after_durable_data_loss() {
+  let directory = tmp_dir();
+  let filename = directory.path().join("trigger");
+  let retention_handle = test_retention_handle().await;
+  let start = OffsetDateTime::now_utc();
+  let logs: Vec<_> = (0 .. 4)
+    .map(|offset| make_test_log_bytes(start + time::Duration::seconds(offset)))
+    .collect();
+  let record_size = u32::try_from(logs[0].len()).unwrap();
+  let volatile_size = (record_size + 4) * 2;
+  let durable_size =
+    (record_size + 8) * 3 + std::mem::size_of::<NonVolatileFileHeader>().to_u32_lossy();
+  let open = || {
+    RingBuffer::new(
+      "trigger",
+      volatile_size,
+      filename.clone(),
+      durable_size,
+      true,
+      fake_counter(),
+      fake_counter(),
+      fake_counter(),
+      fake_counter(),
+      fake_counter(),
+      retention_handle.clone(),
+    )
+    .unwrap()
+    .0
+  };
+  let buffer = open();
+  let mut producer = buffer.new_thread_local_producer().unwrap();
+  for log in &logs[.. 3] {
+    producer.write(log).unwrap();
+    buffer.flush();
+  }
+  drop(producer);
+  drop(buffer);
+
+  let mut file = std::fs::read(&filename).unwrap();
+  let size_offset = std::mem::size_of::<NonVolatileFileHeader>() + 4;
+  file[size_offset .. size_offset + 4].copy_from_slice(&u32::MAX.to_ne_bytes());
+  std::fs::write(&filename, file).unwrap();
+
+  let buffer = open();
+  buffer
+    .new_thread_local_producer()
+    .unwrap()
+    .write(&logs[3])
+    .unwrap();
+  buffer.flush();
+  assert_eq!(buffer.peek_oldest_record().unwrap(), None);
+  assert_eq!(
+    retention_handle.get_retention(),
+    RetentionHandle::RETENTION_NONE
+  );
 }
 
 #[tokio::test]

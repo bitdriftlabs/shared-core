@@ -18,6 +18,7 @@ use intrusive_collections::offset_of;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tempfile::TempDir;
 
 struct Helper {
@@ -44,6 +45,7 @@ impl Helper {
       super::PerRecordCrc32Check::Yes,
       stats.stats.clone(),
       |_| {},
+      None::<fn()>,
     )
     .unwrap();
     Self {
@@ -100,6 +102,13 @@ impl Helper {
   }
 
   fn open(&mut self) -> Result<()> {
+    self.open_with_reset_callback(None::<fn()>)
+  }
+
+  fn open_with_reset_callback(
+    &mut self,
+    on_reset: Option<impl Fn() + Send + Sync + 'static>,
+  ) -> Result<()> {
     let buffer = RingBufferImpl::new(
       "test".to_string(),
       self.temp_dir.path().join("buffer"),
@@ -109,6 +118,7 @@ impl Helper {
       super::PerRecordCrc32Check::Yes,
       self.stats.stats.clone(),
       |_| {},
+      on_reset,
     )?;
     self.helper = Some(CommonHelper::new(buffer.clone(), self.cursor));
     self.buffer = Some(buffer);
@@ -208,6 +218,7 @@ fn preallocates_existing_file() {
     super::PerRecordCrc32Check::Yes,
     stats.stats,
     |_| {},
+    None::<fn()>,
   );
   let Err(Error::AbslStatus(code, message)) = result else {
     panic!("expected invalid header to be rejected");
@@ -399,7 +410,15 @@ fn corruption_then_cursor_advance() {
   buffer[start .. start + 4].copy_from_slice(&new_size.to_ne_bytes());
   helper.vector_to_file(&buffer);
 
-  helper.open().unwrap();
+  let resets = Arc::new(AtomicUsize::new(0));
+  helper
+    .open_with_reset_callback(Some({
+      let resets = resets.clone();
+      move || {
+        resets.fetch_add(1, Ordering::Relaxed);
+      }
+    }))
+    .unwrap();
   helper.helper().cursor_read_and_verify("aa"); // 0-9
   helper.helper().cursor_read_and_verify("bb"); // 10-19
   assert_matches!(
@@ -408,6 +427,7 @@ fn corruption_then_cursor_advance() {
       if code == AbslCode::Unavailable && message == "pending total data loss reset"
   );
   assert_eq!(1, helper.stats.stats.total_data_loss.get_value());
+  assert_eq!(resets.load(Ordering::Relaxed), 0);
   assert_matches!(
     helper.helper().producer().reserve(2, true),
     Err(Error::AbslStatus(code, message))
@@ -417,6 +437,7 @@ fn corruption_then_cursor_advance() {
   // This will clear the readers and do the full reset.
   helper.helper().cursor_read_advance();
   helper.helper().cursor_read_advance();
+  assert_eq!(resets.load(Ordering::Relaxed), 1);
 
   // Make sure we can still add data and read it.
   helper.helper().reserve_and_commit("bb"); // 0-9
