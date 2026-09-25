@@ -97,34 +97,27 @@ async fn queue_backpressure_does_not_stall_another_batch() {
     .stage(HashMap::from([(second_id, "second".to_string())]))
     .await
     .unwrap();
-  assert!(!first.is_finished());
-  first.abort();
-  let _ = first.await;
+  let failures = first.await.unwrap().unwrap();
+  assert_eq!(failures.len(), 1);
+  assert_eq!(failures[0].artifact_id, first_id);
   drop(handle);
   worker.await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn retryable_persistence_failure_is_retried() {
+#[tokio::test]
+async fn retryable_persistence_failure_is_reported() {
   let artifact_id = Uuid::new_v4();
-  let (first_attempt_tx, first_attempt_rx) = oneshot::channel();
-  let mut first_attempt_tx = Some(first_attempt_tx);
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
     .expect_enqueue_workflow_attachment()
-    .times(2)
-    .returning(move |_, _, _, persisted, _| {
-      let persisted = persisted.unwrap();
-      if let Some(first_attempt_tx) = first_attempt_tx.take() {
-        persisted
-          .send(Err(EnqueueError::RetryablePersistence(anyhow::anyhow!(
-            "injected sync failure"
-          ))))
-          .unwrap();
-        first_attempt_tx.send(()).unwrap();
-      } else {
-        persisted.send(Ok(())).unwrap();
-      }
+    .once()
+    .returning(|_, _, _, persisted, _| {
+      persisted
+        .unwrap()
+        .send(Err(EnqueueError::RetryablePersistence(anyhow::anyhow!(
+          "injected sync failure"
+        ))))
+        .unwrap();
       Ok(())
     });
 
@@ -136,10 +129,10 @@ async fn retryable_persistence_failure_is_retried() {
       .await
   });
 
-  first_attempt_rx.await.unwrap();
-  tokio::task::yield_now().await;
-  tokio::time::advance(BACKPRESSURE_RETRY_INTERVAL).await;
-  assert!(stage.await.unwrap().unwrap().is_empty());
+  let failures = stage.await.unwrap().unwrap();
+  assert_eq!(failures.len(), 1);
+  assert_eq!(failures[0].artifact_id, artifact_id);
+  assert!(failures[0].error.contains("injected sync failure"));
   worker.await.unwrap();
 }
 

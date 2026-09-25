@@ -357,6 +357,29 @@ async fn uploaded_attachments_keep_a_timestamp_marker_without_the_payload() {
 }
 
 #[tokio::test]
+async fn upload_completion_does_not_recreate_a_retired_marker() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  let admitted = store
+    .admit(UploadSource::Bytes(b"owned".to_vec()))
+    .await
+    .unwrap();
+  store
+    .record_timestamp(
+      admitted.id,
+      OffsetDateTime::from_unix_timestamp(10).unwrap(),
+    )
+    .await
+    .unwrap();
+  store.complete_upload(admitted.id).await.unwrap();
+  store.cleanup_all().await.unwrap();
+
+  store.complete_upload(admitted.id).await.unwrap();
+
+  assert!(!store.is_uploaded(admitted.id).await.unwrap());
+}
+
+#[tokio::test]
 async fn cleanup_worker_rechecks_when_timestamp_generation_changes() {
   let directory = tempfile::tempdir().unwrap();
   let (store_handle, _retention_handle, mut worker) =

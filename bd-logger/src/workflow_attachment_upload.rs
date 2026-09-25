@@ -11,9 +11,7 @@ mod tests;
 
 use crate::logger::TestHooks;
 use crate::upload_coordination::{
-  BACKPRESSURE_RETRY_INTERVAL,
   Coalesced,
-  PersistedEnqueueError,
   UploadNotifier,
   UploadWake,
   enqueue_and_wait_for_persistence,
@@ -25,7 +23,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
-use tokio::time::sleep;
 use uuid::Uuid;
 
 const MAX_PENDING_BATCHES: usize = 4;
@@ -185,44 +182,30 @@ impl WorkflowAttachmentUploadWorker {
         continue;
       }
       let source = PathBuf::from(format!("workflow-attachments/{id}.payload"));
-      let completion_rx = loop {
-        let (completion_tx, completion_rx) = if attachment_store.is_some() {
-          let (completion_tx, completion_rx) = oneshot::channel();
-          (Some(completion_tx), Some(completion_rx))
-        } else {
-          (None, None)
-        };
-        match enqueue_and_wait_for_persistence(|persisted_tx| {
-          artifact_client.enqueue_workflow_attachment(
-            id,
-            source.clone(),
-            session_id.clone(),
-            Some(persisted_tx),
-            completion_tx,
-          )
-        })
-        .await
-        {
-          Ok(()) => break Some(completion_rx),
-          Err(
-            PersistedEnqueueError::Backpressure
-            | PersistedEnqueueError::Enqueue(bd_artifact_upload::EnqueueError::RetryablePersistence(
-              _,
-            )),
-          ) => {},
-          Err(error) => {
-            failures.push(WorkflowAttachmentStagingFailure {
-              artifact_id: id,
-              error: error.to_string(),
-            });
-            break None;
-          },
-        }
-        sleep(BACKPRESSURE_RETRY_INTERVAL).await;
+      let (completion_tx, completion_rx) = if attachment_store.is_some() {
+        let (completion_tx, completion_rx) = oneshot::channel();
+        (Some(completion_tx), Some(completion_rx))
+      } else {
+        (None, None)
       };
-      let Some(completion_rx) = completion_rx else {
+      // TODO: Add a bounded retry policy for explicitly transient staging failures.
+      if let Err(error) = enqueue_and_wait_for_persistence(|persisted_tx| {
+        artifact_client.enqueue_workflow_attachment(
+          id,
+          source,
+          session_id,
+          Some(persisted_tx),
+          completion_tx,
+        )
+      })
+      .await
+      {
+        failures.push(WorkflowAttachmentStagingFailure {
+          artifact_id: id,
+          error: error.to_string(),
+        });
         continue;
-      };
+      }
       if let (Some(store), Some(completion_rx)) = (attachment_store.clone(), completion_rx) {
         let test_hooks = test_hooks.clone();
         tokio::spawn(async move {

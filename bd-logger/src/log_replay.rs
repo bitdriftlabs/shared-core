@@ -427,6 +427,8 @@ impl ProcessingPipeline {
     log_replay_result.committed_workflow_attachment =
       (committed || synthetic_committed) && has_workflow_attachment;
     if log_replay_result.committed_workflow_attachment {
+      // TODO: Stage workflow attachments before streaming their outcome logs so the artifact is
+      // available before a tail-stream consumer receives its reference.
       match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
         Ok(true) => self.stats.streamed_logs.inc(),
         Ok(false) => {},

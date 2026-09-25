@@ -351,6 +351,12 @@ impl AttachmentStore {
   /// Marks an artifact uploaded and drops the retained payload while preserving timestamp metadata.
   pub async fn complete_upload(self: &Arc<Self>, id: Uuid) -> io::Result<()> {
     let _permit = self.admissions.acquire().await.map_err(io::Error::other)?;
+    if !fs::try_exists(self.timestamp_path(id)).await?
+      && !fs::try_exists(self.pending_path(id)).await?
+    {
+      log::debug!("ignoring upload completion for retired workflow attachment {id}");
+      return Ok(());
+    }
     write_sidecar(&self.uploaded_path(id), b"uploaded").await?;
     self.remove_payload_async(id, true).await?;
     log::debug!("released uploaded workflow attachment payload {id}");
