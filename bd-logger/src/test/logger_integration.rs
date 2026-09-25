@@ -11,14 +11,14 @@ use crate::test::setup::SetupOptions;
 use crate::{
   AnnotatedLogField,
   AppVersionExtra,
+  CommandAttachment,
+  CommandInvocation,
+  CommandResult,
   DataValue,
-  DeviceCommandAttachment,
-  DeviceCommandInvocation,
-  DeviceCommandResult,
   InitParams,
   LogAttributesOverrides,
   LogMessage,
-  RegisteredDeviceCommandHandler,
+  RegisteredCommandHandler,
   log_level,
   wait_for,
 };
@@ -132,7 +132,7 @@ struct LockingSessionCallbacks {
 }
 
 struct TestDeviceCommandHandler {
-  result: Mutex<Option<DeviceCommandResult>>,
+  result: Mutex<Option<CommandResult>>,
 }
 
 struct CountingDeviceCommandHandler {
@@ -144,8 +144,8 @@ struct TestScreenshotTarget {
 }
 
 #[async_trait::async_trait]
-impl RegisteredDeviceCommandHandler for TestDeviceCommandHandler {
-  async fn execute(&self, _invocation: DeviceCommandInvocation) -> DeviceCommandResult {
+impl RegisteredCommandHandler for TestDeviceCommandHandler {
+  async fn execute(&self, _invocation: CommandInvocation) -> CommandResult {
     self
       .result
       .lock()
@@ -155,10 +155,10 @@ impl RegisteredDeviceCommandHandler for TestDeviceCommandHandler {
 }
 
 #[async_trait::async_trait]
-impl RegisteredDeviceCommandHandler for CountingDeviceCommandHandler {
-  async fn execute(&self, _invocation: DeviceCommandInvocation) -> DeviceCommandResult {
+impl RegisteredCommandHandler for CountingDeviceCommandHandler {
+  async fn execute(&self, _invocation: CommandInvocation) -> CommandResult {
     self.calls.fetch_add(1, Ordering::SeqCst);
-    DeviceCommandResult::Completed {
+    CommandResult::Completed {
       fields: LogFields::default(),
       attachment: None,
     }
@@ -3066,14 +3066,14 @@ fn screenshot_device_command_reports_capture_and_validation_failures() {
 fn registered_custom_device_command_completes_without_attachment() {
   let command_id = "5164d8d6-72b1-4b57-8d6f-997633e3f54a";
   let registered_command_id = "com.example.capture";
-  let handler: Arc<dyn RegisteredDeviceCommandHandler> = Arc::new(TestDeviceCommandHandler {
-    result: Mutex::new(Some(DeviceCommandResult::Completed {
+  let handler: Arc<dyn RegisteredCommandHandler> = Arc::new(TestDeviceCommandHandler {
+    result: Mutex::new(Some(CommandResult::Completed {
       fields: [("result".into(), "completed".into())].into(),
       attachment: None,
     })),
   });
   let mut setup = Setup::new_with_options(SetupOptions {
-    device_command_handlers: [(registered_command_id.to_string(), handler)].into(),
+    command_handlers: [(registered_command_id.to_string(), handler)].into(),
     ..Default::default()
   });
 
@@ -3116,9 +3116,9 @@ fn removed_device_command_id_can_be_reused() {
   let handler = Arc::new(CountingDeviceCommandHandler {
     calls: AtomicUsize::new(0),
   });
-  let registered_handler: Arc<dyn RegisteredDeviceCommandHandler> = handler.clone();
+  let registered_handler: Arc<dyn RegisteredCommandHandler> = handler.clone();
   let mut setup = Setup::new_with_options(SetupOptions {
-    device_command_handlers: [(registered_command_id.to_string(), registered_handler)].into(),
+    command_handlers: [(registered_command_id.to_string(), registered_handler)].into(),
     ..Default::default()
   });
 
@@ -3161,14 +3161,14 @@ fn removed_device_command_id_can_be_reused() {
 fn registered_custom_device_command_reports_failure_context() {
   let command_id = "ca7d5b51-d97a-4a46-87c5-4d2f19332088";
   let registered_command_id = "com.example.capture.failure";
-  let handler: Arc<dyn RegisteredDeviceCommandHandler> = Arc::new(TestDeviceCommandHandler {
-    result: Mutex::new(Some(DeviceCommandResult::Failed {
+  let handler: Arc<dyn RegisteredCommandHandler> = Arc::new(TestDeviceCommandHandler {
+    result: Mutex::new(Some(CommandResult::Failed {
       error: "capture failed".to_string(),
       fields: [("reason".into(), "camera unavailable".into())].into(),
     })),
   });
   let mut setup = Setup::new_with_options(SetupOptions {
-    device_command_handlers: [(registered_command_id.to_string(), handler)].into(),
+    command_handlers: [(registered_command_id.to_string(), handler)].into(),
     ..Default::default()
   });
 
@@ -3209,10 +3209,10 @@ fn registered_custom_device_command_stages_correlated_attachment() {
     .into_temp_path();
   std::fs::write(&attachment_path, b"custom-command-attachment").unwrap();
   let attachment_path = attachment_path.keep().unwrap();
-  let handler: Arc<dyn RegisteredDeviceCommandHandler> = Arc::new(TestDeviceCommandHandler {
-    result: Mutex::new(Some(DeviceCommandResult::Completed {
+  let handler: Arc<dyn RegisteredCommandHandler> = Arc::new(TestDeviceCommandHandler {
+    result: Mutex::new(Some(CommandResult::Completed {
       fields: [("result".into(), "attached".into())].into(),
-      attachment: Some(DeviceCommandAttachment {
+      attachment: Some(CommandAttachment {
         source: bd_artifact_upload::UploadSource::Path(attachment_path),
         type_id: "custom_attachment".to_string(),
         state: [("source".into(), "handler".into())].into(),
@@ -3221,7 +3221,7 @@ fn registered_custom_device_command_stages_correlated_attachment() {
   });
   let mut setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
-    device_command_handlers: [(registered_command_id.to_string(), handler)].into(),
+    command_handlers: [(registered_command_id.to_string(), handler)].into(),
     ..Default::default()
   });
 

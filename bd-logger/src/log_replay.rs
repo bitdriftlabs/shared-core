@@ -20,6 +20,7 @@ use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{EncodableLog, FieldsRef, Log, LogMessage, LossyIntToU32, log_level};
+use bd_log_util::warn_every;
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
@@ -28,8 +29,20 @@ use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
-use bd_workflows::engine::{ProcessLocalPendingFlushState, WorkflowsEngine, WorkflowsEngineConfig};
-use bd_workflows::workflow::{WorkflowDebugStateMap, WorkflowEvent};
+use bd_workflows::engine::{
+  ProcessLocalPendingFlushState,
+  WorkflowCommandLog,
+  WorkflowsEngine,
+  WorkflowsEngineConfig,
+};
+use bd_workflows::workflow::{
+  WorkflowCommandCompletionError,
+  WorkflowCommandCompletionToken,
+  WorkflowCommandOutcome,
+  WorkflowCommandRequest,
+  WorkflowDebugStateMap,
+  WorkflowEvent,
+};
 use itertools::Itertools;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -37,11 +50,13 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use time::OffsetDateTime;
+use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 #[derive(Default)]
 pub struct LogReplayResult {
   pub logs_to_inject: Vec<Log>,
+  pub workflow_commands_to_start: Vec<WorkflowCommandRequest>,
   pub workflow_debug_state: Vec<(String, WorkflowDebugStateMap)>,
   pub engine_has_debug_workflows: bool,
 }
@@ -62,6 +77,7 @@ pub trait LogReplay {
   async fn replay_log(
     &mut self,
     log: Log,
+    completion_token: Option<WorkflowCommandCompletionToken>,
     pipeline: &mut ProcessingPipeline,
     state: &bd_state::Store,
     now: OffsetDateTime,
@@ -91,11 +107,14 @@ impl LogReplay for LoggerReplay {
   async fn replay_log(
     &mut self,
     log: Log,
+    completion_token: Option<WorkflowCommandCompletionToken>,
     pipeline: &mut ProcessingPipeline,
     state_store: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
-    pipeline.process_log(log, state_store, now).await
+    pipeline
+      .process_log(log, completion_token.as_ref(), state_store, now)
+      .await
   }
 
   async fn replay_state_change(
@@ -245,9 +264,36 @@ impl ProcessingPipeline {
     self.workflows_engine.update(workflows_engine_config);
   }
 
+  pub(crate) fn workflow_command_outcome_log(
+    &self,
+    outcome: WorkflowCommandOutcome,
+    now: OffsetDateTime,
+  ) -> Log {
+    self
+      .workflows_engine
+      .workflow_command_outcome_log(outcome, now)
+  }
+
+  pub(crate) fn accept_workflow_command_completion(
+    &mut self,
+    token: &WorkflowCommandCompletionToken,
+  ) -> Result<(), WorkflowCommandCompletionError> {
+    self
+      .workflows_engine
+      .accept_workflow_command_completion(token)
+  }
+
+  pub(crate) fn fail_recovered_workflow_commands(
+    &mut self,
+    now: OffsetDateTime,
+  ) -> Vec<WorkflowCommandLog> {
+    self.workflows_engine.fail_recovered_workflow_commands(now)
+  }
+
   async fn process_log(
     &mut self,
     mut log: Log,
+    completion_token: Option<&WorkflowCommandCompletionToken>,
     state: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
@@ -277,12 +323,17 @@ impl ProcessingPipeline {
       &state_reader,
     );
 
-    let mut result = self.workflows_engine.process_event(
-      WorkflowEvent::Log(&log.log),
-      &matching_buffers,
-      &state_reader,
-      now,
-    );
+    let event = match completion_token {
+      Some(token) => WorkflowEvent::CommandCompletion {
+        log: &log.log,
+        token,
+      },
+      None => WorkflowEvent::Log(&log.log),
+    };
+    let mut result =
+      self
+        .workflows_engine
+        .process_event(event, &matching_buffers, &state_reader, now);
     self
       .is_tracing_active
       .store(result.is_tracing_active, Ordering::Relaxed);
@@ -290,7 +341,8 @@ impl ProcessingPipeline {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()
         .collect(),
-      workflow_debug_state: result.workflow_debug_state,
+      workflow_commands_to_start: std::mem::take(&mut result.workflow_commands_to_start),
+      workflow_debug_state: std::mem::take(&mut result.workflow_debug_state),
       engine_has_debug_workflows: result.has_debug_workflows,
     };
 
@@ -303,7 +355,8 @@ impl ProcessingPipeline {
 
     Self::handle_common_pre_buffer_write(&result.triggered_flush_buffers_action_ids);
 
-    Self::write_to_buffers(
+    let mut written_to_buffers = TinySet::default();
+    if let Err(error) = Self::write_to_buffers(
       &mut self.buffer_producers,
       &result.log_destination_buffer_ids,
       &mut log,
@@ -317,19 +370,27 @@ impl ProcessingPipeline {
         })
         .map(std::convert::AsRef::as_ref)
         .collect_vec(),
-    )?;
+      &mut written_to_buffers,
+    ) {
+      warn_every!(
+        15.seconds(),
+        "failed to write log to buffer; dropping it: {error}"
+      );
+    }
 
     Self::process_flush_buffers_actions(
       &result.triggered_flush_buffers_action_ids,
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
-      &result.log_destination_buffer_ids,
+      &written_to_buffers,
       &log.log.message,
       &log.log.fields,
       &log.log.session_id,
       log.log.occurred_at,
     );
 
+    // Command execution is best-effort across restarts: persistence may be deferred or fail, so
+    // an interrupted command may be lost or executed again after a restart.
     self.workflows_engine.maybe_persist(false).await;
     if let Some(test_hooks) = &self.test_hooks {
       test_hooks.workflow_event_processed();
@@ -362,6 +423,7 @@ impl ProcessingPipeline {
       bd_workflows::workflow::WorkflowEvent::StateChange(
         &state_change,
         FieldsRef::new(fields, matching_fields),
+        session_id,
       ),
       &empty_set,
       &state_reader,
@@ -375,6 +437,7 @@ impl ProcessingPipeline {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()
         .collect(),
+      workflow_commands_to_start: std::mem::take(&mut result.workflow_commands_to_start),
       workflow_debug_state: result.workflow_debug_state,
       engine_has_debug_workflows: result.has_debug_workflows,
     };
@@ -404,11 +467,12 @@ impl ProcessingPipeline {
     log_replay_result
   }
 
-  fn write_to_buffers(
+  fn write_to_buffers<'a>(
     buffers: &mut BufferProducers,
-    matching_buffers: &TinySet<Cow<'_, str>>,
+    matching_buffers: &TinySet<Cow<'a, str>>,
     log: &mut EncodableLog,
     action_ids: &[&str],
+    written_to_buffers: &mut TinySet<Cow<'a, str>>,
   ) -> anyhow::Result<()> {
     if matching_buffers.is_empty() {
       return Ok(());
@@ -420,6 +484,7 @@ impl ProcessingPipeline {
       // possibly via vector indices instead of string keys.
       let producer = BufferProducers::producer(&mut buffers.buffers, buffer)?;
       write_log_to_buffer(producer, log, action_ids, &[])?;
+      written_to_buffers.insert(buffer.clone());
     }
 
     Ok(())

@@ -21,8 +21,10 @@ use crate::async_log_buffer::{
 };
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
+use crate::device_command::WorkflowCommandCompletion;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
+use crate::metadata::MetadataCollector;
 use crate::{Block, InitializationState, StartupReplayEligibility};
 use bd_api::{DataUpload, SimpleNetworkQualityProvider};
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
@@ -53,6 +55,12 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::M
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+use bd_proto::protos::workflow::workflow::workflow::{MatchRunCommand, Rule};
+use bd_proto::protos::workflow::workflow_command::{
+  WorkflowCommandSelector,
+  workflow_command_selector,
+};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
 use bd_session::test::no_timeout;
@@ -60,18 +68,21 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
 use bd_stats_common::labels;
+use bd_test_helpers::config_helper::{BufferType, default_buffer_config, match_message};
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::rule;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::session::in_memory_store;
-use bd_test_helpers::workflow::{WorkflowBuilder, state};
+use bd_test_helpers::workflow::{WorkflowBuilder, make_flush_buffers_action, state};
 use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
+use bd_workflows::workflow::{WorkflowCommandCompletionToken, WorkflowCommandOutcome};
 use futures_util::poll;
+use std::collections::{HashMap, VecDeque};
 use std::future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -165,6 +176,7 @@ impl crate::TestHooks for AsyncLogBufferTestHooks {
 
 struct Setup {
   buffer_manager: Arc<bd_buffer::Manager>,
+  buffer_event_rx: Option<tokio::sync::mpsc::Receiver<bd_buffer::BufferEventWithResponse>>,
   runtime: Arc<ConfigLoader>,
   collector: Collector,
   stats: Arc<Stats>,
@@ -194,17 +206,18 @@ impl Setup {
     let stats = Stats::new(collector.clone());
     let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
     let session_strategy = no_timeout(tmp_dir.path()).strategy();
+    let (buffer_manager, buffer_event_rx) = bd_buffer::Manager::new(
+      tmp_dir.path().join("buffer"),
+      &collector.scope(""),
+      runtime,
+      Arc::new(bd_versioned_kv::RetentionRegistry::new(
+        bd_runtime::runtime::IntWatch::new_for_testing(0),
+      )),
+    );
 
     Self {
-      buffer_manager: bd_buffer::Manager::new(
-        tmp_dir.path().join("buffer"),
-        &collector.scope(""),
-        runtime,
-        Arc::new(bd_versioned_kv::RetentionRegistry::new(
-          bd_runtime::runtime::IntWatch::new_for_testing(0),
-        )),
-      )
-      .0,
+      buffer_manager,
+      buffer_event_rx: Some(buffer_event_rx),
       runtime: Self::make_runtime(&tmp_dir),
       collector,
       stats,
@@ -224,6 +237,11 @@ impl Setup {
       sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker::new(),
       test_hooks: None,
     }
+  }
+
+  fn drain_buffer_events(&mut self) {
+    let mut buffer_event_rx = self.buffer_event_rx.take().unwrap();
+    tokio::spawn(async move { while buffer_event_rx.recv().await.is_some() {} });
   }
 
   fn shutdown_in(&mut self, duration: time::Duration) {
@@ -269,6 +287,7 @@ impl Setup {
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
+      HashMap::new(),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
@@ -302,6 +321,7 @@ impl Setup {
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
+      HashMap::new(),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
@@ -1063,6 +1083,8 @@ struct TestReplay {
   logs_notify: Arc<Notify>,
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  completion_tokens: Arc<parking_lot::Mutex<Vec<Option<WorkflowCommandCompletionToken>>>>,
+  results: Arc<parking_lot::Mutex<VecDeque<LogReplayResult>>>,
 }
 
 struct StaticReportProcessor(parking_lot::Mutex<Vec<bd_crash_handler::CrashLog>>);
@@ -1155,6 +1177,8 @@ impl TestReplay {
       logs_notify: Arc::new(Notify::new()),
       logs: Arc::new(parking_lot::Mutex::new(vec![])),
       fields: Arc::new(parking_lot::Mutex::new(vec![])),
+      completion_tokens: Arc::new(parking_lot::Mutex::new(vec![])),
+      results: Arc::new(parking_lot::Mutex::new(VecDeque::new())),
     }
   }
 }
@@ -1164,6 +1188,7 @@ impl LogReplay for TestReplay {
   async fn replay_log(
     &mut self,
     log: Log,
+    completion_token: Option<WorkflowCommandCompletionToken>,
     _processing_pipeline: &mut ProcessingPipeline,
     _state: &bd_state::Store,
     _now: OffsetDateTime,
@@ -1173,10 +1198,11 @@ impl LogReplay for TestReplay {
     }
 
     self.fields.lock().push(log.fields);
+    self.completion_tokens.lock().push(completion_token);
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     self.logs_notify.notify_waiters();
 
-    Ok(LogReplayResult::default())
+    Ok(self.results.lock().pop_front().unwrap_or_default())
   }
 
   async fn replay_state_change(
@@ -1676,7 +1702,7 @@ async fn logs_are_replayed_in_order() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run(state_store, ()).await;
+    _ = Box::pin(buffer.run(state_store, ())).await;
   });
 
   shutdown.store(true, Ordering::SeqCst);
@@ -1818,6 +1844,370 @@ async fn updates_workflow_engine_in_response_to_config_update() {
     "workflows:workflows_total",
     labels! {"operation" => "stop"},
   );
+}
+
+#[tokio::test]
+async fn workflow_command_completion_survives_metadata_failure() {
+  let setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    Rule {
+      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+        command_selector: Some(WorkflowCommandSelector {
+          command_selector: Some(
+            workflow_command_selector::Command_selector::RegisteredCommand(
+              workflow_command_selector::RegisteredCommand {
+                registered_command_id: "handler".to_string(),
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        })
+        .into(),
+        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+          seconds: 60,
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    },
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut buffer = buffer
+    .update(setup.make_config_update(workflows), &state_store)
+    .await;
+  buffer
+    .process_log(normal_log("start"), &state_store, None, None)
+    .await
+    .unwrap();
+  let result = buffer
+    .process_log(normal_log("execute"), &state_store, None, None)
+    .await
+    .unwrap();
+  assert_eq!(1, result.workflow_commands_to_start.len());
+  let token = result.workflow_commands_to_start[0].completion_token();
+
+  buffer.metadata_collector = MetadataCollector::new(
+    Arc::new(FailingMetadataProvider),
+    LogFields::default(),
+    LogFields::default(),
+  );
+  buffer
+    .process_workflow_command_completion(
+      WorkflowCommandCompletion {
+        token: token.clone(),
+        outcome: WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+      },
+      &state_store,
+    )
+    .await;
+  assert!(
+    buffer
+      .logging_state
+      .workflows_engine()
+      .unwrap()
+      .complete_workflow_command(
+        &token,
+        WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+        OffsetDateTime::now_utc(),
+      )
+      .is_err()
+  );
+}
+
+#[tokio::test]
+async fn workflow_command_start_survives_buffer_write_failure() {
+  let setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    Rule {
+      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+        command_selector: Some(WorkflowCommandSelector {
+          command_selector: Some(
+            workflow_command_selector::Command_selector::RegisteredCommand(
+              workflow_command_selector::RegisteredCommand {
+                registered_command_id: "handler".to_string(),
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        })
+        .into(),
+        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+          seconds: 60,
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    },
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut config_update = setup.make_config_update(workflows);
+  config_update.buffer_selector = BufferSelector::new(&BufferConfigList {
+    buffer_config: vec![default_buffer_config(
+      BufferType::CONTINUOUS,
+      Some(match_message("execute")),
+    )],
+    ..Default::default()
+  })
+  .unwrap();
+  let mut buffer = buffer.update(config_update, &state_store).await;
+
+  buffer
+    .process_log(normal_log("start"), &state_store, None, None)
+    .await
+    .unwrap();
+  let result = buffer
+    .process_log(normal_log("execute"), &state_store, None, None)
+    .await
+    .unwrap();
+
+  assert_eq!(1, result.workflow_commands_to_start.len());
+}
+
+#[tokio::test]
+async fn failed_log_write_uses_synthetic_log_for_workflow_flush() {
+  let mut setup = Setup::new();
+  setup.drain_buffer_events();
+  std::fs::create_dir_all(setup.tmp_dir.path().join("buffer")).unwrap();
+  let trigger_config = BufferConfigList {
+    buffer_config: vec![default_buffer_config(BufferType::TRIGGER, None)],
+    ..Default::default()
+  };
+  setup
+    .buffer_manager
+    .update_from_config(&trigger_config, false)
+    .await
+    .unwrap();
+
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let start = state("start").declare_transition_with_actions(
+    &terminal,
+    rule!(message_equals("flush")),
+    &[make_flush_buffers_action(&["default"], None, "flush")],
+  );
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut config_update = setup.make_config_update(workflows);
+  let mut missing_buffer =
+    default_buffer_config(BufferType::CONTINUOUS, Some(match_message("flush")));
+  missing_buffer.id = "missing".to_string();
+  config_update.buffer_selector = BufferSelector::new(&BufferConfigList {
+    buffer_config: vec![missing_buffer],
+    ..Default::default()
+  })
+  .unwrap();
+  let mut buffer = buffer.update(config_update, &state_store).await;
+
+  buffer
+    .process_log(normal_log("flush"), &state_store, None, None)
+    .await
+    .unwrap();
+
+  let trigger_buffer = setup.buffer_manager.buffers().remove("default").unwrap().1;
+  let mut consumer = trigger_buffer.new_consumer().unwrap();
+  assert!(!consumer.start_read(false).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn partially_written_log_does_not_add_synthetic_log_for_workflow_flush() {
+  let mut setup = Setup::new();
+  setup.drain_buffer_events();
+  std::fs::create_dir_all(setup.tmp_dir.path().join("buffer")).unwrap();
+  let trigger_config = BufferConfigList {
+    buffer_config: vec![default_buffer_config(BufferType::TRIGGER, None)],
+    ..Default::default()
+  };
+  setup
+    .buffer_manager
+    .update_from_config(&trigger_config, false)
+    .await
+    .unwrap();
+
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let start = state("start").declare_transition_with_actions(
+    &terminal,
+    rule!(message_equals("flush")),
+    &[make_flush_buffers_action(&["default"], None, "flush")],
+  );
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut config_update = setup.make_config_update(workflows);
+  let mut missing_buffer =
+    default_buffer_config(BufferType::CONTINUOUS, Some(match_message("flush")));
+  missing_buffer.id = "missing".to_string();
+  config_update.buffer_selector = BufferSelector::new(&BufferConfigList {
+    buffer_config: vec![
+      default_buffer_config(BufferType::TRIGGER, Some(match_message("flush"))),
+      missing_buffer,
+    ],
+    ..Default::default()
+  })
+  .unwrap();
+  let mut buffer = buffer.update(config_update, &state_store).await;
+
+  buffer
+    .process_log(normal_log("flush"), &state_store, None, None)
+    .await
+    .unwrap();
+
+  let trigger_buffer = setup.buffer_manager.buffers().remove("default").unwrap().1;
+  let mut consumer = trigger_buffer.new_consumer().unwrap();
+  assert!(!consumer.start_read(false).unwrap().is_empty());
+  assert!(consumer.start_read(false).is_err());
+}
+
+#[tokio::test]
+async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    Rule {
+      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+        command_selector: Some(WorkflowCommandSelector {
+          command_selector: Some(
+            workflow_command_selector::Command_selector::RegisteredCommand(
+              workflow_command_selector::RegisteredCommand {
+                registered_command_id: "handler".to_string(),
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        })
+        .into(),
+        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+          seconds: 60,
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    },
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  buffer = buffer
+    .update(
+      setup.make_config_update(WorkflowsConfiguration::default()),
+      &state_store,
+    )
+    .await;
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut workflow_buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
+  workflow_buffer = workflow_buffer
+    .update(setup.make_config_update(workflows), &state_store)
+    .await;
+  buffer
+    .metadata_collector
+    .add_field(
+      "outcome_metadata".into(),
+      DataValue::String("metadata_value".to_string()),
+    )
+    .unwrap();
+  workflow_buffer
+    .process_log(normal_log("start"), &state_store, None, None)
+    .await
+    .unwrap();
+  let request = workflow_buffer
+    .process_log(normal_log("execute"), &state_store, None, None)
+    .await
+    .unwrap()
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let token = request.completion_token();
+  buffer.replayer.results.lock().push_back(LogReplayResult {
+    engine_has_debug_workflows: true,
+    ..Default::default()
+  });
+
+  buffer
+    .process_workflow_command_outcome_logs(
+      [bd_workflows::engine::WorkflowCommandLog {
+        log: Log {
+          log_level: log_level::INFO,
+          log_type: LogType::NORMAL,
+          message: "Workflow command completed".into(),
+          fields: LogFields::default(),
+          matching_fields: LogFields::default(),
+          occurred_at: OffsetDateTime::UNIX_EPOCH,
+          session_id: "session".into(),
+          capture_session: None,
+        },
+        token: token.clone(),
+      }],
+      &state_store,
+    )
+    .await;
+
+  assert_eq!(
+    Some(token),
+    buffer
+      .replayer
+      .completion_tokens
+      .lock()
+      .last()
+      .cloned()
+      .unwrap()
+  );
+  assert_eq!(
+    Some(&DataValue::String("metadata_value".to_string())),
+    buffer
+      .replayer
+      .fields
+      .lock()
+      .last()
+      .unwrap()
+      .get("outcome_metadata")
+  );
+  assert!(buffer.send_workflow_debug_state_delay.is_some());
 }
 
 #[tokio::test]

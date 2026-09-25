@@ -12,10 +12,16 @@ use super::engine_test_helpers::{
   assert_workflow_debug_state,
   make_runtime,
 };
-use crate::config::{Action, FlushBufferId, WorkflowDebugMode, WorkflowsConfiguration};
+use crate::config::{Action, Config, FlushBufferId, WorkflowDebugMode, WorkflowsConfiguration};
 use crate::engine::{ProcessLocalPendingFlushState, WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::test::{MakeConfig, TestLog};
-use crate::workflow::{Workflow, WorkflowEvent, WorkflowTransitionDebugState};
+use crate::workflow::{
+  Workflow,
+  WorkflowCommandCompletionError,
+  WorkflowCommandOutcome,
+  WorkflowEvent,
+  WorkflowTransitionDebugState,
+};
 use crate::{engine_assert_active_run_traversals, engine_assert_active_runs};
 use assert_matches::assert_matches;
 use bd_api::TriggerUploadStreaming;
@@ -25,7 +31,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
 use bd_log_matcher::builder::{field_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{Log, LogFields, LogMessage, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogFields, LogMessage, log_level};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyPathUploadRequest, log_upload_intent_request};
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
@@ -39,9 +45,21 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   KeyOrIndex,
   key_or_index,
 };
-use bd_proto::protos::value_matcher::value_matcher::{JsonPathValueMatch, Operator};
+use bd_proto::protos::value_matcher::value_matcher::{
+  JsonPathValueMatch,
+  Operator,
+  StringValueMatch,
+  string_value_match,
+};
+use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+use bd_proto::protos::workflow::workflow::workflow::{MatchRunCommand, Rule};
+use bd_proto::protos::workflow::workflow_command::{
+  WorkflowCommandSelector,
+  workflow_command_selector,
+};
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::workflows::JsonPathStringMatchingEnabled;
+use bd_state::StateChange;
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::sankey_value;
@@ -77,6 +95,1098 @@ use std::vec;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
+
+fn workflow_command_rule() -> Rule {
+  Rule {
+    rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+      command_selector: Some(WorkflowCommandSelector {
+        command_selector: Some(
+          workflow_command_selector::Command_selector::RegisteredCommand(
+            workflow_command_selector::RegisteredCommand {
+              registered_command_id: "command".to_string(),
+              ..Default::default()
+            },
+          ),
+        ),
+        ..Default::default()
+      })
+      .into(),
+      minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+        seconds: 60,
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+#[test]
+fn workflow_command_rule_requires_a_selector_variant() {
+  let terminal = state("terminal");
+  let mut command_rule = workflow_command_rule();
+  let Some(Rule_type::MatchRunCommand(command_rule_config)) = &mut command_rule.rule_type else {
+    panic!("expected command matcher");
+  };
+  command_rule_config.command_selector = Some(WorkflowCommandSelector::default()).into();
+  let command = state("command").declare_transition(&terminal, command_rule);
+  let config = WorkflowBuilder::new("workflow", &[&command, &terminal]).build();
+
+  assert_eq!(
+    "invalid workflow command matcher configuration: missing command selector",
+    Config::new(config, WorkflowDebugMode::None)
+      .unwrap_err()
+      .to_string()
+  );
+}
+
+fn timed_command_log(message: &str, now: OffsetDateTime) -> TestLog {
+  TestLog::new(message).with_now(now).with_occurred_at(now)
+}
+
+fn message_matcher(message: &str) -> LogMatcher {
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(base_log_matcher::Match_type::MessageMatch(
+        base_log_matcher::MessageMatch {
+          string_value_match: protobuf::MessageField::from_option(Some(StringValueMatch {
+            operator: Operator::OPERATOR_EQUALS.into(),
+            string_value_match_type: Some(string_value_match::String_value_match_type::MatchValue(
+              message.to_string(),
+            )),
+            ..Default::default()
+          })),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+#[tokio::test]
+async fn workflow_command_waits_for_its_terminal_outcome() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let observer_terminal = state("observer_terminal");
+  let observed =
+    state("observed").declare_transition(&observer_terminal, rule!(message_equals("never")));
+  let observer = state("observer").declare_transition(
+    &observed,
+    rule!(message_equals("Workflow command completed")),
+  );
+  let observer_start =
+    state("observer_start").declare_transition(&observer, rule!(message_equals("start")));
+
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+        WorkflowBuilder::new(
+          "observer",
+          &[&observer_start, &observer, &observed, &observer_terminal],
+        )
+        .make_config(),
+      ],
+    ))
+    .await;
+
+  engine.process_log(TestLog::new("start"));
+  let result = engine.process_log(TestLog::new("execute"));
+  assert_eq!(1, result.workflow_commands_to_start.len());
+  let token = result.workflow_commands_to_start[0].completion_token();
+  assert!(
+    engine
+      .engine
+      .pending_workflow_command_index
+      .contains_key(&token.0)
+  );
+
+  assert!(
+    engine
+      .process_log(TestLog::new("another event"))
+      .workflow_commands_to_start
+      .is_empty()
+  );
+  assert!(
+    engine
+      .engine
+      .pending_workflow_command_index
+      .contains_key(&token.0)
+  );
+  assert!(matches!(
+    engine.complete_workflow_command(
+      &crate::workflow::WorkflowCommandCompletionToken("unknown".to_string()),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      OffsetDateTime::now_utc(),
+    ),
+    Err(WorkflowCommandCompletionError::UnknownToken)
+  ));
+
+  let outcome_log = engine
+    .complete_workflow_command(
+      &token,
+      WorkflowCommandOutcome::Succeeded {
+        message: Some("done".to_string()),
+        fields: LogFields::default(),
+      },
+      OffsetDateTime::now_utc(),
+    )
+    .unwrap();
+  assert!(matches!(
+    engine.complete_workflow_command(
+      &token,
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      OffsetDateTime::now_utc(),
+    ),
+    Err(WorkflowCommandCompletionError::AlreadyCompleted)
+  ));
+
+  assert!(
+    !outcome_log
+      .log
+      .fields
+      .contains_key("_workflow_command_token")
+  );
+  assert!(
+    !outcome_log
+      .log
+      .fields
+      .contains_key("_workflow_command_outcome")
+  );
+
+  let empty_buffer_ids = TinySet::default();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &outcome_log.log,
+      token: &crate::workflow::WorkflowCommandCompletionToken("wrong".to_string()),
+    },
+    &empty_buffer_ids,
+    &bd_state::InMemoryStateReader::default(),
+    outcome_log.log.occurred_at,
+  );
+  engine_assert_active_runs!(engine; 1; "observer_start", "observed");
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &outcome_log.log,
+      token: &outcome_log.token,
+    },
+    &empty_buffer_ids,
+    &bd_state::InMemoryStateReader::default(),
+    outcome_log.log.occurred_at,
+  );
+  assert!(
+    !engine
+      .engine
+      .pending_workflow_command_index
+      .contains_key(&token.0)
+  );
+  engine_assert_active_runs!(engine; 0; "start");
+}
+
+#[tokio::test]
+async fn state_change_command_uses_the_active_session() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&command, &terminal]).make_config()],
+    ))
+    .await;
+  let state_change = StateChange::inserted(
+    bd_state::Scope::System,
+    "key",
+    bd_state::string_value("value"),
+    OffsetDateTime::now_utc(),
+  );
+  let fields = LogFields::default();
+  let empty_buffer_ids = TinySet::default();
+  let result = engine.engine.process_event(
+    WorkflowEvent::StateChange(
+      &state_change,
+      FieldsRef::new(&fields, &fields),
+      "state-change-session",
+    ),
+    &empty_buffer_ids,
+    &bd_state::InMemoryStateReader::default(),
+    state_change.timestamp,
+  );
+
+  assert_eq!(1, result.workflow_commands_to_start.len());
+  assert_eq!(
+    "state-change-session",
+    result.workflow_commands_to_start[0].session_id
+  );
+}
+
+#[tokio::test]
+async fn state_change_preserves_session_start_for_the_first_log() {
+  let c = state("C");
+  let b = state("B").declare_transition(&c, rule!(message_equals("never")));
+  let a = state("A").declare_transition(&b, make_on_new_session_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&a, &b, &c]).make_config()],
+    ))
+    .await;
+  let state_change = StateChange::inserted(
+    bd_state::Scope::System,
+    "key",
+    bd_state::string_value("value"),
+    OffsetDateTime::now_utc(),
+  );
+  let fields = LogFields::default();
+  engine.engine.process_event(
+    WorkflowEvent::StateChange(
+      &state_change,
+      FieldsRef::new(&fields, &fields),
+      "state-change-session",
+    ),
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    state_change.timestamp,
+  );
+
+  engine.process_log(TestLog::new("first log").with_session("state-change-session"));
+
+  engine_assert_active_runs!(engine; 0; "A", "B");
+}
+
+#[tokio::test]
+async fn workflow_command_rejected_outcome_does_not_trigger_expired_timeout() {
+  let terminal = state("terminal");
+  let timeout = state("timeout");
+  let mut command_rule = workflow_command_rule();
+  let Some(Rule_type::MatchRunCommand(command_rule_config)) = &mut command_rule.rule_type else {
+    panic!("expected command matcher");
+  };
+  command_rule_config.outcome_log_matcher = Some(message_matcher("accepted")).into();
+  let command = state("command")
+    .declare_transition(&terminal, command_rule)
+    .with_timeout(&timeout, 1.seconds(), &[]);
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &terminal, &timeout]).make_config(),
+      ],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+  let request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let completed_at = started_at + 1.seconds();
+  let outcome = engine
+    .complete_workflow_command(
+      &request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: Some("rejected".to_string()),
+        fields: LogFields::default(),
+      },
+      completed_at,
+    )
+    .unwrap();
+
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &outcome.log,
+      token: &outcome.token,
+    },
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    completed_at,
+  );
+
+  engine_assert_active_runs!(engine; 0; "start");
+}
+
+#[tokio::test]
+async fn workflow_command_blocks_other_transitions_until_completion() {
+  let terminal = state("terminal");
+  let bypass = state("bypass").declare_transition(&terminal, rule!(message_equals("never")));
+  let command = state("command")
+    .declare_transition(&terminal, workflow_command_rule())
+    .declare_transition(&bypass, rule!(message_equals("another event")))
+    .declare_transition(&bypass, rule!(message_equals("Workflow command completed")));
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&start, &command, &bypass, &terminal]).make_config()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+  let request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+
+  engine.process_log(timed_command_log("another event", started_at));
+  engine_assert_active_runs!(engine; 0; "start", "command");
+
+  let outcome = engine
+    .complete_workflow_command(
+      &request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      started_at,
+    )
+    .unwrap();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &outcome.log,
+      token: &outcome.token,
+    },
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    started_at,
+  );
+  engine_assert_active_runs!(engine; 0; "start");
+}
+
+#[tokio::test]
+async fn debug_only_workflow_command_does_not_become_pending() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &terminal])
+          .make_config_with_debug_mode(WorkflowDebugMode::DebugOnly),
+      ],
+    ))
+    .await;
+
+  engine.process_log(TestLog::new("start"));
+  let result = engine.process_log(TestLog::new("execute"));
+
+  assert!(result.workflow_commands_to_start.is_empty());
+  assert!(engine.engine.pending_workflow_command_index.is_empty());
+  engine_assert_active_runs!(engine; 0; "start", "command");
+}
+
+#[tokio::test]
+async fn workflow_command_interval_applies_to_successive_runs() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let empty_buffer_ids = TinySet::default();
+  engine.process_log(timed_command_log("start", started_at));
+  let mut request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+
+  for started_seconds in [0, 60] {
+    let command_at = started_at + started_seconds.seconds();
+    let outcome = engine
+      .complete_workflow_command(
+        &request.completion_token(),
+        WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+        command_at,
+      )
+      .unwrap();
+    engine.engine.process_event(
+      WorkflowEvent::CommandCompletion {
+        log: &outcome.log,
+        token: &outcome.token,
+      },
+      &empty_buffer_ids,
+      &bd_state::InMemoryStateReader::default(),
+      command_at,
+    );
+    engine_assert_active_runs!(engine; 0; "start");
+
+    let before_next_start = command_at + 60.seconds() - time::Duration::NANOSECOND;
+    engine.process_log(timed_command_log("start", before_next_start));
+    assert!(
+      engine
+        .process_log(timed_command_log("execute", before_next_start))
+        .workflow_commands_to_start
+        .is_empty()
+    );
+    engine_assert_active_runs!(engine; 0; "start", "command");
+    let at_next_start = command_at + 60.seconds();
+    let mut requests = engine
+      .process_log(timed_command_log("execute", at_next_start))
+      .workflow_commands_to_start;
+    assert_eq!(1, requests.len());
+    request = requests.pop().unwrap();
+  }
+}
+
+#[tokio::test]
+async fn workflow_command_interval_survives_restart() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let workflows =
+    vec![WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config()];
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+  let request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let outcome = engine
+    .complete_workflow_command(
+      &request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      started_at,
+    )
+    .unwrap();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &outcome.log,
+      token: &outcome.token,
+    },
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    started_at,
+  );
+  engine.maybe_persist(true).await;
+
+  let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
+  let before_interval = started_at + 60.seconds() - time::Duration::NANOSECOND;
+  engine.process_log(timed_command_log("start", before_interval));
+  assert!(
+    engine
+      .process_log(timed_command_log("execute", before_interval))
+      .workflow_commands_to_start
+      .is_empty()
+  );
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("execute", started_at + 60.seconds()))
+      .workflow_commands_to_start
+      .len()
+  );
+}
+
+#[tokio::test]
+async fn workflow_command_interval_respects_nanoseconds() {
+  let mut command_rule = workflow_command_rule();
+  let Some(Rule_type::MatchRunCommand(command_rule_config)) = &mut command_rule.rule_type else {
+    panic!("expected command matcher");
+  };
+  command_rule_config.minimum_execution_interval =
+    Some(protobuf::well_known_types::duration::Duration {
+      nanos: 500,
+      ..Default::default()
+    })
+    .into();
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, command_rule);
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+  let request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let outcome = engine
+    .complete_workflow_command(
+      &request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      started_at,
+    )
+    .unwrap();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &outcome.log,
+      token: &outcome.token,
+    },
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    started_at,
+  );
+
+  let before_interval = started_at + time::Duration::nanoseconds(499);
+  engine.process_log(timed_command_log("start", before_interval));
+  assert!(
+    engine
+      .process_log(timed_command_log("execute", before_interval))
+      .workflow_commands_to_start
+      .is_empty()
+  );
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log(
+        "execute",
+        started_at + time::Duration::nanoseconds(500),
+      ))
+      .workflow_commands_to_start
+      .len()
+  );
+}
+
+#[tokio::test]
+async fn workflow_command_interval_is_shared_by_parallel_runs() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &terminal])
+          .with_parallel_execution(Some(3))
+          .make_config(),
+      ],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("execute", started_at))
+      .workflow_commands_to_start
+      .len()
+  );
+  let before_interval = started_at + 1.seconds();
+  engine.process_log(timed_command_log("start", before_interval));
+  assert!(
+    engine
+      .process_log(timed_command_log("execute", before_interval))
+      .workflow_commands_to_start
+      .is_empty()
+  );
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("execute", started_at + 60.seconds()))
+      .workflow_commands_to_start
+      .len()
+  );
+}
+
+#[tokio::test]
+async fn workflow_command_index_tracks_parallel_run_shift() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &terminal])
+          .with_parallel_execution(Some(3))
+          .make_config(),
+      ],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+  let token = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start[0]
+    .completion_token();
+  let original_run_index = engine.engine.pending_workflow_command_index[&token.0].run_index;
+
+  engine.process_log(timed_command_log("start", started_at + 1.seconds()));
+  engine.process_log(timed_command_log("start", started_at + 2.seconds()));
+  assert_ne!(
+    original_run_index,
+    engine.engine.pending_workflow_command_index[&token.0].run_index
+  );
+  engine
+    .complete_workflow_command(
+      &token,
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      started_at + 2.seconds(),
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn workflow_command_completion_uses_its_own_transition_after_cooldown() {
+  let first = state("first");
+  let terminal = state("terminal");
+  let second = state("second").declare_transition(&terminal, rule!(message_equals("never")));
+  let command = state("command")
+    .declare_transition(&first, workflow_command_rule())
+    .declare_transition(&second, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &first, &second, &terminal])
+          .make_config(),
+      ],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+  let first_request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let first_outcome = engine
+    .complete_workflow_command(
+      &first_request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      started_at,
+    )
+    .unwrap();
+  let empty_buffer_ids = TinySet::default();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &first_outcome.log,
+      token: &first_outcome.token,
+    },
+    &empty_buffer_ids,
+    &bd_state::InMemoryStateReader::default(),
+    started_at,
+  );
+  engine_assert_active_runs!(engine; 0; "start");
+
+  let second_at = started_at + 1.seconds();
+  engine.process_log(timed_command_log("start", second_at));
+  let second_request = engine
+    .process_log(timed_command_log("execute", second_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let second_outcome = engine
+    .complete_workflow_command(
+      &second_request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      second_at,
+    )
+    .unwrap();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &second_outcome.log,
+      token: &second_outcome.token,
+    },
+    &empty_buffer_ids,
+    &bd_state::InMemoryStateReader::default(),
+    second_at,
+  );
+  engine_assert_active_runs!(engine; 0; "start", "second");
+}
+
+#[tokio::test]
+async fn workflow_command_prevents_sibling_transition_from_discarding_completion_token() {
+  let terminal = state("terminal");
+  let sibling = state("sibling").declare_transition(&terminal, rule!(message_equals("never")));
+  let command = state("command")
+    .declare_transition(&terminal, workflow_command_rule())
+    .declare_transition(&sibling, rule!(message_equals("execute")));
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("workflow", &[&start, &command, &sibling, &terminal]).make_config(),
+      ],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+
+  let request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+
+  assert!(
+    engine
+      .complete_workflow_command(
+        &request.completion_token(),
+        WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+        started_at,
+      )
+      .is_ok()
+  );
+}
+
+#[tokio::test]
+async fn initial_command_start_replaces_the_previous_exclusive_run_after_cooldown() {
+  let terminal = state("terminal");
+  let active = state("active").declare_transition(&terminal, rule!(message_equals("never")));
+  let command = state("command").declare_transition(&active, workflow_command_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&command, &active, &terminal]).make_config()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let first_request = engine
+    .process_log(timed_command_log("first", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let first_outcome = engine
+    .complete_workflow_command(
+      &first_request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      started_at,
+    )
+    .unwrap();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &first_outcome.log,
+      token: &first_outcome.token,
+    },
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    started_at,
+  );
+
+  engine.process_log(timed_command_log(
+    "before cooldown",
+    started_at + 1.seconds(),
+  ));
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log(
+        "after cooldown",
+        started_at + 60.seconds()
+      ))
+      .workflow_commands_to_start
+      .len()
+  );
+  engine_assert_active_runs!(engine; 0; "command");
+}
+
+#[tokio::test]
+async fn workflow_replacement_does_not_reuse_a_previous_command_cooldown() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&command, &terminal]).make_config()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("first", started_at))
+      .workflow_commands_to_start
+      .len()
+  );
+
+  let mut updated_rule = workflow_command_rule();
+  let Some(Rule_type::MatchRunCommand(command_config)) = &mut updated_rule.rule_type else {
+    panic!("expected command matcher");
+  };
+  command_config.minimum_execution_interval =
+    Some(protobuf::well_known_types::duration::Duration {
+      seconds: 120,
+      ..Default::default()
+    })
+    .into();
+  let updated_command = state("command").declare_transition(&terminal, updated_rule);
+  engine
+    .engine
+    .update(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&updated_command, &terminal]).make_config()],
+    ));
+
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("updated", started_at + 1.seconds()))
+      .workflow_commands_to_start
+      .len()
+  );
+}
+
+#[tokio::test]
+async fn restored_cooldown_for_removed_workflow_is_not_reused_when_readded() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let workflows = vec![WorkflowBuilder::new("workflow", &[&command, &terminal]).make_config()];
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
+
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("start", started_at))
+      .workflow_commands_to_start
+      .len()
+  );
+  engine.maybe_persist(true).await;
+  drop(engine);
+
+  let restored_setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let mut restored_engine = restored_setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![],
+    ))
+    .await;
+  assert!(
+    restored_engine
+      .engine
+      .state
+      .command_last_started_at_ns
+      .is_empty()
+  );
+  restored_engine
+    .engine
+    .update(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ));
+
+  assert_eq!(
+    1,
+    restored_engine
+      .process_log(timed_command_log("re-added", started_at + 1.seconds()))
+      .workflow_commands_to_start
+      .len()
+  );
+}
+
+#[tokio::test]
+async fn workflow_removal_persists_cooldown_cleanup_when_workflow_is_initial() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&command, &terminal]).make_config()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let request = engine
+    .process_log(timed_command_log("start", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  let outcome = engine
+    .complete_workflow_command(
+      &request.completion_token(),
+      WorkflowCommandOutcome::Succeeded {
+        message: None,
+        fields: LogFields::default(),
+      },
+      started_at,
+    )
+    .unwrap();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &outcome.log,
+      token: &outcome.token,
+    },
+    &TinySet::default(),
+    &bd_state::InMemoryStateReader::default(),
+    started_at,
+  );
+  engine.maybe_persist(true).await;
+
+  engine
+    .engine
+    .update(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![],
+    ));
+
+  assert!(engine.engine.needs_state_persistence);
+  engine.maybe_persist(true).await;
+  let workflows_state = setup.make_state_store().load().await.unwrap();
+  assert!(workflows_state.command_last_started_at_ns.is_empty());
+}
+
+#[tokio::test]
+async fn workflow_removal_does_not_clear_slash_prefixed_workflow_cooldown() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let foo_bar_config = WorkflowBuilder::new("foo/bar", &[&command, &terminal]).make_config();
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("foo", &[&command, &terminal]).make_config(),
+        foo_bar_config.clone(),
+      ],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let requests = engine
+    .process_log(timed_command_log("start", started_at))
+    .workflow_commands_to_start;
+  assert_eq!(2, requests.len());
+
+  for request in requests {
+    let outcome = engine
+      .complete_workflow_command(
+        &request.completion_token(),
+        WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+        started_at,
+      )
+      .unwrap();
+    engine.engine.process_event(
+      WorkflowEvent::CommandCompletion {
+        log: &outcome.log,
+        token: &outcome.token,
+      },
+      &TinySet::default(),
+      &bd_state::InMemoryStateReader::default(),
+      started_at,
+    );
+  }
+
+  engine
+    .engine
+    .update(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![foo_bar_config],
+    ));
+
+  assert!(
+    engine
+      .process_log(timed_command_log(
+        "before cooldown",
+        started_at + 1.seconds()
+      ))
+      .workflow_commands_to_start
+      .is_empty()
+  );
+}
+
+#[tokio::test]
+async fn recovered_workflow_command_is_failed_and_replayed() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let workflows =
+    vec![WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config()];
+
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
+
+  engine.process_log(TestLog::new("start"));
+  assert_eq!(
+    1,
+    engine
+      .process_log(TestLog::new("execute"))
+      .workflow_commands_to_start
+      .len()
+  );
+  engine.maybe_persist(true).await;
+
+  let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
+  let now = OffsetDateTime::now_utc();
+  let recovered_logs = engine.engine.fail_recovered_workflow_commands(now);
+  assert_eq!(1, recovered_logs.len());
+  assert_eq!(LogType::NORMAL, recovered_logs[0].log.log_type);
+  assert_eq!(log_level::ERROR, recovered_logs[0].log.log_level);
+  engine.maybe_persist(true).await;
+
+  let empty_buffer_ids = TinySet::default();
+  engine.engine.process_event(
+    WorkflowEvent::CommandCompletion {
+      log: &recovered_logs[0].log,
+      token: &recovered_logs[0].token,
+    },
+    &empty_buffer_ids,
+    &bd_state::InMemoryStateReader::default(),
+    now,
+  );
+  engine_assert_active_runs!(engine; 0; "start");
+}
 
 fn nested_json_string_matcher() -> LogMatcher {
   LogMatcher {
@@ -1407,9 +2517,9 @@ async fn ignore_persisted_state_if_invalid_dir() {
     OffsetDateTime::now_utc(),
   );
 
-  // Persistence is no-op if dir invalid
+  // A failed persistence leaves the state dirty so a later attempt can retry.
   workflows_engine.maybe_persist(false).await;
-  assert!(!workflows_engine.needs_state_persistence);
+  assert!(workflows_engine.needs_state_persistence);
   collector.assert_counter_eq(
     1,
     "workflows:state_persistences_total",
@@ -1499,6 +2609,7 @@ async fn engine_processing_log() {
       workflow_debug_state: vec![],
       has_debug_workflows: false,
       logs_to_inject: TinyMap::default(),
+      workflow_commands_to_start: vec![],
     },
     result
   );
@@ -1715,6 +2826,41 @@ async fn exclusive_workflow_duration_limit() {
 }
 
 #[tokio::test]
+async fn duration_expired_command_does_not_consume_its_cooldown() {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let config = WorkflowBuilder::new("workflow", &[&start, &command, &terminal])
+    .with_duration_limit(1.seconds())
+    .make_config();
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![config],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let expired_at = started_at + 2.seconds();
+
+  engine.process_log(timed_command_log("start", started_at));
+  assert!(
+    engine
+      .process_log(timed_command_log("execute", expired_at))
+      .workflow_commands_to_start
+      .is_empty()
+  );
+
+  engine.process_log(timed_command_log("start", expired_at));
+  assert_eq!(
+    1,
+    engine
+      .process_log(timed_command_log("execute", expired_at))
+      .workflow_commands_to_start
+      .len()
+  );
+}
+
+#[tokio::test]
 async fn log_without_destination() {
   let mut a = state("A");
   let b = state("B");
@@ -1755,6 +2901,7 @@ async fn log_without_destination() {
       workflow_debug_state: vec![],
       has_debug_workflows: false,
       logs_to_inject: TinyMap::default(),
+      workflow_commands_to_start: vec![],
     },
     result
   );

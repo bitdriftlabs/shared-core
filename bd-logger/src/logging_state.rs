@@ -8,7 +8,7 @@
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::consumer::RemoteFlushStreamingRequest;
-use crate::log_replay::{LogReplay, ProcessingPipeline};
+use crate::log_replay::{LogReplay, LogReplayResult, ProcessingPipeline};
 use crate::logger::{StartupReplayEligibility, TestHooks, with_thread_local_logger_guard};
 use crate::metadata::MetadataCollector;
 use anyhow::anyhow;
@@ -235,7 +235,7 @@ impl InitializedLoggingContext {
     now: OffsetDateTime,
     session_id: &str,
     provider_snapshot: ProviderSnapshot,
-  ) {
+  ) -> Option<LogReplayResult> {
     match state_store
       .insert(scope, key, bd_state::string_value(value))
       .await
@@ -254,21 +254,24 @@ impl InitializedLoggingContext {
           )
         });
 
-        replayer
-          .replay_state_change(
-            state_change,
-            &mut self.processing_pipeline,
-            state_store,
-            now,
-            session_id,
-            &metadata.fields,
-            &metadata.matching_fields,
-          )
-          .await;
+        Some(
+          replayer
+            .replay_state_change(
+              state_change,
+              &mut self.processing_pipeline,
+              state_store,
+              now,
+              session_id,
+              &metadata.fields,
+              &metadata.matching_fields,
+            )
+            .await,
+        )
       },
-      Ok(None) => {},
+      Ok(None) => None,
       Err(e) => {
         handle_unexpected::<(), anyhow::Error>(Err(e), "async log buffer: failed to update state");
+        None
       },
     }
   }

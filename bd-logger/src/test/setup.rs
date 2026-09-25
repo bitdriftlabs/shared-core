@@ -13,7 +13,7 @@ use crate::{
   LogLevel,
   LogMessage,
   Logger,
-  RegisteredDeviceCommandHandler,
+  RegisteredCommandHandler,
   ReportProcessingSession,
   TestHooks,
 };
@@ -133,7 +133,7 @@ pub struct SetupOptions {
   pub extra_runtime_values: Vec<(&'static str, ValueKind)>,
   pub handshake_response_plans: Vec<HandshakeResponsePlan>,
   pub stats_upload_response_plans: Vec<StatsUploadResponsePlan>,
-  pub device_command_handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
+  pub command_handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
   pub session_replay_target: Option<Box<dyn bd_session_replay::Target + Send + Sync>>,
   pub initial_stream_setup: InitialStreamSetup,
 }
@@ -150,7 +150,7 @@ impl Default for SetupOptions {
       extra_runtime_values: vec![],
       handshake_response_plans: vec![],
       stats_upload_response_plans: vec![],
-      device_command_handlers: HashMap::new(),
+      command_handlers: HashMap::new(),
       session_replay_target: None,
       initial_stream_setup: InitialStreamSetup::Initialize,
     }
@@ -284,8 +284,8 @@ impl Setup {
       startup_replay_gate_opened_tx,
       workflow_event_processed_tx,
     })));
-    for (registered_command_id, handler) in options.device_command_handlers {
-      logger_builder = logger_builder.with_device_command_handler(registered_command_id, handler);
+    for (registered_command_id, handler) in options.command_handlers {
+      logger_builder = logger_builder.with_command_handler(registered_command_id, handler);
     }
     let (logger, _, flush_trigger) = logger_builder.build_dedicated_thread().unwrap();
 

@@ -22,7 +22,7 @@ use crate::state_upload::StateUploadHandle;
 use crate::{
   InitParams,
   LogAttributesOverrides,
-  RegisteredDeviceCommandHandler,
+  RegisteredCommandHandler,
   StartupReplayEligibility,
 };
 use bd_api::{
@@ -192,7 +192,7 @@ pub struct LoggerBuilder {
   internal_logger: bool,
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
-  device_command_handlers: HashMap<String, Arc<dyn RegisteredDeviceCommandHandler>>,
+  command_handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
   test_hooks: Option<Arc<dyn TestHooks>>,
   startup_replay_eligibility: StartupReplayEligibility,
 }
@@ -208,7 +208,7 @@ impl LoggerBuilder {
       internal_logger: false,
       time_provider: None,
       crash_report_hook: None,
-      device_command_handlers: HashMap::new(),
+      command_handlers: HashMap::new(),
       test_hooks: None,
       startup_replay_eligibility: StartupReplayEligibility::Unknown,
     }
@@ -273,16 +273,14 @@ impl LoggerBuilder {
     self
   }
 
-  /// Registers a platform handler for a custom device command definition.
+  /// Registers a platform handler for an application-defined command.
   #[must_use]
-  pub fn with_device_command_handler(
+  pub fn with_command_handler(
     mut self,
     registered_command_id: String,
-    handler: Arc<dyn RegisteredDeviceCommandHandler>,
+    handler: Arc<dyn RegisteredCommandHandler>,
   ) -> Self {
-    self
-      .device_command_handlers
-      .insert(registered_command_id, handler);
+    self.command_handlers.insert(registered_command_id, handler);
     self
   }
 
@@ -422,6 +420,7 @@ impl LoggerBuilder {
         self.params.resource_utilization_target,
         self.params.session_replay_target,
         self.params.events_listener_target,
+        self.command_handlers.clone(),
         config_update_rx,
         report_proc_rx,
         shutdown_handle.clone(),
@@ -630,7 +629,7 @@ impl LoggerBuilder {
           trigger_upload_tx.clone(),
           session_strategy.clone(),
           artifact_client,
-          self.device_command_handlers,
+          self.command_handlers,
           remote_screenshot_capture_handler,
           &scope.scope("config"),
         ),
@@ -690,7 +689,7 @@ impl LoggerBuilder {
           Ok(())
         },
         async move {
-          async_log_buffer.run(state_store, crash_monitor).await;
+          Box::pin(async_log_buffer.run(state_store, crash_monitor)).await;
           log::debug!("logger async log buffer stopped");
           Ok(())
         },

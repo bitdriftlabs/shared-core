@@ -52,7 +52,7 @@ use bd_test_helpers::workflow::{
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use pretty_assertions::assert_eq;
 use protobuf::MessageField;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Cursor;
 use std::vec;
 use time::ext::NumericalDuration;
@@ -131,6 +131,7 @@ fn traversal_matched_logs_counts_persisted() {
 pub struct AnnotatedWorkflow {
   pub config: Config,
   pub workflow: Workflow,
+  pub command_last_started_at_ns: HashMap<String, i64>,
 }
 
 impl AnnotatedWorkflow {
@@ -138,6 +139,7 @@ impl AnnotatedWorkflow {
     Self {
       workflow: Workflow::new(config.inner().id().to_string(), true),
       config,
+      command_last_started_at_ns: HashMap::new(),
     }
   }
 
@@ -174,6 +176,7 @@ impl AnnotatedWorkflow {
       log.now,
       0,
       bd_log_matcher::matcher::MatchContext::default(),
+      &mut self.command_last_started_at_ns,
     )
   }
 
@@ -194,6 +197,7 @@ impl AnnotatedWorkflow {
       log.now,
       0,
       bd_log_matcher::matcher::MatchContext::default(),
+      &mut self.command_last_started_at_ns,
     )
   }
 }
@@ -710,7 +714,11 @@ fn parallel_execution_does_not_replace_without_initial_run_progress() {
     None,
     false,
   );
-  let mut workflow = AnnotatedWorkflow { config, workflow };
+  let mut workflow = AnnotatedWorkflow {
+    config,
+    workflow,
+    command_last_started_at_ns: HashMap::new(),
+  };
 
   // The initial run does not match this event and should not replace the active run, even if the
   // SaveField maps happen to normalize to the same values.

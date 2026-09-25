@@ -187,6 +187,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
       WorkflowEvent::StateChange(
         state_change,
         bd_log_primitives::FieldsRef::new(&empty_fields, &empty_fields),
+        &self.session_id,
       ),
       &EMPTY_BUFFER_IDS,
       state_reader,
@@ -517,6 +518,7 @@ macro_rules! engine_assert_active_runs {
     let annotated = $crate::workflow::workflow_test::AnnotatedWorkflow {
       config: $engine.engine.configs[$workflow_index].clone(),
       workflow: $engine.engine.state.workflows[$workflow_index].clone(),
+      command_last_started_at_ns: std::collections::HashMap::new(),
     };
     $crate::assert_active_runs!(annotated; $($state_id),+);
   }};
@@ -529,6 +531,7 @@ macro_rules! engine_assert_active_run_traversals {
     let annotated = $crate::workflow::workflow_test::AnnotatedWorkflow {
       config: $engine.engine.configs[$workflow_index].clone(),
       workflow: $engine.engine.state.workflows[$workflow_index].clone(),
+      command_last_started_at_ns: std::collections::HashMap::new(),
     };
     $crate::assert_active_run_traversals!(annotated; $run_index; $($state_id),+);
   }};
