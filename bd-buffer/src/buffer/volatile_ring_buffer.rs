@@ -48,6 +48,8 @@ struct Reservation {
   committed: bool,
 }
 
+type RecordCommittedCallback = Box<dyn Fn(&[u8]) + Send + Sync>;
+
 //
 // ProducerImpl
 //
@@ -185,8 +187,14 @@ impl RingBufferProducer for ProducerImpl {
         reservation.range.clone()
       },
     );
-    common_ring_buffer
-      .finish_commit_common(&reservation_range.ok_or(InvariantError::Invariant)?)?;
+    common_ring_buffer.finish_commit_common(
+      &reservation_range
+        .as_ref()
+        .ok_or(InvariantError::Invariant)?
+        .clone(),
+    )?;
+    let reservation_range = reservation_range.ok_or(InvariantError::Invariant)?;
+    (parent.on_record_committed_cb)(common_ring_buffer.record_data(&reservation_range)?);
 
     while let Some(front) = common_ring_buffer.extra_locked_data.reservations.front() {
       if !front.committed {
@@ -437,6 +445,7 @@ pub struct RingBufferImpl {
   _control_data_do_not_use: Pin<Box<ControlData>>,
   common_ring_buffer: CommonRingBuffer<ExtraLockedData>,
   no_reservations_condition: Condvar,
+  on_record_committed_cb: RecordCommittedCallback,
 }
 
 impl RingBufferImpl {
@@ -445,6 +454,17 @@ impl RingBufferImpl {
     name: String,
     size: u32,
     stats: Arc<RingBufferStats>,
+    on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
+  ) -> Arc<Self> {
+    Self::new_with_record_committed_callback(name, size, stats, |_| {}, on_record_evicted_cb)
+  }
+
+  #[must_use]
+  pub fn new_with_record_committed_callback(
+    name: String,
+    size: u32,
+    stats: Arc<RingBufferStats>,
+    on_record_committed_cb: impl Fn(&[u8]) + Send + Sync + 'static,
     on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
   ) -> Arc<Self> {
     let mut memory_do_not_use = Vec::with_capacity(size as usize);
@@ -492,6 +512,7 @@ impl RingBufferImpl {
       _control_data_do_not_use: control_data_do_not_use,
       common_ring_buffer,
       no_reservations_condition: Condvar::default(),
+      on_record_committed_cb: Box::new(on_record_committed_cb),
     })
   }
 }

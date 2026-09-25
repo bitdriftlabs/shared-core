@@ -501,6 +501,37 @@ async fn empty_continuous_buffer_uses_retention_none() {
 }
 
 #[tokio::test]
+async fn trigger_buffer_retention_tracks_first_appended_record() {
+  let directory = tmp_dir();
+  let retention_registry = Arc::new(bd_versioned_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let ring_buffer_manager = setup_manager(directory.path(), retention_registry.clone());
+  let config = single_buffer_with_size("trigger", 10_000, 1_000, buffer_config::Type::TRIGGER);
+  ring_buffer_manager
+    .update_from_config(&config, false)
+    .await
+    .unwrap();
+
+  let buffer_handle = ring_buffer_manager
+    .buffers()
+    .get("trigger")
+    .unwrap()
+    .1
+    .clone();
+  let timestamp = time::OffsetDateTime::now_utc();
+  let mut producer = buffer_handle.new_thread_local_producer().unwrap();
+  producer.write(&make_test_log_bytes(timestamp)).unwrap();
+
+  let timestamp_micros =
+    u64::try_from(timestamp.unix_timestamp_micros()).expect("timestamp micros fits u64");
+  assert_eq!(
+    retention_registry.min_retention_timestamp().await,
+    Some(timestamp_micros)
+  );
+}
+
+#[tokio::test]
 async fn trigger_buffer_retention_initialized_from_oldest_record() {
   let directory = tmp_dir();
   let config = single_buffer_with_size("trigger", 10_000, 1_000, buffer_config::Type::TRIGGER);

@@ -690,6 +690,7 @@ impl RingBuffer {
     volatile_records_refused: Counter,
     non_volatile_records_written: Option<Counter>,
     on_record_evicted_cb: Option<EvictedRecordCallback>,
+    on_record_committed_cb: Option<EvictedRecordCallback>,
   ) -> Result<Arc<AggregateRingBuffer>> {
     // TODO(mattklein123): Right now we expose a very limited set of stats. Given it's much easier
     // now to inject stats we can consider exposing the rest. For now just duplicate what we
@@ -707,7 +708,7 @@ impl RingBuffer {
       ..Default::default()
     };
 
-    AggregateRingBuffer::new(
+    AggregateRingBuffer::new_with_record_committed_callback(
       name,
       volatile_size,
       filename,
@@ -720,6 +721,11 @@ impl RingBuffer {
       },
       Arc::new(volatile_stats),
       Arc::new(non_volatile_stats),
+      move |record_data| {
+        if let Some(callback) = on_record_committed_cb.as_ref() {
+          callback(record_data);
+        }
+      },
       move |record_data| {
         if let Some(callback) = on_record_evicted_cb.as_ref() {
           callback(record_data);
@@ -751,6 +757,18 @@ impl RingBuffer {
       .to_string();
 
     let on_record_evicted_cb = on_record_evicted_cb;
+    let on_record_committed_cb = allow_overwrite.then(|| {
+      let retention_handle = retention_handle.clone();
+      Arc::new(move |record_data: &[u8]| {
+        if retention_handle.get_retention() != RetentionHandle::RETENTION_NONE {
+          return;
+        }
+        let retention = EncodableLog::extract_timestamp(record_data)
+          .and_then(|timestamp| u64::try_from(timestamp.unix_timestamp_micros()).ok())
+          .unwrap_or(RetentionHandle::RETENTION_PENDING);
+        retention_handle.update_retention_micros(retention);
+      }) as EvictedRecordCallback
+    });
     let mut buffer = Self::make_buffer(
       name,
       volatile_size,
@@ -764,6 +782,7 @@ impl RingBuffer {
       write_failure_counter.clone(),
       non_volatile_records_written.clone(),
       on_record_evicted_cb.clone(),
+      on_record_committed_cb.clone(),
     );
 
     let mut deleted = false;
@@ -795,6 +814,7 @@ impl RingBuffer {
         write_failure_counter,
         non_volatile_records_written,
         None,
+        on_record_committed_cb,
       );
     }
 

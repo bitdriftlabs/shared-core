@@ -7,10 +7,14 @@
 
 use super::{AttachmentStore, AttachmentStoreHandle, WorkflowAttachmentCleanupWorker};
 use bd_artifact_upload::UploadSource;
+use bd_buffer::Buffer as RingBuffer;
+use bd_client_stats_store::Collector;
+use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::RuntimeUpdate;
 use bd_proto::protos::client::runtime::Runtime;
 use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::runtime::value::Type;
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::workflow_attachment::{MaxOwnedBytes, MaxOwnedFiles};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
@@ -413,6 +417,79 @@ async fn cleanup_worker_rechecks_when_retention_changes() {
   assert!(worker.cleanup_once().await);
   assert!(!store.is_uploaded(attachment.id).await.unwrap());
   assert!(!worker.cleanup_once().await);
+}
+
+#[tokio::test]
+async fn cleanup_worker_keeps_attachment_referenced_by_fresh_trigger_buffer() {
+  let directory = tempfile::tempdir().unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  let store_handle = AttachmentStoreHandle::new(directory.path().to_owned(), runtime);
+  let retention_registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let retention_handle = retention_registry.create_handle().await;
+  retention_handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
+  let buffer = RingBuffer::new(
+    "trigger",
+    10_000,
+    directory.path().join("trigger"),
+    20_000,
+    true,
+    Collector::default().scope("test").counter("write"),
+    Collector::default().scope("test").counter("write_failure"),
+    Collector::default().scope("test").counter("overwrite"),
+    Collector::default().scope("test").counter("corruption"),
+    Collector::default().scope("test").counter("data_loss"),
+    None,
+    None,
+    retention_handle,
+  )
+  .unwrap()
+  .0;
+  let timestamp = OffsetDateTime::now_utc();
+  let mut log = EncodableLog::new(
+    Log {
+      log_level: log_level::INFO,
+      log_type: LogType::NORMAL,
+      message: "workflow outcome".into(),
+      fields: [].into(),
+      matching_fields: [].into(),
+      session_id: String::new().into(),
+      occurred_at: timestamp,
+      capture_session: None,
+    },
+    u64::MAX,
+  );
+  let size = usize::try_from(log.compute_size(&[], &[]).unwrap()).unwrap();
+  let mut bytes = vec![0; size];
+  log.serialize_to_bytes(&[], &[], &mut bytes).unwrap();
+  buffer
+    .new_thread_local_producer()
+    .unwrap()
+    .write(&bytes)
+    .unwrap();
+
+  let store = store_handle.get().await.unwrap();
+  let attachment = store
+    .admit(UploadSource::Bytes(b"attachment".to_vec()))
+    .await
+    .unwrap();
+  store
+    .record_timestamp(attachment.id, timestamp)
+    .await
+    .unwrap();
+  let mut worker = WorkflowAttachmentCleanupWorker::new(
+    store_handle,
+    retention_registry,
+    Arc::new(AtomicBool::new(true)),
+  );
+
+  assert!(worker.cleanup_once().await);
+  assert!(
+    fs::try_exists(store.payload_path(attachment.id))
+      .await
+      .unwrap()
+  );
 }
 
 #[tokio::test]

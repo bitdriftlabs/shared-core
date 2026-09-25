@@ -306,6 +306,15 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     Ok(&mut self.memory()[data_start .. data_start + original_size as usize])
   }
 
+  pub fn record_data(&mut self, reservation: &Range) -> Result<&[u8]> {
+    let data_start = (reservation.start + self.extra_bytes_per_record) as usize;
+    let data_size = (reservation.size - self.extra_bytes_per_record) as usize;
+    self
+      .memory()
+      .get(data_start .. data_start + data_size)
+      .ok_or_else(|| Error::AbslStatus(AbslCode::DataLoss, "corrupted record size".to_string()))
+  }
+
   // Load the next read size based on the position of next_read_start_ or next_cursor_read_start_,
   // depending on the value of use_cursor.
   fn load_next_read_size(&mut self, cursor: Cursor) -> Result<u32> {
