@@ -8,6 +8,7 @@ use super::{
   ProtoNameMode,
   ValidationOptions,
   validate,
+  validate_field_can_be_omitted,
   validate_with_options,
   verify_descriptor_support,
 };
@@ -51,6 +52,48 @@ use test_protos::test_validate::{
   repeated,
 };
 use time::ext::NumericalDuration;
+
+#[test]
+fn field_omission_checks_only_its_own_rules() {
+  let descriptor = String::descriptor();
+  let required = descriptor.field_by_name("field").unwrap();
+  let optional = descriptor.field_by_name("field2").unwrap();
+
+  // The whole message fails on its required string, but the sibling permits omission.
+  assert_eq!(
+    validate_field_can_be_omitted(&required)
+      .unwrap_err()
+      .to_string(),
+    validate(&String::default()).unwrap_err().to_string()
+  );
+  assert!(validate_field_can_be_omitted(&optional).is_ok());
+
+  // An unset oneof member has no scalar value to check. Requiring a selected member is a
+  // containing-message rule, not a reason to reject omission of each individual alternative.
+  let oneof = OneOf::descriptor();
+  assert!(validate(&OneOf::default()).is_err());
+  for field in oneof.fields() {
+    assert!(validate_field_can_be_omitted(&field).is_ok());
+  }
+
+  // A required message rejects omission; an absent optional subtree is not instantiated.
+  let required_message = Message::descriptor().field_by_name("inner").unwrap();
+  assert_eq!(
+    validate_field_can_be_omitted(&required_message)
+      .unwrap_err()
+      .to_string(),
+    validate(&Message::default()).unwrap_err().to_string()
+  );
+  let optional_message = NestedNotImplemented::descriptor()
+    .field_by_name("field")
+    .unwrap();
+  assert!(validate_field_can_be_omitted(&optional_message).is_ok());
+
+  // Repeated fields use their empty representation, including collection-level constraints.
+  let repeated = Repeated::descriptor();
+  assert!(validate_field_can_be_omitted(&repeated.field_by_name("strings").unwrap()).is_err());
+  assert!(validate_field_can_be_omitted(&repeated.field_by_name("limited").unwrap()).is_ok());
+}
 
 #[test]
 fn duration() {
