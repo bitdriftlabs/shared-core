@@ -727,6 +727,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           command_handlers,
           workflow_command_completion_tx,
           workflow_attachment_store.clone(),
+          remote_screenshot_capture_handler.clone(),
         ),
         workflow_attachment_store,
         workflow_attachment_cleanup_ready,

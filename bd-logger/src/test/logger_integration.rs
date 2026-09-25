@@ -2950,6 +2950,34 @@ fn workflow_command_rule(registered_command_id: &str) -> Rule {
   }
 }
 
+fn workflow_screenshot_command_rule() -> Rule {
+  Rule {
+    rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+      command_selector: Some(WorkflowCommandSelector {
+        command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
+          workflow_command_selector::BuiltinCommand {
+            command_type: Some(
+              workflow_command_selector::builtin_command::Command_type::TakeScreenshot(
+                workflow_command_selector::builtin_command::TakeScreenshot::default(),
+              ),
+            ),
+            ..Default::default()
+          },
+        )),
+        ..Default::default()
+      })
+      .into(),
+      minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+        seconds: 60,
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
 fn screenshot_device_command_configuration(
   command_id: &str,
 ) -> bd_proto::protos::client::api::ConfigurationUpdate {
@@ -3371,6 +3399,76 @@ fn workflow_command_attachment_uploads_zlib_and_releases_retained_payload() {
   let mut decoder = ZlibDecoder::new(Vec::new());
   decoder.write_all(&artifact.contents).unwrap();
   assert_eq!(decoder.finish().unwrap(), attachment);
+
+  let payload_path = setup
+    .sdk_directory
+    .path()
+    .join("workflow-attachments")
+    .join(format!("{artifact_id}.payload"));
+  assert_eq!(
+    setup.wait_for_workflow_attachment_upload_completion(),
+    artifact_id
+  );
+  assert!(!payload_path.exists());
+}
+
+#[test]
+fn workflow_screenshot_command_uploads_attachment() {
+  let screenshot = vec![0xff, 0xd8, 1, 2, 3, 0xff, 0xd9];
+  let mut setup = Setup::new_with_options(SetupOptions {
+    session_replay_target: Some(Box::new(TestScreenshotTarget {
+      results: Mutex::new(VecDeque::from([Ok(screenshot.clone())])),
+    })),
+    ..Default::default()
+  });
+  let session_id = setup.logger_handle.session_id().unwrap();
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(&terminal, workflow_screenshot_command_rule());
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+
+  assert!(
+    setup
+      .send_configuration_update(config_helper::configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          workflows: vec![WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).build()],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+  setup.upload_individual_logs();
+
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start".into(),
+    [].into(),
+    [].into(),
+  );
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "run command".into(),
+    [].into(),
+    [].into(),
+  );
+
+  let artifact = setup.server.blocking_next_artifact_upload().unwrap();
+  let artifact_id = uuid::Uuid::parse_str(&artifact.artifact_id).unwrap();
+  assert_eq!(artifact.type_id, "workflow_attachment");
+  assert_eq!(artifact.session_id, session_id.as_ref());
+  assert_eq!(
+    artifact.payload_encoding.enum_value_or_default(),
+    ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+  );
+  let mut decoder = ZlibDecoder::new(Vec::new());
+  decoder.write_all(&artifact.contents).unwrap();
+  assert_eq!(decoder.finish().unwrap(), screenshot);
 
   let payload_path = setup
     .sdk_directory

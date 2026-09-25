@@ -7,7 +7,7 @@
 
 #[cfg(test)]
 #[path = "./device_command_test.rs"]
-mod device_command_test;
+mod tests;
 
 use crate::workflow_attachment::AttachmentStoreHandle;
 use anyhow::anyhow;
@@ -195,6 +195,7 @@ pub struct WorkflowCommandDispatcher {
   command_dispatcher: RegisteredCommandDispatcher,
   completion_tx: Sender<WorkflowCommandCompletion>,
   attachment_store: AttachmentStoreHandle,
+  remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
 }
 
 impl WorkflowCommandDispatcher {
@@ -202,35 +203,35 @@ impl WorkflowCommandDispatcher {
     handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
     completion_tx: Sender<WorkflowCommandCompletion>,
     attachment_store: AttachmentStoreHandle,
+    remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   ) -> Self {
     Self {
       command_dispatcher: RegisteredCommandDispatcher::new(handlers),
       completion_tx,
       attachment_store,
+      remote_screenshot_capture_handler,
     }
   }
 
   pub fn dispatch(&self, request: &WorkflowCommandRequest) {
     let token = request.completion_token();
     let completion_tx = self.completion_tx.clone();
-    let registered_command_id = match &request.command_selector.command_selector {
-      Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
-        Some(command.registered_command_id.clone())
-      },
-      Some(workflow_command_selector::Command_selector::BuiltinCommand(_)) | None => None,
-    };
+    let command_selector = request.command_selector.command_selector.clone();
     let command_dispatcher = self.command_dispatcher.clone();
     let attachment_store = self.attachment_store.clone();
+    let remote_screenshot_capture_handler = self.remote_screenshot_capture_handler.clone();
     let session_id = request.session_id.clone();
 
     tokio::task::spawn(async move {
-      let outcome = match registered_command_id {
-        Some(registered_command_id) if command_dispatcher.has_handler(&registered_command_id) => {
+      let outcome = match command_selector {
+        Some(workflow_command_selector::Command_selector::RegisteredCommand(command))
+          if command_dispatcher.has_handler(&command.registered_command_id) =>
+        {
           let execution = tokio::task::spawn(async move {
             command_dispatcher
               .execute(CommandInvocation {
                 command_id: None,
-                registered_command_id,
+                registered_command_id: command.registered_command_id,
                 session_id,
               })
               .await
@@ -243,7 +244,17 @@ impl WorkflowCommandDispatcher {
             Err(_) => workflow_command_failure("workflow command handler stopped"),
           }
         },
-        Some(_) => workflow_command_failure("unregistered workflow command"),
+        Some(workflow_command_selector::Command_selector::RegisteredCommand(_)) => {
+          workflow_command_failure("unregistered workflow command")
+        },
+        Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
+          workflow_builtin_command_outcome(
+            command,
+            remote_screenshot_capture_handler,
+            &attachment_store,
+          )
+          .await
+        },
         None => workflow_command_failure("unsupported workflow command"),
       };
       if let Err(error) = completion_tx
@@ -267,6 +278,38 @@ impl WorkflowCommandDispatcher {
   }
 }
 
+async fn workflow_builtin_command_outcome(
+  command: workflow_command_selector::BuiltinCommand,
+  remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+  attachment_store: &AttachmentStoreHandle,
+) -> WorkflowCommandOutcome {
+  match command.command_type {
+    Some(workflow_command_selector::builtin_command::Command_type::TakeScreenshot(_)) => {
+      match remote_screenshot_capture_handler.capture().await {
+        Ok(screenshot) if let Err(error) = validate_screenshot(&screenshot) => {
+          workflow_command_failure(error)
+        },
+        Ok(screenshot) => {
+          workflow_command_outcome(
+            CommandResult::Completed {
+              fields: LogFields::default(),
+              attachment: Some(CommandAttachment {
+                source: UploadSource::Bytes(screenshot),
+                type_id: "screenshot".to_string(),
+                state: LogFields::default(),
+              }),
+            },
+            attachment_store,
+          )
+          .await
+        },
+        Err(error) => workflow_command_failure(&error),
+      }
+    },
+    None => workflow_command_failure("unsupported workflow command"),
+  }
+}
+
 fn workflow_command_failure(message: &str) -> WorkflowCommandOutcome {
   WorkflowCommandOutcome::Failed {
     message: Some(message.to_string()),
@@ -281,31 +324,33 @@ async fn workflow_command_outcome(
   match result {
     CommandResult::Completed { fields, attachment } => {
       if let Some(attachment) = attachment {
-        match attachment_store.get().await {
-          Ok(store) => match store.admit(attachment.source).await {
-            Ok(admitted) => {
-              return WorkflowCommandOutcome::SucceededWithAttachment {
-                message: None,
-                fields,
-                artifact_id: admitted.id,
-              };
-            },
-            Err(error) => {
-              log::warn!("workflow attachment admission failed: {error}");
-              return WorkflowCommandOutcome::Failed {
-                message: Some(format!("workflow attachment admission failed: {error}")),
-                fields,
-              };
-            },
-          },
+        let store = match attachment_store.get().await {
+          Ok(store) => store,
           Err(error) => {
-            log::warn!("workflow attachment store unavailable: {error}");
+            let message = format!("workflow attachment store unavailable: {error}");
+            log::warn!("{message}");
             return WorkflowCommandOutcome::Failed {
-              message: Some(format!("workflow attachment store unavailable: {error}")),
+              message: Some(message),
               fields,
             };
           },
-        }
+        };
+        let admitted = match store.admit(attachment.source).await {
+          Ok(admitted) => admitted,
+          Err(error) => {
+            let message = format!("workflow attachment admission failed: {error}");
+            log::warn!("{message}");
+            return WorkflowCommandOutcome::Failed {
+              message: Some(message),
+              fields,
+            };
+          },
+        };
+        return WorkflowCommandOutcome::SucceededWithAttachment {
+          message: None,
+          fields,
+          artifact_id: admitted.id,
+        };
       }
       WorkflowCommandOutcome::Succeeded {
         message: None,
