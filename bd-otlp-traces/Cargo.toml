@@ -1,0 +1,14 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE.polyform"
+name         = "bd-otlp-traces"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest = false
+
+[dependencies]
+bd-workspace-hack.workspace = true
+serde.workspace             = true
+serde_json.workspace        = true

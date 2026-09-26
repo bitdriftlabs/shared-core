@@ -1134,6 +1134,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-otlp-traces"
+version = "1.0.0"
+dependencies = [
+ "bd-workspace-hack",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bd-panic"
 version = "1.0.0"
 dependencies = [

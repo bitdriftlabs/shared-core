@@ -36,6 +36,7 @@ members = [
   "bd-network-quality",
   "bd-noop-network",
   "bd-otlp-metrics",
+  "bd-otlp-traces",
   "bd-panic",
   "bd-pgv",
   "bd-profile",
