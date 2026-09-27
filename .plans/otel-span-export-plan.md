@@ -41,18 +41,28 @@ reached ClickStack, confirmed by hand. It does **not** mean tested in the automa
 | iOS (`platform/swift/source`) | Not started. |
 | Wrappers (`platform/capture_flutter`, `platform/webview`) | Not investigated. They sit on the native layers, so they may inherit span export for free — confirm before assuming. |
 
-**Where the code lives right now (important):** everything is **local only**. The remote branches
-(`shared-core`: `slerner/otel-span-export-shared-core`; `capture-sdk`: `slerner/bit-9050-otel-span-poc`)
-were deliberately deleted. Local state:
+**Where the code lives right now (for an agent picking this up on a different machine):** both
+branches below are pushed to `origin` — no PR open on either yet, this is a personal/WIP pair, so
+`git fetch origin <branch> && git checkout <branch>` in each repo is all that is needed to
+continue. Same branch name in both repos on purpose, to make the pairing obvious.
 
-- `shared-core`, local branch `slerner/otel-span-export-shared-core`, commit `d8b28785` (crate + this plan).
-- `capture-sdk`, local branch `slerner/otel-span-export-shared-core` off `origin/main`: the Android POC commit
-  (`459077d4`, cherry-picked from the deleted POC branch) plus **uncommitted** changes for the Rust wiring
-  (`Cargo.toml` rev bump, `platform/jvm/core/{Cargo.toml,src/ffi.rs,src/jni.rs}`, `platform/jvm/jni_symbols.lds`,
-  the Kotlin files above). Its `Cargo.toml` pins `shared-core` rev `d8b28785`, which no longer exists on the
-  remote — it only builds because Bazel/cargo have it cached. **Before anyone else can build it, push
-  `shared-core` again (or point the pin at a merged commit).**
-- `sa-public` branch `slerner/bit-9050-otel-demo-fixes` (PR #72) is still on the remote and is unaffected.
+- **`shared-core`**, branch `slerner/otel-span-export-shared-core`, HEAD commit `74c81ef1`
+  (`bd-otlp-traces` crate + this plan doc). Two commits total: `d8b28785` (the crate), `74c81ef1`
+  (this status section).
+- **`capture-sdk`**, branch `slerner/otel-span-export-shared-core`, HEAD commit `c225e462`, based on
+  `origin/main`. Two commits total: `459077d4` (the original Android POC, cherry-picked from a
+  now-deleted branch), `c225e462` (the Rust/Kotlin wiring to `bd-otlp-traces` + this plan doc,
+  copied to `docs/agent-tasks/`). Its `Cargo.toml` pins every `shared-core` rev to `74c81ef1` —
+  **this must stay in sync with `shared-core`'s HEAD**: if you push new commits to the `shared-core`
+  branch, bump the `rev` in `capture-sdk/Cargo.toml` to match (see "Cross-repo build order" below)
+  and re-run with `CARGO_BAZEL_REPIN=true`.
+- **A history note, not a live pointer:** an earlier version of this plan referenced a
+  `shared-core` commit `d8b28785`/branch that was pushed, then deliberately deleted, then
+  re-created at a new commit. If you see `d8b28785` referenced anywhere else (e.g. an old local
+  clone, a stale note), it no longer exists on the remote — `74c81ef1` on the branch above is the
+  current, real one.
+- `sa-public` branch `slerner/bit-9050-otel-demo-fixes` (PR #72) is unrelated to this cleanup and
+  untouched.
 
 ### What we learned building Android (reuse this for iOS and the wrappers)
 
