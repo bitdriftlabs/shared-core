@@ -49,7 +49,6 @@ const CONFIGURATION_VERSION: &str = "46";
 pub enum Platform {
   Android,
   Apple,
-  Electron,
 }
 
 impl Platform {
@@ -58,7 +57,6 @@ impl Platform {
     match self {
       Self::Android => "android",
       Self::Apple => "apple",
-      Self::Electron => "electron",
     }
   }
 }
