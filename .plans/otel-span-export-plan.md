@@ -1,7 +1,7 @@
 # OTel Span Export: Shared-Core vs. Per-Language Plan
 
-This is a planning document only. No code has been written or built against this plan yet.
-It exists to answer one question in detail: **for the OTel span-export feature (emit an
+This started as a planning document and is now also the status record for the work: see "Status"
+below for what has been built and verified. It exists to answer one question in detail: **for the OTel span-export feature (emit an
 OpenTelemetry `CLIENT` span per traced network request, carrying the same trace ID/span ID
 already injected into that request's header, and export it via OTLP/HTTP to a user-configured
 endpoint), how much of the implementation can live once in shared-core's Rust, and how much must
@@ -21,6 +21,75 @@ need the full reasoning or exact file paths.
 A copy of this same document also lives in `capture-sdk` at
 `docs/agent-tasks/otel-span-export-plan.md`, since the per-language work happens there. They are
 kept identical on purpose — whichever repo you're looking at, you have the whole picture.
+
+---
+
+## Status (read this first)
+
+**Android + shared-core (Path A) is built and manually verified end to end. iOS and the wrappers are
+not started.** "Verified" means: with the rebuilt local AAR in the `bitdrift-shop-opentelemetry` demo app
+(Android emulator) and a local ClickStack/HyperDX container, traced requests produced spans that
+reached ClickStack, confirmed by hand. It does **not** mean tested in the automated sense — see
+"Not yet verified" below.
+
+| Piece | State |
+|---|---|
+| `shared-core`: `bd-otlp-traces::build_span_payload` | Done. Builds, Clippy-clean (repo nursery/pedantic config), license-header and nightly-rustfmt clean. No tests written. |
+| Android JNI export `buildOtelSpanPayload` (`platform/jvm/core`) | Done. `cargo check`, `CARGO_BAZEL_REPIN=true ./bazelw build //platform/jvm/core:capture_core`, and `--config=clippy` all pass. |
+| Android Kotlin (`platform/jvm/capture`) | Done. Gson OTLP models removed; `OtelSpanExporter` now calls the JNI function and POSTs the returned bytes once. |
+| Demo app (`sa-public/misc-demos/bitdrift-shop-opentelemetry`) | Works with the rebuilt AAR. Header shows the AAR's SHA-256 prefix and a "Rust span builder: yes/no" check. |
+| iOS (`platform/swift/source`) | Not started. |
+| Wrappers (`platform/capture_flutter`, `platform/webview`) | Not investigated. They sit on the native layers, so they may inherit span export for free — confirm before assuming. |
+
+**Where the code lives right now (important):** everything is **local only**. The remote branches
+(`shared-core`: `slerner/otel-span-export-shared-core`; `capture-sdk`: `slerner/bit-9050-otel-span-poc`)
+were deliberately deleted. Local state:
+
+- `shared-core`, local branch `slerner/otel-span-export-shared-core`, commit `d8b28785` (crate + this plan).
+- `capture-sdk`, local branch `slerner/otel-span-export-shared-core` off `origin/main`: the Android POC commit
+  (`459077d4`, cherry-picked from the deleted POC branch) plus **uncommitted** changes for the Rust wiring
+  (`Cargo.toml` rev bump, `platform/jvm/core/{Cargo.toml,src/ffi.rs,src/jni.rs}`, `platform/jvm/jni_symbols.lds`,
+  the Kotlin files above). Its `Cargo.toml` pins `shared-core` rev `d8b28785`, which no longer exists on the
+  remote — it only builds because Bazel/cargo have it cached. **Before anyone else can build it, push
+  `shared-core` again (or point the pin at a merged commit).**
+- `sa-public` branch `slerner/bit-9050-otel-demo-fixes` (PR #72) is still on the remote and is unaffected.
+
+### What we learned building Android (reuse this for iOS and the wrappers)
+
+- **FFI shape that keeps the ABI stable:** one stateless call, span/resource attributes passed as three
+  parallel arrays each (String keys, String values, byte type tags: 0 = string, 1 = int, 2 = bool). Values
+  always cross as strings and are re-typed in Rust, so adding an attribute is a platform-only change and never
+  touches the FFI signature. Span kind is hardcoded to `CLIENT` in the bridge (no parameter); status maps
+  0/1/2 to Unset/Ok/Error in the bridge.
+- **The Rust bridge is small:** a helper (`otlp_attributes_from_arrays` in `platform/jvm/core/src/ffi.rs`) plus
+  one export in `jni.rs`; new symbols must also be added to `platform/jvm/jni_symbols.lds` or they are stripped
+  from the Linux/Android `.so`. The Swift equivalent is the `capture_*` C export in
+  `platform/swift/source/src/bridge.rs` plus its declaration in `CaptureRustBridge.h` and the Swift call site.
+- **Cross-repo build order:** commit and push `shared-core` first, bump every `rev` in `capture-sdk/Cargo.toml`
+  to that commit (they must all match), add the new crate as a workspace dependency, then run the first Bazel
+  build with `CARGO_BAZEL_REPIN=true`. Do not hand-edit `Cargo.lock` / `MODULE.bazel.lock`.
+- **A missing `catch (UnsatisfiedLinkError)` would be a crash risk:** a Kotlin/Rust signature mismatch only
+  fails at runtime. The Android exporter catches it and reports via the error handler instead.
+- **Verifying the AAR is the new one:** the native `.so` must contain the `buildOtelSpanPayload` symbol
+  (`strings jni/arm64-v8a/libcapture.so | grep buildOtelSpanPayload`) and `classes.jar` must not contain the old
+  Gson `otel/ResourceSpansPayload`. The demo app automates this on screen (AAR hash + Rust check).
+- **Build environment gaps found on a fresh machine** (fix once): `cargo-nextest`, `cmake`, `protoc`, git
+  submodules (`git submodule update --init --recursive` in `shared-core`), and an exact-version `flatc`
+  (`shared-core` pins 25.9.23 — build it from `thirdparty/flatbuffers` rather than using Homebrew's newer one),
+  NDK 27.2, and `JAVA_HOME` set to JDK 17 for Gradle. `make format` in `capture-sdk` needs `buildifier`; run
+  `./bazelw run //:rustfmt` and `./bazelw run //:ktlint_fix_all` directly instead.
+- **OTLP JSON specifics are spec-mandated, not collector quirks:** hex `traceId`/`spanId`, integer enums,
+  lowerCamelCase, int64 as strings (see the `bd-otlp-traces` crate docs).
+
+### Not yet verified
+
+- **No automated tests** were written or run for `bd-otlp-traces`, the JNI bridge, or the Kotlin exporter.
+- **No offline check:** the airplane-mode behaviour (export fails immediately and silently, traced request
+  unaffected) has not been exercised on a device.
+- **Only arm64-v8a** was built/run (Apple-silicon emulator). x86_64/other ABIs untested.
+- **Release-quality concerns not addressed:** the API is still `@ExperimentalBitdriftApi`; the `shared-core` pin
+  points at a commit that is not on any remote; no `CHANGELOG.md` entry (required for user-facing behaviour
+  changes in `capture-sdk`); no size-delta check against the CI binary-size reports.
 
 ---
 
@@ -176,26 +245,24 @@ new third-party dependency.
 2. [x] **Span/resource payload builder.** Done — `bd-otlp-traces::build_span_payload`. A direct,
    mechanical port of the logic already proven out in Android's
    `OtelSpanBuilder.kt`/`OtelResourceAttributes.kt` (see detailed reference, §9).
-3. [ ] **New FFI surface** — see below. Not started. This is `capture-sdk`-side work (the JNI/Swift
-   bridge lives there, not in `shared-core`) — do this once `capture-sdk` depends on this crate,
-   which itself requires pushing this branch and bumping the `shared-core` rev in `capture-sdk`'s
-   `Cargo.toml` per the cross-repo workflow in `capture-sdk/CLAUDE.md`.
+3. [~] **New FFI surface.** Android JNI done (see "New FFI surface" below). Swift bridge not started. This is
+   `capture-sdk`-side work (the JNI/Swift bridges live there, not in `shared-core`) and requires `capture-sdk`
+   to depend on this crate via the cross-repo `rev` workflow in `capture-sdk/CLAUDE.md`.
 
 ### New FFI surface (only needed for Path A)
 
 One addition:
 
-- **`build_otel_span_payload(trace_id, span_id, name, kind, start_time_unix_nano,
-  end_time_unix_nano, status_code, attributes, resource_attributes) -> bytes`** — a single,
-  synchronous, stateless call. The platform calls this once per completed traced request, from the
-  same hook point that exists today (`CaptureOkHttpEventListener.callEnd()`/`callFailed()` on
-  Android, `URLSessionTaskTracker`'s `didFinishCollecting` on iOS), passing in whatever it already
-  gathered (the trace/span ID it generated itself, the timing/status/byte-count fields it already
-  has, and its already-gathered OS-specific attributes). Rust hands back the OTLP bytes; the
-  platform then does the one HTTP POST attempt itself, immediately, via its own native HTTP client
-  (OkHttp/URLSession) — reusing the SDK's existing shared client, same as today — and drops the
-  payload on any failure. No retry, no queue, no callback trait, and no export configuration
-  (endpoint/auth header) needs to reach Rust at all, since Rust never sends anything itself.
+- **As built (Android JNI):**
+  `buildOtelSpanPayload(traceId, spanId, scopeName, name, startTimeUnixNano, endTimeUnixNano, statusCode,
+  statusMessage, attributeKeys[], attributeValues[], attributeValueTypes[], resourceAttributeKeys[],
+  resourceAttributeValues[], resourceAttributeValueTypes[]) -> byte[]?` — a single, synchronous, stateless
+  call. `kind` is not a parameter (always `CLIENT`). The platform calls it once per completed traced request from
+  the hook point that exists today (`CaptureOkHttpEventListener.callEnd()`/`callFailed()` on Android,
+  `URLSessionTaskTracker`'s `didFinishCollecting` on iOS), passing whatever it already gathered. Rust hands back
+  the OTLP bytes (or null on error); the platform then makes the one HTTP POST attempt itself via its native
+  client and drops the payload on any failure. No retry, no queue, no callback trait, and no export
+  configuration (endpoint/auth header) reaches Rust, since Rust never sends anything itself.
 
 ---
 
@@ -208,14 +275,15 @@ behavior is, under the corrected design above, **already correct** — a complet
 either sends successfully or it doesn't, and there is nothing further to fix about offline behavior
 on Android. What remains:
 
-1. [ ] **(Path A only) Replace the Kotlin `OtelSpanBuilder`/`OtelResourceAttributes` payload-
-   building logic** with a call to the new `build_otel_span_payload` FFI function, keeping
-   everything else (attribute gathering, the OkHttp POST, drop-on-failure) unchanged.
-2. [ ] **(Path B only) No change needed** — the existing Kotlin implementation already matches the
-   corrected design and can ship as-is.
-3. [ ] **Verify**: existing unit tests, plus a manual offline check (airplane mode during a traced
-   request) confirming the span export attempt fails immediately and silently, without affecting
-   the traced request or lingering around retrying.
+1. [x] **(Path A) Replace the Kotlin payload-building logic** with a call to the Rust function. Done:
+   `OtelSpanModels.kt` now holds `OtelAttributes` (parallel arrays) and `OtelSpan`; `OtelSpanBuilder` and
+   `OtelResourceAttributes` fill them; `OtelSpanExporter` calls `CaptureJniLibrary.buildOtelSpanPayload` and
+   POSTs the bytes. Attribute gathering, the OkHttp POST, and drop-on-failure are unchanged.
+2. [x] ~~(Path B only) No change needed~~ — not taken.
+3. [~] **Verify.** Manual end-to-end check passed (spans reach ClickStack from the demo app with the rebuilt
+   AAR). Still open: unit tests, the airplane-mode offline check, and non-arm64 ABIs (see "Not yet verified").
+4. [ ] **Productionize:** commit, push `shared-core` and repoint the `Cargo.toml` pin at a merged commit,
+   `CHANGELOG.md` entry, size-delta review, decide whether the API stays experimental.
 
 ### iOS (`platform/swift/source`)
 
@@ -227,6 +295,32 @@ and is structurally equivalent to Android's:
 - `URLSessionTaskTracker.swift`'s `task(_:didFinishCollecting:)` is the structural equivalent of
   Android's `CaptureOkHttpEventListener.callEnd()`/`callFailed()` — timing, status code, byte
   counts, and the stashed trace context are all present simultaneously at this one call site.
+
+**Recipe, mirroring what was done on Android** (do these in order; each bullet names the Android file it copies):
+
+1. `shared-core` must be reachable by `capture-sdk` (pushed commit or merged), and `bd-otlp-traces` added as a
+   `capture-sdk` workspace dependency and to the Swift bridge crate's `Cargo.toml` (Android: `platform/jvm/core/Cargo.toml`).
+2. In `platform/swift/source/src/bridge.rs`, add one `extern "C"` export that takes the same inputs as the JNI
+   function (trace/span ID, scope name, name, start/end nanos, status code, optional status message, and the two
+   attribute triples of keys/values/type tags), builds a `bd_otlp_traces::SpanExportRequest` with
+   `SpanKind::Client`, calls `build_span_payload`, and returns the bytes (Android: `jni.rs`
+   `Java_..._buildOtelSpanPayload`; type tags 0/1/2 must match `OTLP_ATTRIBUTE_TYPE_*` in `ffi.rs`).
+3. Declare it in `platform/swift/source/CaptureRustBridge.h`, add the Swift call site in `LoggerBridge.swift`, and
+   follow the `CLAUDE.md` FFI/ABI-safety rules exactly (no extra trailing params, nullable `NSString *` for
+   optional strings, update every layer together). Run focused bridge compilation, not just `cargo check`.
+4. Build the attribute arrays in Swift from `HTTPRequestInfo`/`HTTPResponse`/`HTTPRequestMetrics` and iOS network
+   and app-state APIs, at `URLSessionTaskTracker.task(_:didFinishCollecting:)`; POST once via the shared
+   `URLSession`, tag the request so the SDK does not trace its own export (Android: `InternalTelemetryRequestTag`),
+   and drop on any failure.
+5. Manual check: iOS simulator + local ClickStack, trace appears; then the airplane-mode check.
+6. First Bazel command after the rev bump needs `CARGO_BAZEL_REPIN=true`; use
+   `./bazelw test //test/platform/swift/unit_integration/core:test --ios_simulator_device="iPhone 17"` for the iOS tests.
+   Xcode here is 27.0 vs. the documented 16.2 — expect to look at the linker/toolchain first if the iOS build misbehaves.
+
+**Wrappers (`platform/capture_flutter`, `platform/webview`):** not investigated. First question to answer: do they
+route network requests through the native Android/iOS instrumentation (in which case span export is inherited
+once the native layers ship it) or do they have their own network path that would need its own hook? Only then
+decide whether they need any work.
 
 **Milestone roadmap:**
 
