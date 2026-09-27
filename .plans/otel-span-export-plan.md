@@ -46,21 +46,26 @@ branches below are pushed to `origin` — no PR open on either yet, this is a pe
 `git fetch origin <branch> && git checkout <branch>` in each repo is all that is needed to
 continue. Same branch name in both repos on purpose, to make the pairing obvious.
 
-- **`shared-core`**, branch `slerner/otel-span-export-shared-core`, HEAD commit `74c81ef1`
-  (`bd-otlp-traces` crate + this plan doc). Two commits total: `d8b28785` (the crate), `74c81ef1`
-  (this status section).
-- **`capture-sdk`**, branch `slerner/otel-span-export-shared-core`, HEAD commit `c225e462`, based on
-  `origin/main`. Two commits total: `459077d4` (the original Android POC, cherry-picked from a
-  now-deleted branch), `c225e462` (the Rust/Kotlin wiring to `bd-otlp-traces` + this plan doc,
-  copied to `docs/agent-tasks/`). Its `Cargo.toml` pins every `shared-core` rev to `74c81ef1` —
-  **this must stay in sync with `shared-core`'s HEAD**: if you push new commits to the `shared-core`
-  branch, bump the `rev` in `capture-sdk/Cargo.toml` to match (see "Cross-repo build order" below)
-  and re-run with `CARGO_BAZEL_REPIN=true`.
+- **`shared-core`**, branch `slerner/otel-span-export-shared-core`. The `bd-otlp-traces` crate
+  itself is unchanged since commit `d8b28785` (later commits on this branch, including this one,
+  only touch the plan doc) — don't trust any specific commit SHA named in this doc as "current
+  HEAD" (a doc commit updating that claim is immediately one commit stale); run
+  `git log --oneline origin/slerner/otel-span-export-shared-core` in `shared-core` for the real
+  answer.
+- **`capture-sdk`**, branch `slerner/otel-span-export-shared-core`, based on `origin/main`. Two
+  commits: `459077d4` (the original Android POC, cherry-picked from a now-deleted branch) and
+  `c225e462` (the Rust/Kotlin wiring to `bd-otlp-traces` + this plan doc, copied to
+  `docs/agent-tasks/`). Its `Cargo.toml` pins every `shared-core` rev to `74c81ef1`, which still
+  resolves correctly since the crate content hasn't changed at any later `shared-core` commit
+  above — **but if you push a `shared-core` commit that changes actual code**, bump the `rev` in
+  `capture-sdk/Cargo.toml` to match (see "Cross-repo build order" below) and re-run with
+  `CARGO_BAZEL_REPIN=true`.
 - **A history note, not a live pointer:** an earlier version of this plan referenced a
-  `shared-core` commit `d8b28785`/branch that was pushed, then deliberately deleted, then
-  re-created at a new commit. If you see `d8b28785` referenced anywhere else (e.g. an old local
-  clone, a stale note), it no longer exists on the remote — `74c81ef1` on the branch above is the
-  current, real one.
+  `shared-core` branch that was pushed, then deliberately deleted, then re-created fresh under the
+  same branch name at a new commit. If you see a `shared-core` commit SHA referenced anywhere
+  outside this doc (an old local clone, a stale note) that doesn't appear in
+  `git log origin/slerner/otel-span-export-shared-core`, it's from the deleted branch and no
+  longer exists on the remote.
 - `sa-public` branch `slerner/bit-9050-otel-demo-fixes` (PR #72) is unrelated to this cleanup and
   untouched.
 
