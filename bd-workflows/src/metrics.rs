@@ -12,6 +12,7 @@ mod metrics_test;
 use crate::config::{ActionEmitMetric, MetricMultiTag, TagValue};
 use crate::engine::EmitMetricActionCount;
 use crate::workflow::{TriggeredActionEmitSankey, WorkflowEvent};
+use bd_log_primitives::FieldsRef;
 use bd_state::state_value_as_cow;
 use bd_stats_common::{Counter, Histogram, MetricType};
 use bd_workflow_stats::StatsCollector;
@@ -53,6 +54,10 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
       #[allow(clippy::cast_precision_loss)]
       let maybe_value: anyhow::Result<f64> = match &action.increment {
         crate::config::ValueIncrement::Fixed(value) => Ok(*value as f64),
+        crate::config::ValueIncrement::JsonExtract(extract) => extract
+          .extract(Self::event_fields(event))
+          .ok_or_else(|| anyhow::anyhow!("JSON field {extract:?} not found"))
+          .and_then(|value| value.parse::<f64>().map_err(Into::into)),
         crate::config::ValueIncrement::Extract(extract) => Self::resolve_field_name(extract, event)
           .ok_or_else(|| anyhow::anyhow!("field {extract:?} not found"))
           .and_then(|value| value.parse::<f64>().map_err(Into::into)),
@@ -135,6 +140,15 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
     }
   }
 
+  fn event_fields(event: WorkflowEvent<'_>) -> FieldsRef<'_> {
+    match event {
+      WorkflowEvent::Log(log)
+      | WorkflowEvent::CommandCompletion { log, .. }
+      | WorkflowEvent::SessionStart(log) => FieldsRef::new(&log.fields, &log.matching_fields),
+      WorkflowEvent::StateChange(_, fields, _) => fields,
+    }
+  }
+
   fn resolve_field_name<'a>(key: &str, event: WorkflowEvent<'a>) -> Option<Cow<'a, str>> {
     match event {
       WorkflowEvent::Log(log)
@@ -168,6 +182,7 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
     for (key, value) in tags {
       if let Some(extracted_value) = match value {
         crate::config::TagValue::FieldExtract(extract) => Self::resolve_field_name(extract, event),
+        crate::config::TagValue::JsonExtract(extract) => extract.extract(Self::event_fields(event)),
         crate::config::TagValue::StateExtract(scope, extract) => {
           Self::resolve_state_value(*scope, extract, state_reader)
         },

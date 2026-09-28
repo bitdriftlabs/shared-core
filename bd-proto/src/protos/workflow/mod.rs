@@ -16,4 +16,5 @@ pub mod payload {
 
 use super::log_matcher::log_matcher;
 use super::state::{matcher, scope};
+use super::value_matcher::value_matcher;
 use bd_pgv::generated::protos::validate;

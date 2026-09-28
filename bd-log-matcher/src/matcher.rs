@@ -539,7 +539,7 @@ pub enum Leaf {
   Any,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum JsonPathToken {
   Key(String),
   Index(i32),
@@ -747,7 +747,8 @@ impl Leaf {
   }
 }
 
-fn parse_json_path(key_or_index: &KeyOrIndex) -> Result<JsonPathToken> {
+/// Compiles a protobuf path segment, rejecting missing key/index variants.
+pub fn parse_json_path(key_or_index: &KeyOrIndex) -> Result<JsonPathToken> {
   match key_or_index
     .key_or_index
     .as_ref()
@@ -780,6 +781,24 @@ fn resolve_structured_json_path<'a>(
   value: &'a DataValue,
   path: &[JsonPathToken],
 ) -> Option<Cow<'a, str>> {
+  structured_json_leaf(value, path)?
+    .as_str()
+    .map(Cow::Borrowed)
+}
+
+/// Resolves a scalar for workflow extraction, including numeric and boolean structured leaves.
+#[must_use]
+pub fn extract_json_path<'a>(value: &'a DataValue, path: &[JsonPathToken]) -> Option<Cow<'a, str>> {
+  if let Some(json) = value.as_str() {
+    return json_path::extract(json, path);
+  }
+  match structured_json_leaf(value, path)? {
+    DataValue::Boolean(value) => Some(Cow::Owned(value.to_string())),
+    value => value.to_string_value(),
+  }
+}
+
+fn structured_json_leaf<'a>(value: &'a DataValue, path: &[JsonPathToken]) -> Option<&'a DataValue> {
   let mut current = value;
   for token in path {
     match token {
@@ -802,16 +821,5 @@ fn resolve_structured_json_path<'a>(
     }
   }
 
-  match current {
-    DataValue::String(value) => Some(Cow::Borrowed(value.as_str())),
-    DataValue::SharedString(value) => Some(Cow::Borrowed(value.as_ref())),
-    DataValue::StaticString(value) => Some(Cow::Borrowed(value)),
-    DataValue::Bytes(_)
-    | DataValue::Boolean(_)
-    | DataValue::U64(_)
-    | DataValue::I64(_)
-    | DataValue::Double(_)
-    | DataValue::Map(_)
-    | DataValue::Array(_) => None,
-  }
+  Some(current)
 }

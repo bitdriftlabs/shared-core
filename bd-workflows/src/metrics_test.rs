@@ -8,12 +8,19 @@
 #![allow(clippy::mutable_key_type)]
 
 use super::MetricsCollector;
-use crate::config::{ActionEmitMetric, MetricMultiTag, TagValue};
+use crate::config::{
+  ActionEmitMetric,
+  JsonFieldExtraction,
+  MetricMultiTag,
+  TagValue,
+  ValueIncrement,
+};
 use crate::engine::EmitMetricActionCount;
 use crate::workflow::WorkflowEvent;
 use bd_client_stats::Stats;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter, Histogram};
+use bd_log_matcher::matcher::JsonPathToken;
 use bd_log_primitives::{Log, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::MultiTag as MultiTagProto;
@@ -311,7 +318,7 @@ fn metric_multi_tag_fans_out_over_matching_state_entries() {
     occurred_at: time::OffsetDateTime::now_utc(),
     log_level: log_level::DEBUG,
     log_type: LogType::NORMAL,
-    fields: LogFields::default(),
+    fields: [("payload".into(), r#"{"tag":"nested"}"#.into())].into(),
     matching_fields: LogFields::default(),
     capture_session: None,
   };
@@ -335,7 +342,11 @@ fn metric_multi_tag_fans_out_over_matching_state_entries() {
 
   let action = ActionEmitMetric {
     id: "action_id_multi".to_string(),
-    tags: [("static".to_string(), TagValue::Fixed("tag".to_string()))].into(),
+    tags: [
+      ("static".to_string(), TagValue::Fixed("tag".to_string())),
+      ("json".into(), TagValue::JsonExtract(json_extraction("tag"))),
+    ]
+    .into(),
     multi_tag: Some(
       MetricMultiTag::new(MultiTagProto {
         scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
@@ -366,6 +377,7 @@ fn metric_multi_tag_fans_out_over_matching_state_entries() {
     "action_id_multi",
     labels! {
       "static" => "tag",
+      "json" => "nested",
       "experiment" => "experiment_checkout",
       "variant" => "variant_a",
     },
@@ -375,6 +387,7 @@ fn metric_multi_tag_fans_out_over_matching_state_entries() {
     "action_id_multi",
     labels! {
       "static" => "tag",
+      "json" => "nested",
       "experiment" => "experiment_search",
       "variant" => "control",
     },
@@ -439,4 +452,111 @@ fn metric_multi_tag_with_no_matches_emits_nothing() {
       )
       .is_none()
   );
+}
+
+fn json_extraction(key: &str) -> JsonFieldExtraction {
+  JsonFieldExtraction {
+    field_name: "payload".into(),
+    path: vec![JsonPathToken::Key(key.into())],
+  }
+}
+
+#[test]
+fn json_metric_values_and_tags() {
+  let (metrics, collector) = make_metrics_collector();
+  let log = Log {
+    message: "message".into(),
+    session_id: "session".into(),
+    occurred_at: OffsetDateTime::now_utc(),
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    fields: [
+      (
+        "payload".into(),
+        r#"{"value":2.5,"tag":"hello\nworld","bool":true,"null":null,"object":{}}"#.into(),
+      ),
+      ("payload.tag".into(), "literal".into()),
+    ]
+    .into(),
+    matching_fields: LogFields::default(),
+    capture_session: None,
+  };
+  let tags = BTreeMap::from([
+    ("json".into(), TagValue::JsonExtract(json_extraction("tag"))),
+    (
+      "bool".into(),
+      TagValue::JsonExtract(json_extraction("bool")),
+    ),
+    (
+      "literal".into(),
+      TagValue::FieldExtract("payload.tag".into()),
+    ),
+    (
+      "missing".into(),
+      TagValue::JsonExtract(json_extraction("missing")),
+    ),
+    (
+      "null".into(),
+      TagValue::JsonExtract(json_extraction("null")),
+    ),
+    (
+      "object".into(),
+      TagValue::JsonExtract(json_extraction("object")),
+    ),
+  ]);
+  let state = bd_state::InMemoryStateReader::default();
+  for (id, metric_type) in [
+    ("counter", MetricType::Counter),
+    ("histogram", MetricType::Histogram),
+  ] {
+    let action = ActionEmitMetric {
+      id: id.into(),
+      tags: tags.clone(),
+      multi_tag: None,
+      increment: ValueIncrement::JsonExtract(json_extraction("value")),
+      metric_type,
+    };
+    metrics.emit_metrics(
+      &BTreeMap::from([(
+        &action,
+        EmitMetricActionCount {
+          emission_count: 2,
+          is_parallel: false,
+          parallel_source_workflow_index: None,
+        },
+      )]),
+      WorkflowEvent::Log(&log),
+      &state,
+    );
+  }
+  let labels = labels! { "json" => "hello\nworld", "bool" => "true", "literal" => "literal" };
+  collector.assert_workflow_counter_eq(4, "counter", labels.clone());
+  collector.assert_workflow_histogram_observed(2.5, "histogram", labels);
+
+  for key in ["missing", "null", "object", "tag", "bool"] {
+    let action = ActionEmitMetric {
+      id: key.into(),
+      tags: BTreeMap::new(),
+      multi_tag: None,
+      increment: ValueIncrement::JsonExtract(json_extraction(key)),
+      metric_type: MetricType::Counter,
+    };
+    metrics.emit_metrics(
+      &BTreeMap::from([(
+        &action,
+        EmitMetricActionCount {
+          emission_count: 1,
+          is_parallel: false,
+          parallel_source_workflow_index: None,
+        },
+      )]),
+      WorkflowEvent::Log(&log),
+      &state,
+    );
+    assert!(
+      collector
+        .find_counter(&NameType::ActionId(key.into()), &labels! {})
+        .is_none()
+    );
+  }
 }
