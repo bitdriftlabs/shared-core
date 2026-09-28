@@ -639,9 +639,11 @@ pub struct FileHeader {
   committed_write_start: Option<u32>,
   last_write_end_before_wrap: Option<u32>,
   next_read_start: Option<u32>,
+  _u64_alignment_padding: u32,
   unread_payload_bytes: u64,
   unread_record_count: u64,
   crc32: u32,
+  _trailing_padding: u32,
 }
 
 // Version 1: Original version.
