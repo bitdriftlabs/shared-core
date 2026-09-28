@@ -70,10 +70,29 @@ message Repeated {
 
 message Map {
   map<string, uint32> limited = 1 [(validate.rules).map.max_pairs = 2];
+  map<string, string> bounded = 2 [(validate.rules).map = {
+    keys: {
+      string: {
+        min_len: 1
+        max_len: 3
+      }
+    }
+    values: {
+      string: {
+        min_len: 1
+        max_len: 4
+      }
+    }
+  }];
+  map<int32, string> numeric_keys = 3 [(validate.rules).map.keys.int32.gt = 0];
 }
 
 message MapNotImplemented {
   map<string, uint32> field = 1 [(validate.rules).map.no_sparse = true];
+}
+
+message MapUnsupportedKeyRules {
+  map<string, string> field = 1 [(validate.rules).map.keys.string.pattern = "valid"];
 }
 
 message Message {

@@ -37,6 +37,7 @@ use test_protos::test_validate::{
   Float,
   Map,
   MapNotImplemented,
+  MapUnsupportedKeyRules,
   Message,
   NestedNotImplemented,
   NotImplemented,
@@ -448,6 +449,42 @@ fn map() {
 }
 
 #[test]
+fn map_key_and_value_rules() {
+  assert!(verify_descriptor_support(&Map::descriptor()).is_ok());
+
+  let mut message = Map {
+    bounded: HashMap::from([("key".to_string(), "data".to_string())]),
+    numeric_keys: HashMap::from([(1, "data".to_string())]),
+    ..Default::default()
+  };
+  assert!(validate(&message).is_ok());
+
+  for (key, value, expected_rule) in [
+    ("", "data", "string length >= 1"),
+    ("long", "data", "string length <= 3"),
+    ("key", "", "string length >= 1"),
+    ("key", "value", "string length <= 4"),
+  ] {
+    message.bounded = HashMap::from([(key.to_string(), value.to_string())]);
+    assert_eq!(
+      validate(&message).unwrap_err().to_string(),
+      format!(
+        "A proto validation error occurred: field 'proto_validate.test.Map.bounded' in message \
+         'proto_validate.test.Map' requires {expected_rule}"
+      )
+    );
+  }
+
+  message.bounded.clear();
+  message.numeric_keys = HashMap::from([(0, "data".to_string())]);
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Map.numeric_keys' in message 'proto_validate.test.Map' must be > 0"
+  );
+}
+
+#[test]
 fn message() {
   let message = Message::default();
   matches::assert_matches!(
@@ -543,6 +580,11 @@ fn verify_descriptor_support_rejects_unsupported_map_message() {
     verify_descriptor_support(&MapNotImplemented::descriptor()),
     Err(error::Error::ProtoValidation(message)) if message ==
     "not implemented: map no_sparse");
+
+  matches::assert_matches!(
+    verify_descriptor_support(&MapUnsupportedKeyRules::descriptor()),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "not implemented: string rules pattern");
 }
 
 #[test]
