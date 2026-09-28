@@ -17,6 +17,3 @@ pub mod prometheus;
 pub mod state;
 pub mod value_matcher;
 pub mod workflow;
-
-#[cfg(feature = "public-api")]
-pub mod public_api;
