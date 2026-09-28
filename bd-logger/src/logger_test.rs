@@ -7,6 +7,7 @@
 
 use super::{Stats, with_thread_local_logger_guard};
 use crate::app_version::Repository;
+use crate::device_command::RegisteredCommandDispatcher;
 use crate::logger::CaptureSession;
 use crate::{LoggerHandle, async_log_buffer};
 use bd_client_stats_store::Collector;
@@ -50,6 +51,7 @@ async fn thread_local_logger_guard() {
     pending_entity_id: Arc::new(parking_lot::Mutex::new(None)),
     sleep_mode_active: watch::channel(false).0,
     is_tracing_active: Arc::new(AtomicBool::new(false)),
+    command_dispatcher: RegisteredCommandDispatcher::default(),
   };
 
   with_thread_local_logger_guard(|| {
@@ -93,6 +95,7 @@ async fn session_id_is_rejected_while_reentrancy_guard_is_held() {
     pending_entity_id: Arc::new(parking_lot::Mutex::new(None)),
     sleep_mode_active: watch::channel(false).0,
     is_tracing_active: Arc::new(AtomicBool::new(false)),
+    command_dispatcher: RegisteredCommandDispatcher::default(),
   };
 
   let result = with_thread_local_logger_guard(|| handle.session_id());
@@ -122,6 +125,7 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
     pending_entity_id: Arc::new(parking_lot::Mutex::new(None)),
     sleep_mode_active: watch::channel(false).0,
     is_tracing_active: Arc::new(AtomicBool::new(false)),
+    command_dispatcher: RegisteredCommandDispatcher::default(),
   };
 
   handle.register_opaque_entity_id(Some("hashed-entity-id"));
@@ -173,6 +177,7 @@ async fn register_opaque_entity_id_does_not_update_watch_when_queueing_fails() {
     pending_entity_id: Arc::new(parking_lot::Mutex::new(None)),
     sleep_mode_active: watch::channel(false).0,
     is_tracing_active: Arc::new(AtomicBool::new(false)),
+    command_dispatcher: RegisteredCommandDispatcher::default(),
   };
 
   handle.register_opaque_entity_id(Some("hashed-entity-id"));

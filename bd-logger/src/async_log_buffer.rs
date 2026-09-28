@@ -9,7 +9,11 @@
 #[path = "./async_log_buffer_test.rs"]
 mod async_log_buffer_test;
 
-use crate::device_command::{WorkflowCommandCompletion, WorkflowCommandDispatcher};
+use crate::device_command::{
+  RegisteredCommandDispatcher,
+  WorkflowCommandCompletion,
+  WorkflowCommandDispatcher,
+};
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{BufferWriteError, LogReplay, LogReplayResult};
 use crate::logger::{
@@ -631,7 +635,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
     session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
-    command_handlers: HashMap<String, Arc<dyn crate::RegisteredCommandHandler>>,
+    command_dispatcher: RegisteredCommandDispatcher,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
     report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
@@ -724,7 +728,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         replayer,
         workflow_command_dispatcher: WorkflowCommandDispatcher::new(
-          command_handlers,
+          command_dispatcher,
           workflow_command_completion_tx,
           workflow_attachment_store.clone(),
           remote_screenshot_capture_handler.clone(),

@@ -147,6 +147,11 @@ struct ArgumentCapturingDeviceCommandHandler {
   invoked_tx: mpsc::Sender<()>,
 }
 
+struct BlockingDeviceCommandHandler {
+  started_tx: mpsc::Sender<()>,
+  continue_rx: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+}
+
 struct TestScreenshotTarget {
   results: Mutex<VecDeque<Result<Vec<u8>, String>>>,
 }
@@ -178,6 +183,19 @@ impl RegisteredCommandHandler for ArgumentCapturingDeviceCommandHandler {
   async fn execute(&self, invocation: CommandInvocation) -> CommandResult {
     self.arguments.lock().push(invocation.arguments);
     let _ = self.invoked_tx.send(());
+    CommandResult::Completed {
+      fields: LogFields::default(),
+      attachment: None,
+    }
+  }
+}
+
+#[async_trait::async_trait]
+impl RegisteredCommandHandler for BlockingDeviceCommandHandler {
+  async fn execute(&self, _invocation: CommandInvocation) -> CommandResult {
+    let continue_rx = self.continue_rx.lock().take().unwrap();
+    self.started_tx.send(()).unwrap();
+    continue_rx.await.unwrap();
     CommandResult::Completed {
       fields: LogFields::default(),
       attachment: None,
@@ -3204,6 +3222,184 @@ fn registered_custom_device_command_completes_without_attachment() {
 }
 
 #[test]
+fn runtime_device_command_handlers_follow_registration_changes() {
+  let registered_command_id = "com.example.runtime";
+  let original = Arc::new(CountingDeviceCommandHandler {
+    calls: AtomicUsize::new(0),
+  });
+  let replacement = Arc::new(CountingDeviceCommandHandler {
+    calls: AtomicUsize::new(0),
+  });
+  let mut setup = Setup::new_with_options(SetupOptions {
+    command_handlers: [(
+      registered_command_id.to_string(),
+      original.clone() as Arc<dyn RegisteredCommandHandler>,
+    )]
+    .into(),
+    ..Default::default()
+  });
+  let other_handle = setup.logger.new_logger_handle();
+
+  let command_id = "029fc247-250b-423b-bf92-2b7b84ba4923";
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration(
+        command_id,
+        registered_command_id
+      ))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 2,
+      update_type: Some(device_command_update::Update_type::Completed(_)),
+      ..
+    })
+  );
+  assert_eq!(original.calls.load(Ordering::SeqCst), 1);
+
+  other_handle.register_command_handler(registered_command_id.to_string(), replacement.clone());
+  let command_id = "b8bc127a-9073-4c97-bcf4-2c0e6f028b93";
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration(
+        command_id,
+        registered_command_id
+      ))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 2,
+      update_type: Some(device_command_update::Update_type::Completed(_)),
+      ..
+    })
+  );
+  assert_eq!(original.calls.load(Ordering::SeqCst), 1);
+  assert_eq!(replacement.calls.load(Ordering::SeqCst), 1);
+
+  assert!(
+    setup
+      .logger_handle
+      .unregister_command_handler(registered_command_id)
+  );
+  assert!(!other_handle.unregister_command_handler(registered_command_id));
+  let command_id = "a4b229ba-69d4-4690-89fa-cc64bb7d65fa";
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration(
+        command_id,
+        registered_command_id
+      ))
+      .is_none()
+  );
+  assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
+    update_sequence_number: 1,
+    update_type: Some(device_command_update::Update_type::Failed(failed)),
+    ..
+  }) => {
+    assert_matches!(
+      failed.context.as_ref().and_then(|context| context.fields.get("error")),
+      Some(value) if value.data_type == Some(Data_type::StringData("unregistered device command".to_string()))
+    );
+  });
+
+  other_handle.register_command_handler(registered_command_id.to_string(), replacement.clone());
+  let command_id = "d4f32d58-4270-40a7-8c61-169f506d0c45";
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration(
+        command_id,
+        registered_command_id
+      ))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 2,
+      update_type: Some(device_command_update::Update_type::Completed(_)),
+      ..
+    })
+  );
+  assert_eq!(replacement.calls.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn runtime_device_command_keeps_selected_handler_after_unregistration() {
+  let command_id = "608848fd-ac8a-4d3b-b2c1-61c28043a343";
+  let registered_command_id = "com.example.in.flight";
+  let (started_tx, started_rx) = mpsc::channel();
+  let (continue_tx, continue_rx) = tokio::sync::oneshot::channel();
+  let handler = Arc::new(BlockingDeviceCommandHandler {
+    started_tx,
+    continue_rx: Mutex::new(Some(continue_rx)),
+  });
+  let mut setup = Setup::new();
+  setup
+    .logger_handle
+    .register_command_handler(registered_command_id.to_string(), handler);
+
+  assert!(
+    setup
+      .send_configuration_update(custom_device_command_configuration(
+        command_id,
+        registered_command_id
+      ))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+  assert!(
+    setup
+      .logger_handle
+      .unregister_command_handler(registered_command_id)
+  );
+  continue_tx.send(()).unwrap();
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 2,
+      update_type: Some(device_command_update::Update_type::Completed(_)),
+      ..
+    })
+  );
+}
+
+#[test]
 fn registered_custom_device_command_delivers_arguments() {
   let command_id = "a52206b4-d8f7-4d7d-a3f4-55ded4f82f9a";
   let registered_command_id = "com.example.capture.arguments";
@@ -3419,6 +3615,59 @@ fn registered_custom_device_command_stages_correlated_attachment() {
         if artifact.artifact_id == artifact_id
     );
   });
+}
+
+#[test]
+fn runtime_workflow_command_uses_registered_handler() {
+  let registered_command_id = "com.example.runtime.workflow";
+  let (invoked_tx, invoked_rx) = mpsc::channel();
+  let handler = Arc::new(ArgumentCapturingDeviceCommandHandler {
+    arguments: Mutex::new(vec![]),
+    invoked_tx,
+  });
+  let mut setup = Setup::new();
+  let terminal = state("terminal");
+  let command =
+    state("command").declare_transition(&terminal, workflow_command_rule(registered_command_id));
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+
+  assert!(
+    setup
+      .send_configuration_update(config_helper::configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          workflows: vec![WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).build()],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+  setup.upload_individual_logs();
+  setup
+    .logger_handle
+    .register_command_handler(registered_command_id.to_string(), handler.clone());
+
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start".into(),
+    [].into(),
+    [].into(),
+  );
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "run command".into(),
+    [].into(),
+    [].into(),
+  );
+
+  invoked_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+  assert_eq!(*handler.arguments.lock(), vec![vec![]]);
 }
 
 #[test]

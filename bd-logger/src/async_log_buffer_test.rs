@@ -21,7 +21,7 @@ use crate::async_log_buffer::{
 };
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
-use crate::device_command::WorkflowCommandCompletion;
+use crate::device_command::{RegisteredCommandDispatcher, WorkflowCommandCompletion};
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
@@ -86,7 +86,7 @@ use bd_workflows::workflow::{
   WorkflowCommandOutcome,
 };
 use futures_util::poll;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -291,7 +291,7 @@ impl Setup {
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
-      HashMap::new(),
+      RegisteredCommandDispatcher::default(),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
@@ -325,7 +325,7 @@ impl Setup {
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
-      HashMap::new(),
+      RegisteredCommandDispatcher::default(),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
