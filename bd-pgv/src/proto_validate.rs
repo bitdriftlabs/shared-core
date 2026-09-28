@@ -831,9 +831,13 @@ fn validate_repeated(
 
 fn verify_map_support(
   rules: &MapRules,
+  key_type: &RuntimeType,
   value_type: &RuntimeType,
   formatter: &ErrorNameFormatter,
 ) -> error::Result<bool> {
+  if let Some(key_rules) = rules.keys.as_ref() {
+    verify_value_support(key_rules, key_type, formatter)?;
+  }
   let recurse = if let Some(value_rules) = rules.values.as_ref() {
     verify_value_support(value_rules, value_type, formatter)?
   } else {
@@ -841,13 +845,13 @@ fn verify_map_support(
   };
 
   not_implemented(rules.has_no_sparse(), "map no_sparse")?;
-  not_implemented(rules.keys.is_some(), "map keys")?;
   Ok(recurse)
 }
 
 // Validate map rules.
 fn validate_map(
   rules: &MapRules,
+  key_type: &RuntimeType,
   value_type: &RuntimeType,
   field_descriptor: &FieldDescriptor,
   message_descriptor: &MessageDescriptor,
@@ -881,9 +885,19 @@ fn validate_map(
     )));
   }
 
-  let mut recurse = verify_map_support(rules, value_type, formatter)?;
-  if let Some(value_rules) = rules.values.as_ref() {
-    for (_key, value) in &map {
+  let mut recurse = verify_map_support(rules, key_type, value_type, formatter)?;
+  for (key, value) in &map {
+    if let Some(key_rules) = rules.keys.as_ref() {
+      validate_value(
+        key_rules,
+        key_type,
+        field_descriptor,
+        message_descriptor,
+        Some(&key),
+        formatter,
+      )?;
+    }
+    if let Some(value_rules) = rules.values.as_ref() {
       recurse &= validate_value(
         value_rules,
         value_type,
@@ -963,10 +977,11 @@ fn validate_field(
         Ok(true)
       }
     },
-    RuntimeFieldType::Map(_key_type, value_type) => {
+    RuntimeFieldType::Map(key_type, value_type) => {
       if rules.has_map() {
         validate_map(
           rules.map(),
+          &key_type,
           &value_type,
           field_descriptor,
           message_descriptor,
@@ -1003,9 +1018,9 @@ fn verify_field_support(
         Ok(true)
       }
     },
-    RuntimeFieldType::Map(_key_type, value_type) => {
+    RuntimeFieldType::Map(key_type, value_type) => {
       if rules.has_map() {
-        verify_map_support(rules.map(), &value_type, formatter)
+        verify_map_support(rules.map(), &key_type, &value_type, formatter)
       } else {
         Ok(true)
       }
