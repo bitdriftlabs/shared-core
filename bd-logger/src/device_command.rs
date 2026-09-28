@@ -31,7 +31,7 @@ use bd_workflows::workflow::{
   WorkflowCommandOutcome,
   WorkflowCommandRequest,
 };
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -65,7 +65,7 @@ impl DeviceCommandDispatcher {
     trigger_upload_tx: Sender<TriggerUpload>,
     session_strategy: Arc<bd_session::Strategy>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
-    handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
+    command_dispatcher: RegisteredCommandDispatcher,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   ) -> Self {
     Self {
@@ -73,7 +73,7 @@ impl DeviceCommandDispatcher {
       trigger_upload_tx,
       session_strategy,
       artifact_client,
-      command_dispatcher: RegisteredCommandDispatcher::new(handlers),
+      command_dispatcher,
       remote_screenshot_capture_handler,
       active_command_ids: Mutex::default(),
     }
@@ -161,29 +161,44 @@ pub trait RegisteredCommandHandler: Send + Sync {
   async fn execute(&self, invocation: CommandInvocation) -> CommandResult;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct RegisteredCommandDispatcher {
-  handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
+  handlers: Arc<RwLock<HashMap<String, Arc<dyn RegisteredCommandHandler>>>>,
 }
 
 impl RegisteredCommandDispatcher {
   pub fn new(handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>) -> Self {
-    Self { handlers }
+    Self {
+      handlers: Arc::new(RwLock::new(handlers)),
+    }
   }
 
-  pub fn has_handler(&self, registered_command_id: &str) -> bool {
-    self.handlers.contains_key(registered_command_id)
+  pub fn register(
+    &self,
+    registered_command_id: String,
+    handler: Arc<dyn RegisteredCommandHandler>,
+  ) {
+    log::debug!("registered command handler: {registered_command_id}");
+    self.handlers.write().insert(registered_command_id, handler);
   }
 
-  pub async fn execute(&self, invocation: CommandInvocation) -> CommandResult {
-    let Some(handler) = self.handlers.get(&invocation.registered_command_id) else {
-      return CommandResult::Failed {
-        error: "unregistered command".to_string(),
-        fields: LogFields::default(),
-      };
-    };
+  pub fn unregister(&self, registered_command_id: &str) -> bool {
+    let removed = self
+      .handlers
+      .write()
+      .remove(registered_command_id)
+      .is_some();
+    if removed {
+      log::debug!("unregistered command handler: {registered_command_id}");
+    }
+    removed
+  }
 
-    handler.execute(invocation).await
+  pub fn get_handler(
+    &self,
+    registered_command_id: &str,
+  ) -> Option<Arc<dyn RegisteredCommandHandler>> {
+    self.handlers.read().get(registered_command_id).cloned()
   }
 }
 
@@ -201,13 +216,13 @@ pub struct WorkflowCommandDispatcher {
 
 impl WorkflowCommandDispatcher {
   pub fn new(
-    handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
+    command_dispatcher: RegisteredCommandDispatcher,
     completion_tx: Sender<WorkflowCommandCompletion>,
     attachment_store: AttachmentStoreHandle,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   ) -> Self {
     Self {
-      command_dispatcher: RegisteredCommandDispatcher::new(handlers),
+      command_dispatcher,
       completion_tx,
       attachment_store,
       remote_screenshot_capture_handler,
@@ -225,29 +240,28 @@ impl WorkflowCommandDispatcher {
 
     tokio::task::spawn(async move {
       let outcome = match command_selector {
-        Some(workflow_command_selector::Command_selector::RegisteredCommand(command))
-          if command_dispatcher.has_handler(&command.registered_command_id) =>
-        {
-          let execution = tokio::task::spawn(async move {
-            command_dispatcher
-              .execute(CommandInvocation {
-                command_id: None,
-                registered_command_id: command.registered_command_id,
-                arguments: command.arguments,
-                session_id,
-              })
-              .await
-          });
-          match execution.await {
-            Ok(result) => workflow_command_outcome(result, &attachment_store).await,
-            Err(error) if error.is_panic() => {
-              workflow_command_failure("workflow command handler panicked")
-            },
-            Err(_) => workflow_command_failure("workflow command handler stopped"),
+        Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
+          if let Some(handler) = command_dispatcher.get_handler(&command.registered_command_id) {
+            let execution = tokio::task::spawn(async move {
+              handler
+                .execute(CommandInvocation {
+                  command_id: None,
+                  registered_command_id: command.registered_command_id,
+                  arguments: command.arguments,
+                  session_id,
+                })
+                .await
+            });
+            match execution.await {
+              Ok(result) => workflow_command_outcome(result, &attachment_store).await,
+              Err(error) if error.is_panic() => {
+                workflow_command_failure("workflow command handler panicked")
+              },
+              Err(_) => workflow_command_failure("workflow command handler stopped"),
+            }
+          } else {
+            workflow_command_failure("unregistered workflow command")
           }
-        },
-        Some(workflow_command_selector::Command_selector::RegisteredCommand(_)) => {
-          workflow_command_failure("unregistered workflow command")
         },
         Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
           workflow_builtin_command_outcome(
@@ -618,14 +632,14 @@ async fn execute_custom_device_command(
     .await?;
     return Ok(());
   };
-  if !command_dispatcher.has_handler(&registered_command_id) {
+  let Some(handler) = command_dispatcher.get_handler(&registered_command_id) else {
     send_device_command_update(
       &data_upload_tx,
       failed_device_command_update(&command_id, 1, "unregistered device command"),
     )
     .await?;
     return Ok(());
-  }
+  };
 
   send_device_command_update(
     &data_upload_tx,
@@ -651,7 +665,7 @@ async fn execute_custom_device_command(
       return Ok(());
     },
   };
-  let result = command_dispatcher
+  let result = handler
     .execute(CommandInvocation {
       command_id: Some(command_id_uuid),
       registered_command_id,

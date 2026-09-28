@@ -9,9 +9,9 @@
 #[path = "./client_config_test.rs"]
 mod client_config_test;
 
-use crate::device_command::DeviceCommandDispatcher;
+use crate::device_command::{DeviceCommandDispatcher, RegisteredCommandDispatcher};
 use crate::logging_state::{BufferProducers, ConfigUpdate};
-use crate::{RegisteredCommandHandler, write_log_to_buffer};
+use crate::write_log_to_buffer;
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::RingBuffer as _;
@@ -43,7 +43,6 @@ use bd_workflows::config::WorkflowsConfiguration;
 use itertools::Itertools;
 use parking_lot::Mutex;
 use protobuf::Chars;
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -271,7 +270,7 @@ impl LoggerUpdate {
     trigger_upload_tx: Sender<TriggerUpload>,
     session_strategy: Arc<bd_session::Strategy>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
-    command_handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
+    command_dispatcher: RegisteredCommandDispatcher,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
     scope: &Scope,
   ) -> Self {
@@ -284,7 +283,7 @@ impl LoggerUpdate {
         trigger_upload_tx,
         session_strategy,
         artifact_client,
-        command_handlers,
+        command_dispatcher,
         remote_screenshot_capture_handler,
       ),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),

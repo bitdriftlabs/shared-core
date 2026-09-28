@@ -11,6 +11,7 @@ mod logger_test;
 
 use crate::app_version::{AppVersion, Repository};
 use crate::async_log_buffer::{self, AdmissionCounters, AsyncLogBuffer, LogAttributesOverrides};
+use crate::device_command::{RegisteredCommandDispatcher, RegisteredCommandHandler};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
@@ -191,9 +192,29 @@ pub struct LoggerHandle {
 
   sleep_mode_active: watch::Sender<bool>,
   is_tracing_active: Arc<AtomicBool>,
+  command_dispatcher: RegisteredCommandDispatcher,
 }
 
 impl LoggerHandle {
+  /// Registers a command handler for this logger, replacing any handler with the same ID.
+  /// Commands that have already selected a handler continue running with that handler.
+  pub fn register_command_handler(
+    &self,
+    registered_command_id: String,
+    handler: Arc<dyn RegisteredCommandHandler>,
+  ) {
+    self
+      .command_dispatcher
+      .register(registered_command_id, handler);
+  }
+
+  /// Unregisters a handler for this logger. Returns whether a handler was removed.
+  /// Commands that have already selected the handler continue running with it.
+  #[must_use]
+  pub fn unregister_command_handler(&self, registered_command_id: &str) -> bool {
+    self.command_dispatcher.unregister(registered_command_id)
+  }
+
   /// Log a message with the given log level, log type, message, and fields. This will enqueue the
   /// log onto a bounded queue for further processing.
   pub fn log(
@@ -718,6 +739,7 @@ pub struct Logger {
   sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
 
   previous_memory_pressure_level: Arc<AtomicI8>,
+  command_dispatcher: RegisteredCommandDispatcher,
 }
 
 impl Logger {
@@ -737,6 +759,7 @@ impl Logger {
     is_tracing_active: Arc<AtomicBool>,
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
     previous_memory_pressure_level: Arc<AtomicI8>,
+    command_dispatcher: RegisteredCommandDispatcher,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -760,6 +783,7 @@ impl Logger {
       is_tracing_active,
       sdk_status_tracker,
       previous_memory_pressure_level,
+      command_dispatcher,
     }
   }
 
@@ -832,6 +856,7 @@ impl Logger {
       stats: self.stats.clone(),
       sleep_mode_active: self.sleep_mode_active.clone(),
       is_tracing_active: self.is_tracing_active.clone(),
+      command_dispatcher: self.command_dispatcher.clone(),
     }
   }
 }
