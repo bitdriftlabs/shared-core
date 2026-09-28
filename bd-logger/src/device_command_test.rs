@@ -22,6 +22,7 @@ use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_workflows::workflow::WorkflowCommandOutcome;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct Handler;
 
@@ -33,6 +34,58 @@ impl RegisteredCommandHandler for Handler {
       attachment: None,
     }
   }
+}
+
+struct ReenterOnDrop {
+  dispatcher: RegisteredCommandDispatcher,
+  drops: Arc<AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl RegisteredCommandHandler for ReenterOnDrop {
+  async fn execute(&self, _invocation: CommandInvocation) -> CommandResult {
+    CommandResult::Completed {
+      fields: LogFields::default(),
+      attachment: None,
+    }
+  }
+}
+
+impl Drop for ReenterOnDrop {
+  fn drop(&mut self) {
+    assert!(self.dispatcher.handlers.try_write().is_some());
+    self
+      .dispatcher
+      .register("reentered".to_string(), Arc::new(Handler));
+    self.drops.fetch_add(1, Ordering::SeqCst);
+  }
+}
+
+#[test]
+fn replacing_or_removing_handler_allows_destructor_to_reenter() {
+  let dispatcher = RegisteredCommandDispatcher::default();
+  let drops = Arc::new(AtomicUsize::new(0));
+
+  dispatcher.register(
+    "custom".to_string(),
+    Arc::new(ReenterOnDrop {
+      dispatcher: dispatcher.clone(),
+      drops: drops.clone(),
+    }),
+  );
+  dispatcher.register("custom".to_string(), Arc::new(Handler));
+  assert_eq!(drops.load(Ordering::SeqCst), 1);
+
+  dispatcher.register(
+    "custom".to_string(),
+    Arc::new(ReenterOnDrop {
+      dispatcher: dispatcher.clone(),
+      drops: drops.clone(),
+    }),
+  );
+  assert!(dispatcher.unregister("custom"));
+  assert_eq!(drops.load(Ordering::SeqCst), 2);
+  assert!(dispatcher.get_handler("reentered").is_some());
 }
 
 #[test]

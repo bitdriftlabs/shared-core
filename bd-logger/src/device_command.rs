@@ -179,15 +179,20 @@ impl RegisteredCommandDispatcher {
     handler: Arc<dyn RegisteredCommandHandler>,
   ) {
     log::debug!("registered command handler: {registered_command_id}");
-    self.handlers.write().insert(registered_command_id, handler);
+    let previous_handler = {
+      let mut handlers = self.handlers.write();
+      handlers.insert(registered_command_id, handler)
+    };
+    drop(previous_handler);
   }
 
   pub fn unregister(&self, registered_command_id: &str) -> bool {
-    let removed = self
-      .handlers
-      .write()
-      .remove(registered_command_id)
-      .is_some();
+    let removed_handler = {
+      let mut handlers = self.handlers.write();
+      handlers.remove(registered_command_id)
+    };
+    let removed = removed_handler.is_some();
+    drop(removed_handler);
     if removed {
       log::debug!("unregistered command handler: {registered_command_id}");
     }
