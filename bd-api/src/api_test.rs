@@ -128,7 +128,6 @@ impl Metadata for TestMetadata {
     match self.platform {
       Platform::Android => "android".to_string(),
       Platform::Apple => "ios".to_string(),
-      Platform::Electron => "electron".to_string(),
     }
   }
 

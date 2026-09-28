@@ -31,7 +31,6 @@ impl bd_api::Metadata for Metadata {
     match self.platform {
       bd_api::Platform::Apple => "ios",
       bd_api::Platform::Android => "android",
-      bd_api::Platform::Electron => "electron",
     }
     .into()
   }
