@@ -1,3 +1,3 @@
-source_info_gated_mod!(value_matcher => "with_source/value_matcher.rs");
+pub mod value_matcher;
 
 use bd_pgv::generated::protos::validate;

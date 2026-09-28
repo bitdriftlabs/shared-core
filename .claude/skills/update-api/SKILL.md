@@ -53,8 +53,7 @@ Always end with:
 
 4. Regenerate protobuf artifacts.
    - Run `cargo build -p bd-proto --features public-api`.
-   - Run `cargo build -p bd-proto --features with-source-info`.
-   - If either build fails for reasons unrelated to the API bump, stop and surface the failure.
+   - If the build fails for reasons unrelated to the API bump, stop and surface the failure.
 
 5. Update `bd-proto/src/proto_config.rs` for newly exported public API protos.
    - Inspect `get_public_api_proto_configs()` and the nearest related output directory.
@@ -67,12 +66,10 @@ Always end with:
    - Keep edits minimal and consistent with nearby config entries.
 
 6. Update `bd-proto` module wiring for new generated files.
-   - Check `bd-proto/src/protos/public_api/mod.rs` and
-     `bd-proto/src/protos/public_api_with_source/mod.rs` for newly generated top-level modules that
+   - Check `bd-proto/src/protos/public_api/mod.rs` for newly generated top-level modules that
      need `pub mod <name>;`.
    - Check service subdirectory `mod.rs` files such as:
      - `bd-proto/src/protos/public_api/*/mod.rs`
-     - `bd-proto/src/protos/public_api_with_source/*/mod.rs`
    - If a generated service `api.rs` references `super::<name>`, make sure the containing `mod.rs`
      exposes that dependency, usually by re-exporting it from the parent module with
      `pub use super::{...};`.
@@ -80,8 +77,7 @@ Always end with:
 
 7. Re-run generation after config or module edits.
    - Run `cargo build -p bd-proto --features public-api` again.
-   - Run `cargo build -p bd-proto --features with-source-info` again.
-   - Stop if either path still fails and report the concrete error.
+   - Stop if the build still fails and report the concrete error.
 
 8. Inspect and scope the diff before committing.
    - Inspect with `git --no-pager status --short` and `git --no-pager diff --stat`.
@@ -107,7 +103,7 @@ Always end with:
 ## Safety rules
 
 - Never hide build errors or git failures.
-- Never claim the update is complete before both `cargo build -p bd-proto --features public-api`
-  and `cargo build -p bd-proto --features with-source-info` succeed.
+- Never claim the update is complete before `cargo build -p bd-proto --features public-api`
+  succeeds.
 - Do not include unrelated changes in the commit.
 - Prefer extending existing config and module patterns over inventing new layout or naming schemes.

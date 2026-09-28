@@ -23,9 +23,8 @@ matches.workspace    = true
 serde_json.workspace = true
 
 [features]
-codegen          = ["dep:flatc-rust", "dep:protobuf-codegen"]
-public-api       = []
-with-source-info = ["public-api"]
+codegen    = ["dep:flatc-rust", "dep:protobuf-codegen"]
+public-api = []
 
 [[bin]]
 name              = "generate-protos"
