@@ -33,18 +33,21 @@ const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_4_0_0_ALPHA_0;
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n+bitdrift/public/unary/timeline/v1/api.proto\x12!bitdrift.public.unary\
-    .timeline.v1\x1a1bitdrift/public/unary/timeline/v1/hydration.proto\x1a,b\
-    itdrift/public/unary/timeline/v1/info.proto\x1a,bitdrift/public/unary/ti\
-    meline/v1/logs.proto\x1a.bitdrift/public/unary/timeline/v1/search.proto\
-    \x1a-bitdrift/public/unary/timeline/v1/spans.proto2\xe5\x06\n\x0fTimelin\
-    eService\x12\x85\x01\n\x0eGetSessionLogs\x128.bitdrift.public.unary.time\
-    line.v1.GetSessionLogsRequest\x1a9.bitdrift.public.unary.timeline.v1.Get\
-    SessionLogsResponse\x12\x85\x01\n\x0eGetSessionInfo\x128.bitdrift.public\
-    .unary.timeline.v1.GetSessionInfoRequest\x1a9.bitdrift.public.unary.time\
-    line.v1.GetSessionInfoResponse\x12\x85\x01\n\x0eHydrateSession\x128.bitd\
-    rift.public.unary.timeline.v1.HydrateSessionRequest\x1a9.bitdrift.public\
-    .unary.timeline.v1.HydrateSessionResponse\x12\x91\x01\n\x12GetHydrationS\
-    tatus\x12<.bitdrift.public.unary.timeline.v1.GetHydrationStatusRequest\
+    .timeline.v1\x1a5bitdrift/public/unary/timeline/v1/feature_flags.proto\
+    \x1a1bitdrift/public/unary/timeline/v1/hydration.proto\x1a,bitdrift/publ\
+    ic/unary/timeline/v1/info.proto\x1a,bitdrift/public/unary/timeline/v1/lo\
+    gs.proto\x1a.bitdrift/public/unary/timeline/v1/search.proto\x1a-bitdrift\
+    /public/unary/timeline/v1/spans.proto2\xf0\x07\n\x0fTimelineService\x12\
+    \x85\x01\n\x0eGetSessionLogs\x128.bitdrift.public.unary.timeline.v1.GetS\
+    essionLogsRequest\x1a9.bitdrift.public.unary.timeline.v1.GetSessionLogsR\
+    esponse\x12\x88\x01\n\x0fGetFeatureFlags\x129.bitdrift.public.unary.time\
+    line.v1.GetFeatureFlagsRequest\x1a:.bitdrift.public.unary.timeline.v1.Ge\
+    tFeatureFlagsResponse\x12\x85\x01\n\x0eGetSessionInfo\x128.bitdrift.publ\
+    ic.unary.timeline.v1.GetSessionInfoRequest\x1a9.bitdrift.public.unary.ti\
+    meline.v1.GetSessionInfoResponse\x12\x85\x01\n\x0eHydrateSession\x128.bi\
+    tdrift.public.unary.timeline.v1.HydrateSessionRequest\x1a9.bitdrift.publ\
+    ic.unary.timeline.v1.HydrateSessionResponse\x12\x91\x01\n\x12GetHydratio\
+    nStatus\x12<.bitdrift.public.unary.timeline.v1.GetHydrationStatusRequest\
     \x1a=.bitdrift.public.unary.timeline.v1.GetHydrationStatusResponse\x12\
     \x88\x01\n\x0bSearchSpans\x12;.bitdrift.public.unary.timeline.v1.Session\
     SearchSpanRequest\x1a<.bitdrift.public.unary.timeline.v1.SessionSearchSp\
@@ -67,7 +70,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(5);
+            let mut deps = ::std::vec::Vec::with_capacity(6);
+            deps.push(super::feature_flags::file_descriptor().clone());
             deps.push(super::hydration::file_descriptor().clone());
             deps.push(super::info::file_descriptor().clone());
             deps.push(super::logs::file_descriptor().clone());

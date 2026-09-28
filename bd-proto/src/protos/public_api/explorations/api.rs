@@ -1284,39 +1284,42 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     dSessionR\x0ebeforeSessions\x12\x82\x01\n\x0eafter_sessions\x18\x02\x20\
     \x03(\x0b2[.bitdrift.public.unary.workflows.v1.FetchCapturedSessionsByDe\
     viceIdResponse.DeviceIdSessionR\rafterSessionsB\x11\n\nquery_type\x12\
-    \x03\xf8B\x012\x96\r\n\x0fWorkflowService\x12~\n\x0bGetWorkflow\x126.bit\
-    drift.public.unary.workflows.v1.GetWorkflowRequest\x1a7.bitdrift.public.\
-    unary.workflows.v1.GetWorkflowResponse\x12\x84\x01\n\rListWorkflows\x128\
-    .bitdrift.public.unary.workflows.v1.ListWorkflowsRequest\x1a9.bitdrift.p\
-    ublic.unary.workflows.v1.ListWorkflowsResponse\x12\x87\x01\n\x0eCreateWo\
-    rkflow\x129.bitdrift.public.unary.workflows.v1.CreateWorkflowRequest\x1a\
-    :.bitdrift.public.unary.workflows.v1.CreateWorkflowResponse\x12\x87\x01\
-    \n\x0eUpdateWorkflow\x129.bitdrift.public.unary.workflows.v1.UpdateWorkf\
-    lowRequest\x1a:.bitdrift.public.unary.workflows.v1.UpdateWorkflowRespons\
-    e\x12\x87\x01\n\x0eRenameWorkflow\x129.bitdrift.public.unary.workflows.v\
-    1.RenameWorkflowRequest\x1a:.bitdrift.public.unary.workflows.v1.RenameWo\
-    rkflowResponse\x12\x93\x01\n\x12UpsertWorkflowTags\x12=.bitdrift.public.\
-    unary.workflows.v1.UpsertWorkflowTagsRequest\x1a>.bitdrift.public.unary.\
-    workflows.v1.UpsertWorkflowTagsResponse\x12\x87\x01\n\x0eDeleteWorkflow\
-    \x129.bitdrift.public.unary.workflows.v1.DeleteWorkflowRequest\x1a:.bitd\
-    rift.public.unary.workflows.v1.DeleteWorkflowResponse\x12\x87\x01\n\x0eD\
-    eployWorkflow\x129.bitdrift.public.unary.workflows.v1.DeployWorkflowRequ\
-    est\x1a:.bitdrift.public.unary.workflows.v1.DeployWorkflowResponse\x12\
-    \x81\x01\n\x0cStopWorkflow\x127.bitdrift.public.unary.workflows.v1.StopW\
-    orkflowRequest\x1a8.bitdrift.public.unary.workflows.v1.StopWorkflowRespo\
-    nse\x12u\n\x08ListTags\x123.bitdrift.public.unary.workflows.v1.ListTagsR\
-    equest\x1a4.bitdrift.public.unary.workflows.v1.ListTagsResponse\x12\x8d\
-    \x01\n\x10FavoriteWorkflow\x12;.bitdrift.public.unary.workflows.v1.Favor\
-    iteWorkflowRequest\x1a<.bitdrift.public.unary.workflows.v1.FavoriteWorkf\
-    lowResponse\x12\xa8\x01\n\x1bUpsertWorkflowChartMetadata\x12C.bitdrift.p\
-    ublic.unary.charts.v1.UpsertWorkflowChartMetadataRequest\x1aD.bitdrift.p\
-    ublic.unary.charts.v1.UpsertWorkflowChartMetadataResponse2\xf1\x02\n\x13\
-    WorkflowDataService\x12\x9c\x01\n\x15FetchCapturedSessions\x12@.bitdrift\
-    .public.unary.workflows.v1.FetchCapturedSessionsRequest\x1aA.bitdrift.pu\
-    blic.unary.workflows.v1.FetchCapturedSessionsResponse\x12\xba\x01\n\x1fF\
-    etchCapturedSessionsByDeviceId\x12J.bitdrift.public.unary.workflows.v1.F\
-    etchCapturedSessionsByDeviceIdRequest\x1aK.bitdrift.public.unary.workflo\
-    ws.v1.FetchCapturedSessionsByDeviceIdResponseb\x06proto3\
+    \x03\xf8B\x012\xca\x0e\n\x0fWorkflowService\x12~\n\x0bGetWorkflow\x126.b\
+    itdrift.public.unary.workflows.v1.GetWorkflowRequest\x1a7.bitdrift.publi\
+    c.unary.workflows.v1.GetWorkflowResponse\x12\xb1\x01\n\x1cGetWorkflowDep\
+    loymentHistory\x12G.bitdrift.public.unary.workflows.v1.GetWorkflowDeploy\
+    mentHistoryRequest\x1aH.bitdrift.public.unary.workflows.v1.GetWorkflowDe\
+    ploymentHistoryResponse\x12\x84\x01\n\rListWorkflows\x128.bitdrift.publi\
+    c.unary.workflows.v1.ListWorkflowsRequest\x1a9.bitdrift.public.unary.wor\
+    kflows.v1.ListWorkflowsResponse\x12\x87\x01\n\x0eCreateWorkflow\x129.bit\
+    drift.public.unary.workflows.v1.CreateWorkflowRequest\x1a:.bitdrift.publ\
+    ic.unary.workflows.v1.CreateWorkflowResponse\x12\x87\x01\n\x0eUpdateWork\
+    flow\x129.bitdrift.public.unary.workflows.v1.UpdateWorkflowRequest\x1a:.\
+    bitdrift.public.unary.workflows.v1.UpdateWorkflowResponse\x12\x87\x01\n\
+    \x0eRenameWorkflow\x129.bitdrift.public.unary.workflows.v1.RenameWorkflo\
+    wRequest\x1a:.bitdrift.public.unary.workflows.v1.RenameWorkflowResponse\
+    \x12\x93\x01\n\x12UpsertWorkflowTags\x12=.bitdrift.public.unary.workflow\
+    s.v1.UpsertWorkflowTagsRequest\x1a>.bitdrift.public.unary.workflows.v1.U\
+    psertWorkflowTagsResponse\x12\x87\x01\n\x0eDeleteWorkflow\x129.bitdrift.\
+    public.unary.workflows.v1.DeleteWorkflowRequest\x1a:.bitdrift.public.una\
+    ry.workflows.v1.DeleteWorkflowResponse\x12\x87\x01\n\x0eDeployWorkflow\
+    \x129.bitdrift.public.unary.workflows.v1.DeployWorkflowRequest\x1a:.bitd\
+    rift.public.unary.workflows.v1.DeployWorkflowResponse\x12\x81\x01\n\x0cS\
+    topWorkflow\x127.bitdrift.public.unary.workflows.v1.StopWorkflowRequest\
+    \x1a8.bitdrift.public.unary.workflows.v1.StopWorkflowResponse\x12u\n\x08\
+    ListTags\x123.bitdrift.public.unary.workflows.v1.ListTagsRequest\x1a4.bi\
+    tdrift.public.unary.workflows.v1.ListTagsResponse\x12\x8d\x01\n\x10Favor\
+    iteWorkflow\x12;.bitdrift.public.unary.workflows.v1.FavoriteWorkflowRequ\
+    est\x1a<.bitdrift.public.unary.workflows.v1.FavoriteWorkflowResponse\x12\
+    \xa8\x01\n\x1bUpsertWorkflowChartMetadata\x12C.bitdrift.public.unary.cha\
+    rts.v1.UpsertWorkflowChartMetadataRequest\x1aD.bitdrift.public.unary.cha\
+    rts.v1.UpsertWorkflowChartMetadataResponse2\xf1\x02\n\x13WorkflowDataSer\
+    vice\x12\x9c\x01\n\x15FetchCapturedSessions\x12@.bitdrift.public.unary.w\
+    orkflows.v1.FetchCapturedSessionsRequest\x1aA.bitdrift.public.unary.work\
+    flows.v1.FetchCapturedSessionsResponse\x12\xba\x01\n\x1fFetchCapturedSes\
+    sionsByDeviceId\x12J.bitdrift.public.unary.workflows.v1.FetchCapturedSes\
+    sionsByDeviceIdRequest\x1aK.bitdrift.public.unary.workflows.v1.FetchCapt\
+    uredSessionsByDeviceIdResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

@@ -10213,6 +10213,503 @@ impl ::protobuf::reflect::ProtobufValue for Violation {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.workflows.v1.GetWorkflowDeploymentHistoryRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct GetWorkflowDeploymentHistoryRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GetWorkflowDeploymentHistoryRequest.offset)
+    pub offset: ::std::option::Option<u32>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GetWorkflowDeploymentHistoryRequest.limit)
+    pub limit: ::std::option::Option<u32>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GetWorkflowDeploymentHistoryRequest.workflow_id)
+    pub workflow_id: ::std::vec::Vec<::std::string::String>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.workflows.v1.GetWorkflowDeploymentHistoryRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a GetWorkflowDeploymentHistoryRequest {
+    fn default() -> &'a GetWorkflowDeploymentHistoryRequest {
+        <GetWorkflowDeploymentHistoryRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl GetWorkflowDeploymentHistoryRequest {
+    pub fn new() -> GetWorkflowDeploymentHistoryRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "offset",
+            |m: &GetWorkflowDeploymentHistoryRequest| { &m.offset },
+            |m: &mut GetWorkflowDeploymentHistoryRequest| { &mut m.offset },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "limit",
+            |m: &GetWorkflowDeploymentHistoryRequest| { &m.limit },
+            |m: &mut GetWorkflowDeploymentHistoryRequest| { &mut m.limit },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "workflow_id",
+            |m: &GetWorkflowDeploymentHistoryRequest| { &m.workflow_id },
+            |m: &mut GetWorkflowDeploymentHistoryRequest| { &mut m.workflow_id },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetWorkflowDeploymentHistoryRequest>(
+            "GetWorkflowDeploymentHistoryRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for GetWorkflowDeploymentHistoryRequest {
+    const NAME: &'static str = "GetWorkflowDeploymentHistoryRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.offset = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                16 => {
+                    self.limit = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                26 => {
+                    self.workflow_id.push(is.read_string()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.offset {
+            my_size += ::protobuf::rt::uint32_size(1, v);
+        }
+        if let Some(v) = self.limit {
+            my_size += ::protobuf::rt::uint32_size(2, v);
+        }
+        for value in &self.workflow_id {
+            my_size += ::protobuf::rt::string_size(3, &value);
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.offset {
+            os.write_uint32(1, v)?;
+        }
+        if let Some(v) = self.limit {
+            os.write_uint32(2, v)?;
+        }
+        for v in &self.workflow_id {
+            os.write_string(3, &v)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> GetWorkflowDeploymentHistoryRequest {
+        GetWorkflowDeploymentHistoryRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.offset = ::std::option::Option::None;
+        self.limit = ::std::option::Option::None;
+        self.workflow_id.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static GetWorkflowDeploymentHistoryRequest {
+        static instance: GetWorkflowDeploymentHistoryRequest = GetWorkflowDeploymentHistoryRequest {
+            offset: ::std::option::Option::None,
+            limit: ::std::option::Option::None,
+            workflow_id: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for GetWorkflowDeploymentHistoryRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetWorkflowDeploymentHistoryRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for GetWorkflowDeploymentHistoryRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for GetWorkflowDeploymentHistoryRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.workflows.v1.GetWorkflowDeploymentHistoryResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct GetWorkflowDeploymentHistoryResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GetWorkflowDeploymentHistoryResponse.deployments)
+    pub deployments: ::std::vec::Vec<HistoricalWorkflowDeployment>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GetWorkflowDeploymentHistoryResponse.total_deployments)
+    pub total_deployments: u32,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.workflows.v1.GetWorkflowDeploymentHistoryResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a GetWorkflowDeploymentHistoryResponse {
+    fn default() -> &'a GetWorkflowDeploymentHistoryResponse {
+        <GetWorkflowDeploymentHistoryResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl GetWorkflowDeploymentHistoryResponse {
+    pub fn new() -> GetWorkflowDeploymentHistoryResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "deployments",
+            |m: &GetWorkflowDeploymentHistoryResponse| { &m.deployments },
+            |m: &mut GetWorkflowDeploymentHistoryResponse| { &mut m.deployments },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "total_deployments",
+            |m: &GetWorkflowDeploymentHistoryResponse| { &m.total_deployments },
+            |m: &mut GetWorkflowDeploymentHistoryResponse| { &mut m.total_deployments },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetWorkflowDeploymentHistoryResponse>(
+            "GetWorkflowDeploymentHistoryResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for GetWorkflowDeploymentHistoryResponse {
+    const NAME: &'static str = "GetWorkflowDeploymentHistoryResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.deployments.push(is.read_message()?);
+                },
+                16 => {
+                    self.total_deployments = is.read_uint32()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.deployments {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if self.total_deployments != 0 {
+            my_size += ::protobuf::rt::uint32_size(2, self.total_deployments);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.deployments {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        if self.total_deployments != 0 {
+            os.write_uint32(2, self.total_deployments)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> GetWorkflowDeploymentHistoryResponse {
+        GetWorkflowDeploymentHistoryResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.deployments.clear();
+        self.total_deployments = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static GetWorkflowDeploymentHistoryResponse {
+        static instance: GetWorkflowDeploymentHistoryResponse = GetWorkflowDeploymentHistoryResponse {
+            deployments: ::std::vec::Vec::new(),
+            total_deployments: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for GetWorkflowDeploymentHistoryResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetWorkflowDeploymentHistoryResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for GetWorkflowDeploymentHistoryResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for GetWorkflowDeploymentHistoryResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.workflows.v1.HistoricalWorkflowDeployment)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct HistoricalWorkflowDeployment {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.HistoricalWorkflowDeployment.version)
+    pub version: u64,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.HistoricalWorkflowDeployment.workflow)
+    pub workflow: ::protobuf::MessageField<Workflow>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.HistoricalWorkflowDeployment.deployed_at)
+    pub deployed_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.HistoricalWorkflowDeployment.stopped_at)
+    pub stopped_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.HistoricalWorkflowDeployment.deployed_by_user_id)
+    pub deployed_by_user_id: ::protobuf::MessageField<super::common::Owner>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.workflows.v1.HistoricalWorkflowDeployment.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a HistoricalWorkflowDeployment {
+    fn default() -> &'a HistoricalWorkflowDeployment {
+        <HistoricalWorkflowDeployment as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl HistoricalWorkflowDeployment {
+    pub fn new() -> HistoricalWorkflowDeployment {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "version",
+            |m: &HistoricalWorkflowDeployment| { &m.version },
+            |m: &mut HistoricalWorkflowDeployment| { &mut m.version },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, Workflow>(
+            "workflow",
+            |m: &HistoricalWorkflowDeployment| { &m.workflow },
+            |m: &mut HistoricalWorkflowDeployment| { &mut m.workflow },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+            "deployed_at",
+            |m: &HistoricalWorkflowDeployment| { &m.deployed_at },
+            |m: &mut HistoricalWorkflowDeployment| { &mut m.deployed_at },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+            "stopped_at",
+            |m: &HistoricalWorkflowDeployment| { &m.stopped_at },
+            |m: &mut HistoricalWorkflowDeployment| { &mut m.stopped_at },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::common::Owner>(
+            "deployed_by_user_id",
+            |m: &HistoricalWorkflowDeployment| { &m.deployed_by_user_id },
+            |m: &mut HistoricalWorkflowDeployment| { &mut m.deployed_by_user_id },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HistoricalWorkflowDeployment>(
+            "HistoricalWorkflowDeployment",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for HistoricalWorkflowDeployment {
+    const NAME: &'static str = "HistoricalWorkflowDeployment";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.version = is.read_uint64()?;
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.workflow)?;
+                },
+                34 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.deployed_at)?;
+                },
+                42 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.stopped_at)?;
+                },
+                50 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.deployed_by_user_id)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.version != 0 {
+            my_size += ::protobuf::rt::uint64_size(1, self.version);
+        }
+        if let Some(v) = self.workflow.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.deployed_at.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.stopped_at.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.deployed_by_user_id.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.version != 0 {
+            os.write_uint64(1, self.version)?;
+        }
+        if let Some(v) = self.workflow.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let Some(v) = self.deployed_at.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        }
+        if let Some(v) = self.stopped_at.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+        }
+        if let Some(v) = self.deployed_by_user_id.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> HistoricalWorkflowDeployment {
+        HistoricalWorkflowDeployment::new()
+    }
+
+    fn clear(&mut self) {
+        self.version = 0;
+        self.workflow.clear();
+        self.deployed_at.clear();
+        self.stopped_at.clear();
+        self.deployed_by_user_id.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static HistoricalWorkflowDeployment {
+        static instance: HistoricalWorkflowDeployment = HistoricalWorkflowDeployment {
+            version: 0,
+            workflow: ::protobuf::MessageField::none(),
+            deployed_at: ::protobuf::MessageField::none(),
+            stopped_at: ::protobuf::MessageField::none(),
+            deployed_by_user_id: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for HistoricalWorkflowDeployment {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("HistoricalWorkflowDeployment").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for HistoricalWorkflowDeployment {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for HistoricalWorkflowDeployment {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:bitdrift.public.unary.workflows.v1.GetWorkflowRequest)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct GetWorkflowRequest {
@@ -16588,137 +17085,152 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     B\x0c\xfaB\t\x82\x01\x06\x10\x01\x20\x0c\x20\r\x12\x1e\n\x05value\x18\
     \x03\x20\x01(\tR\x05valueB\x08\xfaB\x05r\x03\x18\xff\x01\"N\n\tViolation\
     \x12\x18\n\x07message\x18\x01\x20\x01(\tR\x07message\x12'\n\x10match_or_\
-    rule_id\x18\x03\x20\x01(\tR\rmatchOrRuleId\">\n\x12GetWorkflowRequest\
-    \x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\
-    \x02\x18d\"\xa2\x02\n\x13GetWorkflowResponse\x12H\n\x08workflow\x18\x01\
+    rule_id\x18\x03\x20\x01(\tR\rmatchOrRuleId\"\xb0\x01\n#GetWorkflowDeploy\
+    mentHistoryRequest\x12\x1b\n\x06offset\x18\x01\x20\x01(\rH\0R\x06offset\
+    \x88\x01\x01\x12$\n\x05limit\x18\x02\x20\x01(\rH\x01R\x05limitB\t\xfaB\
+    \x06*\x04\x18d(\x01\x88\x01\x01\x121\n\x0bworkflow_id\x18\x03\x20\x03(\t\
+    R\nworkflowIdB\x10\xfaB\r\x92\x01\n\x10d\"\x06r\x04\x10\x01\x18dB\t\n\
+    \x07_offsetB\x08\n\x06_limit\"\xb7\x01\n$GetWorkflowDeploymentHistoryRes\
+    ponse\x12b\n\x0bdeployments\x18\x01\x20\x03(\x0b2@.bitdrift.public.unary\
+    .workflows.v1.HistoricalWorkflowDeploymentR\x0bdeployments\x12+\n\x11tot\
+    al_deployments\x18\x02\x20\x01(\rR\x10totalDeployments\"\xd1\x02\n\x1cHi\
+    storicalWorkflowDeployment\x12\x18\n\x07version\x18\x01\x20\x01(\x04R\
+    \x07version\x12H\n\x08workflow\x18\x02\x20\x01(\x0b2,.bitdrift.public.un\
+    ary.workflows.v1.WorkflowR\x08workflow\x12;\n\x0bdeployed_at\x18\x04\x20\
+    \x01(\x0b2\x1a.google.protobuf.TimestampR\ndeployedAt\x129\n\nstopped_at\
+    \x18\x05\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstoppedAt\x12U\n\
+    \x13deployed_by_user_id\x18\x06\x20\x01(\x0b2&.bitdrift.public.unary.com\
+    mon.v1.OwnerR\x10deployedByUserId\"@\n\x12GetWorkflowRequest\x12*\n\x0bw\
+    orkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\t\xfaB\x06r\x04\x10\x01\x18d\
+    \"\xa2\x02\n\x13GetWorkflowResponse\x12H\n\x08workflow\x18\x01\x20\x01(\
+    \x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08workflow\x12P\n\
+    \x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.W\
+    orkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadata\x18\x04\
+    \x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChartMetadataR\
+    \x14perRuleChartMetadata\"\xfd\x02\n\x06Filter\x12H\n\x05owned\x18\x01\
+    \x20\x01(\x0b20.bitdrift.public.unary.workflows.v1.Filter.OwnedH\0R\x05o\
+    wned\x12N\n\x07unowned\x18\x02\x20\x01(\x0b22.bitdrift.public.unary.work\
+    flows.v1.Filter.UnownedH\0R\x07unowned\x12T\n\tfavorites\x18\x03\x20\x01\
+    (\x0b24.bitdrift.public.unary.workflows.v1.Filter.FavoritesH\0R\tfavorit\
+    es\x12K\n\x06active\x18\x04\x20\x01(\x0b21.bitdrift.public.unary.workflo\
+    ws.v1.Filter.ActiveH\0R\x06active\x1a\x07\n\x05Owned\x1a\t\n\x07Unowned\
+    \x1a\x0b\n\tFavorites\x1a\x08\n\x06ActiveB\x0b\n\x04type\x12\x03\xf8B\
+    \x01\"\xb9\t\n\x11WorkflowListQuery\x12a\n\x10target_platforms\x18\x01\
+    \x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\x0ftargetPl\
+    atformsB\x08\xfaB\x05\x92\x01\x02\x10d\x12M\n\x06access\x18\x02\x20\x01(\
+    \x0b25.bitdrift.public.unary.admin.v1.AccessPermissionQueryR\x06access\
+    \x12p\n\x0eworkflow_state\x18\x03\x20\x01(\x0e2:.bitdrift.public.unary.w\
+    orkflows.v1.Workflow.WorkflowStateH\0R\rworkflowStateB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\x88\x01\x01\x12S\n\x04tags\x18\x04\x20\x01(\x0b2?.bitdr\
+    ift.public.unary.workflows.v1.WorkflowListQuery.TagFilterR\x04tags\x12/\
+    \n\x0bworkflow_id\x18\x05\x20\x03(\tR\nworkflowIdB\x0e\xfaB\x0b\x92\x01\
+    \x08\x10d\"\x04r\x02\x18d\x122\n\rworkflow_name\x18\x06\x20\x01(\tH\x01R\
+    \x0cworkflowNameB\x08\xfaB\x05r\x03\x18\xff\x01\x88\x01\x01\x12!\n\tfavo\
+    rited\x18\x07\x20\x01(\x08H\x02R\tfavorited\x88\x01\x01\x1a\x83\x02\n\
+    \x0cTagCondition\x12i\n\x08operator\x18\x01\x20\x01(\x0e2A.bitdrift.publ\
+    ic.unary.workflows.v1.WorkflowListQuery.TagOperatorR\x08operatorB\n\xfaB\
+    \x07\x82\x01\x04\x10\x01\x20\0\x12`\n\x05match\x18\x02\x20\x01(\x0e2>.bi\
+    tdrift.public.unary.workflows.v1.WorkflowListQuery.TagMatchR\x05matchB\n\
+    \xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12&\n\x04tags\x18\x03\x20\x03(\tR\
+    \x04tagsB\x12\xfaB\x0f\x92\x01\x0c\x08\x01\x10\x14\"\x06r\x04\x10\x01\
+    \x18d\x1az\n\x08TagAllOf\x12n\n\nconditions\x18\x01\x20\x03(\x0b2B.bitdr\
+    ift.public.unary.workflows.v1.WorkflowListQuery.TagConditionR\ncondition\
+    sB\n\xfaB\x07\x92\x01\x04\x08\x01\x10\x14\x1an\n\tTagFilter\x12a\n\x06an\
+    y_of\x18\x01\x20\x03(\x0b2>.bitdrift.public.unary.workflows.v1.WorkflowL\
+    istQuery.TagAllOfR\x05anyOfB\n\xfaB\x07\x92\x01\x04\x08\x01\x10\x14\"C\n\
+    \x0bTagOperator\x12\x18\n\x14UNSPECIFIED_OPERATOR\x10\0\x12\x0c\n\x08INC\
+    LUDES\x10\x01\x12\x0c\n\x08EXCLUDES\x10\x02\"9\n\x08TagMatch\x12\x15\n\
+    \x11UNSPECIFIED_MATCH\x10\0\x12\n\n\x06ANY_OF\x10\x01\x12\n\n\x06ALL_OF\
+    \x10\x02B\x11\n\x0f_workflow_stateB\x10\n\x0e_workflow_nameB\x0c\n\n_fav\
+    orited\"\x96\x06\n\x14ListWorkflowsRequest\x12\x1b\n\x06offset\x18\x01\
+    \x20\x01(\rH\0R\x06offset\x88\x01\x01\x12$\n\x05limit\x18\x02\x20\x01(\r\
+    H\x01R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01\x12N\n\x07filters\
+    \x18\x03\x20\x03(\x0b2*.bitdrift.public.unary.workflows.v1.FilterR\x07fi\
+    ltersB\x08\xfaB\x05\x92\x01\x02\x10d\x12a\n\x10platform_targets\x18\x05\
+    \x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\x0fplatform\
+    TargetsB\x08\xfaB\x05\x92\x01\x02\x10d\x12K\n\x05query\x18\x06\x20\x01(\
+    \x0b25.bitdrift.public.unary.workflows.v1.WorkflowListQueryR\x05query\
+    \x12[\n\x04sort\x18\x07\x20\x03(\x0b2=.bitdrift.public.unary.workflows.v\
+    1.ListWorkflowsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\
+    \xc8\x02\n\x04Sort\x12a\n\x03key\x18\x01\x20\x01(\x0e2E.bitdrift.public.\
+    unary.workflows.v1.ListWorkflowsRequest.Sort.SortKeyR\x03keyB\x08\xfaB\
+    \x05\x82\x01\x02\x10\x01\x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdri\
+    ft.public.unary.common.v1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\"\x84\x01\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIE\
+    D\x10\0\x12\x10\n\x0cDISPLAY_NAME\x10\x01\x12\x11\n\rCREATION_TIME\x10\
+    \x02\x12\n\n\x06STATUS\x10\x03\x12\x0e\n\nOWNER_NAME\x10\x04\x12\r\n\tFA\
+    VORITED\x10\x05\x12\x0f\n\x0bLAST_VIEWED\x10\x06B\t\n\x07_offsetB\x08\n\
+    \x06_limit\"\xab\x03\n\x15ListWorkflowsResponse\x12T\n\x05items\x18\x01\
+    \x20\x03(\x0b2>.bitdrift.public.unary.workflows.v1.ListWorkflowsResponse\
+    .ItemR\x05items\x12'\n\x0ftotal_workflows\x18\x02\x20\x01(\rR\x0etotalWo\
+    rkflows\x124\n\x16total_active_workflows\x18\x03\x20\x01(\rR\x14totalAct\
+    iveWorkflows\x128\n\x18total_filtered_workflows\x18\x04\x20\x01(\rR\x16t\
+    otalFilteredWorkflows\x1a\xa2\x01\n\x04Item\x12H\n\x08workflow\x18\x01\
     \x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08workflow\
-    \x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public.unary.workflo\
-    ws.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadata\
-    \x18\x04\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChartM\
-    etadataR\x14perRuleChartMetadata\"\xfd\x02\n\x06Filter\x12H\n\x05owned\
-    \x18\x01\x20\x01(\x0b20.bitdrift.public.unary.workflows.v1.Filter.OwnedH\
-    \0R\x05owned\x12N\n\x07unowned\x18\x02\x20\x01(\x0b22.bitdrift.public.un\
-    ary.workflows.v1.Filter.UnownedH\0R\x07unowned\x12T\n\tfavorites\x18\x03\
-    \x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.Filter.FavoritesH\0R\
-    \tfavorites\x12K\n\x06active\x18\x04\x20\x01(\x0b21.bitdrift.public.unar\
-    y.workflows.v1.Filter.ActiveH\0R\x06active\x1a\x07\n\x05Owned\x1a\t\n\
-    \x07Unowned\x1a\x0b\n\tFavorites\x1a\x08\n\x06ActiveB\x0b\n\x04type\x12\
-    \x03\xf8B\x01\"\xb9\t\n\x11WorkflowListQuery\x12a\n\x10target_platforms\
-    \x18\x01\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\x0f\
-    targetPlatformsB\x08\xfaB\x05\x92\x01\x02\x10d\x12M\n\x06access\x18\x02\
-    \x20\x01(\x0b25.bitdrift.public.unary.admin.v1.AccessPermissionQueryR\
-    \x06access\x12p\n\x0eworkflow_state\x18\x03\x20\x01(\x0e2:.bitdrift.publ\
-    ic.unary.workflows.v1.Workflow.WorkflowStateH\0R\rworkflowStateB\x08\xfa\
-    B\x05\x82\x01\x02\x10\x01\x88\x01\x01\x12S\n\x04tags\x18\x04\x20\x01(\
-    \x0b2?.bitdrift.public.unary.workflows.v1.WorkflowListQuery.TagFilterR\
-    \x04tags\x12/\n\x0bworkflow_id\x18\x05\x20\x03(\tR\nworkflowIdB\x0e\xfaB\
-    \x0b\x92\x01\x08\x10d\"\x04r\x02\x18d\x122\n\rworkflow_name\x18\x06\x20\
-    \x01(\tH\x01R\x0cworkflowNameB\x08\xfaB\x05r\x03\x18\xff\x01\x88\x01\x01\
-    \x12!\n\tfavorited\x18\x07\x20\x01(\x08H\x02R\tfavorited\x88\x01\x01\x1a\
-    \x83\x02\n\x0cTagCondition\x12i\n\x08operator\x18\x01\x20\x01(\x0e2A.bit\
-    drift.public.unary.workflows.v1.WorkflowListQuery.TagOperatorR\x08operat\
-    orB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12`\n\x05match\x18\x02\x20\x01\
-    (\x0e2>.bitdrift.public.unary.workflows.v1.WorkflowListQuery.TagMatchR\
-    \x05matchB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12&\n\x04tags\x18\x03\
-    \x20\x03(\tR\x04tagsB\x12\xfaB\x0f\x92\x01\x0c\x08\x01\x10\x14\"\x06r\
-    \x04\x10\x01\x18d\x1az\n\x08TagAllOf\x12n\n\nconditions\x18\x01\x20\x03(\
-    \x0b2B.bitdrift.public.unary.workflows.v1.WorkflowListQuery.TagCondition\
-    R\nconditionsB\n\xfaB\x07\x92\x01\x04\x08\x01\x10\x14\x1an\n\tTagFilter\
-    \x12a\n\x06any_of\x18\x01\x20\x03(\x0b2>.bitdrift.public.unary.workflows\
-    .v1.WorkflowListQuery.TagAllOfR\x05anyOfB\n\xfaB\x07\x92\x01\x04\x08\x01\
-    \x10\x14\"C\n\x0bTagOperator\x12\x18\n\x14UNSPECIFIED_OPERATOR\x10\0\x12\
-    \x0c\n\x08INCLUDES\x10\x01\x12\x0c\n\x08EXCLUDES\x10\x02\"9\n\x08TagMatc\
-    h\x12\x15\n\x11UNSPECIFIED_MATCH\x10\0\x12\n\n\x06ANY_OF\x10\x01\x12\n\n\
-    \x06ALL_OF\x10\x02B\x11\n\x0f_workflow_stateB\x10\n\x0e_workflow_nameB\
-    \x0c\n\n_favorited\"\x96\x06\n\x14ListWorkflowsRequest\x12\x1b\n\x06offs\
-    et\x18\x01\x20\x01(\rH\0R\x06offset\x88\x01\x01\x12$\n\x05limit\x18\x02\
-    \x20\x01(\rH\x01R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01\x12N\n\
-    \x07filters\x18\x03\x20\x03(\x0b2*.bitdrift.public.unary.workflows.v1.Fi\
-    lterR\x07filtersB\x08\xfaB\x05\x92\x01\x02\x10d\x12a\n\x10platform_targe\
-    ts\x18\x05\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\
-    \x0fplatformTargetsB\x08\xfaB\x05\x92\x01\x02\x10d\x12K\n\x05query\x18\
-    \x06\x20\x01(\x0b25.bitdrift.public.unary.workflows.v1.WorkflowListQuery\
-    R\x05query\x12[\n\x04sort\x18\x07\x20\x03(\x0b2=.bitdrift.public.unary.w\
-    orkflows.v1.ListWorkflowsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\
-    \x10d\x1a\xc8\x02\n\x04Sort\x12a\n\x03key\x18\x01\x20\x01(\x0e2E.bitdrif\
-    t.public.unary.workflows.v1.ListWorkflowsRequest.Sort.SortKeyR\x03keyB\
-    \x08\xfaB\x05\x82\x01\x02\x10\x01\x12V\n\tdirection\x18\x02\x20\x01(\x0e\
-    2..bitdrift.public.unary.common.v1.SortDirectionR\tdirectionB\x08\xfaB\
-    \x05\x82\x01\x02\x10\x01\"\x84\x01\n\x07SortKey\x12\x18\n\x14SORT_KEY_UN\
-    SPECIFIED\x10\0\x12\x10\n\x0cDISPLAY_NAME\x10\x01\x12\x11\n\rCREATION_TI\
-    ME\x10\x02\x12\n\n\x06STATUS\x10\x03\x12\x0e\n\nOWNER_NAME\x10\x04\x12\r\
-    \n\tFAVORITED\x10\x05\x12\x0f\n\x0bLAST_VIEWED\x10\x06B\t\n\x07_offsetB\
-    \x08\n\x06_limit\"\xab\x03\n\x15ListWorkflowsResponse\x12T\n\x05items\
-    \x18\x01\x20\x03(\x0b2>.bitdrift.public.unary.workflows.v1.ListWorkflows\
-    Response.ItemR\x05items\x12'\n\x0ftotal_workflows\x18\x02\x20\x01(\rR\
-    \x0etotalWorkflows\x124\n\x16total_active_workflows\x18\x03\x20\x01(\rR\
-    \x14totalActiveWorkflows\x128\n\x18total_filtered_workflows\x18\x04\x20\
-    \x01(\rR\x16totalFilteredWorkflows\x1a\xa2\x01\n\x04Item\x12H\n\x08workf\
-    low\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\
-    \x08workflow\x12P\n\x08metadata\x18\x05\x20\x01(\x0b24.bitdrift.public.u\
-    nary.workflows.v1.WorkflowMetadataR\x08metadata\"\xae\x02\n\x15CreateWor\
-    kflowRequest\x12H\n\x08workflow\x18\x02\x20\x01(\x0b2,.bitdrift.public.u\
-    nary.workflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x03\x20\
-    \x01(\x0b24.bitdrift.public.unary.workflows.v1.WorkflowMetadataR\x08meta\
-    data\x12y\n\x17per_rule_chart_metadata\x18\x05\x20\x03(\x0b28.bitdrift.p\
-    ublic.unary.workflows.v1.PerRuleChartMetadataR\x14perRuleChartMetadataB\
-    \x08\xfaB\x05\x92\x01\x02\x10d\"(\n\x16CreateWorkflowResponse\x12\x0e\n\
-    \x02id\x18\x01\x20\x01(\tR\x02id\"\xd8\x02\n\x15UpdateWorkflowRequest\
-    \x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\
-    \x02\x18d\x12H\n\x08workflow\x18\x03\x20\x01(\x0b2,.bitdrift.public.unar\
-    y.workflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x04\x20\x01(\
-    \x0b24.bitdrift.public.unary.workflows.v1.WorkflowMetadataR\x08metadata\
-    \x12y\n\x17per_rule_chart_metadata\x18\x06\x20\x03(\x0b28.bitdrift.publi\
-    c.unary.workflows.v1.PerRuleChartMetadataR\x14perRuleChartMetadataB\x08\
-    \xfaB\x05\x92\x01\x02\x10d\"\xb2\x05\n\x16UpdateWorkflowResponse\x12H\n\
-    \x08workflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.W\
+    \x12P\n\x08metadata\x18\x05\x20\x01(\x0b24.bitdrift.public.unary.workflo\
+    ws.v1.WorkflowMetadataR\x08metadata\"\xae\x02\n\x15CreateWorkflowRequest\
+    \x12H\n\x08workflow\x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.workflo\
+    ws.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bi\
+    tdrift.public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12y\n\
+    \x17per_rule_chart_metadata\x18\x05\x20\x03(\x0b28.bitdrift.public.unary\
+    .workflows.v1.PerRuleChartMetadataR\x14perRuleChartMetadataB\x08\xfaB\
+    \x05\x92\x01\x02\x10d\"(\n\x16CreateWorkflowResponse\x12\x0e\n\x02id\x18\
+    \x01\x20\x01(\tR\x02id\"\xd8\x02\n\x15UpdateWorkflowRequest\x12(\n\x0bwo\
+    rkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\x12H\n\
+    \x08workflow\x18\x03\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.W\
     orkflowR\x08workflow\x12P\n\x08metadata\x18\x04\x20\x01(\x0b24.bitdrift.\
-    public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_ru\
+    public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12y\n\x17per_ru\
     le_chart_metadata\x18\x06\x20\x03(\x0b28.bitdrift.public.unary.workflows\
-    .v1.PerRuleChartMetadataR\x14perRuleChartMetadata\x12l\n\nviolations\x18\
-    \x03\x20\x03(\x0b2L.bitdrift.public.unary.workflows.v1.UpdateWorkflowRes\
-    ponse.BlockingViolationR\nviolations\x1a\x9c\x02\n\x11BlockingViolation\
-    \x12\x9d\x01\n\x18modified_chart_has_alert\x18\x01\x20\x01(\x0b2b.bitdri\
-    ft.public.unary.workflows.v1.UpdateWorkflowResponse.BlockingViolation.Mo\
-    difiedChartHasAlertH\0R\x15modifiedChartHasAlert\x1aU\n\x15ModifiedChart\
-    HasAlert\x12\x17\n\x07rule_id\x18\x01\x20\x01(\tR\x06ruleId\x12#\n\raggr\
-    egated_id\x18\x02\x20\x01(\tR\x0caggregatedIdB\x10\n\x0eviolation_type\"\
-    _\n\x15RenameWorkflowRequest\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\n\
-    workflowIdB\x07\xfaB\x04r\x02\x18d\x12\x1c\n\x04name\x18\x03\x20\x01(\tR\
-    \x04nameB\x08\xfaB\x05r\x03\x18\xff\x01\"\xa5\x02\n\x16RenameWorkflowRes\
-    ponse\x12H\n\x08workflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.wo\
-    rkflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b\
-    24.bitdrift.public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\
-    \n\x17per_rule_chart_metadata\x18\x04\x20\x03(\x0b28.bitdrift.public.una\
-    ry.workflows.v1.PerRuleChartMetadataR\x14perRuleChartMetadata\"k\n\x19Up\
-    sertWorkflowTagsRequest\x12(\n\x0bworkflow_id\x18\x01\x20\x01(\tR\nworkf\
-    lowIdB\x07\xfaB\x04r\x02\x18d\x12$\n\x04tags\x18\x02\x20\x03(\tR\x04tags\
-    B\x10\xfaB\r\x92\x01\n\x10d\"\x06r\x04\x10\x01\x18d\"j\n\x1aUpsertWorkfl\
-    owTagsResponse\x12L\n\x04tags\x18\x01\x20\x03(\x0b28.bitdrift.public.una\
-    ry.workflows.v1.Workflow.WorkflowTagR\x04tags\"\x11\n\x0fListTagsRequest\
-    \"`\n\x10ListTagsResponse\x12L\n\x04tags\x18\x01\x20\x03(\x0b28.bitdrift\
-    .public.unary.workflows.v1.Workflow.WorkflowTagR\x04tags\"A\n\x15DeleteW\
-    orkflowRequest\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\
-    \x07\xfaB\x04r\x02\x18d\"\xa5\x01\n\x16DeleteWorkflowResponse\x12d\n\nvi\
-    olations\x18\x01\x20\x03(\x0b2D.bitdrift.public.unary.workflows.v1.Delet\
-    eWorkflowResponse.ViolationR\nviolations\x1a%\n\tViolation\x12\x18\n\x07\
-    message\x18\x01\x20\x01(\tR\x07message\"A\n\x15DeployWorkflowRequest\x12\
-    (\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\
-    \x18d\"\xf4\x02\n\x16DeployWorkflowResponse\x12M\n\nviolations\x18\x01\
-    \x20\x03(\x0b2-.bitdrift.public.unary.workflows.v1.ViolationR\nviolation\
-    s\x12H\n\x08workflow\x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.workfl\
-    ows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.b\
-    itdrift.public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\
-    \x17per_rule_chart_metadata\x18\x04\x20\x03(\x0b28.bitdrift.public.unary\
-    .workflows.v1.PerRuleChartMetadataR\x14perRuleChartMetadata\"?\n\x13Stop\
-    WorkflowRequest\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\
-    \x07\xfaB\x04r\x02\x18d\"\xa3\x02\n\x14StopWorkflowResponse\x12H\n\x08wo\
-    rkflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.Workflo\
-    wR\x08workflow\x12P\n\x08metadata\x18\x02\x20\x01(\x0b24.bitdrift.public\
-    .unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_cha\
-    rt_metadata\x18\x03\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.Pe\
-    rRuleChartMetadataR\x14perRuleChartMetadata\"_\n\x17FavoriteWorkflowRequ\
-    est\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\
+    .v1.PerRuleChartMetadataR\x14perRuleChartMetadataB\x08\xfaB\x05\x92\x01\
+    \x02\x10d\"\xb2\x05\n\x16UpdateWorkflowResponse\x12H\n\x08workflow\x18\
+    \x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08work\
+    flow\x12P\n\x08metadata\x18\x04\x20\x01(\x0b24.bitdrift.public.unary.wor\
+    kflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadat\
+    a\x18\x06\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChart\
+    MetadataR\x14perRuleChartMetadata\x12l\n\nviolations\x18\x03\x20\x03(\
+    \x0b2L.bitdrift.public.unary.workflows.v1.UpdateWorkflowResponse.Blockin\
+    gViolationR\nviolations\x1a\x9c\x02\n\x11BlockingViolation\x12\x9d\x01\n\
+    \x18modified_chart_has_alert\x18\x01\x20\x01(\x0b2b.bitdrift.public.unar\
+    y.workflows.v1.UpdateWorkflowResponse.BlockingViolation.ModifiedChartHas\
+    AlertH\0R\x15modifiedChartHasAlert\x1aU\n\x15ModifiedChartHasAlert\x12\
+    \x17\n\x07rule_id\x18\x01\x20\x01(\tR\x06ruleId\x12#\n\raggregated_id\
+    \x18\x02\x20\x01(\tR\x0caggregatedIdB\x10\n\x0eviolation_type\"_\n\x15Re\
+    nameWorkflowRequest\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowI\
+    dB\x07\xfaB\x04r\x02\x18d\x12\x1c\n\x04name\x18\x03\x20\x01(\tR\x04nameB\
+    \x08\xfaB\x05r\x03\x18\xff\x01\"\xa5\x02\n\x16RenameWorkflowResponse\x12\
+    H\n\x08workflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v\
+    1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdri\
+    ft.public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per\
+    _rule_chart_metadata\x18\x04\x20\x03(\x0b28.bitdrift.public.unary.workfl\
+    ows.v1.PerRuleChartMetadataR\x14perRuleChartMetadata\"k\n\x19UpsertWorkf\
+    lowTagsRequest\x12(\n\x0bworkflow_id\x18\x01\x20\x01(\tR\nworkflowIdB\
+    \x07\xfaB\x04r\x02\x18d\x12$\n\x04tags\x18\x02\x20\x03(\tR\x04tagsB\x10\
+    \xfaB\r\x92\x01\n\x10d\"\x06r\x04\x10\x01\x18d\"j\n\x1aUpsertWorkflowTag\
+    sResponse\x12L\n\x04tags\x18\x01\x20\x03(\x0b28.bitdrift.public.unary.wo\
+    rkflows.v1.Workflow.WorkflowTagR\x04tags\"\x11\n\x0fListTagsRequest\"`\n\
+    \x10ListTagsResponse\x12L\n\x04tags\x18\x01\x20\x03(\x0b28.bitdrift.publ\
+    ic.unary.workflows.v1.Workflow.WorkflowTagR\x04tags\"A\n\x15DeleteWorkfl\
+    owRequest\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfa\
+    B\x04r\x02\x18d\"\xa5\x01\n\x16DeleteWorkflowResponse\x12d\n\nviolations\
+    \x18\x01\x20\x03(\x0b2D.bitdrift.public.unary.workflows.v1.DeleteWorkflo\
+    wResponse.ViolationR\nviolations\x1a%\n\tViolation\x12\x18\n\x07message\
+    \x18\x01\x20\x01(\tR\x07message\"A\n\x15DeployWorkflowRequest\x12(\n\x0b\
+    workflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\"\
+    \xf4\x02\n\x16DeployWorkflowResponse\x12M\n\nviolations\x18\x01\x20\x03(\
+    \x0b2-.bitdrift.public.unary.workflows.v1.ViolationR\nviolations\x12H\n\
+    \x08workflow\x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.W\
+    orkflowR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.\
+    public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_ru\
+    le_chart_metadata\x18\x04\x20\x03(\x0b28.bitdrift.public.unary.workflows\
+    .v1.PerRuleChartMetadataR\x14perRuleChartMetadata\"?\n\x13StopWorkflowRe\
+    quest\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\
+    \x04r\x02\x18d\"\xa3\x02\n\x14StopWorkflowResponse\x12H\n\x08workflow\
+    \x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08\
+    workflow\x12P\n\x08metadata\x18\x02\x20\x01(\x0b24.bitdrift.public.unary\
+    .workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_met\
+    adata\x18\x03\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleC\
+    hartMetadataR\x14perRuleChartMetadata\"_\n\x17FavoriteWorkflowRequest\
+    \x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\
     \x02\x18d\x12\x1a\n\x08favorite\x18\x03\x20\x01(\x08R\x08favorite\"\x1a\
     \n\x18FavoriteWorkflowResponse*4\n\nStateScope\x12\x0b\n\x07UNKNOWN\x10\
     \0\x12\x19\n\x15FEATURE_FLAG_EXPOSURE\x10\x01*8\n\tMatchType\x12\n\n\x06\
@@ -16756,7 +17268,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(79);
+            let mut messages = ::std::vec::Vec::with_capacity(82);
             messages.push(GroupBy::generated_message_descriptor_data());
             messages.push(Workflow::generated_message_descriptor_data());
             messages.push(Flow::generated_message_descriptor_data());
@@ -16771,6 +17283,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(Rule::generated_message_descriptor_data());
             messages.push(StateCondition::generated_message_descriptor_data());
             messages.push(Violation::generated_message_descriptor_data());
+            messages.push(GetWorkflowDeploymentHistoryRequest::generated_message_descriptor_data());
+            messages.push(GetWorkflowDeploymentHistoryResponse::generated_message_descriptor_data());
+            messages.push(HistoricalWorkflowDeployment::generated_message_descriptor_data());
             messages.push(GetWorkflowRequest::generated_message_descriptor_data());
             messages.push(GetWorkflowResponse::generated_message_descriptor_data());
             messages.push(Filter::generated_message_descriptor_data());

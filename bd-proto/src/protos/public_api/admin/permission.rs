@@ -102,6 +102,10 @@ pub enum Permission {
     DASHBOARDS_READ = 34,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DEVICE_DEBUG)
     DEVICE_DEBUG = 36,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DEVICE_COMMAND_WRITE)
+    DEVICE_COMMAND_WRITE = 37,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DEVICE_COMMAND_READ)
+    DEVICE_COMMAND_READ = 38,
 }
 
 impl ::protobuf::Enum for Permission {
@@ -147,6 +151,8 @@ impl ::protobuf::Enum for Permission {
             33 => ::std::option::Option::Some(Permission::DASHBOARDS_WRITE),
             34 => ::std::option::Option::Some(Permission::DASHBOARDS_READ),
             36 => ::std::option::Option::Some(Permission::DEVICE_DEBUG),
+            37 => ::std::option::Option::Some(Permission::DEVICE_COMMAND_WRITE),
+            38 => ::std::option::Option::Some(Permission::DEVICE_COMMAND_READ),
             _ => ::std::option::Option::None
         }
     }
@@ -187,6 +193,8 @@ impl ::protobuf::Enum for Permission {
             "DASHBOARDS_WRITE" => ::std::option::Option::Some(Permission::DASHBOARDS_WRITE),
             "DASHBOARDS_READ" => ::std::option::Option::Some(Permission::DASHBOARDS_READ),
             "DEVICE_DEBUG" => ::std::option::Option::Some(Permission::DEVICE_DEBUG),
+            "DEVICE_COMMAND_WRITE" => ::std::option::Option::Some(Permission::DEVICE_COMMAND_WRITE),
+            "DEVICE_COMMAND_READ" => ::std::option::Option::Some(Permission::DEVICE_COMMAND_READ),
             _ => ::std::option::Option::None
         }
     }
@@ -226,6 +234,8 @@ impl ::protobuf::Enum for Permission {
         Permission::DASHBOARDS_WRITE,
         Permission::DASHBOARDS_READ,
         Permission::DEVICE_DEBUG,
+        Permission::DEVICE_COMMAND_WRITE,
+        Permission::DEVICE_COMMAND_READ,
     ];
 }
 
@@ -271,6 +281,8 @@ impl ::protobuf::EnumFull for Permission {
             Permission::DASHBOARDS_WRITE => 31,
             Permission::DASHBOARDS_READ => 32,
             Permission::DEVICE_DEBUG => 33,
+            Permission::DEVICE_COMMAND_WRITE => 34,
+            Permission::DEVICE_COMMAND_READ => 35,
         };
         Self::enum_descriptor().value_by_index(index)
     }
@@ -290,7 +302,7 @@ impl Permission {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift/public/unary/admin/v1/permission.proto\x12\x1ebitdrift.publi\
-    c.unary.admin.v1*\xb1\x05\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
+    c.unary.admin.v1*\xe4\x05\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
     IED\x10\0\x12\x11\n\rSDK_KEY_ADMIN\x10\x01\x12\x13\n\x0fAPI_KEY_CREATOR\
     \x10\x10\x12\x12\n\x0eWORKFLOW_ADMIN\x10\x02\x12\x11\n\rWORKFLOW_READ\
     \x10\x03\x12\x12\n\x0eWORKFLOW_WRITE\x10\x04\x12\x13\n\x0fWORKFLOW_DEPLO\
@@ -307,7 +319,8 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x12\x0e\n\nTEAMS_READ\x10\x1d\x12\x0f\n\x0bENTITY_READ\x10\x1e\x12\x10\
     \n\x0cENTITY_WRITE\x10\x1f\x12\x14\n\x10DASHBOARDS_ADMIN\x10\x20\x12\x14\
     \n\x10DASHBOARDS_WRITE\x10!\x12\x13\n\x0fDASHBOARDS_READ\x10\"\x12\x10\n\
-    \x0cDEVICE_DEBUG\x10$b\x06proto3\
+    \x0cDEVICE_DEBUG\x10$\x12\x18\n\x14DEVICE_COMMAND_WRITE\x10%\x12\x17\n\
+    \x13DEVICE_COMMAND_READ\x10&b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

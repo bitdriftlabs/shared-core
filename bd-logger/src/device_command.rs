@@ -130,7 +130,7 @@ pub struct CommandInvocation {
   /// Present only when the command was directly dispatched to the device.
   pub command_id: Option<Uuid>,
   pub registered_command_id: String,
-  pub arguments: Vec<Data>,
+  pub arguments: HashMap<String, Data>,
   pub session_id: String,
 }
 
@@ -623,7 +623,7 @@ async fn execute_buffer_dump_device_command(
 async fn execute_custom_device_command(
   command_id: String,
   registered_command_id: String,
-  arguments: Vec<Data>,
+  arguments: HashMap<String, Data>,
   data_upload_tx: Sender<DataUpload>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,

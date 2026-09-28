@@ -119,7 +119,7 @@ use flate2::write::ZlibDecoder;
 use parking_lot::{Mutex, ReentrantMutex};
 use pretty_assertions::assert_eq;
 use protobuf::Message;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::ops::Add;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -143,7 +143,7 @@ struct CountingDeviceCommandHandler {
 }
 
 struct ArgumentCapturingDeviceCommandHandler {
-  arguments: Mutex<Vec<Vec<Data>>>,
+  arguments: Mutex<Vec<HashMap<String, Data>>>,
   invoked_tx: mpsc::Sender<()>,
 }
 
@@ -2925,13 +2925,17 @@ fn custom_device_command_configuration(
   command_id: &str,
   registered_command_id: &str,
 ) -> bd_proto::protos::client::api::ConfigurationUpdate {
-  custom_device_command_configuration_with_arguments(command_id, registered_command_id, vec![])
+  custom_device_command_configuration_with_arguments(
+    command_id,
+    registered_command_id,
+    HashMap::new(),
+  )
 }
 
 fn custom_device_command_configuration_with_arguments(
   command_id: &str,
   registered_command_id: &str,
-  arguments: Vec<Data>,
+  arguments: HashMap<String, Data>,
 ) -> bd_proto::protos::client::api::ConfigurationUpdate {
   configuration_update(
     "custom-command",
@@ -2969,10 +2973,13 @@ fn custom_device_command_configuration_with_arguments(
 }
 
 fn workflow_command_rule(registered_command_id: &str) -> Rule {
-  workflow_command_rule_with_arguments(registered_command_id, vec![])
+  workflow_command_rule_with_arguments(registered_command_id, HashMap::new())
 }
 
-fn workflow_command_rule_with_arguments(registered_command_id: &str, arguments: Vec<Data>) -> Rule {
+fn workflow_command_rule_with_arguments(
+  registered_command_id: &str,
+  arguments: HashMap<String, Data>,
+) -> Rule {
   Rule {
     rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
       command_selector: Some(WorkflowCommandSelector {
@@ -3403,20 +3410,29 @@ fn runtime_device_command_keeps_selected_handler_after_unregistration() {
 fn registered_custom_device_command_delivers_arguments() {
   let command_id = "a52206b4-d8f7-4d7d-a3f4-55ded4f82f9a";
   let registered_command_id = "com.example.capture.arguments";
-  let arguments = vec![
-    Data {
-      data_type: Some(Data_type::StringData("capture".to_string())),
-      ..Default::default()
-    },
-    Data {
-      data_type: Some(Data_type::IntData(42)),
-      ..Default::default()
-    },
-    Data {
-      data_type: Some(Data_type::BoolData(true)),
-      ..Default::default()
-    },
-  ];
+  let arguments = HashMap::from([
+    (
+      "mode".to_string(),
+      Data {
+        data_type: Some(Data_type::StringData("capture".to_string())),
+        ..Default::default()
+      },
+    ),
+    (
+      "limit".to_string(),
+      Data {
+        data_type: Some(Data_type::IntData(42)),
+        ..Default::default()
+      },
+    ),
+    (
+      "upload".to_string(),
+      Data {
+        data_type: Some(Data_type::BoolData(true)),
+        ..Default::default()
+      },
+    ),
+  ]);
   let (invoked_tx, invoked_rx) = mpsc::channel();
   let handler = Arc::new(ArgumentCapturingDeviceCommandHandler {
     arguments: Mutex::new(vec![]),
@@ -3667,7 +3683,7 @@ fn runtime_workflow_command_uses_registered_handler() {
   );
 
   invoked_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-  assert_eq!(*handler.arguments.lock(), vec![vec![]]);
+  assert_eq!(*handler.arguments.lock(), vec![HashMap::new()]);
 }
 
 #[test]
@@ -3753,20 +3769,29 @@ fn workflow_command_attachment_uploads_zlib_and_releases_retained_payload() {
 #[test]
 fn workflow_registered_command_delivers_arguments() {
   let registered_command_id = "com.example.workflow.arguments";
-  let arguments = vec![
-    Data {
-      data_type: Some(Data_type::StringData("workflow".to_string())),
-      ..Default::default()
-    },
-    Data {
-      data_type: Some(Data_type::DoubleData(3.5)),
-      ..Default::default()
-    },
-    Data {
-      data_type: Some(Data_type::BoolData(false)),
-      ..Default::default()
-    },
-  ];
+  let arguments = HashMap::from([
+    (
+      "mode".to_string(),
+      Data {
+        data_type: Some(Data_type::StringData("workflow".to_string())),
+        ..Default::default()
+      },
+    ),
+    (
+      "rate".to_string(),
+      Data {
+        data_type: Some(Data_type::DoubleData(3.5)),
+        ..Default::default()
+      },
+    ),
+    (
+      "upload".to_string(),
+      Data {
+        data_type: Some(Data_type::BoolData(false)),
+        ..Default::default()
+      },
+    ),
+  ]);
   let (invoked_tx, invoked_rx) = mpsc::channel();
   let handler = Arc::new(ArgumentCapturingDeviceCommandHandler {
     arguments: Mutex::new(vec![]),

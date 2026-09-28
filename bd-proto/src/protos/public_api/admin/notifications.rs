@@ -733,6 +733,8 @@ pub mod notification_group {
         // message fields
         // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.NotificationGroup.HttpsWebhook.url)
         pub url: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.NotificationGroup.HttpsWebhook.headers)
+        pub headers: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.NotificationGroup.HttpsWebhook.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -750,12 +752,17 @@ pub mod notification_group {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut fields = ::std::vec::Vec::with_capacity(2);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "url",
                 |m: &HttpsWebhook| { &m.url },
                 |m: &mut HttpsWebhook| { &mut m.url },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
+                "headers",
+                |m: &HttpsWebhook| { &m.headers },
+                |m: &mut HttpsWebhook| { &mut m.headers },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HttpsWebhook>(
                 "NotificationGroup.HttpsWebhook",
@@ -778,6 +785,21 @@ pub mod notification_group {
                     10 => {
                         self.url = is.read_string()?;
                     },
+                    18 => {
+                        let len = is.read_raw_varint32()?;
+                        let old_limit = is.push_limit(len as u64)?;
+                        let mut key = ::std::default::Default::default();
+                        let mut value = ::std::default::Default::default();
+                        while let Some(tag) = is.read_raw_tag_or_eof()? {
+                            match tag {
+                                10 => key = is.read_string()?,
+                                18 => value = is.read_string()?,
+                                _ => ::protobuf::rt::skip_field_for_tag(tag, is)?,
+                            };
+                        }
+                        is.pop_limit(old_limit);
+                        self.headers.insert(key, value);
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -793,6 +815,12 @@ pub mod notification_group {
             if !self.url.is_empty() {
                 my_size += ::protobuf::rt::string_size(1, &self.url);
             }
+            for (k, v) in &self.headers {
+                let mut entry_size = 0;
+                entry_size += ::protobuf::rt::string_size(1, &k);
+                entry_size += ::protobuf::rt::string_size(2, &v);
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
+            };
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -802,6 +830,15 @@ pub mod notification_group {
             if !self.url.is_empty() {
                 os.write_string(1, &self.url)?;
             }
+            for (k, v) in &self.headers {
+                let mut entry_size = 0;
+                entry_size += ::protobuf::rt::string_size(1, &k);
+                entry_size += ::protobuf::rt::string_size(2, &v);
+                os.write_raw_varint32(18)?; // Tag.
+                os.write_raw_varint32(entry_size as u32)?;
+                os.write_string(1, &k)?;
+                os.write_string(2, &v)?;
+            };
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -820,15 +857,13 @@ pub mod notification_group {
 
         fn clear(&mut self) {
             self.url.clear();
+            self.headers.clear();
             self.special_fields.clear();
         }
 
         fn default_instance() -> &'static HttpsWebhook {
-            static instance: HttpsWebhook = HttpsWebhook {
-                url: ::std::string::String::new(),
-                special_fields: ::protobuf::SpecialFields::new(),
-            };
-            &instance
+            static instance: ::protobuf::rt::Lazy<HttpsWebhook> = ::protobuf::rt::Lazy::new();
+            instance.get(HttpsWebhook::new)
         }
     }
 
@@ -2637,7 +2672,7 @@ impl ::protobuf::reflect::ProtobufValue for TestAlertNotificationResponse {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n2bitdrift/public/unary/admin/v1/notifications.proto\x12\x1ebitdrift.pu\
     blic.unary.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17valida\
-    te/validate.proto\"\xdf\t\n\x11NotificationGroup\x12\x1e\n\x04name\x18\
+    te/validate.proto\"\x9b\x0b\n\x11NotificationGroup\x12\x1e\n\x04name\x18\
     \x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12/\n\x0e\
     slack_channels\x18\x02\x20\x03(\tR\rslackChannelsB\x08\xfaB\x05\x92\x01\
     \x02\x10d\x12\x8b\x01\n\x18pager_duty_notifications\x18\x03\x20\x03(\x0b\
@@ -2665,38 +2700,43 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     in.v1.NotificationGroup.DataDogNotification.DataDogSeverityR\x08severity\
     B\x08\xfaB\x05\x82\x01\x02\x10\x01\">\n\x0fDataDogSeverity\x12\x18\n\x14\
     SEVERITY_UNSPECIFIED\x10\0\x12\x07\n\x03LOW\x10\x01\x12\x08\n\x04HIGH\
-    \x10\x02\x1a,\n\x0cHttpsWebhook\x12\x1c\n\x03url\x18\x01\x20\x01(\tR\x03\
-    urlB\n\xfaB\x07r\x05\x10\x01\x18\x80\x10\"\x1e\n\x1cGetNotificationGroup\
-    sRequest\"\xa2\x03\n\x1dGetNotificationGroupsResponse\x12\x8c\x01\n\x13n\
-    otification_groups\x18\x01\x20\x03(\x0b2[.bitdrift.public.unary.admin.v1\
-    .GetNotificationGroupsResponse.NotificationGroupWithMetadataR\x12notific\
-    ationGroups\x1a\xf1\x01\n\x1dNotificationGroupWithMetadata\x12`\n\x12not\
-    ification_group\x18\x01\x20\x01(\x0b21.bitdrift.public.unary.admin.v1.No\
-    tificationGroupR\x11notificationGroup\x129\n\ncreated_at\x18\x02\x20\x01\
-    (\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x123\n\x07used_at\x18\
-    \x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x06usedAt\"\x8c\x01\n\
-    \x1eUpsertNotificationGroupRequest\x12j\n\x12notification_group\x18\x01\
-    \x20\x01(\x0b21.bitdrift.public.unary.admin.v1.NotificationGroupR\x11not\
-    ificationGroupB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"!\n\x1fUpsertNotificat\
-    ionGroupResponse\"@\n\x1eDeleteNotificationGroupRequest\x12\x1e\n\x04nam\
-    e\x18\x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"!\n\
-    \x1fDeleteNotificationGroupResponse\">\n\x1cTestNotificationGroupRequest\
-    \x12\x1e\n\x04name\x18\x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\
-    \x18\xff\x01\"7\n\x1dTestNotificationGroupResponse\x12\x16\n\x06errors\
-    \x18\x01\x20\x03(\tR\x06errors\"@\n\x11WorkflowAlertTest\x12+\n\x0bworkf\
-    low_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\
-    \x01\"r\n\x0fIssuesAlertTest\x12\x20\n\x07view_id\x18\x01\x20\x01(\x03R\
-    \x06viewIdB\x07\xfaB\x04\"\x02\x20\0\x12.\n\nalert_uuid\x18\x02\x20\x01(\
-    \tH\0R\talertUuidB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x88\x01\x01B\r\n\
-    \x0b_alert_uuid\"\xeb\x02\n\x1cTestAlertNotificationRequest\x12Z\n\x0ewo\
-    rkflow_alert\x18\x01\x20\x01(\x0b21.bitdrift.public.unary.admin.v1.Workf\
-    lowAlertTestH\0R\rworkflowAlert\x12T\n\x0cissues_alert\x18\x02\x20\x01(\
-    \x0b2/.bitdrift.public.unary.admin.v1.IssuesAlertTestH\0R\x0bissuesAlert\
-    \x12B\n\x18custom_notification_text\x18\x03\x20\x01(\tR\x16customNotific\
-    ationTextB\x08\xfaB\x05r\x03\x18\x80\x10\x12B\n\x18notification_group_na\
-    mes\x18\x04\x20\x03(\tR\x16notificationGroupNamesB\x08\xfaB\x05\x92\x01\
-    \x02\x10dB\x11\n\nalert_kind\x12\x03\xf8B\x01\"7\n\x1dTestAlertNotificat\
-    ionResponse\x12\x16\n\x06errors\x18\x01\x20\x03(\tR\x06errorsb\x06proto3\
+    \x10\x02\x1a\xe7\x01\n\x0cHttpsWebhook\x12\x1c\n\x03url\x18\x01\x20\x01(\
+    \tR\x03urlB\n\xfaB\x07r\x05\x10\x01\x18\x80\x10\x12}\n\x07headers\x18\
+    \x02\x20\x03(\x0b2K.bitdrift.public.unary.admin.v1.NotificationGroup.Htt\
+    psWebhook.HeadersEntryR\x07headersB\x16\xfaB\x13\x9a\x01\x10\x10\x14\"\
+    \x05r\x03\x18\x80\x02*\x05r\x03\x18\x80\x20\x1a:\n\x0cHeadersEntry\x12\
+    \x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\
+    \x01(\tR\x05value:\x028\x01\"\x1e\n\x1cGetNotificationGroupsRequest\"\
+    \xa2\x03\n\x1dGetNotificationGroupsResponse\x12\x8c\x01\n\x13notificatio\
+    n_groups\x18\x01\x20\x03(\x0b2[.bitdrift.public.unary.admin.v1.GetNotifi\
+    cationGroupsResponse.NotificationGroupWithMetadataR\x12notificationGroup\
+    s\x1a\xf1\x01\n\x1dNotificationGroupWithMetadata\x12`\n\x12notification_\
+    group\x18\x01\x20\x01(\x0b21.bitdrift.public.unary.admin.v1.Notification\
+    GroupR\x11notificationGroup\x129\n\ncreated_at\x18\x02\x20\x01(\x0b2\x1a\
+    .google.protobuf.TimestampR\tcreatedAt\x123\n\x07used_at\x18\x03\x20\x01\
+    (\x0b2\x1a.google.protobuf.TimestampR\x06usedAt\"\x8c\x01\n\x1eUpsertNot\
+    ificationGroupRequest\x12j\n\x12notification_group\x18\x01\x20\x01(\x0b2\
+    1.bitdrift.public.unary.admin.v1.NotificationGroupR\x11notificationGroup\
+    B\x08\xfaB\x05\x8a\x01\x02\x10\x01\"!\n\x1fUpsertNotificationGroupRespon\
+    se\"@\n\x1eDeleteNotificationGroupRequest\x12\x1e\n\x04name\x18\x01\x20\
+    \x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"!\n\x1fDeleteNoti\
+    ficationGroupResponse\">\n\x1cTestNotificationGroupRequest\x12\x1e\n\x04\
+    name\x18\x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"7\
+    \n\x1dTestNotificationGroupResponse\x12\x16\n\x06errors\x18\x01\x20\x03(\
+    \tR\x06errors\"@\n\x11WorkflowAlertTest\x12+\n\x0bworkflow_id\x18\x02\
+    \x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"r\n\x0fIs\
+    suesAlertTest\x12\x20\n\x07view_id\x18\x01\x20\x01(\x03R\x06viewIdB\x07\
+    \xfaB\x04\"\x02\x20\0\x12.\n\nalert_uuid\x18\x02\x20\x01(\tH\0R\talertUu\
+    idB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x88\x01\x01B\r\n\x0b_alert_uuid\
+    \"\xeb\x02\n\x1cTestAlertNotificationRequest\x12Z\n\x0eworkflow_alert\
+    \x18\x01\x20\x01(\x0b21.bitdrift.public.unary.admin.v1.WorkflowAlertTest\
+    H\0R\rworkflowAlert\x12T\n\x0cissues_alert\x18\x02\x20\x01(\x0b2/.bitdri\
+    ft.public.unary.admin.v1.IssuesAlertTestH\0R\x0bissuesAlert\x12B\n\x18cu\
+    stom_notification_text\x18\x03\x20\x01(\tR\x16customNotificationTextB\
+    \x08\xfaB\x05r\x03\x18\x80\x10\x12B\n\x18notification_group_names\x18\
+    \x04\x20\x03(\tR\x16notificationGroupNamesB\x08\xfaB\x05\x92\x01\x02\x10\
+    dB\x11\n\nalert_kind\x12\x03\xf8B\x01\"7\n\x1dTestAlertNotificationRespo\
+    nse\x12\x16\n\x06errors\x18\x01\x20\x03(\tR\x06errorsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
