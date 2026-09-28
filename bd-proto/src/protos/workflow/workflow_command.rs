@@ -314,7 +314,7 @@ pub mod workflow_command_selector {
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.RegisteredCommand.registered_command_id)
         pub registered_command_id: ::std::string::String,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.RegisteredCommand.arguments)
-        pub arguments: ::std::vec::Vec<super::super::payload::Data>,
+        pub arguments: ::std::collections::HashMap<::std::string::String, super::super::payload::Data>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.RegisteredCommand.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -339,7 +339,7 @@ pub mod workflow_command_selector {
                 |m: &RegisteredCommand| { &m.registered_command_id },
                 |m: &mut RegisteredCommand| { &mut m.registered_command_id },
             ));
-            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
                 "arguments",
                 |m: &RegisteredCommand| { &m.arguments },
                 |m: &mut RegisteredCommand| { &mut m.arguments },
@@ -366,7 +366,19 @@ pub mod workflow_command_selector {
                         self.registered_command_id = is.read_string()?;
                     },
                     18 => {
-                        self.arguments.push(is.read_message()?);
+                        let len = is.read_raw_varint32()?;
+                        let old_limit = is.push_limit(len as u64)?;
+                        let mut key = ::std::default::Default::default();
+                        let mut value = ::std::default::Default::default();
+                        while let Some(tag) = is.read_raw_tag_or_eof()? {
+                            match tag {
+                                10 => key = is.read_string()?,
+                                18 => value = is.read_message()?,
+                                _ => ::protobuf::rt::skip_field_for_tag(tag, is)?,
+                            };
+                        }
+                        is.pop_limit(old_limit);
+                        self.arguments.insert(key, value);
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -383,9 +395,12 @@ pub mod workflow_command_selector {
             if !self.registered_command_id.is_empty() {
                 my_size += ::protobuf::rt::string_size(1, &self.registered_command_id);
             }
-            for value in &self.arguments {
-                let len = value.compute_size();
-                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            for (k, v) in &self.arguments {
+                let mut entry_size = 0;
+                entry_size += ::protobuf::rt::string_size(1, &k);
+                let len = v.compute_size();
+                entry_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
             };
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
@@ -396,7 +411,14 @@ pub mod workflow_command_selector {
             if !self.registered_command_id.is_empty() {
                 os.write_string(1, &self.registered_command_id)?;
             }
-            for v in &self.arguments {
+            for (k, v) in &self.arguments {
+                let mut entry_size = 0;
+                entry_size += ::protobuf::rt::string_size(1, &k);
+                let len = v.cached_size() as u64;
+                entry_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                os.write_raw_varint32(18)?; // Tag.
+                os.write_raw_varint32(entry_size as u32)?;
+                os.write_string(1, &k)?;
                 ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
             };
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -422,12 +444,8 @@ pub mod workflow_command_selector {
         }
 
         fn default_instance() -> &'static RegisteredCommand {
-            static instance: RegisteredCommand = RegisteredCommand {
-                registered_command_id: ::std::string::String::new(),
-                arguments: ::std::vec::Vec::new(),
-                special_fields: ::protobuf::SpecialFields::new(),
-            };
-            &instance
+            static instance: ::protobuf::rt::Lazy<RegisteredCommand> = ::protobuf::rt::Lazy::new();
+            instance.get(RegisteredCommand::new)
         }
     }
 
@@ -763,20 +781,23 @@ pub mod workflow_command_selector {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n;bitdrift_public/protobuf/workflow/v1/workflow_command.proto\x12$bitdr\
     ift_public.protobuf.workflow.v1\x1a1bitdrift_public/protobuf/logging/v1/\
-    payload.proto\x1a\x17validate/validate.proto\"\x8d\x05\n\x17WorkflowComm\
+    payload.proto\x1a\x17validate/validate.proto\"\xab\x06\n\x17WorkflowComm\
     andSelector\x12w\n\x0fbuiltin_command\x18\x01\x20\x01(\x0b2L.bitdrift_pu\
     blic.protobuf.workflow.v1.WorkflowCommandSelector.BuiltinCommandH\0R\x0e\
     builtinCommand\x12\x80\x01\n\x12registered_command\x18\x02\x20\x01(\x0b2\
     O.bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.Registere\
-    dCommandH\0R\x11registeredCommand\x1a\x99\x01\n\x11RegisteredCommand\x12\
+    dCommandH\0R\x11registeredCommand\x1a\xb7\x02\n\x11RegisteredCommand\x12\
     ;\n\x15registered_command_id\x18\x01\x20\x01(\tR\x13registeredCommandIdB\
-    \x07\xfaB\x04r\x02\x10\x01\x12G\n\targuments\x18\x02\x20\x03(\x0b2).bitd\
-    rift_public.protobuf.logging.v1.DataR\targuments\x1a\xc0\x01\n\x0eBuilti\
-    nCommand\x12\x86\x01\n\x0ftake_screenshot\x18\x01\x20\x01(\x0b2[.bitdrif\
-    t_public.protobuf.workflow.v1.WorkflowCommandSelector.BuiltinCommand.Tak\
-    eScreenshotH\0R\x0etakeScreenshot\x1a\x10\n\x0eTakeScreenshotB\x13\n\x0c\
-    command_type\x12\x03\xf8B\x01B\x17\n\x10command_selector\x12\x03\xf8B\
-    \x01b\x06proto3\
+    \x07\xfaB\x04r\x02\x10\x01\x12|\n\targuments\x18\x02\x20\x03(\x0b2^.bitd\
+    rift_public.protobuf.workflow.v1.WorkflowCommandSelector.RegisteredComma\
+    nd.ArgumentsEntryR\targuments\x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\
+    \x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdr\
+    ift_public.protobuf.logging.v1.DataR\x05value:\x028\x01\x1a\xc0\x01\n\
+    \x0eBuiltinCommand\x12\x86\x01\n\x0ftake_screenshot\x18\x01\x20\x01(\x0b\
+    2[.bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector.BuiltinC\
+    ommand.TakeScreenshotH\0R\x0etakeScreenshot\x1a\x10\n\x0eTakeScreenshotB\
+    \x13\n\x0ccommand_type\x12\x03\xf8B\x01B\x17\n\x10command_selector\x12\
+    \x03\xf8B\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

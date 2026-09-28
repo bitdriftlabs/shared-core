@@ -168,6 +168,5 @@ fn main() {
   set_working_directory_to_package_root();
 
   generate_protos(proto_config::get_proto_configs());
-  generate_protos(proto_config::get_public_api_proto_configs());
   generate_flatbuffers(&flatc);
 }
