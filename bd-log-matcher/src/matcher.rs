@@ -789,8 +789,14 @@ fn resolve_structured_json_path<'a>(
 /// Resolves a scalar for workflow extraction, including numeric and boolean structured leaves.
 #[must_use]
 pub fn extract_json_path<'a>(value: &'a DataValue, path: &[JsonPathToken]) -> Option<Cow<'a, str>> {
+  if path
+    .iter()
+    .any(|token| matches!(token, JsonPathToken::Index(index) if *index < 0))
+  {
+    return None;
+  }
   if let Some(json) = value.as_str() {
-    return json_path::extract(json, path);
+    return json_path::resolve(json, path);
   }
   match structured_json_leaf(value, path)? {
     DataValue::Boolean(value) => Some(Cow::Owned(value.to_string())),

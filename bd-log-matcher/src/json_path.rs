@@ -15,20 +15,12 @@ pub(super) fn resolve<'a>(input: &'a str, path: &[JsonPathToken]) -> Option<Cow<
   parser.walk_value(path, 0)
 }
 
-// Extraction supports end-relative indices without changing existing matcher behavior.
-pub(super) fn extract<'a>(input: &'a str, path: &[JsonPathToken]) -> Option<Cow<'a, str>> {
-  let mut parser = Parser::new(input);
-  parser.allow_negative_indices = true;
-  parser.walk_value(path, 0)
-}
-
 /// A streaming JSON path parser that scans only the requested path rather than constructing a DOM.
 /// Unescaped strings borrow from the input; decoding escaped keys or values allocates. Parsing is
 /// limited to `MAX_JSON_DEPTH` nested containers.
 struct Parser<'a> {
   input: &'a str,
   pos: usize,
-  allow_negative_indices: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -40,11 +32,7 @@ struct StringToken {
 
 impl<'a> Parser<'a> {
   const fn new(input: &'a str) -> Self {
-    Self {
-      input,
-      pos: 0,
-      allow_negative_indices: false,
-    }
+    Self { input, pos: 0 }
   }
 
   fn walk_value(&mut self, path: &[JsonPathToken], depth: usize) -> Option<Cow<'a, str>> {
@@ -132,36 +120,7 @@ impl<'a> Parser<'a> {
     path: &[JsonPathToken],
     depth: usize,
   ) -> Option<Cow<'a, str>> {
-    let index = if requested_index < 0 && self.allow_negative_indices {
-      // Count elements without building a DOM, then revisit only the selected element.
-      let start = self.pos;
-      let count = self.array_length(depth)?;
-      self.pos = start;
-      count.checked_sub(usize::try_from(requested_index.unsigned_abs()).ok()?)?
-    } else {
-      usize::try_from(requested_index).ok()?
-    };
-    self.walk_positive_array_index(index, path, depth)
-  }
-
-  fn array_length(&mut self, depth: usize) -> Option<usize> {
-    (depth < MAX_JSON_DEPTH).then_some(())?;
-    self.consume(b'[')?;
-    self.skip_whitespace();
-    if self.consume_if(b']') {
-      return Some(0);
-    }
-    let mut count = 0_usize;
-    loop {
-      self.parse_value(depth + 1)?;
-      count = count.checked_add(1)?;
-      self.skip_whitespace();
-      if self.consume_if(b']') {
-        return Some(count);
-      }
-      self.consume(b',')?;
-      self.skip_whitespace();
-    }
+    self.walk_positive_array_index(usize::try_from(requested_index).ok()?, path, depth)
   }
 
   fn walk_positive_array_index(

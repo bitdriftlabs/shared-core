@@ -1926,12 +1926,12 @@ fn double_matcher_with_u64_field() {
 fn json_extraction_scalar_types_and_paths() {
   let path = [
     JsonPathToken::Key("items".into()),
-    JsonPathToken::Index(-1),
+    JsonPathToken::Index(0),
     JsonPathToken::Key("a.b".into()),
   ];
   for (json, expected) in [
     (
-      r#"{"items":[{}, {"a.b":"hello\nworld"}]}"#,
+      r#"{"items":[{"a.b":"hello\nworld"}]}"#,
       Some("hello\nworld"),
     ),
     (r#"{"items":[{"a.b":12.5}]}"#, Some("12.5")),
@@ -1966,4 +1966,17 @@ fn json_extraction_scalar_types_and_paths() {
     )]));
     assert_eq!(extract_json_path(&nested, &path).as_deref(), Some(expected));
   }
+}
+
+#[test]
+fn json_extraction_rejects_negative_indices() {
+  let path = [JsonPathToken::Index(-1)];
+  assert!(extract_json_path(&DataValue::String(r#"["value"]"#.into()), &path).is_none());
+  assert!(
+    extract_json_path(
+      &DataValue::from(vec![DataValue::String("value".into())]),
+      &path
+    )
+    .is_none()
+  );
 }
