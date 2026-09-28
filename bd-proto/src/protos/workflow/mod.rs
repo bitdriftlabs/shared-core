@@ -5,11 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-source_info_gated_mod! {
-  save_field => "with_source/save_field.rs",
-  workflow => "with_source/workflow.rs",
-  workflow_command => "with_source/workflow_command.rs",
-}
+pub mod save_field;
+pub mod workflow;
+pub mod workflow_command;
 
 // The generated workflow command imports logging's `payload.proto` as `super::payload`.
 pub mod payload {

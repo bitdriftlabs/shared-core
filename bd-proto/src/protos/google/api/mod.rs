@@ -5,7 +5,5 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-source_info_gated_mod! {
-  annotations => "with_source/annotations.rs",
-  http => "with_source/http.rs",
-}
+pub mod annotations;
+pub mod http;

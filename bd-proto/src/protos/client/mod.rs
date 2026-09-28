@@ -5,15 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-source_info_gated_mod! {
-  api => "with_source/api.rs",
-  artifact => "with_source/artifact.rs",
-  feature_flag => "with_source/feature_flag.rs",
-  key_value => "with_source/key_value.rs",
-  matcher => "with_source/matcher.rs",
-  metric => "with_source/metric.rs",
-  runtime => "with_source/runtime.rs",
-}
+pub mod api;
+pub mod artifact;
+pub mod feature_flag;
+pub mod key_value;
+pub mod matcher;
+pub mod metric;
+pub mod runtime;
 
 use super::bdtail::bdtail_config;
 use super::config::v1::config;

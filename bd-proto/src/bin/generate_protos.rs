@@ -36,17 +36,9 @@ fn handle_codegen_result<E: Display>(result: Result<(), E>) {
   }
 }
 
-// Generate proto files for a set of configs. When `include_source_info` is true, the
-// `--include_source_info` flag is passed to protoc so generated descriptors retain comments.
-fn generate_protos(
-  configs: Vec<ProtoConfig>,
-  output_dir_override: Option<&dyn Fn(&str) -> String>,
-  include_source_info: bool,
-) {
+fn generate_protos(configs: Vec<ProtoConfig>) {
   for config in configs {
-    let output_dir =
-      output_dir_override.map_or_else(|| config.output_dir.to_string(), |f| f(config.output_dir));
-    std::fs::create_dir_all(&output_dir).unwrap();
+    std::fs::create_dir_all(config.output_dir).unwrap();
 
     let mut customize = Customize::default()
       .gen_mod_rs(false)
@@ -63,16 +55,12 @@ fn generate_protos(
     let mut codegen = protobuf_codegen::Codegen::new();
     codegen.protoc();
 
-    if include_source_info {
-      codegen.protoc_extra_arg("--include_source_info");
-    }
-
     handle_codegen_result(
       codegen
         .customize(customize)
         .includes(config.includes)
         .inputs(config.inputs)
-        .out_dir(&output_dir)
+        .out_dir(config.output_dir)
         .capture_stderr()
         .run(),
     );
@@ -179,17 +167,7 @@ fn main() {
   verify_flatc_version(&flatc);
   set_working_directory_to_package_root();
 
-  generate_protos(proto_config::get_proto_configs(), None, false);
-  generate_protos(
-    proto_config::get_proto_configs(),
-    Some(&|dir: &str| format!("{dir}/with_source")),
-    true,
-  );
-  generate_protos(proto_config::get_public_api_proto_configs(), None, false);
-  generate_protos(
-    proto_config::get_public_api_proto_configs(),
-    Some(&|dir: &str| dir.replacen("public_api", "public_api_with_source", 1)),
-    true,
-  );
+  generate_protos(proto_config::get_proto_configs());
+  generate_protos(proto_config::get_public_api_proto_configs());
   generate_flatbuffers(&flatc);
 }

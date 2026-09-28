@@ -1,8 +1,6 @@
-source_info_gated_mod! {
-  matcher => "with_source/matcher.rs",
-  state_payload => "with_source/state_payload.rs",
-  scope => "with_source/scope.rs",
-}
+pub mod matcher;
+pub mod scope;
+pub mod state_payload;
 
 // The generated state payload imports logging's `payload.proto` as `super::payload`.
 // Keep the legacy state namespace while routing that import's descriptor to logging.
