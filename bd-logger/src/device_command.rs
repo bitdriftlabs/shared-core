@@ -16,7 +16,6 @@ use bd_api::{DataUpload, TriggerUpload, TriggerUploadCompletion};
 use bd_artifact_upload::UploadSource;
 use bd_log_primitives::LogFields;
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
-use bd_proto::protos::bdtail::bdtail_config::device_command_request::Command_type;
 use bd_proto::protos::client::api::device_command_update::completed::{Attachment, attachment};
 use bd_proto::protos::client::api::{
   DeviceCommandResultContext,
@@ -25,7 +24,10 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
-use bd_proto::protos::workflow::workflow_command::workflow_command_selector;
+use bd_proto::protos::workflow::workflow_command::{
+  WellKnownCommandType,
+  workflow_command_selector,
+};
 use bd_workflows::workflow::{
   WorkflowCommandCompletionToken,
   WorkflowCommandOutcome,
@@ -237,14 +239,15 @@ impl WorkflowCommandDispatcher {
   pub fn dispatch(&self, request: &WorkflowCommandRequest) {
     let token = request.completion_token();
     let completion_tx = self.completion_tx.clone();
-    let command_selector = request.command_selector.command_selector.clone();
+    let command_selector = request.command_selector.clone();
     let command_dispatcher = self.command_dispatcher.clone();
     let attachment_store = self.attachment_store.clone();
     let remote_screenshot_capture_handler = self.remote_screenshot_capture_handler.clone();
     let session_id = request.session_id.clone();
 
     tokio::task::spawn(async move {
-      let outcome = match command_selector {
+      let arguments = command_selector.arguments;
+      let outcome = match command_selector.command_selector {
         Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
           if let Some(handler) = command_dispatcher.get_handler(&command.registered_command_id) {
             let execution = tokio::task::spawn(async move {
@@ -252,7 +255,7 @@ impl WorkflowCommandDispatcher {
                 .execute(CommandInvocation {
                   command_id: None,
                   registered_command_id: command.registered_command_id,
-                  arguments: command.arguments,
+                  arguments,
                   session_id,
                 })
                 .await
@@ -271,6 +274,7 @@ impl WorkflowCommandDispatcher {
         Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
           workflow_builtin_command_outcome(
             command,
+            &arguments,
             remote_screenshot_capture_handler,
             &attachment_store,
           )
@@ -301,11 +305,12 @@ impl WorkflowCommandDispatcher {
 
 async fn workflow_builtin_command_outcome(
   command: workflow_command_selector::BuiltinCommand,
+  arguments: &HashMap<String, Data>,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   attachment_store: &AttachmentStoreHandle,
 ) -> WorkflowCommandOutcome {
-  match command.command_type {
-    Some(workflow_command_selector::builtin_command::Command_type::TakeScreenshot(_)) => {
+  match command.type_.enum_value() {
+    Ok(WellKnownCommandType::TAKE_SCREENSHOT) if arguments.is_empty() => {
       match remote_screenshot_capture_handler.capture().await {
         Ok(screenshot) if let Err(error) = validate_screenshot(&screenshot) => {
           workflow_command_failure(error)
@@ -327,7 +332,7 @@ async fn workflow_builtin_command_outcome(
         Err(error) => workflow_command_failure(&error),
       }
     },
-    None => workflow_command_failure("unsupported workflow command"),
+    _ => workflow_command_failure("unsupported workflow command"),
   }
 }
 
@@ -395,59 +400,52 @@ async fn execute_device_command(
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
 ) -> anyhow::Result<()> {
   let command_id = command.command_id.to_string();
-  match command.command_type {
-    Some(Command_type::DumpDeviceBuffer(_)) => {
-      execute_buffer_dump_device_command(
+  let selector = command.command_selector.into_option().unwrap_or_default();
+  let arguments = selector.arguments;
+  match selector.command_selector {
+    Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
+      execute_custom_device_command(
         command_id,
+        command.registered_command_id.clone(),
+        arguments,
         data_upload_tx,
-        trigger_upload_tx,
         session_strategy,
+        artifact_client,
+        command_dispatcher,
       )
       .await
     },
-    Some(Command_type::CommandSelector(selector)) => match selector.command_selector {
-      Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
-        execute_custom_device_command(
-          command_id,
-          command.registered_command_id.clone(),
-          command.arguments,
-          data_upload_tx,
-          session_strategy,
-          artifact_client,
-          command_dispatcher,
-        )
-        .await
-      },
-      Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
-        match command.command_type {
-          Some(workflow_command_selector::builtin_command::Command_type::TakeScreenshot(_)) => {
-            execute_screenshot_device_command(
-              command_id,
-              data_upload_tx,
-              session_strategy,
-              artifact_client,
-              remote_screenshot_capture_handler,
-            )
-            .await
-          },
-          None => {
-            send_device_command_update(
-              &data_upload_tx,
-              failed_device_command_update(&command_id, 1, "unsupported device command"),
-            )
-            .await
-          },
-        }
-      },
-      None => {
-        send_device_command_update(
-          &data_upload_tx,
-          failed_device_command_update(&command_id, 1, "unsupported device command"),
-        )
-        .await
-      },
+    Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
+      match command.type_.enum_value() {
+        Ok(WellKnownCommandType::DUMP_DEVICE_BUFFER) if arguments.is_empty() => {
+          execute_buffer_dump_device_command(
+            command_id,
+            data_upload_tx,
+            trigger_upload_tx,
+            session_strategy,
+          )
+          .await
+        },
+        Ok(WellKnownCommandType::TAKE_SCREENSHOT) if arguments.is_empty() => {
+          execute_screenshot_device_command(
+            command_id,
+            data_upload_tx,
+            session_strategy,
+            artifact_client,
+            remote_screenshot_capture_handler,
+          )
+          .await
+        },
+        _ => {
+          send_device_command_update(
+            &data_upload_tx,
+            failed_device_command_update(&command_id, 1, "unsupported device command"),
+          )
+          .await
+        },
+      }
     },
-    _ => {
+    None => {
       send_device_command_update(
         &data_upload_tx,
         failed_device_command_update(&command_id, 1, "unsupported device command"),

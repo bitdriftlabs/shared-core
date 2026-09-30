@@ -37,8 +37,8 @@ pub struct DeviceCommandRequest {
     // message fields
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.command_id)
     pub command_id: ::protobuf::Chars,
-    // message oneof groups
-    pub command_type: ::std::option::Option<device_command_request::Command_type>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.command_selector)
+    pub command_selector: ::protobuf::MessageField<super::workflow_command::WorkflowCommandSelector>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -55,127 +55,19 @@ impl DeviceCommandRequest {
         ::std::default::Default::default()
     }
 
-    // .bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.DumpDeviceBufferCommand dump_device_buffer = 2;
-
-    pub fn dump_device_buffer(&self) -> &device_command_request::DumpDeviceBufferCommand {
-        match self.command_type {
-            ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(ref v)) => v,
-            _ => <device_command_request::DumpDeviceBufferCommand as ::protobuf::Message>::default_instance(),
-        }
-    }
-
-    pub fn clear_dump_device_buffer(&mut self) {
-        self.command_type = ::std::option::Option::None;
-    }
-
-    pub fn has_dump_device_buffer(&self) -> bool {
-        match self.command_type {
-            ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_dump_device_buffer(&mut self, v: device_command_request::DumpDeviceBufferCommand) {
-        self.command_type = ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_dump_device_buffer(&mut self) -> &mut device_command_request::DumpDeviceBufferCommand {
-        if let ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(_)) = self.command_type {
-        } else {
-            self.command_type = ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(device_command_request::DumpDeviceBufferCommand::new()));
-        }
-        match self.command_type {
-            ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_dump_device_buffer(&mut self) -> device_command_request::DumpDeviceBufferCommand {
-        if self.has_dump_device_buffer() {
-            match self.command_type.take() {
-                ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            device_command_request::DumpDeviceBufferCommand::new()
-        }
-    }
-
-    // .bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector command_selector = 3;
-
-    pub fn command_selector(&self) -> &super::workflow_command::WorkflowCommandSelector {
-        match self.command_type {
-            ::std::option::Option::Some(device_command_request::Command_type::CommandSelector(ref v)) => v,
-            _ => <super::workflow_command::WorkflowCommandSelector as ::protobuf::Message>::default_instance(),
-        }
-    }
-
-    pub fn clear_command_selector(&mut self) {
-        self.command_type = ::std::option::Option::None;
-    }
-
-    pub fn has_command_selector(&self) -> bool {
-        match self.command_type {
-            ::std::option::Option::Some(device_command_request::Command_type::CommandSelector(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_command_selector(&mut self, v: super::workflow_command::WorkflowCommandSelector) {
-        self.command_type = ::std::option::Option::Some(device_command_request::Command_type::CommandSelector(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_command_selector(&mut self) -> &mut super::workflow_command::WorkflowCommandSelector {
-        if let ::std::option::Option::Some(device_command_request::Command_type::CommandSelector(_)) = self.command_type {
-        } else {
-            self.command_type = ::std::option::Option::Some(device_command_request::Command_type::CommandSelector(super::workflow_command::WorkflowCommandSelector::new()));
-        }
-        match self.command_type {
-            ::std::option::Option::Some(device_command_request::Command_type::CommandSelector(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_command_selector(&mut self) -> super::workflow_command::WorkflowCommandSelector {
-        if self.has_command_selector() {
-            match self.command_type.take() {
-                ::std::option::Option::Some(device_command_request::Command_type::CommandSelector(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            super::workflow_command::WorkflowCommandSelector::new()
-        }
-    }
-
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
-        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "command_id",
             |m: &DeviceCommandRequest| { &m.command_id },
             |m: &mut DeviceCommandRequest| { &mut m.command_id },
         ));
-        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, device_command_request::DumpDeviceBufferCommand>(
-            "dump_device_buffer",
-            DeviceCommandRequest::has_dump_device_buffer,
-            DeviceCommandRequest::dump_device_buffer,
-            DeviceCommandRequest::mut_dump_device_buffer,
-            DeviceCommandRequest::set_dump_device_buffer,
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::workflow_command::WorkflowCommandSelector>(
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::workflow_command::WorkflowCommandSelector>(
             "command_selector",
-            DeviceCommandRequest::has_command_selector,
-            DeviceCommandRequest::command_selector,
-            DeviceCommandRequest::mut_command_selector,
-            DeviceCommandRequest::set_command_selector,
+            |m: &DeviceCommandRequest| { &m.command_selector },
+            |m: &mut DeviceCommandRequest| { &mut m.command_selector },
         ));
-        oneofs.push(device_command_request::Command_type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandRequest>(
             "DeviceCommandRequest",
             fields,
@@ -198,10 +90,7 @@ impl ::protobuf::Message for DeviceCommandRequest {
                     self.command_id = is.read_tokio_chars()?;
                 },
                 18 => {
-                    self.command_type = ::std::option::Option::Some(device_command_request::Command_type::DumpDeviceBuffer(is.read_message()?));
-                },
-                26 => {
-                    self.command_type = ::std::option::Option::Some(device_command_request::Command_type::CommandSelector(is.read_message()?));
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.command_selector)?;
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -218,17 +107,9 @@ impl ::protobuf::Message for DeviceCommandRequest {
         if !self.command_id.is_empty() {
             my_size += ::protobuf::rt::string_size(1, &self.command_id);
         }
-        if let ::std::option::Option::Some(ref v) = self.command_type {
-            match v {
-                &device_command_request::Command_type::DumpDeviceBuffer(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                },
-                &device_command_request::Command_type::CommandSelector(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                },
-            };
+        if let Some(v) = self.command_selector.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -239,15 +120,8 @@ impl ::protobuf::Message for DeviceCommandRequest {
         if !self.command_id.is_empty() {
             os.write_string(1, &self.command_id)?;
         }
-        if let ::std::option::Option::Some(ref v) = self.command_type {
-            match v {
-                &device_command_request::Command_type::DumpDeviceBuffer(ref v) => {
-                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
-                },
-                &device_command_request::Command_type::CommandSelector(ref v) => {
-                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
-                },
-            };
+        if let Some(v) = self.command_selector.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -267,15 +141,14 @@ impl ::protobuf::Message for DeviceCommandRequest {
 
     fn clear(&mut self) {
         self.command_id.clear();
-        self.command_type = ::std::option::Option::None;
-        self.command_type = ::std::option::Option::None;
+        self.command_selector.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static DeviceCommandRequest {
         static instance: DeviceCommandRequest = DeviceCommandRequest {
             command_id: ::protobuf::Chars::new(),
-            command_type: ::std::option::Option::None,
+            command_selector: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -297,137 +170,6 @@ impl ::std::fmt::Display for DeviceCommandRequest {
 
 impl ::protobuf::reflect::ProtobufValue for DeviceCommandRequest {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-}
-
-/// Nested message and enums of message `DeviceCommandRequest`
-pub mod device_command_request {
-
-    #[derive(Clone,PartialEq,Debug)]
-    // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.command_type)
-    pub enum Command_type {
-        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.dump_device_buffer)
-        DumpDeviceBuffer(DumpDeviceBufferCommand),
-        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.command_selector)
-        CommandSelector(super::super::workflow_command::WorkflowCommandSelector),
-    }
-
-    impl ::protobuf::Oneof for Command_type {
-    }
-
-    impl ::protobuf::OneofFull for Command_type {
-        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
-            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| <super::DeviceCommandRequest as ::protobuf::MessageFull>::descriptor().oneof_by_name("command_type").unwrap()).clone()
-        }
-    }
-
-    impl Command_type {
-        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
-            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Command_type>("command_type")
-        }
-    }
-    // @@protoc_insertion_point(message:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.DumpDeviceBufferCommand)
-    #[derive(PartialEq,Clone,Default,Debug)]
-    pub struct DumpDeviceBufferCommand {
-        // special fields
-        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.DumpDeviceBufferCommand.special_fields)
-        pub special_fields: ::protobuf::SpecialFields,
-    }
-
-    impl<'a> ::std::default::Default for &'a DumpDeviceBufferCommand {
-        fn default() -> &'a DumpDeviceBufferCommand {
-            <DumpDeviceBufferCommand as ::protobuf::Message>::default_instance()
-        }
-    }
-
-    impl DumpDeviceBufferCommand {
-        pub fn new() -> DumpDeviceBufferCommand {
-            ::std::default::Default::default()
-        }
-
-        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(0);
-            let mut oneofs = ::std::vec::Vec::with_capacity(0);
-            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DumpDeviceBufferCommand>(
-                "DeviceCommandRequest.DumpDeviceBufferCommand",
-                fields,
-                oneofs,
-            )
-        }
-    }
-
-    impl ::protobuf::Message for DumpDeviceBufferCommand {
-        const NAME: &'static str = "DumpDeviceBufferCommand";
-
-        fn is_initialized(&self) -> bool {
-            true
-        }
-
-        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-            while let Some(tag) = is.read_raw_tag_or_eof()? {
-                match tag {
-                    tag => {
-                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                    },
-                };
-            }
-            ::std::result::Result::Ok(())
-        }
-
-        // Compute sizes of nested messages
-        #[allow(unused_variables)]
-        fn compute_size(&self) -> u64 {
-            let mut my_size = 0;
-            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-            self.special_fields.cached_size().set(my_size as u32);
-            my_size
-        }
-
-        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-            os.write_unknown_fields(self.special_fields.unknown_fields())?;
-            ::std::result::Result::Ok(())
-        }
-
-        fn special_fields(&self) -> &::protobuf::SpecialFields {
-            &self.special_fields
-        }
-
-        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-            &mut self.special_fields
-        }
-
-        fn new() -> DumpDeviceBufferCommand {
-            DumpDeviceBufferCommand::new()
-        }
-
-        fn clear(&mut self) {
-            self.special_fields.clear();
-        }
-
-        fn default_instance() -> &'static DumpDeviceBufferCommand {
-            static instance: DumpDeviceBufferCommand = DumpDeviceBufferCommand {
-                special_fields: ::protobuf::SpecialFields::new(),
-            };
-            &instance
-        }
-    }
-
-    impl ::protobuf::MessageFull for DumpDeviceBufferCommand {
-        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandRequest.DumpDeviceBufferCommand").unwrap()).clone()
-        }
-    }
-
-    impl ::std::fmt::Display for DumpDeviceBufferCommand {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            ::protobuf::text_format::fmt(self, f)
-        }
-    }
-
-    impl ::protobuf::reflect::ProtobufValue for DumpDeviceBufferCommand {
-        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-    }
 }
 
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.bdtail.v1.BdTailStream)
@@ -717,21 +459,18 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n6bitdrift_public/protobuf/bdtail/v1/bdtail_config.proto\x12\"bitdrift_\
     public.protobuf.bdtail.v1\x1a5bitdrift_public/protobuf/matcher/v1/log_ma\
     tcher.proto\x1a;bitdrift_public/protobuf/workflow/v1/workflow_command.pr\
-    oto\x1a\x17validate/validate.proto\"\xde\x02\n\x14DeviceCommandRequest\
+    oto\x1a\x17validate/validate.proto\"\xb3\x01\n\x14DeviceCommandRequest\
     \x12'\n\ncommand_id\x18\x01\x20\x01(\tR\tcommandIdB\x08\xfaB\x05r\x03\
-    \xb0\x01\x01\x12\x80\x01\n\x12dump_device_buffer\x18\x02\x20\x01(\x0b2P.\
-    bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.DumpDeviceBuffer\
-    CommandH\0R\x10dumpDeviceBuffer\x12j\n\x10command_selector\x18\x03\x20\
-    \x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.WorkflowCommandSelector\
-    H\0R\x0fcommandSelector\x1a\x19\n\x17DumpDeviceBufferCommandB\x13\n\x0cc\
-    ommand_type\x12\x03\xf8B\x01\"\xe0\x01\n\x0cBdTailStream\x12$\n\tstream_\
-    id\x18\x01\x20\x01(\tR\x08streamIdB\x07\xfaB\x04r\x02\x10\x01\x12I\n\x07\
-    matcher\x18\x02\x20\x01(\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMa\
-    tcherR\x07matcher\x12_\n\x0edevice_command\x18\x03\x20\x01(\x0b28.bitdri\
-    ft_public.protobuf.bdtail.v1.DeviceCommandRequestR\rdeviceCommand\"o\n\
-    \x14BdTailConfigurations\x12W\n\x0eactive_streams\x18\x01\x20\x03(\x0b20\
-    .bitdrift_public.protobuf.bdtail.v1.BdTailStreamR\ractiveStreamsb\x06pro\
-    to3\
+    \xb0\x01\x01\x12r\n\x10command_selector\x18\x02\x20\x01(\x0b2=.bitdrift_\
+    public.protobuf.workflow.v1.WorkflowCommandSelectorR\x0fcommandSelectorB\
+    \x08\xfaB\x05\x8a\x01\x02\x10\x01\"\xe0\x01\n\x0cBdTailStream\x12$\n\tst\
+    ream_id\x18\x01\x20\x01(\tR\x08streamIdB\x07\xfaB\x04r\x02\x10\x01\x12I\
+    \n\x07matcher\x18\x02\x20\x01(\x0b2/.bitdrift_public.protobuf.matcher.v1\
+    .LogMatcherR\x07matcher\x12_\n\x0edevice_command\x18\x03\x20\x01(\x0b28.\
+    bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequestR\rdeviceCommand\
+    \"o\n\x14BdTailConfigurations\x12W\n\x0eactive_streams\x18\x01\x20\x03(\
+    \x0b20.bitdrift_public.protobuf.bdtail.v1.BdTailStreamR\ractiveStreamsb\
+    \x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -752,11 +491,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::log_matcher::file_descriptor().clone());
             deps.push(super::workflow_command::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(4);
+            let mut messages = ::std::vec::Vec::with_capacity(3);
             messages.push(DeviceCommandRequest::generated_message_descriptor_data());
             messages.push(BdTailStream::generated_message_descriptor_data());
             messages.push(BdTailConfigurations::generated_message_descriptor_data());
-            messages.push(device_command_request::DumpDeviceBufferCommand::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),

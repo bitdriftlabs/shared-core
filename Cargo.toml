@@ -76,7 +76,7 @@ arbitrary         = { version = "1.4.2", features = ["derive"] }
 arc-swap          = "1.9.2"
 assert_matches    = "1.5.0"
 assert_no_alloc   = "1.1.2"
-async-compression = { version = "0.4.48", features = ["tokio", "zlib"] }
+async-compression = { version = "0.4.50", features = ["tokio", "zlib"] }
 async-trait       = "0.1.92"
 axum              = { version = "0.8.9", features = ["http2", "macros"] }
 base64            = "0.23.1"
@@ -92,7 +92,7 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.73.2"
 bytes           = "1.12.1"
 cbindgen        = "0.29.4"
-cc              = "1.4.7"
+cc              = "1.5.1"
 clap            = { version = "4.6.7", features = ["derive", "env"] }
 cmake           = "0.1.58"
 color-backtrace = "0.7.4"
@@ -152,7 +152,7 @@ parking_lot        = "0.12.5"
 pretty_assertions  = "1.4.1"
 prometheus         = "0.14.0"
 proptest           = "1.11.0"
-rmcp               = { version = "3.4.1", features = ["transport-io"] }
+rmcp               = { version = "3.5.0", features = ["transport-io"] }
 thread_local       = "1.1.10"
 tracing            = "0.1.44"
 tracing-log        = "0.2.0"
@@ -190,9 +190,9 @@ thiserror             = "2.0.21"
 tikv-jemalloc-ctl     = "0.7.0"
 time                  = { version = "0.3.55", features = ["serde-well-known", "macros", "parsing"] }
 tokio                 = { version = "1.53.1", features = ["full", "test-util"] }
-tokio-rustls          = { version = "0.26.5", default-features = false }
+tokio-rustls          = { version = "0.26.6", default-features = false }
 tokio-stream          = "0.1.19"
-tokio-test            = "0.4.5"
+tokio-test            = "0.4.6"
 tower                 = { version = "0.5.3", features = ["retry", "util"] }
 tower-http            = { version = "0.7.1", features = ["compression-deflate"] }
 tracing-opentelemetry = "0.34.0"

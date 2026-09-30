@@ -31,12 +31,10 @@ use bd_log_matcher::builder::{and, feature_flag_equals, field_equals, message_eq
 use bd_log_metadata::LogFields;
 use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
-use bd_proto::protos::bdtail::bdtail_config::device_command_request::DumpDeviceBufferCommand;
 use bd_proto::protos::bdtail::bdtail_config::{
   BdTailConfigurations,
   BdTailStream,
   DeviceCommandRequest,
-  device_command_request,
 };
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
@@ -60,6 +58,7 @@ use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers
 use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
 use bd_proto::protos::workflow::workflow::workflow::{MatchRunCommand, Rule};
 use bd_proto::protos::workflow::workflow_command::{
+  WellKnownCommandType,
   WorkflowCommandSelector,
   workflow_command_selector,
 };
@@ -2749,9 +2748,9 @@ fn buffer_dump_device_command_uploads_and_reports_terminal_context() {
               stream_id: command_id.into(),
               device_command: Some(DeviceCommandRequest {
                 command_id: command_id.into(),
-                command_type: Some(device_command_request::Command_type::DumpDeviceBuffer(
-                  DumpDeviceBufferCommand::default(),
-                )),
+                command_selector: builtin_command_selector(
+                  WellKnownCommandType::DUMP_DEVICE_BUFFER
+                ),
                 ..Default::default()
               })
               .into(),
@@ -2873,9 +2872,9 @@ fn buffer_dump_device_command_bypasses_generic_lookback() {
               stream_id: command_id.into(),
               device_command: Some(DeviceCommandRequest {
                 command_id: command_id.into(),
-                command_type: Some(device_command_request::Command_type::DumpDeviceBuffer(
-                  DumpDeviceBufferCommand::default(),
-                )),
+                command_selector: builtin_command_selector(
+                  WellKnownCommandType::DUMP_DEVICE_BUFFER
+                ),
                 ..Default::default()
               })
               .into(),
@@ -2932,6 +2931,21 @@ fn custom_device_command_configuration(
   )
 }
 
+fn builtin_command_selector(
+  type_: WellKnownCommandType,
+) -> protobuf::MessageField<WorkflowCommandSelector> {
+  Some(WorkflowCommandSelector {
+    command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
+      workflow_command_selector::BuiltinCommand {
+        type_: type_.into(),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  })
+  .into()
+}
+
 fn custom_device_command_configuration_with_arguments(
   command_id: &str,
   registered_command_id: &str,
@@ -2945,20 +2959,19 @@ fn custom_device_command_configuration_with_arguments(
           stream_id: command_id.to_string().into(),
           device_command: Some(DeviceCommandRequest {
             command_id: command_id.to_string().into(),
-            command_type: Some(device_command_request::Command_type::CommandSelector(
-              WorkflowCommandSelector {
-                command_selector: Some(
-                  workflow_command_selector::Command_selector::RegisteredCommand(
-                    workflow_command_selector::RegisteredCommand {
-                      registered_command_id: registered_command_id.to_string(),
-                      arguments,
-                      ..Default::default()
-                    },
-                  ),
+            command_selector: Some(WorkflowCommandSelector {
+              command_selector: Some(
+                workflow_command_selector::Command_selector::RegisteredCommand(
+                  workflow_command_selector::RegisteredCommand {
+                    registered_command_id: registered_command_id.to_string(),
+                    ..Default::default()
+                  },
                 ),
-                ..Default::default()
-              },
-            )),
+              ),
+              arguments,
+              ..Default::default()
+            })
+            .into(),
             ..Default::default()
           })
           .into(),
@@ -2987,11 +3000,11 @@ fn workflow_command_rule_with_arguments(
           workflow_command_selector::Command_selector::RegisteredCommand(
             workflow_command_selector::RegisteredCommand {
               registered_command_id: registered_command_id.to_string(),
-              arguments,
               ..Default::default()
             },
           ),
         ),
+        arguments,
         ..Default::default()
       })
       .into(),
@@ -3012,11 +3025,7 @@ fn workflow_screenshot_command_rule() -> Rule {
       command_selector: Some(WorkflowCommandSelector {
         command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
           workflow_command_selector::BuiltinCommand {
-            command_type: Some(
-              workflow_command_selector::builtin_command::Command_type::TakeScreenshot(
-                workflow_command_selector::builtin_command::TakeScreenshot::default(),
-              ),
-            ),
+            type_: WellKnownCommandType::TAKE_SCREENSHOT.into(),
             ..Default::default()
           },
         )),
@@ -3045,23 +3054,7 @@ fn screenshot_device_command_configuration(
           stream_id: command_id.to_string().into(),
           device_command: Some(DeviceCommandRequest {
             command_id: command_id.to_string().into(),
-            command_type: Some(device_command_request::Command_type::CommandSelector(
-              WorkflowCommandSelector {
-                command_selector: Some(
-                  workflow_command_selector::Command_selector::BuiltinCommand(
-                    workflow_command_selector::BuiltinCommand {
-                      command_type: Some(
-                        workflow_command_selector::builtin_command::Command_type::TakeScreenshot(
-                          workflow_command_selector::builtin_command::TakeScreenshot::default(),
-                        ),
-                      ),
-                      ..Default::default()
-                    },
-                  ),
-                ),
-                ..Default::default()
-              },
-            )),
+            command_selector: builtin_command_selector(WellKnownCommandType::TAKE_SCREENSHOT),
             ..Default::default()
           })
           .into(),
@@ -3951,9 +3944,7 @@ fn device_command_dispatch_rejects_mismatched_tail_id() {
           stream_id: "19dfb301-9d56-4c80-b7d5-5be1b579f472".into(),
           device_command: Some(DeviceCommandRequest {
             command_id: "4dd3d61e-4621-4d4e-97df-ed1c91d484a9".into(),
-            command_type: Some(device_command_request::Command_type::DumpDeviceBuffer(
-              DumpDeviceBufferCommand::default(),
-            )),
+            command_selector: builtin_command_selector(WellKnownCommandType::DUMP_DEVICE_BUFFER),
             ..Default::default()
           })
           .into(),
@@ -3989,9 +3980,9 @@ fn cached_device_command_is_not_dispatched_after_restart() {
                 stream_id: command_id.into(),
                 device_command: Some(DeviceCommandRequest {
                   command_id: command_id.into(),
-                  command_type: Some(device_command_request::Command_type::DumpDeviceBuffer(
-                    DumpDeviceBufferCommand::default(),
-                  )),
+                  command_selector: builtin_command_selector(
+                    WellKnownCommandType::DUMP_DEVICE_BUFFER
+                  ),
                   ..Default::default()
                 })
                 .into(),
