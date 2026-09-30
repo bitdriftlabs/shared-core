@@ -4,6 +4,10 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
+#[cfg(test)]
+#[path = "./feature_flags_test.rs"]
+mod tests;
+
 use crate::loader::{ConfigPtr, Loader, LoaderError, StatsCallbacks, WatchedFileLoader};
 use rand::RngExt;
 use serde::Deserialize;
@@ -15,6 +19,56 @@ pub type FeatureFlagsLoader =
   Arc<dyn crate::loader::Loader<dyn crate::feature_flags::FeatureFlags>>;
 
 pub type FeatureFlagsWatch = watch::Receiver<ConfigPtr<dyn crate::feature_flags::FeatureFlags>>;
+
+//
+// WatchedFeatureFlags
+//
+
+/// Rebuilds a parsed value only on initial use and when the feature flag snapshot changes.
+#[derive(Debug)]
+pub struct WatchedFeatureFlags<T> {
+  watch: Option<FeatureFlagsWatch>,
+  defaults: Arc<T>,
+  value: Arc<T>,
+  initial: bool,
+}
+
+impl<T> WatchedFeatureFlags<T> {
+  pub fn new(watch: Option<FeatureFlagsWatch>, defaults: Arc<T>) -> Self {
+    Self {
+      watch,
+      value: defaults.clone(),
+      defaults,
+      initial: true,
+    }
+  }
+
+  /// Returns the last valid value and an error if the latest snapshot was invalid.
+  pub fn current<E>(
+    &mut self,
+    parse: impl FnOnce(&dyn FeatureFlags, &T) -> Result<T, E>,
+  ) -> (&T, Option<E>) {
+    let Some(watch) = self.watch.as_mut() else {
+      return (&self.value, None);
+    };
+    if !self.initial && !watch.has_changed().unwrap_or(false) {
+      return (&self.value, None);
+    }
+    self.initial = false;
+    let snapshot = watch.borrow_and_update().clone();
+    let Some(flags) = snapshot.as_deref() else {
+      self.value = self.defaults.clone();
+      return (&self.value, None);
+    };
+    match parse(flags, &self.defaults) {
+      Ok(value) => {
+        self.value = Arc::new(value);
+        (&self.value, None)
+      },
+      Err(error) => (&self.value, Some(error)),
+    }
+  }
+}
 
 /// Feature flags with strongly typed defaults.
 pub trait FeatureFlags: std::fmt::Debug + Send + Sync {
@@ -148,24 +202,4 @@ pub fn new_memory_feature_flags_loader(
     },
     stats,
   )
-}
-
-#[test]
-fn feature_flag_enabled() {
-  let mut feature_flags = MemoryFeatureFlags {
-    values: HashMap::new(),
-  };
-  feature_flags
-    .values
-    .insert("test_not_int".to_string(), FeatureFlagValue::Bool(false));
-  feature_flags
-    .values
-    .insert("test_int".to_string(), FeatureFlagValue::Integer(10));
-  assert!(feature_flags.feature_enabled("test_not_int", true, || 9));
-  assert!(feature_flags.feature_enabled("test_int", false, || 0));
-  assert!(feature_flags.feature_enabled("test_int", false, || 9));
-  assert!(!feature_flags.feature_enabled("test_int", true, || 10));
-  assert!(!feature_flags.feature_enabled("test_int", true, || 9_999));
-  // Wraps around.
-  assert!(feature_flags.feature_enabled("test_int", false, || 10_000));
 }
