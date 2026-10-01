@@ -1332,6 +1332,47 @@ async fn index_write_failure_releases_pending_upload() {
 }
 
 #[tokio::test]
+async fn index_write_replaces_temporary_file_before_publication() {
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index(&fs, true).await;
+  write_test_upload_request(
+    &fs,
+    StatsUploadRequest {
+      snapshot: vec![counter_snapshot("test", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  let temporary_path = directory
+    .path()
+    .join(&*STATS_DIRECTORY)
+    .join(PENDING_AGGREGATION_INDEX_FILE.with_extension("tmp"));
+  tokio::fs::write(&temporary_path, b"incomplete")
+    .await
+    .unwrap();
+
+  let runtime_loader = ConfigLoader::new(directory.path());
+  let file_manager = FileManager::new(
+    Box::new(RealFileSystem::new(directory.path().to_path_buf())),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+    &runtime_loader,
+  );
+  let pending_upload = file_manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  file_manager
+    .record_pending_upload_attempt(&pending_upload.source_file_ids)
+    .await
+    .unwrap();
+
+  assert!(!temporary_path.exists());
+  assert_eq!(read_test_index(&fs).await.pending_files[0].retry_count, 1);
+}
+
+#[tokio::test]
 async fn client_stats_sequence_starts_at_one_and_persists_across_restart() {
   let directory = TempDir::new().unwrap();
   let fs = RealFileSystem::new(directory.path().to_path_buf());

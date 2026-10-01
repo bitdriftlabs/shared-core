@@ -185,14 +185,14 @@ impl InitializedInner {
     };
 
     let compressed = write_compressed_protobuf(&index)?;
+    let path = STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE);
+    let temporary_path = path.with_extension("tmp");
     self
       .file_system
       .as_ref()
-      .write_file(
-        &STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE),
-        &compressed,
-      )
+      .write_file(&temporary_path, &compressed)
       .await?;
+    self.file_system.rename_file(&temporary_path, &path).await?;
 
     Ok(())
   }
