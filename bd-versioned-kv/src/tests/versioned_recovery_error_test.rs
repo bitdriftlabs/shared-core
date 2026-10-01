@@ -425,10 +425,9 @@ fn streaming_scanner_ignores_non_string_and_empty_matching_values() {
     0,
   );
 
-  assert!(
-    scan_session_ids(&compressed, MAX_DECOMPRESSED_STATE_SNAPSHOT_BYTES, 1)
-      .unwrap()
-      .is_empty()
+  assert_eq!(
+    scan_session_ids(&compressed, MAX_DECOMPRESSED_STATE_SNAPSHOT_BYTES, 1).unwrap(),
+    [] as [String; 0]
   );
 }
 
