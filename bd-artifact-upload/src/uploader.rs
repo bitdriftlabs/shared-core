@@ -131,6 +131,7 @@ struct NewUpload {
   session_id: String,
   feature_flags: Vec<SnappedFeatureFlag>,
   command_id: Option<String>,
+  content_type: Option<String>,
   #[approximate_size(skip)]
   persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   #[approximate_size(skip)]
@@ -256,6 +257,7 @@ pub trait Client: Send + Sync {
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: String,
+    content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<Uuid, EnqueueError>;
@@ -277,6 +279,7 @@ impl UploadClient {
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: Option<String>,
+    content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
@@ -291,6 +294,7 @@ impl UploadClient {
         session_id,
         feature_flags,
         command_id,
+        content_type,
         persisted_tx,
         completion_tx,
       })
@@ -329,6 +333,7 @@ impl Client for UploadClient {
       session_id,
       Vec::new(),
       None,
+      None,
       persisted_tx,
       completion_tx,
     )?;
@@ -355,6 +360,7 @@ impl Client for UploadClient {
       session_id,
       feature_flags,
       None,
+      None,
       persisted_tx,
       None,
     )
@@ -369,6 +375,7 @@ impl Client for UploadClient {
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: String,
+    content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
@@ -381,6 +388,7 @@ impl Client for UploadClient {
       session_id,
       feature_flags,
       Some(command_id),
+      content_type,
       persisted_tx,
       completion_tx,
     )
@@ -567,6 +575,7 @@ impl Uploader {
           next.metadata.clone(),
           next.feature_flags.clone(),
           next.command_id.clone(),
+          next.content_type.clone(),
           next.payload_encoding.enum_value_or_default(),
         )));
       }
@@ -592,6 +601,7 @@ impl Uploader {
             session_id,
             feature_flags,
             command_id,
+            content_type,
             persisted_tx,
             completion_tx,
         }) = self.upload_queued_rx.recv() => {
@@ -606,6 +616,7 @@ impl Uploader {
               timestamp,
               feature_flags,
               command_id,
+              content_type,
               persisted_tx,
               completion_tx,
             )
@@ -843,6 +854,7 @@ impl Uploader {
     timestamp: Option<OffsetDateTime>,
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: Option<String>,
+    content_type: Option<String>,
     mut persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) {
@@ -1087,6 +1099,7 @@ impl Uploader {
         )
         .collect(),
       command_id,
+      content_type,
       payload_encoding: payload_encoding.into(),
       ..Default::default()
     });
@@ -1178,6 +1191,7 @@ impl Uploader {
     state_metadata: HashMap<String, Data>,
     feature_flags: Vec<FeatureFlag>,
     command_id: Option<String>,
+    content_type: Option<String>,
     payload_encoding: ArtifactPayloadEncoding,
   ) -> Result<()> {
     let path = ARTIFACT_UPLOAD_DIRECTORY.join(&name);
@@ -1201,6 +1215,7 @@ impl Uploader {
           state_metadata: state_metadata.clone(),
           feature_flags: feature_flags.clone(),
           command_id: command_id.clone(),
+          content_type: content_type.clone(),
           payload_encoding: payload_encoding.into(),
           ..Default::default()
         },

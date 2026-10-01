@@ -124,7 +124,7 @@ fn completed_attachment(source: UploadSource) -> CommandResult {
     fields: [("handler_field".into(), "handler_value".into())].into(),
     attachment: Some(CommandAttachment {
       source,
-      type_id: "attachment".to_string(),
+      content_type: None,
       state: LogFields::default(),
     }),
   }

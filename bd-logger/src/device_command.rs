@@ -44,6 +44,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 const MAX_SCREENSHOT_BYTES: usize = 2 * 1024 * 1024;
+const REGISTERED_COMMAND_ARTIFACT_TYPE_ID: &str = "device_command_attachment";
 
 // A device command is executed only from a freshly delivered configuration. Cached tail
 // configuration can preserve log streaming, but must never replay a prior command after restart.
@@ -153,7 +154,7 @@ pub struct CommandInvocation {
 #[derive(Debug)]
 pub struct CommandAttachment {
   pub source: UploadSource,
-  pub type_id: String,
+  pub content_type: Option<String>,
   pub state: LogFields,
 }
 
@@ -334,7 +335,7 @@ async fn workflow_builtin_command_outcome(
               fields: LogFields::default(),
               attachment: Some(CommandAttachment {
                 source: UploadSource::Bytes(screenshot),
-                type_id: "screenshot".to_string(),
+                content_type: None,
                 state: LogFields::default(),
               }),
             },
@@ -521,18 +522,23 @@ async fn execute_screenshot_device_command(
 
   let attachment = CommandAttachment {
     source: UploadSource::Bytes(screenshot),
-    type_id: "screenshot".to_string(),
+    content_type: None,
     state: LogFields::default(),
   };
-  let update =
-    match stage_device_command_attachment(attachment, &command_id, &session_id, artifact_client)
-      .await
-    {
-      Ok(artifact_id) => {
-        completed_device_command_update(&command_id, false, None, artifact_attachment(artifact_id))
-      },
-      Err(error) => failed_device_command_update(&command_id, 2, &error.to_string()),
-    };
+  let update = match stage_device_command_attachment(
+    attachment,
+    "screenshot",
+    &command_id,
+    &session_id,
+    artifact_client,
+  )
+  .await
+  {
+    Ok(artifact_id) => {
+      completed_device_command_update(&command_id, false, None, artifact_attachment(artifact_id))
+    },
+    Err(error) => failed_device_command_update(&command_id, 2, &error.to_string()),
+  };
   send_device_command_update(&senders, update).await
 }
 
@@ -696,6 +702,7 @@ async fn execute_custom_device_command(
         Some(attachment) => {
           match stage_device_command_attachment(
             attachment,
+            REGISTERED_COMMAND_ARTIFACT_TYPE_ID,
             &command_id,
             &session_id,
             artifact_client,
@@ -731,6 +738,7 @@ async fn execute_custom_device_command(
 
 async fn stage_device_command_attachment(
   attachment: CommandAttachment,
+  type_id: &str,
   command_id: &str,
   session_id: &str,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -739,12 +747,13 @@ async fn stage_device_command_attachment(
   let (completion_tx, completion_rx) = oneshot::channel();
   let artifact_id = artifact_client.enqueue_command_upload(
     attachment.source,
-    attachment.type_id,
+    type_id.to_string(),
     attachment.state,
     None,
     session_id.to_string(),
     Vec::new(),
     command_id.to_string(),
+    attachment.content_type,
     Some(persisted_tx),
     Some(completion_tx),
   )?;

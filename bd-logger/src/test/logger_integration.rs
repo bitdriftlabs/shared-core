@@ -3657,7 +3657,7 @@ fn registered_custom_device_command_stages_correlated_attachment() {
       fields: [("result".into(), "attached".into())].into(),
       attachment: Some(CommandAttachment {
         source: bd_artifact_upload::UploadSource::Path(attachment_path),
-        type_id: "custom_attachment".to_string(),
+        content_type: Some("application/vnd.example.capture".to_string()),
         state: [("source".into(), "handler".into())].into(),
       }),
     })),
@@ -3688,7 +3688,8 @@ fn registered_custom_device_command_stages_correlated_attachment() {
     setup.server.blocking_next_artifact_upload(),
     Some(artifact) => {
       assert_eq!(artifact.command_id.as_deref(), Some(command_id));
-      assert_eq!(artifact.type_id, "custom_attachment");
+      assert_eq!(artifact.type_id, "device_command_attachment");
+      assert_eq!(artifact.content_type.as_deref(), Some("application/vnd.example.capture"));
       assert_eq!(
         artifact.payload_encoding.enum_value_or_default(),
         ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
@@ -3774,7 +3775,7 @@ fn workflow_command_attachment_uploads_zlib_and_releases_retained_payload() {
       fields: [].into(),
       attachment: Some(CommandAttachment {
         source: bd_artifact_upload::UploadSource::Bytes(attachment.clone()),
-        type_id: "ignored-for-workflow-attachments".to_string(),
+        content_type: None,
         state: [].into(),
       }),
     })),
