@@ -182,6 +182,8 @@ pub mod artifact_upload_index {
         pub command_id: ::std::option::Option<::std::string::String>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.payload_encoding)
         pub payload_encoding: ::protobuf::EnumOrUnknown<super::super::api::ArtifactPayloadEncoding>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.content_type)
+        pub content_type: ::std::option::Option<::std::string::String>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -199,7 +201,7 @@ pub mod artifact_upload_index {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(11);
+            let mut fields = ::std::vec::Vec::with_capacity(12);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "name",
@@ -255,6 +257,11 @@ pub mod artifact_upload_index {
                 "payload_encoding",
                 |m: &Artifact| { &m.payload_encoding },
                 |m: &mut Artifact| { &mut m.payload_encoding },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "content_type",
+                |m: &Artifact| { &m.content_type },
+                |m: &mut Artifact| { &mut m.content_type },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
                 "ArtifactUploadIndex.Artifact",
@@ -319,6 +326,9 @@ pub mod artifact_upload_index {
                     96 => {
                         self.payload_encoding = is.read_enum_or_unknown()?;
                     },
+                    106 => {
+                        self.content_type = ::std::option::Option::Some(is.read_string()?);
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -371,6 +381,9 @@ pub mod artifact_upload_index {
             if self.payload_encoding != ::protobuf::EnumOrUnknown::new(super::super::api::ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW) {
                 my_size += ::protobuf::rt::int32_size(12, self.payload_encoding.value());
             }
+            if let Some(v) = self.content_type.as_ref() {
+                my_size += ::protobuf::rt::string_size(13, &v);
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -417,6 +430,9 @@ pub mod artifact_upload_index {
             if self.payload_encoding != ::protobuf::EnumOrUnknown::new(super::super::api::ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW) {
                 os.write_enum(12, ::protobuf::EnumOrUnknown::value(&self.payload_encoding))?;
             }
+            if let Some(v) = self.content_type.as_ref() {
+                os.write_string(13, v)?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -445,6 +461,7 @@ pub mod artifact_upload_index {
             self.workflow_report_handoff.clear();
             self.command_id = ::std::option::Option::None;
             self.payload_encoding = ::protobuf::EnumOrUnknown::new(super::super::api::ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW);
+            self.content_type = ::std::option::Option::None;
             self.special_fields.clear();
         }
 
@@ -539,10 +556,10 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     c.protobuf.client.v1\x1a,bitdrift_public/protobuf/client/v1/api.proto\
     \x1a5bitdrift_public/protobuf/client/v1/feature_flag.proto\x1a1bitdrift_\
     public/protobuf/logging/v1/payload.proto\x1a3bitdrift_public/protobuf/wo\
-    rkflow/v1/workflow.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x80\
+    rkflow/v1/workflow.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb9\
     \x08\n\x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\x01\x20\x03(\x0b2@\
     .bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.ArtifactR\x08art\
-    ifact\x1a\x8a\x07\n\x08Artifact\x12\x12\n\x04name\x18\x01\x20\x01(\tR\
+    ifact\x1a\xc3\x07\n\x08Artifact\x12\x12\n\x04name\x18\x01\x20\x01(\tR\
     \x04name\x12.\n\x04time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.Timest\
     ampR\x04time\x12<\n\x1apending_intent_negotiation\x18\x03\x20\x01(\x08R\
     \x18pendingIntentNegotiation\x12j\n\x08metadata\x18\x05\x20\x03(\x0b2N.b\
@@ -557,11 +574,12 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     f\x88\x01\x01\x12\"\n\ncommand_id\x18\x0b\x20\x01(\tH\x02R\tcommandId\
     \x88\x01\x01\x12f\n\x10payload_encoding\x18\x0c\x20\x01(\x0e2;.bitdrift_\
     public.protobuf.client.v1.ArtifactPayloadEncodingR\x0fpayloadEncoding\
-    \x1af\n\rMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\
-    \n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.D\
-    ataR\x05value:\x028\x01B\n\n\x08_type_idB\x1a\n\x18_workflow_report_hand\
-    offB\r\n\x0b_command_id*)\n\rStorageFormat\x12\x0f\n\x0bCHECKSUMMED\x10\
-    \0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
+    \x12&\n\x0ccontent_type\x18\r\x20\x01(\tH\x03R\x0bcontentType\x88\x01\
+    \x01\x1af\n\rMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
+    \x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging\
+    .v1.DataR\x05value:\x028\x01B\n\n\x08_type_idB\x1a\n\x18_workflow_report\
+    _handoffB\r\n\x0b_command_idB\x0f\n\r_content_type*)\n\rStorageFormat\
+    \x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

@@ -651,6 +651,50 @@ async fn disk_persistence() {
 }
 
 #[tokio::test]
+async fn command_upload_preserves_content_type_after_restart() {
+  let mut setup = Setup::new(1).await;
+  let artifact_id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::Bytes(b"attachment".to_vec()),
+      "custom_attachment".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      Some("application/vnd.example.capture".to_string()),
+      None,
+      None,
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    artifact_id.to_string()
+  );
+
+  let mut setup = setup.reinitialize().await;
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert!(intent.response_tx.is_closed());
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.artifact_id, artifact_id.to_string());
+    intent.response_tx.send(IntentResponse {
+      uuid: intent.uuid,
+      decision: bd_api::upload::IntentDecision::UploadImmediately,
+    }).unwrap();
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
+    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
+    assert_eq!(upload.payload.content_type.as_deref(), Some("application/vnd.example.capture"));
+  });
+}
+
+#[tokio::test]
 async fn inconsistent_state_missing_index() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
@@ -882,6 +926,7 @@ async fn command_upload_intent_drop_completes_with_failure() {
       vec![],
       "command_id".to_string(),
       None,
+      None,
       Some(completion_tx),
     )
     .unwrap();
@@ -924,6 +969,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       "session_id".to_string(),
       vec![],
       "command_id".to_string(),
+      None,
       Some(file_persisted_tx),
       None,
     )
@@ -955,6 +1001,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       "session_id".to_string(),
       vec![],
       "command_id".to_string(),
+      None,
       Some(bytes_persisted_tx),
       None,
     )
@@ -988,6 +1035,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       "session_id".to_string(),
       vec![],
       "command_id".to_string(),
+      None,
       Some(path_persisted_tx),
       None,
     )
@@ -1024,6 +1072,7 @@ async fn command_upload_rejection_completes_with_failure_without_stopping_upload
       "session_id".to_string(),
       vec![],
       "command_id".to_string(),
+      None,
       None,
       Some(completion_tx),
     )
@@ -1082,6 +1131,7 @@ async fn evicted_command_upload_completes_with_failure() {
       vec![],
       "command_id".to_string(),
       None,
+      None,
       Some(completion_tx),
     )
     .unwrap();
@@ -1128,6 +1178,7 @@ async fn corrupt_command_upload_completes_with_failure() {
       "session_id".to_string(),
       vec![],
       "command_id".to_string(),
+      None,
       None,
       Some(completion_tx),
     )
@@ -1178,6 +1229,7 @@ async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
       "session_id".to_string(),
       vec![],
       "command_id".to_string(),
+      Some("image/jpeg".to_string()),
       None,
       Some(completion_tx),
     )
@@ -1198,6 +1250,7 @@ async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
     assert_eq!(upload.payload.artifact_id, id.to_string());
     assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
+    assert_eq!(upload.payload.content_type.as_deref(), Some("image/jpeg"));
     assert_eq!(
       upload.payload.payload_encoding.enum_value_or_default(),
       ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
@@ -1212,6 +1265,7 @@ async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
     assert_eq!(upload.payload.artifact_id, id.to_string());
     assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
+    assert_eq!(upload.payload.content_type.as_deref(), Some("image/jpeg"));
     assert_eq!(
       upload.payload.payload_encoding.enum_value_or_default(),
       ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
