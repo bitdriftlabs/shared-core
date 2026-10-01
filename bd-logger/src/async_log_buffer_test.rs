@@ -2047,7 +2047,7 @@ async fn failed_log_write_uses_synthetic_log_for_workflow_flush() {
 
   let trigger_buffer = setup.buffer_manager.buffers().remove("default").unwrap().1;
   let mut consumer = trigger_buffer.new_consumer().unwrap();
-  assert!(!consumer.start_read(false).unwrap().is_empty());
+  assert_ne!(consumer.start_read(false).unwrap(), [] as [u8; 0]);
 }
 
 #[tokio::test]
@@ -2099,7 +2099,7 @@ async fn partially_written_log_does_not_add_synthetic_log_for_workflow_flush() {
 
   let trigger_buffer = setup.buffer_manager.buffers().remove("default").unwrap().1;
   let mut consumer = trigger_buffer.new_consumer().unwrap();
-  assert!(!consumer.start_read(false).unwrap().is_empty());
+  assert_ne!(consumer.start_read(false).unwrap(), [] as [u8; 0]);
   assert!(consumer.start_read(false).is_err());
 }
 

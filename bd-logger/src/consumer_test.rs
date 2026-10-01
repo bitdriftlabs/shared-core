@@ -1442,7 +1442,7 @@ async fn recovered_trigger_upload_without_request_trigger_uuid_mints_new_upload_
   assert_eq!(recovered_upload.payload.log_upload().proto_logs.len(), 1);
   assert_eq!(recovered_upload.payload.log_upload().proto_logs[0], b"one");
   assert_eq!(1, recovered_upload.payload.log_upload().trigger_uuids.len());
-  assert!(!recovered_upload.payload.log_upload().trigger_uuids[0].is_empty());
+  assert_ne!(recovered_upload.payload.log_upload().trigger_uuids[0], "");
   assert_ne!(
     recovered_upload.payload.log_upload().trigger_uuids[0],
     "flush-1"
@@ -1515,7 +1515,10 @@ async fn recovered_trigger_upload_only_discards_matching_buffer_prefix_on_restar
 
     tokio::task::yield_now().await;
   }
-  assert!(setup.pending_trigger_uploads().await.is_empty());
+  assert_eq!(
+    setup.pending_trigger_uploads().await,
+    [] as [PersistedTriggerUpload; 0]
+  );
 
   setup.trigger_buffer_upload("buffer").await;
 
@@ -1617,7 +1620,10 @@ async fn persisted_trigger_upload_with_no_configured_buffers_is_abandoned() {
     "missing-buffer",
   );
 
-  assert!(setup.pending_trigger_uploads().await.is_empty());
+  assert_eq!(
+    setup.pending_trigger_uploads().await,
+    [] as [PersistedTriggerUpload; 0]
+  );
   assert!(artifact_store.queued_batch().await.unwrap().is_none());
   assert!(artifact_store.inflight_batch().await.unwrap().is_none());
 
@@ -2321,12 +2327,9 @@ async fn remote_command_upload_does_not_emit_request_trigger_uuid_on_recovery() 
 
   let recovered_upload = setup.next_upload().await;
   assert_eq!(recovered_upload.payload.log_upload().proto_logs.len(), 1);
-  assert!(
-    recovered_upload
-      .payload
-      .log_upload()
-      .trigger_uuids
-      .is_empty()
+  assert_eq!(
+    recovered_upload.payload.log_upload().trigger_uuids,
+    [] as [String; 0]
   );
 }
 
@@ -2455,7 +2458,10 @@ async fn dropped_device_command_admission_releases_buffer() {
     completion_rx.await,
     Ok(bd_api::TriggerUploadCompletion::Failed)
   );
-  assert!(setup.pending_trigger_uploads().await.is_empty());
+  assert_eq!(
+    setup.pending_trigger_uploads().await,
+    [] as [PersistedTriggerUpload; 0]
+  );
 
   setup.trigger_buffer_upload("buffer").await;
   let upload = setup.next_upload().await;
@@ -2515,7 +2521,10 @@ async fn device_command_admission_rejects_active_buffer() {
     first_completion_rx.await,
     Ok(bd_api::TriggerUploadCompletion::Completed { .. })
   );
-  assert!(setup.pending_trigger_uploads().await.is_empty());
+  assert_eq!(
+    setup.pending_trigger_uploads().await,
+    [] as [PersistedTriggerUpload; 0]
+  );
   setup.shutdown().await;
 }
 
@@ -2542,7 +2551,10 @@ async fn dropped_device_command_start_signal_releases_buffer() {
     completion_rx.await,
     Ok(bd_api::TriggerUploadCompletion::Failed)
   );
-  assert!(setup.pending_trigger_uploads().await.is_empty());
+  assert_eq!(
+    setup.pending_trigger_uploads().await,
+    [] as [PersistedTriggerUpload; 0]
+  );
 
   setup.trigger_buffer_upload("buffer").await;
   let upload = setup.next_upload().await;

@@ -100,7 +100,10 @@ async fn durable_upsert_fails_without_retaining_undurable_upload() {
       .await
       .is_err()
   );
-  assert!(store.pending_uploads().await.is_empty());
+  assert_eq!(
+    store.pending_uploads().await,
+    [] as [PersistedTriggerUpload; 0]
+  );
 }
 
 #[tokio::test]
@@ -121,11 +124,9 @@ async fn remove_clears_matching_upload() {
 
   store.remove("flush-1").await;
 
-  assert!(
-    make_store(&temp_directory)
-      .pending_uploads()
-      .await
-      .is_empty()
+  assert_eq!(
+    make_store(&temp_directory).pending_uploads().await,
+    [] as [PersistedTriggerUpload; 0]
   );
 }
 
@@ -305,11 +306,9 @@ async fn missing_device_command_total_drops_snapshot() {
   .await
   .unwrap();
 
-  assert!(
-    make_store(&temp_directory)
-      .pending_uploads()
-      .await
-      .is_empty()
+  assert_eq!(
+    make_store(&temp_directory).pending_uploads().await,
+    [] as [PersistedTriggerUpload; 0]
   );
   assert!(!tokio::fs::try_exists(snapshot_path).await.unwrap());
 }
@@ -341,7 +340,10 @@ async fn corrupted_snapshot_is_dropped_and_treated_as_empty() {
     .unwrap();
 
   let store = make_store(&temp_directory);
-  assert!(store.pending_uploads().await.is_empty());
+  assert_eq!(
+    store.pending_uploads().await,
+    [] as [PersistedTriggerUpload; 0]
+  );
   assert!(!tokio::fs::try_exists(&snapshot_path).await.unwrap());
   assert!(!tokio::fs::try_exists(&artifact_path).await.unwrap());
   assert!(

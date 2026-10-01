@@ -78,6 +78,7 @@ struct MockSessionReplayTarget;
 
 struct SetupTestHooks {
   startup_gate_ready_tx: StdSender<()>,
+  startup_stats_upload_completed_tx: StdSender<()>,
   remote_streaming_action_processed_tx: StdSender<()>,
   remote_streaming_trigger_upload_completed_tx: StdSender<()>,
   startup_replay_gate_opened_tx: StdSender<()>,
@@ -86,6 +87,10 @@ struct SetupTestHooks {
 }
 
 impl TestHooks for SetupTestHooks {
+  fn startup_stats_upload_completed(&self) {
+    let _ignored = self.startup_stats_upload_completed_tx.send(());
+  }
+
   fn startup_gate_ready(&self) {
     let _ignored = self.startup_gate_ready_tx.send(());
   }
@@ -176,6 +181,7 @@ pub struct Setup {
   pub current_api_stream: Option<StreamHandle>,
 
   startup_gate_ready_rx: StdReceiver<()>,
+  startup_stats_upload_completed_rx: StdReceiver<()>,
   remote_streaming_action_processed_rx: StdReceiver<()>,
   remote_streaming_trigger_upload_completed_rx: StdReceiver<()>,
   startup_replay_gate_opened_rx: StdReceiver<()>,
@@ -245,6 +251,7 @@ impl Setup {
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
     let (startup_gate_ready_tx, startup_gate_ready_rx) = std_channel();
+    let (startup_stats_upload_completed_tx, startup_stats_upload_completed_rx) = std_channel();
     let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
       std_channel();
     let (
@@ -289,6 +296,7 @@ impl Setup {
     .with_time_provider(options.time_provider)
     .with_test_hooks(Some(Arc::new(SetupTestHooks {
       startup_gate_ready_tx,
+      startup_stats_upload_completed_tx,
       remote_streaming_action_processed_tx,
       remote_streaming_trigger_upload_completed_tx,
       startup_replay_gate_opened_tx,
@@ -316,6 +324,7 @@ impl Setup {
       server,
       current_api_stream,
       startup_gate_ready_rx,
+      startup_stats_upload_completed_rx,
       remote_streaming_action_processed_rx,
       remote_streaming_trigger_upload_completed_rx,
       startup_replay_gate_opened_rx,
@@ -365,6 +374,13 @@ impl Setup {
       .workflow_attachment_upload_completed_rx
       .recv_timeout(std::time::Duration::from_secs(5))
       .expect("timed out waiting for workflow attachment upload completion")
+  }
+
+  pub fn wait_for_startup_stats_upload_completion(&self) {
+    self
+      .startup_stats_upload_completed_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for startup stats upload persistence");
   }
 
   pub fn wait_for_workflow_event_processing(&self) {

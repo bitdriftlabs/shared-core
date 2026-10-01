@@ -713,6 +713,8 @@ pub struct Flusher {
   disk_flush_debounce:
     bd_runtime::runtime::DurationWatch<bd_runtime::runtime::stats::DiskFlushDebounceFlag>,
 
+  startup_upload_completed_for_test: Option<Box<dyn Fn() + Send + Sync>>,
+
   #[cfg(test)]
   test_hooks: TestHooks,
 }
@@ -763,12 +765,18 @@ impl Flusher {
 
       #[cfg(test)]
       test_hooks: TestHooks::default(),
+      startup_upload_completed_for_test: None,
     }
   }
 
   #[cfg(test)]
   pub const fn test_hooks(&mut self) -> TestHooksReceiver {
     self.test_hooks.receiver.take().unwrap()
+  }
+
+  /// Signals after a startup upload's acknowledgment finishes updating persistent state.
+  pub fn set_startup_upload_completed_for_test(&mut self, callback: Box<dyn Fn() + Send + Sync>) {
+    self.startup_upload_completed_for_test = Some(callback);
   }
 
   fn should_skip_upload(&self) -> bool {
@@ -1053,6 +1061,16 @@ impl Flusher {
     self
       .process_pending_upload_completion(&upload_response, context.metadata())
       .await;
+
+    if matches!(context, UploadContext::Startup(..)) {
+      log::debug!(
+        "startup stats upload acknowledgment processing finished: uuid={}",
+        upload_response.uuid
+      );
+      if let Some(callback) = &self.startup_upload_completed_for_test {
+        callback();
+      }
+    }
 
     #[cfg(test)]
     self
