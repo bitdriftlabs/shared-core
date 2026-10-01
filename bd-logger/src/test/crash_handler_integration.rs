@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
-use crate::logger::{Block, CaptureSession, ReportProcessingSession};
+use crate::logger::{Block, ReportProcessingSession};
 use crate::test::setup::SetupOptions;
 use assert_matches::assert_matches;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
@@ -82,16 +82,9 @@ fn crash_report_upload() {
       poll_callback: None,
     });
 
-    // Log one log to trigger a global state update, then wait for its state flush.
-    setup.logger_handle.log(
-      0,
-      LogType::NORMAL,
-      "".into(),
-      [].into(),
-      [].into(),
-      None,
-      &CaptureSession::default(),
-    );
+    // Wait for log processing before flushing: flush admission can be skipped before startup
+    // is ready, so enqueueing a log alone does not guarantee its metadata is persisted.
+    setup.log_then_wait_for_workflow_event(0, LogType::NORMAL, "".into(), [].into(), [].into());
     setup.logger_handle.flush_state(Block::Yes {
       timeout: 5.std_seconds(),
       poll_callback: None,

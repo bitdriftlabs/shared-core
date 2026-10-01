@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::global_state::{Reader, Tracker, UpdateResult, fields_to_crash_state};
+use bd_proto::protos::logging::payload::log::Field;
 use bd_runtime::runtime::Watch;
 use bd_test_helpers::session::in_memory_store;
 use time::ext::{NumericalDuration, NumericalStdDuration};
@@ -16,7 +17,7 @@ fn global_state_update() {
   let reader = Reader::new(store.clone());
   let mut state_tracker = Tracker::new(store, Watch::new_for_testing(0.seconds()));
 
-  assert!(state_tracker.current_global_state.fields.is_empty());
+  assert_eq!(state_tracker.current_global_state.fields, [] as [Field; 0]);
   assert!(reader.global_state_fields().is_empty());
 
   let fields = [

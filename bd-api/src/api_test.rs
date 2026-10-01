@@ -36,6 +36,7 @@ use bd_network_quality::{NetworkQuality, NetworkQualityResolver as _};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::handshake_response::StreamSettings;
+use bd_proto::protos::client::api::state_update_request::StartedSession;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
@@ -1794,7 +1795,7 @@ async fn flush_buffers_response_forwards_streaming_to_trigger_upload() {
       max_logs_count: Some(10),
     })
   );
-  assert!(!trigger_upload.session_id.is_empty());
+  assert_ne!(trigger_upload.session_id, "");
   assert_matches!(
     trigger_upload.source,
     TriggerUploadSource::RemoteCommand(ref id) if !id.is_empty()
@@ -2273,7 +2274,7 @@ async fn midstream_opaque_entity_updates_are_sent() {
       .opaque_entity_id
       .as_deref()
   );
-  assert!(state_update.started_sessions.is_empty());
+  assert_eq!(state_update.started_sessions, [] as [StartedSession; 0]);
 
   setup.state_update_response().await;
   setup.set_opaque_entity_id(None);

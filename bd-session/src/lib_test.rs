@@ -8,7 +8,7 @@
 use super::test::flush;
 use super::{PendingStateUpdate, Strategy, StrategyWithWorker};
 use crate::configuration;
-use crate::persistence::{ActivityState, PersistedSessionState, Store};
+use crate::persistence::{ActivityState, PersistedSessionState, StartedSessionRecord, Store};
 use bd_proto::protos::client::api::StateUpdateRequest;
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
@@ -185,7 +185,7 @@ async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
     vec![session_id.as_ref()],
     started_session_ids(handshake.request())
   );
-  assert!(handshake.started_sessions.is_empty());
+  assert_eq!(handshake.started_sessions, [] as [StartedSessionRecord; 0]);
 }
 
 #[tokio::test]
