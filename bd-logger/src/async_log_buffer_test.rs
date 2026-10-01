@@ -81,7 +81,7 @@ use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use bd_workflows::workflow::{
-  WORKFLOW_COMMAND_ARTIFACT_ID_FIELD,
+  COMMAND_ARTIFACT_ID_FIELD,
   WorkflowCommandCompletionToken,
   WorkflowCommandOutcome,
 };
@@ -2186,7 +2186,7 @@ async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads()
         Log {
           log_level: log_level::INFO,
           log_type: LogType::NORMAL,
-          message: "Workflow command completed".into(),
+          message: "Command completed".into(),
           fields: LogFields::default(),
           matching_fields: LogFields::default(),
           occurred_at: OffsetDateTime::UNIX_EPOCH,
@@ -2248,11 +2248,11 @@ async fn failed_workflow_outcome_replay_releases_attachment() {
         Log {
           log_level: log_level::ERROR,
           log_type: LogType::NORMAL,
-          message: "Workflow command completed".into(),
+          message: "Command completed".into(),
           session_id: "session".into(),
           occurred_at: OffsetDateTime::now_utc(),
           fields: [(
-            WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+            COMMAND_ARTIFACT_ID_FIELD.into(),
             attachment.id.to_string().into(),
           )]
           .into(),
@@ -2302,14 +2302,14 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
   let mut config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let mut missing_buffer = default_buffer_config(
     BufferType::CONTINUOUS,
-    Some(match_message("Workflow command completed")),
+    Some(match_message("Command completed")),
   );
   missing_buffer.id = "missing".to_string();
   config_update.buffer_selector = BufferSelector::new(&BufferConfigList {
     buffer_config: vec![
       default_buffer_config(
         BufferType::CONTINUOUS,
-        Some(match_message("Workflow command completed")),
+        Some(match_message("Command completed")),
       ),
       missing_buffer,
     ],
@@ -2324,11 +2324,11 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
         Log {
           log_level: log_level::ERROR,
           log_type: LogType::NORMAL,
-          message: "Workflow command completed".into(),
+          message: "Command completed".into(),
           session_id: "session".into(),
           occurred_at: OffsetDateTime::now_utc(),
           fields: [(
-            WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+            COMMAND_ARTIFACT_ID_FIELD.into(),
             attachment.id.to_string().into(),
           )]
           .into(),
@@ -2392,11 +2392,11 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
         Log {
           log_level: log_level::ERROR,
           log_type: LogType::NORMAL,
-          message: "Workflow command completed".into(),
+          message: "Command completed".into(),
           session_id: "session".into(),
           occurred_at: OffsetDateTime::now_utc(),
           fields: [(
-            WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+            COMMAND_ARTIFACT_ID_FIELD.into(),
             attachment.id.to_string().into(),
           )]
           .into(),

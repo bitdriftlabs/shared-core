@@ -24,7 +24,7 @@ use crate::config::{
 use crate::generate_log::generate_log_action;
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{FieldsRef, Log, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogFields, LogLevel, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow_command::WorkflowCommandSelector;
 use bd_proto_util::serialization::TimestampMicros;
@@ -37,9 +37,11 @@ use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-const WORKFLOW_COMMAND_STATUS_FIELD: &str = "_workflow_command_status";
-const WORKFLOW_COMMAND_MESSAGE_FIELD: &str = "_workflow_command_message";
-pub const WORKFLOW_COMMAND_ARTIFACT_ID_FIELD: &str = "_workflow_command_artifact_id";
+pub const COMMAND_ARTIFACT_ID_FIELD: &str = "_command_artifact_id";
+pub const COMMAND_OUTCOME_MESSAGE: &str = "Command completed";
+pub const COMMAND_ID_FIELD: &str = "_command_id";
+const COMMAND_MESSAGE_FIELD: &str = "_command_message";
+const COMMAND_STATUS_FIELD: &str = "_command_status";
 
 pub(crate) fn workflow_command_cooldown_key_prefix(workflow_id: &str) -> String {
   format!("{}:{workflow_id}:", workflow_id.len())
@@ -76,6 +78,69 @@ impl WorkflowCommandRequest {
   }
 }
 
+/// The terminal outcome shared by workflow and direct device commands.
+pub struct CommandOutcome {
+  pub succeeded: bool,
+  pub message: Option<String>,
+  pub fields: LogFields,
+  pub artifact_id: Option<Uuid>,
+  pub command_id: Option<String>,
+}
+
+impl CommandOutcome {
+  #[must_use]
+  pub fn into_fields(self) -> (LogLevel, LogFields) {
+    let Self {
+      succeeded,
+      message,
+      mut fields,
+      artifact_id,
+      command_id,
+    } = self;
+    fields.retain(|key, _| !key.starts_with("_command_") && !key.starts_with("_workflow_command_"));
+    fields.insert(
+      COMMAND_STATUS_FIELD.into(),
+      if succeeded { "success" } else { "failure" }.into(),
+    );
+    if let Some(message) = message {
+      fields.insert(COMMAND_MESSAGE_FIELD.into(), message.into());
+    }
+    if let Some(artifact_id) = artifact_id {
+      fields.insert(
+        COMMAND_ARTIFACT_ID_FIELD.into(),
+        artifact_id.to_string().into(),
+      );
+    }
+    if let Some(command_id) = command_id {
+      fields.insert(COMMAND_ID_FIELD.into(), command_id.into());
+    }
+
+    (
+      if succeeded {
+        log_level::INFO
+      } else {
+        log_level::ERROR
+      },
+      fields,
+    )
+  }
+
+  #[must_use]
+  pub fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
+    let (log_level, fields) = self.into_fields();
+    Log {
+      log_type: LogType::NORMAL,
+      log_level,
+      message: COMMAND_OUTCOME_MESSAGE.into(),
+      session_id: session_id.into(),
+      occurred_at: now,
+      fields,
+      matching_fields: LogFields::default(),
+      capture_session: None,
+    }
+  }
+}
+
 /// The terminal outcome reported by a workflow command executor.
 #[derive(Clone, Debug)]
 pub enum WorkflowCommandOutcome {
@@ -96,7 +161,7 @@ pub enum WorkflowCommandOutcome {
 
 impl WorkflowCommandOutcome {
   pub(crate) fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
-    let (succeeded, message, mut fields, artifact_id) = match self {
+    let (succeeded, message, fields, artifact_id) = match self {
       Self::Succeeded { message, fields } => (true, message, fields, None),
       Self::SucceededWithAttachment {
         message,
@@ -106,36 +171,14 @@ impl WorkflowCommandOutcome {
       Self::Failed { message, fields } => (false, message, fields, None),
     };
 
-    fields.retain(|key, _| !key.starts_with("_workflow_command_"));
-
-    fields.insert(
-      WORKFLOW_COMMAND_STATUS_FIELD.into(),
-      if succeeded { "success" } else { "failure" }.into(),
-    );
-    if let Some(message) = message {
-      fields.insert(WORKFLOW_COMMAND_MESSAGE_FIELD.into(), message.into());
-    }
-    if let Some(artifact_id) = artifact_id {
-      fields.insert(
-        WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
-        artifact_id.to_string().into(),
-      );
-    }
-
-    Log {
-      log_type: LogType::NORMAL,
-      log_level: if succeeded {
-        log_level::INFO
-      } else {
-        log_level::ERROR
-      },
-      message: "Workflow command completed".into(),
-      session_id: session_id.into(),
-      occurred_at: now,
+    CommandOutcome {
+      succeeded,
+      message,
       fields,
-      matching_fields: bd_log_primitives::LogFields::default(),
-      capture_session: None,
+      artifact_id,
+      command_id: None,
     }
+    .into_log(session_id, now)
   }
 }
 

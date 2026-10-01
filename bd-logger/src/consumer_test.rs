@@ -706,7 +706,7 @@ fn workflow_artifact_ids_are_found_in_raw_and_compressed_batches() {
         message: "workflow outcome".into(),
         fields: [
           (
-            bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD.into(),
+            bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD.into(),
             artifact_id.to_string().into(),
           ),
           ("padding".into(), padding.into()),
@@ -734,6 +734,44 @@ fn workflow_artifact_ids_are_found_in_raw_and_compressed_batches() {
   .unwrap();
   assert_eq!(ids.get(&artifact_id).map(String::as_str), Some("session"));
   assert_eq!(ids.len(), 1);
+}
+
+#[test]
+fn direct_command_artifacts_are_not_workflow_attachments() {
+  let artifact_id = uuid::Uuid::new_v4();
+  let mut log = EncodableLog::new(
+    Log {
+      log_level: log_level::INFO,
+      log_type: LogType::NORMAL,
+      message: "Command completed".into(),
+      fields: [
+        (
+          bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD.into(),
+          artifact_id.to_string().into(),
+        ),
+        (
+          bd_workflows::workflow::COMMAND_ID_FIELD.into(),
+          uuid::Uuid::new_v4().to_string().into(),
+        ),
+      ]
+      .into(),
+      matching_fields: [].into(),
+      session_id: "session".into(),
+      occurred_at: time::OffsetDateTime::now_utc(),
+      capture_session: None,
+    },
+    u64::MAX,
+  );
+  let mut bytes = Vec::new();
+  log.compute_size(&[], &[]).unwrap();
+  log
+    .serialize_to_stream(&[], &[], &mut CodedOutputStream::vec(&mut bytes))
+    .unwrap();
+  assert!(
+    super::workflow_artifact_ids_for_logs(&[bytes])
+      .unwrap()
+      .is_empty()
+  );
 }
 
 struct PendingFlushStateTestEvents {

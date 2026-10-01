@@ -180,10 +180,8 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
   let observer_terminal = state("observer_terminal");
   let observed =
     state("observed").declare_transition(&observer_terminal, rule!(message_equals("never")));
-  let observer = state("observer").declare_transition(
-    &observed,
-    rule!(message_equals("Workflow command completed")),
-  );
+  let observer =
+    state("observer").declare_transition(&observed, rule!(message_equals("Command completed")));
   let observer_start =
     state("observer_start").declare_transition(&observer, rule!(message_equals("start")));
 
@@ -242,14 +240,14 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
       &token,
       WorkflowCommandOutcome::SucceededWithAttachment {
         message: Some("done".to_string()),
-        fields: [("_workflow_command_artifact_id".into(), "spoofed".into())].into(),
+        fields: [("_command_artifact_id".into(), "spoofed".into())].into(),
         artifact_id,
       },
       OffsetDateTime::now_utc(),
     )
     .unwrap();
   assert_eq!(
-    outcome_log.log.fields.get("_workflow_command_artifact_id"),
+    outcome_log.log.fields.get("_command_artifact_id"),
     Some(&artifact_id.to_string().into())
   );
   assert!(matches!(
@@ -437,7 +435,7 @@ async fn workflow_command_blocks_other_transitions_until_completion() {
   let command = state("command")
     .declare_transition(&terminal, workflow_command_rule())
     .declare_transition(&bypass, rule!(message_equals("another event")))
-    .declare_transition(&bypass, rule!(message_equals("Workflow command completed")));
+    .declare_transition(&bypass, rule!(message_equals("Command completed")));
   let start = state("start").declare_transition(&command, rule!(message_equals("start")));
   let setup = Setup::new();
   let mut engine = setup

@@ -83,8 +83,14 @@ fn workflow_artifact_ids_for_logs(logs: &[Vec<u8>]) -> anyhow::Result<HashMap<uu
     };
     // TODO(mattklein123): Authenticate workflow attachment provenance instead of relying on this
     // reserved field being unavailable to public logger callers.
+    if fields
+      .iter()
+      .any(|field| field.key == bd_workflows::workflow::COMMAND_ID_FIELD)
+    {
+      continue;
+    }
     for field in fields {
-      if field.key == bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD
+      if field.key == bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD
         && let Ok(id) = uuid::Uuid::parse_str(field.value.string_data())
       {
         ids.insert(id, log.session_id.clone());

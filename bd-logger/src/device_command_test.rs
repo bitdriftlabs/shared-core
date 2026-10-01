@@ -11,11 +11,18 @@ use super::{
   CommandResult,
   RegisteredCommandDispatcher,
   RegisteredCommandHandler,
+  artifact_attachment,
+  completed_device_command_update,
+  device_command_outcome_log,
+  failed_device_command_update_with_fields,
+  no_attachment,
   workflow_command_outcome,
 };
 use crate::workflow_attachment::AttachmentStoreHandle;
 use bd_artifact_upload::UploadSource;
-use bd_log_primitives::LogFields;
+use bd_log_primitives::{DataValue, LogFields, log_level};
+use bd_proto::protos::client::api::{DeviceCommandUpdate, device_command_update};
+use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
@@ -23,6 +30,7 @@ use bd_workflows::workflow::WorkflowCommandOutcome;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use uuid::Uuid;
 
 struct Handler;
 
@@ -120,6 +128,96 @@ fn completed_attachment(source: UploadSource) -> CommandResult {
       state: LogFields::default(),
     }),
   }
+}
+
+#[test]
+fn terminal_device_command_updates_produce_outcome_logs() {
+  let command_id = Uuid::new_v4().to_string();
+  let artifact_id = Uuid::new_v4();
+  let context = super::device_command_context(
+    [
+      ("count".into(), DataValue::U64(7)),
+      ("_command_status".into(), "spoofed".into()),
+    ]
+    .into(),
+  );
+  let completed = completed_device_command_update(
+    &command_id,
+    false,
+    Some(context),
+    artifact_attachment(artifact_id),
+  );
+  let log = device_command_outcome_log(&completed).unwrap();
+  assert_eq!(log.log_level, log_level::INFO);
+  assert_eq!(log.log_type, LogType::NORMAL);
+  assert_eq!(log.message.as_str(), Some("Command completed"));
+  assert_eq!(
+    log.fields.get("_command_status").unwrap().value.as_str(),
+    Some("success")
+  );
+  assert_eq!(
+    log.fields.get("_command_id").unwrap().value.as_str(),
+    Some(command_id.as_str())
+  );
+  assert_eq!(log.fields.get("count").unwrap().value, DataValue::U64(7));
+  assert_eq!(
+    log
+      .fields
+      .get("_command_artifact_id")
+      .unwrap()
+      .value
+      .as_str(),
+    Some(artifact_id.to_string().as_str())
+  );
+  assert!(!log.fields.contains_key("_command_message"));
+
+  let failed = failed_device_command_update_with_fields(
+    &command_id,
+    1,
+    [
+      ("error".into(), "not registered".into()),
+      ("reason".into(), "missing".into()),
+      ("_command_id".into(), "spoofed".into()),
+    ]
+    .into(),
+  );
+  let log = device_command_outcome_log(&failed).unwrap();
+  assert_eq!(log.log_level, log_level::ERROR);
+  assert_eq!(
+    log.fields.get("_command_status").unwrap().value.as_str(),
+    Some("failure")
+  );
+  assert_eq!(
+    log.fields.get("_command_message").unwrap().value.as_str(),
+    Some("not registered")
+  );
+  assert_eq!(
+    log.fields.get("reason").unwrap().value.as_str(),
+    Some("missing")
+  );
+  assert_eq!(
+    log.fields.get("_command_id").unwrap().value.as_str(),
+    Some(command_id.as_str())
+  );
+  assert!(!log.fields.contains_key("error"));
+
+  let completed_without_attachment =
+    completed_device_command_update(&command_id, false, None, no_attachment());
+  assert!(
+    !device_command_outcome_log(&completed_without_attachment)
+      .unwrap()
+      .fields
+      .contains_key("_command_artifact_id")
+  );
+  assert!(
+    device_command_outcome_log(&DeviceCommandUpdate {
+      update_type: Some(device_command_update::Update_type::Accepted(
+        device_command_update::Accepted::default(),
+      )),
+      ..Default::default()
+    })
+    .is_none()
+  );
 }
 
 #[tokio::test]

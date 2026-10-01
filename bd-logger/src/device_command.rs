@@ -9,12 +9,13 @@
 #[path = "./device_command_test.rs"]
 mod tests;
 
+use crate::async_log_buffer::Sender as LogSender;
 use crate::workflow_attachment::AttachmentStoreHandle;
 use anyhow::anyhow;
 use bd_api::upload::TrackedDeviceCommandUpdate;
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadCompletion};
 use bd_artifact_upload::UploadSource;
-use bd_log_primitives::LogFields;
+use bd_log_primitives::{AnnotatedLogField, AnnotatedLogFields, DataValue, LogFields, LogLine};
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
 use bd_proto::protos::client::api::device_command_update::completed::{Attachment, attachment};
 use bd_proto::protos::client::api::{
@@ -22,13 +23,15 @@ use bd_proto::protos::client::api::{
   DeviceCommandUpdate,
   device_command_update,
 };
-use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::logging::payload::{Data, LogType};
 use bd_proto::protos::workflow::workflow_command::{
   WellKnownCommandType,
   workflow_command_selector,
 };
 use bd_workflows::workflow::{
+  COMMAND_OUTCOME_MESSAGE,
+  CommandOutcome,
   WorkflowCommandCompletionToken,
   WorkflowCommandOutcome,
   WorkflowCommandRequest,
@@ -52,7 +55,7 @@ const MAX_SCREENSHOT_BYTES: usize = 2 * 1024 * 1024;
 //
 
 pub struct DeviceCommandDispatcher {
-  data_upload_tx: Sender<DataUpload>,
+  senders: DeviceCommandSenders,
   trigger_upload_tx: Sender<TriggerUpload>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -61,9 +64,16 @@ pub struct DeviceCommandDispatcher {
   active_command_ids: Mutex<HashSet<String>>,
 }
 
+#[derive(Clone)]
+struct DeviceCommandSenders {
+  data_upload_tx: Sender<DataUpload>,
+  log_sender: LogSender,
+}
+
 impl DeviceCommandDispatcher {
   pub fn new(
     data_upload_tx: Sender<DataUpload>,
+    log_sender: LogSender,
     trigger_upload_tx: Sender<TriggerUpload>,
     session_strategy: Arc<bd_session::Strategy>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -71,7 +81,10 @@ impl DeviceCommandDispatcher {
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   ) -> Self {
     Self {
-      data_upload_tx,
+      senders: DeviceCommandSenders {
+        data_upload_tx,
+        log_sender,
+      },
       trigger_upload_tx,
       session_strategy,
       artifact_client,
@@ -102,7 +115,7 @@ impl DeviceCommandDispatcher {
 
   fn dispatch(&self, command: DeviceCommandRequest) {
     let command_id = command.command_id.to_string();
-    let data_upload_tx = self.data_upload_tx.clone();
+    let senders = self.senders.clone();
     let trigger_upload_tx = self.trigger_upload_tx.clone();
     let session_strategy = self.session_strategy.clone();
     let artifact_client = self.artifact_client.clone();
@@ -111,7 +124,7 @@ impl DeviceCommandDispatcher {
     tokio::task::spawn(async move {
       if let Err(error) = execute_device_command(
         command,
-        data_upload_tx,
+        senders,
         trigger_upload_tx,
         session_strategy,
         artifact_client,
@@ -392,7 +405,7 @@ async fn workflow_command_outcome(
 
 async fn execute_device_command(
   command: DeviceCommandRequest,
-  data_upload_tx: Sender<DataUpload>,
+  senders: DeviceCommandSenders,
   trigger_upload_tx: Sender<TriggerUpload>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -408,7 +421,7 @@ async fn execute_device_command(
         command_id,
         command.registered_command_id.clone(),
         arguments,
-        data_upload_tx,
+        senders,
         session_strategy,
         artifact_client,
         command_dispatcher,
@@ -420,7 +433,7 @@ async fn execute_device_command(
         Ok(WellKnownCommandType::DUMP_DEVICE_BUFFER) if arguments.is_empty() => {
           execute_buffer_dump_device_command(
             command_id,
-            data_upload_tx,
+            senders,
             trigger_upload_tx,
             session_strategy,
           )
@@ -429,7 +442,7 @@ async fn execute_device_command(
         Ok(WellKnownCommandType::TAKE_SCREENSHOT) if arguments.is_empty() => {
           execute_screenshot_device_command(
             command_id,
-            data_upload_tx,
+            senders,
             session_strategy,
             artifact_client,
             remote_screenshot_capture_handler,
@@ -438,7 +451,7 @@ async fn execute_device_command(
         },
         _ => {
           send_device_command_update(
-            &data_upload_tx,
+            &senders,
             failed_device_command_update(&command_id, 1, "unsupported device command"),
           )
           .await
@@ -447,7 +460,7 @@ async fn execute_device_command(
     },
     None => {
       send_device_command_update(
-        &data_upload_tx,
+        &senders,
         failed_device_command_update(&command_id, 1, "unsupported device command"),
       )
       .await
@@ -457,13 +470,13 @@ async fn execute_device_command(
 
 async fn execute_screenshot_device_command(
   command_id: String,
-  data_upload_tx: Sender<DataUpload>,
+  senders: DeviceCommandSenders,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
 ) -> anyhow::Result<()> {
   send_device_command_update(
-    &data_upload_tx,
+    &senders,
     DeviceCommandUpdate {
       command_id: command_id.clone(),
       update_sequence_number: 1,
@@ -479,7 +492,7 @@ async fn execute_screenshot_device_command(
     Ok(session_id) => session_id.to_string(),
     Err(error) => {
       send_device_command_update(
-        &data_upload_tx,
+        &senders,
         failed_device_command_update(&command_id, 2, &error.to_string()),
       )
       .await?;
@@ -489,7 +502,7 @@ async fn execute_screenshot_device_command(
   let screenshot = match remote_screenshot_capture_handler.capture().await {
     Ok(screenshot) if let Err(error) = validate_screenshot(&screenshot) => {
       send_device_command_update(
-        &data_upload_tx,
+        &senders,
         failed_device_command_update(&command_id, 2, error),
       )
       .await?;
@@ -498,7 +511,7 @@ async fn execute_screenshot_device_command(
     Ok(screenshot) => screenshot,
     Err(error) => {
       send_device_command_update(
-        &data_upload_tx,
+        &senders,
         failed_device_command_update(&command_id, 2, &error),
       )
       .await?;
@@ -520,7 +533,7 @@ async fn execute_screenshot_device_command(
       },
       Err(error) => failed_device_command_update(&command_id, 2, &error.to_string()),
     };
-  send_device_command_update(&data_upload_tx, update).await
+  send_device_command_update(&senders, update).await
 }
 
 fn validate_screenshot(bytes: &[u8]) -> Result<(), &'static str> {
@@ -537,7 +550,7 @@ fn validate_screenshot(bytes: &[u8]) -> Result<(), &'static str> {
 
 async fn execute_buffer_dump_device_command(
   command_id: String,
-  data_upload_tx: Sender<DataUpload>,
+  senders: DeviceCommandSenders,
   trigger_upload_tx: Sender<TriggerUpload>,
   session_strategy: Arc<bd_session::Strategy>,
 ) -> anyhow::Result<()> {
@@ -545,7 +558,7 @@ async fn execute_buffer_dump_device_command(
     Ok(session_id) => session_id.to_string(),
     Err(error) => {
       send_device_command_update(
-        &data_upload_tx,
+        &senders,
         failed_device_command_update(&command_id, 1, &error.to_string()),
       )
       .await?;
@@ -556,7 +569,7 @@ async fn execute_buffer_dump_device_command(
     TriggerUpload::new_device_command_with_completion(Vec::new(), command_id.clone(), session_id);
   if trigger_upload_tx.send(trigger_upload).await.is_err() {
     send_device_command_update(
-      &data_upload_tx,
+      &senders,
       failed_device_command_update(&command_id, 1, "trigger upload manager is unavailable"),
     )
     .await?;
@@ -565,14 +578,14 @@ async fn execute_buffer_dump_device_command(
 
   let Ok(admission) = admission_rx.await else {
     send_device_command_update(
-      &data_upload_tx,
+      &senders,
       failed_device_command_update(&command_id, 1, "buffer dump upload could not be prepared"),
     )
     .await?;
     return Ok(());
   };
   send_device_command_update(
-    &data_upload_tx,
+    &senders,
     DeviceCommandUpdate {
       command_id: command_id.clone(),
       update_sequence_number: 1,
@@ -615,21 +628,21 @@ async fn execute_buffer_dump_device_command(
     },
     Err(_) => failed_device_command_update(&command_id, 2, "buffer dump upload did not complete"),
   };
-  send_device_command_update(&data_upload_tx, update).await
+  send_device_command_update(&senders, update).await
 }
 
 async fn execute_custom_device_command(
   command_id: String,
   registered_command_id: String,
   arguments: HashMap<String, Data>,
-  data_upload_tx: Sender<DataUpload>,
+  senders: DeviceCommandSenders,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   command_dispatcher: RegisteredCommandDispatcher,
 ) -> anyhow::Result<()> {
   let Ok(command_id_uuid) = Uuid::parse_str(&command_id) else {
     send_device_command_update(
-      &data_upload_tx,
+      &senders,
       failed_device_command_update(&command_id, 1, "invalid device command id"),
     )
     .await?;
@@ -637,7 +650,7 @@ async fn execute_custom_device_command(
   };
   let Some(handler) = command_dispatcher.get_handler(&registered_command_id) else {
     send_device_command_update(
-      &data_upload_tx,
+      &senders,
       failed_device_command_update(&command_id, 1, "unregistered device command"),
     )
     .await?;
@@ -645,7 +658,7 @@ async fn execute_custom_device_command(
   };
 
   send_device_command_update(
-    &data_upload_tx,
+    &senders,
     DeviceCommandUpdate {
       command_id: command_id.clone(),
       update_sequence_number: 1,
@@ -661,7 +674,7 @@ async fn execute_custom_device_command(
     Ok(session_id) => session_id.to_string(),
     Err(error) => {
       send_device_command_update(
-        &data_upload_tx,
+        &senders,
         failed_device_command_update(&command_id, 2, &error.to_string()),
       )
       .await?;
@@ -692,7 +705,7 @@ async fn execute_custom_device_command(
             Ok(artifact_id) => artifact_attachment(artifact_id),
             Err(error) => {
               return send_device_command_update(
-                &data_upload_tx,
+                &senders,
                 failed_device_command_update(&command_id, 2, &error.to_string()),
               )
               .await;
@@ -713,7 +726,7 @@ async fn execute_custom_device_command(
       failed_device_command_update_with_fields(&command_id, 2, fields)
     },
   };
-  send_device_command_update(&data_upload_tx, update).await
+  send_device_command_update(&senders, update).await
 }
 
 async fn stage_device_command_attachment(
@@ -841,12 +854,72 @@ fn failed_device_command_update_with_fields(
   }
 }
 
+fn device_command_outcome_log(update: &DeviceCommandUpdate) -> Option<LogLine> {
+  let (succeeded, context, artifact_id) = match update.update_type.as_ref()? {
+    device_command_update::Update_type::Completed(completed) => {
+      let artifact_id = match completed
+        .attachment
+        .as_ref()
+        .and_then(|attachment| attachment.attachment_type.as_ref())
+      {
+        Some(attachment::Attachment_type::Artifact(artifact)) => {
+          Uuid::parse_str(&artifact.artifact_id).ok()
+        },
+        _ => None,
+      };
+      (true, completed.context.as_ref(), artifact_id)
+    },
+    device_command_update::Update_type::Failed(failed) => (false, failed.context.as_ref(), None),
+    device_command_update::Update_type::Accepted(_) => return None,
+  };
+  let mut fields: LogFields = context
+    .into_iter()
+    .flat_map(|context| &context.fields)
+    .filter_map(|(key, value)| {
+      DataValue::from_proto(value.clone()).map(|value| (key.clone().into(), value))
+    })
+    .collect();
+  let message = if succeeded {
+    None
+  } else {
+    fields
+      .remove("error")
+      .and_then(|value| value.as_str().map(str::to_owned))
+  };
+  let (log_level, fields) = CommandOutcome {
+    succeeded,
+    message,
+    fields,
+    artifact_id,
+    command_id: Some(update.command_id.clone()),
+  }
+  .into_fields();
+  Some(LogLine {
+    log_level,
+    log_type: LogType::NORMAL,
+    message: COMMAND_OUTCOME_MESSAGE.into(),
+    fields: fields
+      .into_iter()
+      .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+      .collect(),
+    matching_fields: AnnotatedLogFields::default(),
+    attributes_overrides: None,
+    capture_session: None,
+  })
+}
+
 async fn send_device_command_update(
-  data_upload_tx: &Sender<DataUpload>,
+  senders: &DeviceCommandSenders,
   update: DeviceCommandUpdate,
 ) -> anyhow::Result<()> {
+  if let Some(log) = device_command_outcome_log(&update)
+    && let Err(error) = senders.log_sender.try_send_log(log)
+  {
+    log::debug!("failed to admit device command outcome log: {error}");
+  }
   let (update, response_rx) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
-  data_upload_tx
+  senders
+    .data_upload_tx
     .send(DataUpload::DeviceCommandUpdate(update))
     .await
     .map_err(|_| anyhow!("device command update channel closed"))?;
