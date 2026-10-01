@@ -1500,7 +1500,7 @@ impl StreamedBufferUpload {
 
       log::debug!("received first log, starting stream upload");
 
-      debug_assert!(self.batch_builder.logs.is_empty());
+      debug_assert_eq!(self.batch_builder.logs, [] as [Vec<u8>; 0]);
       self.batch_builder.add_log(first_log.to_vec());
 
       self.consumer.finish_read()?;

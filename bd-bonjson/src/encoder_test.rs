@@ -367,7 +367,7 @@ fn test_encoder_buffer_access() {
   encode_into_vec(&mut buffer, &value).expect("Failed to encode");
 
   // Access buffer
-  assert!(!buffer.is_empty());
+  assert_ne!(buffer, [] as [u8; 0]);
 
   // Verify we can still use the buffer for more encoding
   let value2 = Value::Signed(456);
@@ -736,7 +736,7 @@ fn test_encode_deeply_nested_mixed_structures() {
         assert_eq!(obj3.get("null_value").unwrap(), &Value::Null);
 
         if let Value::Array(empty_arr) = obj3.get("empty_array").unwrap() {
-          assert!(empty_arr.is_empty());
+          assert_eq!(empty_arr.as_slice(), []);
         } else {
           panic!("Expected array for empty_array");
         }

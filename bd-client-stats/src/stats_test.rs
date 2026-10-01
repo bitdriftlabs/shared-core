@@ -1488,7 +1488,7 @@ async fn handshake_upload_ack_deletes_source_files_and_reports_success() {
     .unwrap();
 
   let index = read_test_index(&fs).await;
-  assert!(index.pending_files.is_empty());
+  assert_eq!(index.pending_files, [] as [PendingFile; 0]);
   assert_eq!(
     index
       .unreported_stats_pipeline_analytics

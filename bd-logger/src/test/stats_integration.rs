@@ -150,6 +150,10 @@ fn inline_startup_upload_success_is_acked_and_reported_on_next_connection() {
   });
 
   let (_, first_handshake) = setup.server.blocking_next_handshake_request().unwrap();
+  if first_handshake.startup_stats_upload.is_some() {
+    // The transport handshake completes before the stats flusher persists its ACK.
+    setup.wait_for_startup_stats_upload_completion();
+  }
   assert_eq!(
     first_handshake
       .analytics
@@ -173,7 +177,7 @@ fn inline_startup_upload_success_is_acked_and_reported_on_next_connection() {
       .join(STALE_SNAPSHOT_FILE)
       .exists()
   );
-  assert!(read_index(&setup).pending_files.is_empty());
+  assert_eq!(read_index(&setup).pending_files, [] as [PendingFile; 0]);
 
   setup
     .server
@@ -184,6 +188,10 @@ fn inline_startup_upload_success_is_acked_and_reported_on_next_connection() {
   setup.restart_stream(false);
 
   let (_, second_handshake) = setup.server.blocking_next_handshake_request().unwrap();
+  if second_handshake.startup_stats_upload.is_some() {
+    // The transport handshake completes before the stats flusher persists its ACK.
+    setup.wait_for_startup_stats_upload_completion();
+  }
   assert_eq!(
     second_handshake
       .analytics
@@ -199,7 +207,7 @@ fn inline_startup_upload_success_is_acked_and_reported_on_next_connection() {
     .stats_pipeline
     .as_ref()
     .unwrap();
-  assert!(!report.report_id.is_empty());
+  assert_ne!(report.report_id, "");
   let analytics = report.analytics.as_ref().unwrap();
   assert_eq!(analytics.stats_uploads_acknowledged_successfully, 1);
   assert_eq!(analytics.stats_uploads_acknowledged_unsuccessfully, 0);
@@ -249,6 +257,10 @@ fn capped_startup_batch_drains_the_remainder_on_the_next_handshake() {
   });
 
   let (_, first_handshake) = setup.server.blocking_next_handshake_request().unwrap();
+  if first_handshake.startup_stats_upload.is_some() {
+    // The transport handshake completes before the stats flusher persists its ACK.
+    setup.wait_for_startup_stats_upload_completion();
+  }
   let first_upload = first_handshake.startup_stats_upload.as_ref().unwrap();
   assert_eq!(first_upload.snapshot.len(), MAX_SNAPSHOTS_PER_UPLOAD);
   for (index, snapshot) in first_upload.snapshot.iter().enumerate() {
@@ -271,6 +283,10 @@ fn capped_startup_batch_drains_the_remainder_on_the_next_handshake() {
   setup.restart_stream(false);
 
   let (_, second_handshake) = setup.server.blocking_next_handshake_request().unwrap();
+  if second_handshake.startup_stats_upload.is_some() {
+    // The transport handshake completes before the stats flusher persists its ACK.
+    setup.wait_for_startup_stats_upload_completion();
+  }
   let second_upload = second_handshake.startup_stats_upload.as_ref().unwrap();
   assert_eq!(second_upload.snapshot.len(), 1);
   assert_eq!(
@@ -279,7 +295,7 @@ fn capped_startup_batch_drains_the_remainder_on_the_next_handshake() {
       "test:stale-{MAX_SNAPSHOTS_PER_UPLOAD}"
     )))
   );
-  assert!(read_index(&setup).pending_files.is_empty());
+  assert_eq!(read_index(&setup).pending_files, [] as [PendingFile; 0]);
 }
 
 #[test]
@@ -306,6 +322,10 @@ fn rejected_startup_batch_is_retained_and_retried_with_the_same_uuid() {
   });
 
   let (_, first_handshake) = setup.server.blocking_next_handshake_request().unwrap();
+  if first_handshake.startup_stats_upload.is_some() {
+    // The transport handshake completes before the stats flusher persists its ACK.
+    setup.wait_for_startup_stats_upload_completion();
+  }
   let first_upload = first_handshake.startup_stats_upload.as_ref().unwrap();
   let first_upload_uuid = first_upload.upload_uuid.clone();
   assert_eq!(first_upload.snapshot.len(), 2);
@@ -323,10 +343,14 @@ fn rejected_startup_batch_is_retained_and_retried_with_the_same_uuid() {
   setup.restart_stream(false);
 
   let (_, second_handshake) = setup.server.blocking_next_handshake_request().unwrap();
+  if second_handshake.startup_stats_upload.is_some() {
+    // The transport handshake completes before the stats flusher persists its ACK.
+    setup.wait_for_startup_stats_upload_completion();
+  }
   let second_upload = second_handshake.startup_stats_upload.as_ref().unwrap();
   assert_eq!(second_upload.upload_uuid, first_upload_uuid);
   assert_eq!(second_upload.snapshot.len(), 2);
-  assert!(read_index(&setup).pending_files.is_empty());
+  assert_eq!(read_index(&setup).pending_files, [] as [PendingFile; 0]);
 }
 
 #[test]

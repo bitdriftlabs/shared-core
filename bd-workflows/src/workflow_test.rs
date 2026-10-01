@@ -1166,7 +1166,7 @@ fn multiple_start_nodes_initial_fork() {
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
+  assert_eq!(workflow.runs(), []);
 
   // The first log causes a fork since it matches the first two transitions.
   let result = workflow.process_log(TestLog::new("foo"));
@@ -1275,7 +1275,7 @@ fn multiple_start_nodes_initial_branching() {
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
+  assert_eq!(workflow.runs(), []);
 
   // The first log progresses the workflow towards the "B" state.
   let result = workflow.process_log(TestLog::new("foo"));
@@ -1378,7 +1378,7 @@ fn basic_exclusive_workflow() {
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
+  assert_eq!(workflow.runs(), []);
 
   // * A new run is created to ensure that workflow has a run in initial state.
   // * The first run moves from "A" to non-final "B" state.
@@ -1554,7 +1554,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
     .with_duration_limit(10.seconds())
     .make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
+  assert_eq!(workflow.runs(), []);
 
   // * The first run is created.
   // * The first run transitions from state "A" into states "B" and "D" as two of its outgoing
@@ -1619,7 +1619,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
   // * The match causes the run to exceed the limit of allowed matches.
   // * The second run is removed.
   let result = workflow.process_log(TestLog::new("bar"));
-  assert!(result.triggered_actions.is_empty());
+  assert_eq!(result.triggered_actions, [] as [TriggeredAction<'_>; 0]);
   assert_eq!(
     result,
     WorkflowResult {
@@ -1660,7 +1660,7 @@ fn exclusive_workflow_log_rule_count() {
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
+  assert_eq!(workflow.runs(), []);
 
   // * The first run is created.
   // * The first run does not advance.
@@ -1717,7 +1717,7 @@ fn exclusive_workflow_log_rule_count() {
 
   // None of the runs advance as they do not match the log.
   let result = workflow.process_log(TestLog::new("not matching"));
-  assert!(result.triggered_actions.is_empty());
+  assert_eq!(result.triggered_actions, [] as [TriggeredAction<'_>; 0]);
   assert_eq!(WorkflowResultStats::default(), result.stats);
   assert_active_runs!(workflow; "A", "B");
 
@@ -1783,7 +1783,7 @@ fn debug_with_fork() {
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
+  assert_eq!(workflow.runs(), []);
 
   let result = workflow.process_log(TestLog::new("foo"));
   assert_eq!(
@@ -1943,7 +1943,7 @@ fn branching_exclusive_workflow() {
 
   let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e]).make_config();
   let mut workflow = AnnotatedWorkflow::new(config);
-  assert!(workflow.runs().is_empty());
+  assert_eq!(workflow.runs(), []);
 
   // The first and only run is moved from "A" to non-final "B" state.
   let result = workflow.process_log(TestLog::new("foo"));
@@ -1981,7 +1981,7 @@ fn branching_exclusive_workflow() {
   // initial state.
   // 2. None of the run match the log.
   let result = workflow.process_log(TestLog::new("fooo"));
-  assert!(result.triggered_actions.is_empty());
+  assert_eq!(result.triggered_actions, [] as [TriggeredAction<'_>; 0]);
   assert_eq!(
     WorkflowResultStats {
       matched_logs_count: 0,

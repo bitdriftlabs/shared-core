@@ -361,7 +361,7 @@ impl LoggerBuilder {
           time_provider.clone(),
         )?
       };
-      let flush_handles = stats.flush_handle(
+      let mut flush_handles = stats.flush_handle(
         &runtime_loader,
         periodic_schedule,
         shutdown_handle.make_shutdown(),
@@ -369,6 +369,14 @@ impl LoggerBuilder {
         data_upload_tx.clone(),
         time_provider.clone(),
       );
+
+      if let Some(test_hooks) = self.test_hooks.clone() {
+        flush_handles
+          .flusher
+          .set_startup_upload_completed_for_test(Box::new(move || {
+            test_hooks.startup_stats_upload_completed();
+          }));
+      }
 
       (
         flush_handles.flusher,

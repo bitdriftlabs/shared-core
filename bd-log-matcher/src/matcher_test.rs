@@ -49,6 +49,7 @@ use ordered_float::NotNan;
 use pretty_assertions::assert_eq;
 use protobuf::{Enum, MessageField};
 use std::collections::VecDeque;
+use std::num::TryFromIntError;
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);
 
@@ -955,10 +956,7 @@ fn test_tag_log_type_invalid_config_value() {
     ..Default::default()
   }));
 
-  assert_eq!(
-    Tree::new(&config).err().unwrap().to_string(),
-    "out of range integral type conversion attempted"
-  );
+  assert!(Tree::new(&config).err().unwrap().is::<TryFromIntError>());
 }
 
 #[test]

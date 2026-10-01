@@ -96,8 +96,11 @@ pub fn encode_into_vec<'a>(
 /// # Returns
 /// * `Ok(usize)` - The number of bytes written on success
 /// * `Err(SerializationError)` - If encoding fails (including buffer full)
-pub fn encode_into_slice(buffer: &mut [u8], value: &Value) -> Result<usize, SerializationError> {
-  encode_into_buf(&mut (&mut *buffer), value)
+pub fn encode_into_slice(
+  mut buffer: &mut [u8],
+  value: &Value,
+) -> Result<usize, SerializationError> {
+  encode_into_buf(&mut buffer, value)
 }
 
 /// Encodes a `Value` into a `BufMut`.

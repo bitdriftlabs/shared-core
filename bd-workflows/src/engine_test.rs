@@ -12,6 +12,7 @@ use super::engine_test_helpers::{
   assert_workflow_debug_state,
   make_runtime,
 };
+use crate::actions_flush_buffers::StreamingBuffersAction;
 use crate::config::{Action, Config, FlushBufferId, WorkflowDebugMode, WorkflowsConfiguration};
 use crate::engine::{ProcessLocalPendingFlushState, WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::test::{MakeConfig, TestLog};
@@ -19,6 +20,7 @@ use crate::workflow::{
   Workflow,
   WorkflowCommandCompletionError,
   WorkflowCommandOutcome,
+  WorkflowCommandRequest,
   WorkflowEvent,
   WorkflowTransitionDebugState,
 };
@@ -33,7 +35,11 @@ use bd_log_matcher::builder::{field_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, Log, LogFields, LogMessage, log_level};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
-use bd_proto::protos::client::api::{SankeyPathUploadRequest, log_upload_intent_request};
+use bd_proto::protos::client::api::{
+  SankeyIntentRequest,
+  SankeyPathUploadRequest,
+  log_upload_intent_request,
+};
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
   BaseLogMatcher,
@@ -206,11 +212,11 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
       .contains_key(&token.0)
   );
 
-  assert!(
+  assert_eq!(
     engine
       .process_log(TestLog::new("another event"))
-      .workflow_commands_to_start
-      .is_empty()
+      .workflow_commands_to_start,
+    [] as [WorkflowCommandRequest; 0]
   );
   assert!(
     engine
@@ -490,7 +496,10 @@ async fn debug_only_workflow_command_does_not_become_pending() {
   engine.process_log(TestLog::new("start"));
   let result = engine.process_log(TestLog::new("execute"));
 
-  assert!(result.workflow_commands_to_start.is_empty());
+  assert_eq!(
+    result.workflow_commands_to_start,
+    [] as [WorkflowCommandRequest; 0]
+  );
   assert!(engine.engine.pending_workflow_command_index.is_empty());
   engine_assert_active_runs!(engine; 0; "start", "command");
 }
@@ -540,11 +549,11 @@ async fn workflow_command_interval_applies_to_successive_runs() {
 
     let before_next_start = command_at + 60.seconds() - time::Duration::NANOSECOND;
     engine.process_log(timed_command_log("start", before_next_start));
-    assert!(
+    assert_eq!(
       engine
         .process_log(timed_command_log("execute", before_next_start))
-        .workflow_commands_to_start
-        .is_empty()
+        .workflow_commands_to_start,
+      [] as [WorkflowCommandRequest; 0]
     );
     engine_assert_active_runs!(engine; 0; "start", "command");
     let at_next_start = command_at + 60.seconds();
@@ -605,11 +614,11 @@ async fn workflow_command_interval_survives_restart() {
     .await;
   let before_interval = started_at + 60.seconds() - time::Duration::NANOSECOND;
   engine.process_log(timed_command_log("start", before_interval));
-  assert!(
+  assert_eq!(
     engine
       .process_log(timed_command_log("execute", before_interval))
-      .workflow_commands_to_start
-      .is_empty()
+      .workflow_commands_to_start,
+    [] as [WorkflowCommandRequest; 0]
   );
   assert_eq!(
     1,
@@ -670,11 +679,11 @@ async fn workflow_command_interval_respects_nanoseconds() {
 
   let before_interval = started_at + time::Duration::nanoseconds(499);
   engine.process_log(timed_command_log("start", before_interval));
-  assert!(
+  assert_eq!(
     engine
       .process_log(timed_command_log("execute", before_interval))
-      .workflow_commands_to_start
-      .is_empty()
+      .workflow_commands_to_start,
+    [] as [WorkflowCommandRequest; 0]
   );
   assert_eq!(
     1,
@@ -714,11 +723,11 @@ async fn workflow_command_interval_is_shared_by_parallel_runs() {
   );
   let before_interval = started_at + 1.seconds();
   engine.process_log(timed_command_log("start", before_interval));
-  assert!(
+  assert_eq!(
     engine
       .process_log(timed_command_log("execute", before_interval))
-      .workflow_commands_to_start
-      .is_empty()
+      .workflow_commands_to_start,
+    [] as [WorkflowCommandRequest; 0]
   );
   assert_eq!(
     1,
@@ -1132,14 +1141,14 @@ async fn workflow_removal_does_not_clear_slash_prefixed_workflow_cooldown() {
       vec![foo_bar_config],
     ));
 
-  assert!(
+  assert_eq!(
     engine
       .process_log(timed_command_log(
         "before cooldown",
         started_at + 1.seconds()
       ))
-      .workflow_commands_to_start
-      .is_empty()
+      .workflow_commands_to_start,
+    [] as [WorkflowCommandRequest; 0]
   );
 }
 
@@ -2369,7 +2378,7 @@ async fn runs_in_initial_state_are_not_persisted() {
   // * Workflow #1: The second run was not re-recreated as it was not stored on a disk.
   // * Workflow #2: No runs exists as no runs were stored on disk.
   engine_assert_active_runs!(workflows_engine; 0; "A");
-  assert!(workflows_engine.state.workflows[1].runs().is_empty());
+  assert_eq!(workflows_engine.state.workflows[1].runs(), []);
 
   workflows_engine.process_log(TestLog::new("bar"));
   // * Workflow #1: A new run in an initial state is created as workflow has a parallel execution
@@ -2407,7 +2416,7 @@ async fn ignore_persisted_state_if_corrupted() {
     ))
     .await;
   // The workflow has no runs.
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
+  assert_eq!(workflows_engine.state.workflows[0].runs(), []);
 
   // Assert corrupted file was deleted
   assert!(
@@ -2499,7 +2508,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
     .await;
 
   // assert that the workflow has no runs.
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
+  assert_eq!(workflows_engine.state.workflows[0].runs(), []);
   collector.assert_counter_eq(
     1,
     "workflows:state_loads_total",
@@ -2551,7 +2560,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
     .await;
 
   // assert that the workflow has a valid initial state - no runs.
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
+  assert_eq!(workflows_engine.state.workflows[0].runs(), []);
   collector.assert_counter_eq(
     1,
     "workflows:state_loads_total",
@@ -2619,8 +2628,8 @@ async fn engine_processing_log() {
     },
     result
   );
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
-  assert!(workflows_engine.state.workflows[1].runs().is_empty());
+  assert_eq!(workflows_engine.state.workflows[0].runs(), []);
+  assert_eq!(workflows_engine.state.workflows[1].runs(), []);
 
   setup
     .collector
@@ -2849,11 +2858,11 @@ async fn duration_expired_command_does_not_consume_its_cooldown() {
   let expired_at = started_at + 2.seconds();
 
   engine.process_log(timed_command_log("start", started_at));
-  assert!(
+  assert_eq!(
     engine
       .process_log(timed_command_log("execute", expired_at))
-      .workflow_commands_to_start
-      .is_empty()
+      .workflow_commands_to_start,
+    [] as [WorkflowCommandRequest; 0]
   );
 
   engine.process_log(timed_command_log("start", expired_at));
@@ -3308,7 +3317,10 @@ async fn logs_streaming() {
   );
 
   assert!(workflows_engine.state.pending_flush_actions.is_empty());
-  assert!(workflows_engine.state.streaming_actions.is_empty());
+  assert_eq!(
+    workflows_engine.state.streaming_actions,
+    [] as [StreamingBuffersAction; 0]
+  );
 
   // Make sure that workflows state was persisted to disk.
   assert!(workflows_engine.needs_state_persistence);
@@ -3386,7 +3398,10 @@ async fn restored_workflow_streaming_waits_for_durable_flush_completion() {
     result.log_destination_buffer_ids,
     Cow::Owned(TinySet::from(["trigger_buffer_id".into()]))
   );
-  assert!(workflows_engine.state.streaming_actions.is_empty());
+  assert_eq!(
+    workflows_engine.state.streaming_actions,
+    [] as [StreamingBuffersAction; 0]
+  );
 }
 
 #[tokio::test]
@@ -3449,7 +3464,10 @@ async fn restored_remote_streaming_waits_for_durable_flush_completion() {
     result.log_destination_buffer_ids,
     Cow::Owned(TinySet::from(["trigger_buffer_id".into()]))
   );
-  assert!(workflows_engine.state.streaming_actions.is_empty());
+  assert_eq!(
+    workflows_engine.state.streaming_actions,
+    [] as [StreamingBuffersAction; 0]
+  );
 }
 
 #[tokio::test]
@@ -3729,8 +3747,8 @@ async fn creating_new_runs_after_first_log_processing() {
       ],
     ))
     .await;
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
-  assert!(workflows_engine.state.workflows[1].runs().is_empty());
+  assert_eq!(workflows_engine.state.workflows[0].runs(), []);
+  assert_eq!(workflows_engine.state.workflows[1].runs(), []);
 
   workflows_engine.process_log(TestLog::new("bar"));
   engine_assert_active_runs!(workflows_engine; 0; "D");
@@ -3778,9 +3796,9 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   let mut workflows_engine = setup.make_workflows_engine(engine_config.clone()).await;
 
   // Session ID is empty on first engine initialization.
-  assert!(workflows_engine.state.session_id.is_empty());
+  assert_eq!(workflows_engine.state.session_id, "");
   // No traversals as no log has been processed yet.
-  assert!(workflows_engine.state.workflows[0].runs().is_empty());
+  assert_eq!(workflows_engine.state.workflows[0].runs(), []);
 
   workflows_engine.process_log(TestLog::new("foo").with_session("foo_session"));
 
@@ -3814,7 +3832,10 @@ async fn workflows_state_is_purged_when_session_id_changes() {
   assert_eq!(workflows_engine.state.session_id, "bar_session",);
   assert_eq!(1, workflows_engine.state.workflows.len());
   assert!(workflows_engine.state.pending_flush_actions.is_empty());
-  assert!(workflows_engine.state.streaming_actions.is_empty());
+  assert_eq!(
+    workflows_engine.state.streaming_actions,
+    [] as [StreamingBuffersAction; 0]
+  );
   // No need to persist state as state file was removed already. The
   // only thing that needs storing is `session_ID` but having no session ID
   // stored on a disk is fine.
@@ -3924,11 +3945,11 @@ async fn test_traversals_count_tracking() {
   engine.update(WorkflowsEngineConfig::new_with_workflow_configurations(
     vec![],
   ));
-  assert!(engine.state.workflows.is_empty());
+  assert_eq!(engine.state.workflows, [] as [Workflow; 0]);
 
   // Check that traversals stay zero at since no log has been processed yet.
   engine.update(engine_config);
-  assert!(engine.state.workflows[0].runs().is_empty());
+  assert_eq!(engine.state.workflows[0].runs(), []);
 
   // A traversal is created to process an incoming log that's not matched.
   engine.process_log(TestLog::new("no match"));
@@ -4297,7 +4318,10 @@ async fn sankey_action() {
 
   1.milliseconds().sleep().await;
 
-  assert!(engine.hooks.lock().sankey_uploads.is_empty());
+  assert_eq!(
+    engine.hooks.lock().sankey_uploads,
+    [] as [SankeyPathUploadRequest; 0]
+  );
   assert_eq!(1, engine.hooks.lock().received_sankey_upload_intents.len());
 
   setup.collector.assert_workflow_counter_eq(
@@ -4336,7 +4360,7 @@ async fn sankey_action() {
   let mut first_upload = engine.hooks.lock().sankey_uploads[0].clone();
 
   // Confirm upload uuid is present and remove it from further comparisons.
-  assert!(!first_upload.upload_uuid.is_empty());
+  assert_ne!(first_upload.upload_uuid, "");
   first_upload.upload_uuid = String::new();
 
   assert_eq!(
@@ -4427,13 +4451,13 @@ async fn sankey_action_drops_paths_with_empty_nodes() {
 
   1.milliseconds().sleep().await;
 
-  assert!(engine.hooks.lock().sankey_uploads.is_empty());
-  assert!(
-    engine
-      .hooks
-      .lock()
-      .received_sankey_upload_intents
-      .is_empty()
+  assert_eq!(
+    engine.hooks.lock().sankey_uploads,
+    [] as [SankeyPathUploadRequest; 0]
+  );
+  assert_eq!(
+    engine.hooks.lock().received_sankey_upload_intents,
+    [] as [SankeyIntentRequest; 0]
   );
 }
 

@@ -648,7 +648,7 @@ fn test_enum_message_variant_with_empty_message() -> Result<()> {
   os.flush()?;
   drop(os);
 
-  assert!(!buf.is_empty());
+  assert_ne!(buf, [] as [u8; 0]);
 
   let mut is = CodedInputStream::from_bytes(&buf);
   let _tag = is.read_raw_varint32()?;

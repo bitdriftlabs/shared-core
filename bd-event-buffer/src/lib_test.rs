@@ -475,7 +475,7 @@ fn startup_gate_replays_eligible_previous_process_entries_before_current_entries
     state.admit_with_evictions(RetentionLane::Protected, true, 10, "previous", |_| {})
   );
 
-  assert!(state.take_batch(2).is_empty());
+  assert_eq!(state.take_batch(2), [] as [&str; 0]);
   assert!(state.open_gate());
   assert_eq!(vec!["previous", "current"], state.take_batch(2));
 }
