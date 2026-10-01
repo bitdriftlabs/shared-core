@@ -9,6 +9,7 @@
 #[path = "./client_config_test.rs"]
 mod client_config_test;
 
+use crate::async_log_buffer::Sender as LogSender;
 use crate::device_command::{DeviceCommandDispatcher, RegisteredCommandDispatcher};
 use crate::logging_state::{BufferProducers, ConfigUpdate};
 use crate::write_log_to_buffer;
@@ -267,6 +268,7 @@ impl LoggerUpdate {
     workflow_attachment_cleanup_ready: Arc<AtomicBool>,
     config_update_tx: Sender<ConfigUpdate>,
     data_upload_tx: Sender<DataUpload>,
+    log_sender: LogSender,
     trigger_upload_tx: Sender<TriggerUpload>,
     session_strategy: Arc<bd_session::Strategy>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -280,6 +282,7 @@ impl LoggerUpdate {
       config_update_tx,
       device_command_dispatcher: DeviceCommandDispatcher::new(
         data_upload_tx,
+        log_sender,
         trigger_upload_tx,
         session_strategy,
         artifact_client,

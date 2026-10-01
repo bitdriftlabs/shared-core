@@ -1107,7 +1107,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     for (outcome_log, completion_token) in logs {
       let artifact_id = outcome_log
-        .field_value(bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD)
+        .field_value(bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD)
         .and_then(|value| uuid::Uuid::parse_str(&value).ok());
       let occurred_at = outcome_log.occurred_at;
       let (log, context) = workflow_generated_log(

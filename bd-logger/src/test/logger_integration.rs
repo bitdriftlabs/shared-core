@@ -36,7 +36,7 @@ use bd_proto::protos::bdtail::bdtail_config::{
   BdTailStream,
   DeviceCommandRequest,
 };
-use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
+use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type;
 use bd_proto::protos::client::api::{
@@ -2801,6 +2801,27 @@ fn buffer_dump_device_command_uploads_and_reports_terminal_context() {
         if batches.total_result_bytes == accepted_total_result_bytes
     );
   });
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "Command completed");
+    assert_eq!(log_upload.logs()[0].field("_command_status"), "success");
+    assert_eq!(log_upload.logs()[0].field("_command_id"), command_id);
+    assert_eq!(
+      log_upload.logs()[0]
+        .typed_fields()
+        .into_iter()
+        .find(|(key, _)| key == "uploaded_log_count")
+        .map(|(_, value)| value),
+      Some(DataValue::U64(1))
+    );
+  });
 }
 
 #[test]
@@ -2929,6 +2950,23 @@ fn custom_device_command_configuration(
     registered_command_id,
     HashMap::new(),
   )
+}
+
+fn with_command_outcome_buffer(
+  mut configuration: bd_proto::protos::client::api::ConfigurationUpdate,
+) -> bd_proto::protos::client::api::ConfigurationUpdate {
+  let Some(Update_type::StateOfTheWorld(sow)) = &mut configuration.update_type else {
+    panic!("expected state-of-the-world command configuration");
+  };
+  sow.buffer_config_list = Some(BufferConfigList {
+    buffer_config: vec![default_buffer_config(
+      Type::TRIGGER,
+      Some(match_message("Command completed")),
+    )],
+    ..Default::default()
+  })
+  .into();
+  configuration
 }
 
 fn builtin_command_selector(
@@ -3081,7 +3119,9 @@ fn screenshot_device_command_stages_correlated_attachment() {
 
   assert!(
     setup
-      .send_configuration_update(screenshot_device_command_configuration(command_id))
+      .send_configuration_update(with_command_outcome_buffer(
+        screenshot_device_command_configuration(command_id)
+      ))
       .is_none()
   );
   assert_matches!(
@@ -3123,6 +3163,21 @@ fn screenshot_device_command_stages_correlated_attachment() {
       );
     }
   );
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.logs().len(), 1);
+    let log = &log_upload.logs()[0];
+    assert_eq!(log.message(), "Command completed");
+    assert_eq!(log.field("_command_status"), "success");
+    assert_eq!(log.field("_command_artifact_id"), artifact_id);
+    assert_eq!(log.field("_command_id"), command_id);
+  });
 }
 
 #[test]
@@ -3145,7 +3200,9 @@ fn screenshot_device_command_reports_capture_and_validation_failures() {
   ] {
     assert!(
       setup
-        .send_configuration_update(screenshot_device_command_configuration(command_id))
+        .send_configuration_update(with_command_outcome_buffer(
+          screenshot_device_command_configuration(command_id)
+        ))
         .is_none()
     );
     assert_matches!(
@@ -3171,6 +3228,21 @@ fn screenshot_device_command_reports_capture_and_validation_failures() {
         );
       }
     );
+    setup.logger_handle.flush_state(Block::Yes {
+      timeout: 15.std_seconds(),
+      poll_callback: None,
+    });
+    setup
+      .current_api_stream()
+      .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
+    assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+      assert_eq!(log_upload.logs().len(), 1);
+      let log = &log_upload.logs()[0];
+      assert_eq!(log.message(), "Command completed");
+      assert_eq!(log.field("_command_status"), "failure");
+      assert_eq!(log.field("_command_message"), expected_error);
+      assert_eq!(log.field("_command_id"), command_id);
+    });
   }
 }
 
@@ -3191,9 +3263,8 @@ fn registered_custom_device_command_completes_without_attachment() {
 
   assert!(
     setup
-      .send_configuration_update(custom_device_command_configuration(
-        command_id,
-        registered_command_id,
+      .send_configuration_update(with_command_outcome_buffer(
+        custom_device_command_configuration(command_id, registered_command_id,)
       ))
       .is_none()
   );
@@ -3218,6 +3289,21 @@ fn registered_custom_device_command_completes_without_attachment() {
       completed.attachment.as_ref().and_then(|attachment| attachment.attachment_type.as_ref()),
       Some(device_command_update::completed::attachment::Attachment_type::None(_))
     );
+  });
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.logs().len(), 1);
+    let log = &log_upload.logs()[0];
+    assert_eq!(log.message(), "Command completed");
+    assert_eq!(log.field("_command_status"), "success");
+    assert_eq!(log.field("_command_id"), command_id);
+    assert_eq!(log.field("result"), "completed");
   });
 }
 
@@ -3915,9 +4001,8 @@ fn unregistered_custom_device_command_fails_without_acceptance() {
 
   assert!(
     setup
-      .send_configuration_update(custom_device_command_configuration(
-        command_id,
-        registered_command_id,
+      .send_configuration_update(with_command_outcome_buffer(
+        custom_device_command_configuration(command_id, registered_command_id,)
       ))
       .is_none()
   );
@@ -3930,6 +4015,21 @@ fn unregistered_custom_device_command_fails_without_acceptance() {
       failed.context.as_ref().and_then(|context| context.fields.get("error")),
       Some(value) if value.data_type == Some(Data_type::StringData("unregistered device command".to_string()))
     );
+  });
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.logs().len(), 1);
+    let log = &log_upload.logs()[0];
+    assert_eq!(log.message(), "Command completed");
+    assert_eq!(log.field("_command_status"), "failure");
+    assert_eq!(log.field("_command_message"), "unregistered device command");
+    assert_eq!(log.field("_command_id"), command_id);
   });
 }
 

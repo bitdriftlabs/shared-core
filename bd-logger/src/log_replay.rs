@@ -332,7 +332,11 @@ impl ProcessingPipeline {
     let has_workflow_attachment = log
       .log
       .fields
-      .contains_key(bd_workflows::workflow::WORKFLOW_COMMAND_ARTIFACT_ID_FIELD);
+      .contains_key(bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD)
+      && !log
+        .log
+        .fields
+        .contains_key(bd_workflows::workflow::COMMAND_ID_FIELD);
 
     if !has_workflow_attachment {
       match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {

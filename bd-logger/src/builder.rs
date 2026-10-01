@@ -594,6 +594,7 @@ impl LoggerBuilder {
         (None, None)
       };
 
+      let crash_log_sender = async_log_buffer_communication_tx.clone();
       let crash_monitor = Monitor::new(
         &self.params.sdk_directory,
         self.params.store.clone(),
@@ -604,7 +605,7 @@ impl LoggerBuilder {
         previous_run_state,
         move |log: bd_crash_handler::CrashLog| {
           AsyncLogBuffer::<LoggerReplay>::enqueue_log(
-            &async_log_buffer_communication_tx,
+            &crash_log_sender,
             log.log_level,
             LogType::LIFECYCLE,
             log.message,
@@ -649,6 +650,7 @@ impl LoggerBuilder {
           workflow_attachment_cleanup_ready,
           config_update_tx,
           data_upload_tx_clone.clone(),
+          async_log_buffer_communication_tx.clone(),
           trigger_upload_tx.clone(),
           session_strategy.clone(),
           artifact_client,
