@@ -273,10 +273,10 @@ fn encodable_log_compression_works() {
 
   // For compressed logs, message and fields should be empty in the proto
   assert!(decoded.message.is_none());
-  assert!(decoded.fields.is_empty());
+  assert_eq!(decoded.fields, [] as [Field; 0]);
 
   // compressed_contents should be non-empty
-  assert!(!decoded.compressed_contents.is_empty());
+  assert_ne!(decoded.compressed_contents, [] as [u8; 0]);
 
   // Verify other fields still match
   assert_eq!(decoded.timestamp_unix_micro, 1_500_000_000_000_000u64);
