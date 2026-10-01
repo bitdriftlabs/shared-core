@@ -11,7 +11,7 @@ pub mod macros {
   #[macro_export]
   macro_rules! capture_field {
     (single $name:expr) => {
-      $crate::filter::make_transform($crate::filter::make_capture_fields($name));
+      $crate::filter::make_transform($crate::filter::make_capture_fields($name))
     };
   }
 
