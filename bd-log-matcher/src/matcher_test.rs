@@ -7,7 +7,7 @@
 
 use crate::builder;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
-use crate::matcher::{MatchContext, RandomNumberGenerator, Tree};
+use crate::matcher::{JsonPathToken, MatchContext, RandomNumberGenerator, Tree, extract_json_path};
 use crate::test::TestMatcher;
 use ahash::AHashMap;
 use bd_log_primitives::tiny_set::TinyMap;
@@ -1919,5 +1919,64 @@ fn double_matcher_with_u64_field() {
       (u64_log_tag("key", 100), true),
       (u64_log_tag("key", 99), false),
     ],
+  );
+}
+
+#[test]
+fn json_extraction_scalar_types_and_paths() {
+  let path = [
+    JsonPathToken::Key("items".into()),
+    JsonPathToken::Index(0),
+    JsonPathToken::Key("a.b".into()),
+  ];
+  for (json, expected) in [
+    (
+      r#"{"items":[{"a.b":"hello\nworld"}]}"#,
+      Some("hello\nworld"),
+    ),
+    (r#"{"items":[{"a.b":12.5}]}"#, Some("12.5")),
+    (r#"{"items":[{"a.b":true}]}"#, Some("true")),
+    (r#"{"items":[{"a.b":null}]}"#, None),
+    (r#"{"items":[{"a.b":{}}]}"#, None),
+    (r#"{"items":[{"a.b":[]}]}"#, None),
+    (r#"{"items":[]}"#, None),
+    (r#"{"items":[{}]}"#, None),
+    ("broken JSON", None),
+  ] {
+    assert_eq!(
+      extract_json_path(&DataValue::String(json.into()), &path).as_deref(),
+      expected,
+      "{json}"
+    );
+  }
+
+  for (value, expected) in [
+    (DataValue::String("decoded".into()), "decoded"),
+    (DataValue::I64(-42), "-42"),
+    (DataValue::U64(42), "42"),
+    (DataValue::Double(NotNan::new(12.5).unwrap()), "12.5"),
+    (DataValue::Boolean(false), "false"),
+  ] {
+    let nested = DataValue::from(AHashMap::from_iter([(
+      "items".into(),
+      DataValue::from(vec![DataValue::from(AHashMap::from_iter([(
+        "a.b".into(),
+        value,
+      )]))]),
+    )]));
+    assert_eq!(extract_json_path(&nested, &path).as_deref(), Some(expected));
+  }
+}
+
+#[test]
+fn json_extraction_rejects_negative_indices() {
+  let path = [JsonPathToken::Index(-1)];
+  assert!(extract_json_path(&DataValue::String(r#"["value"]"#.into()), &path).is_none());
+  assert!(
+    extract_json_path(
+      &DataValue::from(vec![DataValue::String("value".into())]),
+      &path
+    )
+    .is_none()
   );
 }

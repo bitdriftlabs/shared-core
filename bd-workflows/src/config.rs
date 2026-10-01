@@ -5,10 +5,14 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./config_test.rs"]
+mod tests;
+
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
 use bd_api::TriggerUploadStreaming;
-use bd_log_matcher::matcher::Tree;
+use bd_log_matcher::matcher::{JsonPathToken, Tree, extract_json_path, parse_json_path};
 use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::save_field::SaveField;
 use bd_proto::protos::workflow::save_field::save_field::Save_field_type;
@@ -37,10 +41,12 @@ use workflow::workflow::action::{
   ActionEmitMetric as ActionEmitMetricProto,
   ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
 };
+use workflow::workflow::field_extracted::Extraction_type;
 use workflow::workflow::rule::Rule_type;
 use workflow::workflow::transition_extension::sankey_diagram_value_extraction;
 use workflow::workflow::{
   Action as ActionProto,
+  FieldExtracted,
   State as StateProto,
   Transition as TransitionProto,
 };
@@ -485,7 +491,7 @@ impl SankeyExtraction {
       value: match value {
         sankey_diagram_value_extraction::Value_type::Fixed(value) => TagValue::Fixed(value.clone()),
         sankey_diagram_value_extraction::Value_type::FieldExtracted(extracted) => {
-          TagValue::FieldExtract(extracted.field_name.clone())
+          TagValue::from_field_extracted(extracted)?
         },
       },
       counts_toward_sankey_values_extraction_limit: proto.counts_toward_sankey_extraction_limit,
@@ -970,7 +976,7 @@ impl ActionEmitMetric {
       .map(|t| {
         let value = match t.tag_type {
           Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
-          Some(Tag_type::FieldExtracted(extracted)) => TagValue::FieldExtract(extracted.field_name),
+          Some(Tag_type::FieldExtracted(extracted)) => TagValue::from_field_extracted(&extracted)?,
           Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
           Some(Tag_type::StateExtracted(extracted)) => {
             let scope = parse_state_scope(extracted.scope.enum_value_or_default())?;
@@ -1017,7 +1023,10 @@ impl ActionEmitMetric {
         id: proto.id,
         tags,
         multi_tag,
-        increment: ValueIncrement::Extract(extracted.field_name),
+        increment: match JsonFieldExtraction::from_proto(&extracted)? {
+          Some(extraction) => ValueIncrement::JsonExtract(extraction),
+          None => ValueIncrement::Extract(extracted.field_name),
+        },
         metric_type,
       }),
       _ => Err(anyhow!(
@@ -1129,7 +1138,7 @@ impl ActionEmitSankey {
           let value = match tag.tag_type {
             Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
             Some(Tag_type::FieldExtracted(extracted)) => {
-              TagValue::FieldExtract(extracted.field_name)
+              TagValue::from_field_extracted(&extracted)?
             },
             Some(Tag_type::StateExtracted(extracted)) => {
               let scope = parse_state_scope(extracted.scope.enum_value_or_default())?;
@@ -1174,9 +1183,10 @@ pub enum ValueIncrement {
   // Add a fixed value to the metric.
   Fixed(u64),
 
-  // Extract the value from the specified field. If the field does not exist or is not convertible
-  // to an integer, the metric is created (set to zero) but not incremented.
+  // Extract a numeric value from a field. Failed extraction or conversion skips the metric.
   Extract(FieldKey),
+  // Extract a numeric scalar from JSON using a compiled path.
+  JsonExtract(JsonFieldExtraction),
 }
 
 //
@@ -1187,6 +1197,8 @@ pub enum ValueIncrement {
 pub enum TagValue {
   // Use the value of the specified tag without further modification.
   FieldExtract(String),
+  // Extract a scalar from a JSON string or structured field.
+  JsonExtract(JsonFieldExtraction),
   // Use the value from state storage.
   StateExtract(bd_state::Scope, String),
   // Use a fixed value.
@@ -1195,7 +1207,45 @@ pub enum TagValue {
   LogBodyExtract,
 }
 
+//
+// JsonFieldExtraction
+//
+
+/// A path compiled once when workflow configuration is loaded.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct JsonFieldExtraction {
+  pub field_name: String,
+  pub path: Vec<JsonPathToken>,
+}
+
+impl JsonFieldExtraction {
+  fn from_proto(extracted: &FieldExtracted) -> anyhow::Result<Option<Self>> {
+    match &extracted.extraction_type {
+      Some(Extraction_type::JsonPath(path)) => Ok(Some(Self {
+        field_name: extracted.field_name.clone(),
+        path: path
+          .key_or_index
+          .iter()
+          .map(parse_json_path)
+          .collect::<anyhow::Result<_>>()?,
+      })),
+      Some(Extraction_type::Exact(_)) | None => Ok(None),
+    }
+  }
+
+  pub(crate) fn extract<'a>(&self, fields: FieldsRef<'a>) -> Option<Cow<'a, str>> {
+    extract_json_path(fields.field(&self.field_name)?, &self.path)
+  }
+}
+
 impl TagValue {
+  fn from_field_extracted(extracted: &FieldExtracted) -> anyhow::Result<Self> {
+    Ok(JsonFieldExtraction::from_proto(extracted)?.map_or_else(
+      || Self::FieldExtract(extracted.field_name.clone()),
+      Self::JsonExtract,
+    ))
+  }
+
   pub(crate) fn extract_value<'a>(
     &self,
     fields: FieldsRef<'a>,
@@ -1204,6 +1254,7 @@ impl TagValue {
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::FieldExtract(field_key) => fields.field_value(field_key),
+      Self::JsonExtract(extraction) => extraction.extract(fields),
       Self::StateExtract(scope, key) => state_reader.get(*scope, key).and_then(|value| {
         if value.value_type.is_none() {
           Some(Cow::Borrowed(""))
