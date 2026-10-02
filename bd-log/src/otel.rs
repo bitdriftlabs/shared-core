@@ -8,6 +8,8 @@
 #[path = "./otel_test.rs"]
 mod tests;
 
+use crate::conditional_export::{CaptureGroup, ExportControl};
+pub use crate::conditional_export::{TraceCaptureLimits, dropped_capture_count};
 use crate::{DEFAULT_FILTER_RULES, RegistryLayer};
 use anyhow::anyhow;
 use http::{HeaderMap, HeaderName, HeaderValue};
@@ -28,8 +30,15 @@ use opentelemetry_sdk::runtime::{Tokio, TokioCurrentThread};
 use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::Display;
+use std::future::Future;
+use std::ops::Deref;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::{Handle, RuntimeFlavor};
+#[doc(hidden)]
+pub use tracing as __tracing;
+use tracing::Instrument as _;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub const OTEL_TARGET: &str = "bd_log::otel";
@@ -311,6 +320,7 @@ pub(crate) fn build_otel_layer(
 ) -> anyhow::Result<(RegistryLayer, SdkTracerProvider)> {
   let exporter = build_span_exporter(config)?;
   let runtime_flavor = active_tokio_runtime_flavor()?;
+  let control = ExportControl::default();
   let provider_builder = SdkTracerProvider::builder()
     // OTLP exporters run async reqwest/tonic work and need a Tokio-backed processor instead of
     // the SDK's default dedicated thread, which has no reactor.
@@ -319,23 +329,29 @@ pub(crate) fn build_otel_layer(
     .with_max_events_per_span(config.max_events_per_span)
     .with_resource(build_resource(config));
   let provider = match runtime_flavor {
-    RuntimeFlavor::CurrentThread => provider_builder
+    RuntimeFlavor::CurrentThread => {
       // The upstream async batch processor blocks during shutdown. On a current-thread runtime it
       // must move its background work to a separate thread or shutdown can deadlock.
-      .with_span_processor(BatchSpanProcessor::builder(exporter, TokioCurrentThread).build())
-      .build(),
-    RuntimeFlavor::MultiThread => provider_builder
-      .with_span_processor(BatchSpanProcessor::builder(exporter, Tokio).build())
-      .build(),
+      let processor = BatchSpanProcessor::builder(exporter, TokioCurrentThread).build();
+      provider_builder
+        .with_span_processor(control.processor(processor))
+        .build()
+    },
+    RuntimeFlavor::MultiThread => {
+      let processor = BatchSpanProcessor::builder(exporter, Tokio).build();
+      provider_builder
+        .with_span_processor(control.processor(processor))
+        .build()
+    },
     other => {
       return Err(anyhow!(
         "unsupported tokio runtime flavor for OTEL batch exporter: {other:?}"
       ));
     },
   };
-  let tracer = provider.tracer(config.tracer_name.clone());
+  let tracer = control.tracer(provider.tracer(config.tracer_name.clone()));
 
-  let layer = build_direct_otel_layer(tracer);
+  let layer = build_direct_otel_layer(tracer, control);
 
   Ok((layer, provider))
 }
@@ -344,7 +360,7 @@ fn active_tokio_runtime_flavor() -> anyhow::Result<RuntimeFlavor> {
   Ok(Handle::try_current()?.runtime_flavor())
 }
 
-pub(crate) fn build_direct_otel_layer<T>(tracer: T) -> RegistryLayer
+pub(crate) fn build_direct_otel_layer<T>(tracer: T, control: ExportControl) -> RegistryLayer
 where
   T: opentelemetry::trace::Tracer + Send + Sync + 'static,
   T::Span: Send + Sync,
@@ -352,13 +368,14 @@ where
   // Keep routing outside `tracing-opentelemetry`'s own `Filtered` wrapper so the layer can be
   // replaced safely during the second-stage logger configuration. This is the same upstream reload
   // limitation described in tokio-rs/tracing#1629 and tokio-rs/tracing#2101.
-  crate::box_direct_otel_layer(
+  crate::box_capturing_otel_layer(
     tracing_opentelemetry::layer()
       .with_tracer(tracer)
       .with_level(true)
       .with_location(false)
       .with_threads(false)
       .with_target(false),
+    control,
   )
 }
 
@@ -420,6 +437,127 @@ fn build_tonic_metadata(headers: &BTreeMap<String, String>) -> anyhow::Result<Me
   }
 
   Ok(MetadataMap::from_headers(header_map))
+}
+
+//
+// ConditionalTrace
+//
+
+/// An independent local root whose final decision applies to its controlled child spans.
+/// Clones share one decision. Dropping the last handle without a decision discards the capture.
+/// Only the existing dedicated OTEL target is recorded; ordinary library spans stay excluded.
+/// Propagate a tracing parent handle to detached tasks so their membership is registered before
+/// lazy SDK span creation. Trace headers and links do not carry local capture ownership.
+#[derive(Clone, Debug)]
+pub struct ConditionalTrace {
+  span: tracing::Span,
+  decision: Arc<CaptureDecision>,
+}
+
+//
+// CaptureDecision
+//
+
+#[derive(Debug)]
+struct CaptureDecision(Option<CaptureGroup>);
+
+impl Drop for CaptureDecision {
+  fn drop(&mut self) {
+    if let Some(group) = &self.0 {
+      group.decide(false);
+    }
+  }
+}
+
+impl ConditionalTrace {
+  /// Register a newly created, unstarted root. Prefer `otel_span_on_error!` for root creation.
+  #[doc(hidden)]
+  #[must_use]
+  pub fn new(span: tracing::Span, limits: TraceCaptureLimits) -> Self {
+    let group = span
+      .with_subscriber(|(_, dispatch)| {
+        dispatch
+          .downcast_ref::<ExportControl>()?
+          .register_root(&span, limits)
+      })
+      .flatten();
+    if let Some(group) = &group {
+      let _ = span.set_parent(opentelemetry::Context::new().with_value(group.clone()));
+    }
+    Self {
+      span,
+      decision: Arc::new(CaptureDecision(group)),
+    }
+  }
+
+  /// Retain the complete local group when its spans close. The first decision is final.
+  pub fn retain(&self) {
+    self.decide(true);
+  }
+
+  fn decide(&self, retain: bool) {
+    if let Some(group) = &self.decision.0 {
+      group.decide(retain);
+    }
+  }
+}
+
+impl Deref for ConditionalTrace {
+  type Target = tracing::Span;
+
+  fn deref(&self) -> &Self::Target {
+    &self.span
+  }
+}
+
+/// Instrument a Result-returning future and export its local trace only on the final error.
+/// Cancellation leaves the span suppressed. The span must be created with `otel_span_on_error!`.
+pub async fn instrument_on_error<F, T, E>(future: F, span: ConditionalTrace) -> Result<T, E>
+where
+  F: Future<Output = Result<T, E>>,
+  E: Display,
+{
+  let cancellation = CaptureDecision(span.decision.0.clone());
+  let result = future.instrument(span.span.clone()).await;
+  if let Err(error) = &result {
+    let description: String = error.to_string().chars().take(1_024).collect();
+    span.record("otel.status_code", "ERROR");
+    span.record("otel.status_description", description.as_str());
+  }
+  span.decide(result.is_err());
+  drop(cancellation);
+  result
+}
+
+/// Create a typed error-only local trace, linking any ambient trace rather than requiring a parent.
+/// Use `otel::instrument_on_error` to decide retention from the operation's final Result.
+/// Local debug lifecycle output can still display suppressed spans; only collector export is gated.
+/// Use `limits: TraceCaptureLimits { ... }` before the name to override the default buffer limits.
+#[macro_export]
+macro_rules! otel_span_on_error {
+  (limits: $limits:expr, $name:expr $(, $($fields:tt)*)?) => {{
+    let headers = $crate::current_trace_context_headers();
+    let span = $crate::otel::__tracing::span!(
+      target: $crate::OTEL_TARGET,
+      parent: None,
+      $crate::otel::__tracing::Level::INFO,
+      $name,
+      otel.status_code = $crate::otel::__tracing::field::Empty,
+      otel.status_description = $crate::otel::__tracing::field::Empty
+      $(, $($fields)*)?
+    );
+    let capture = $crate::otel::ConditionalTrace::new(span, $limits);
+    if let Some(headers) = headers {
+      let _ = $crate::add_trace_link(&capture, &headers);
+    }
+    capture
+  }};
+  ($name:expr $(, $($fields:tt)*)?) => {{
+    $crate::otel_span_on_error!(
+      limits: $crate::otel::TraceCaptureLimits::default(),
+      $name $(, $($fields)*)?
+    )
+  }};
 }
 
 #[macro_export]
