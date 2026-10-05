@@ -400,6 +400,7 @@ struct GatedExporter {
   gate: Mutex<Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>>,
   completed: mpsc::UnboundedSender<()>,
   shutdowns: Arc<AtomicUsize>,
+  shutdown_completed: Mutex<Option<oneshot::Sender<()>>>,
 }
 
 impl SpanExporter for GatedExporter {
@@ -416,6 +417,13 @@ impl SpanExporter for GatedExporter {
 
   fn shutdown_with_timeout(&self, _: Duration) -> OTelSdkResult {
     self.shutdowns.fetch_add(1, Ordering::Relaxed);
+    self
+      .shutdown_completed
+      .lock()
+      .take()
+      .unwrap()
+      .send(())
+      .unwrap();
     Ok(())
   }
 }
@@ -426,6 +434,7 @@ async fn saturated_batch_captures<R: RuntimeChannel>(runtime: R) {
   let (started, exporting) = oneshot::channel();
   let (release, blocked) = oneshot::channel();
   let (completed, mut exported) = mpsc::unbounded_channel();
+  let (shutdown_completed, shutdown) = oneshot::channel();
   let shutdowns = Arc::new(AtomicUsize::new(0));
   let config = BatchConfigBuilder::default()
     .with_max_queue_size(2)
@@ -438,6 +447,7 @@ async fn saturated_batch_captures<R: RuntimeChannel>(runtime: R) {
       gate: Mutex::new(Some((started, blocked))),
       completed,
       shutdowns: shutdowns.clone(),
+      shutdown_completed: Mutex::new(Some(shutdown_completed)),
     },
     runtime,
   )
@@ -485,6 +495,8 @@ async fn saturated_batch_captures<R: RuntimeChannel>(runtime: R) {
   let unfinished = CaptureGroup::new(&control, TraceCaptureLimits::default());
   drop(tracer.start_with_context("unfinished", &Context::new().with_value(unfinished.clone())));
   provider.shutdown().unwrap();
+  // The SDK acknowledges shutdown before invoking the exporter's shutdown hook.
+  shutdown.await.unwrap();
   assert!(unfinished.0.state.lock().dropped);
   assert_eq!(unfinished.0.state.lock().spans.capacity(), 0);
   assert_eq!(control.0.lock().bytes, 0);
