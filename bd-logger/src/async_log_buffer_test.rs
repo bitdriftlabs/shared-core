@@ -27,6 +27,8 @@ use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingCo
 use crate::metadata::MetadataCollector;
 use crate::{Block, InitializationState, StartupReplayEligibility};
 use bd_api::{DataUpload, SimpleNetworkQualityProvider};
+use bd_artifact_upload::UploadSource;
+use bd_client_common::file::read_checksummed_data;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
@@ -52,6 +54,7 @@ use bd_log_primitives::{
 };
 use bd_macros::ApproximateSize;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
+use bd_proto::protos::client::artifact::WorkflowAttachmentState;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::logging::payload::LogType;
@@ -76,7 +79,7 @@ use bd_test_helpers::rule;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::workflow::{WorkflowBuilder, make_flush_buffers_action, state};
-use bd_time::{SystemTimeProvider, TimeDurationExt};
+use bd_time::{OffsetDateTimeExt, SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
@@ -86,6 +89,7 @@ use bd_workflows::workflow::{
   WorkflowCommandOutcome,
 };
 use futures_util::poll;
+use protobuf::Message;
 use std::collections::VecDeque;
 use std::future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -2229,9 +2233,7 @@ async fn failed_workflow_outcome_replay_releases_attachment() {
   let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
   let attachment_store = buffer.workflow_attachment_store().get().await.unwrap();
   let attachment = attachment_store
-    .admit(bd_artifact_upload::UploadSource::Bytes(
-      b"attachment".to_vec(),
-    ))
+    .admit(UploadSource::Bytes(b"attachment".to_vec()), None)
     .await
     .unwrap();
   let payload_path = setup
@@ -2289,14 +2291,13 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
   let (buffer, _) = setup.make_real_async_log_buffer(config_update_rx);
   let attachment_store = buffer.workflow_attachment_store().get().await.unwrap();
   let attachment = attachment_store
-    .admit(bd_artifact_upload::UploadSource::Bytes(
-      b"attachment".to_vec(),
-    ))
+    .admit(UploadSource::Bytes(b"attachment".to_vec()), None)
     .await
     .unwrap();
   let attachment_directory = setup.tmp_dir.path().join("workflow-attachments");
   let payload_path = attachment_directory.join(format!("{}.payload", attachment.id));
-  let timestamp_path = attachment_directory.join(format!("{}.timestamp", attachment.id));
+  let metadata_path = attachment_directory.join(format!("{}.metadata", attachment.id));
+  let occurred_at = OffsetDateTime::now_utc();
   let state_store = TestStore::new().await;
   let state_store = (*state_store).clone();
   let mut config_update = setup.make_config_update(WorkflowsConfiguration::default());
@@ -2326,7 +2327,7 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
           log_type: LogType::NORMAL,
           message: "Command completed".into(),
           session_id: "session".into(),
-          occurred_at: OffsetDateTime::now_utc(),
+          occurred_at,
           fields: [(
             COMMAND_ARTIFACT_ID_FIELD.into(),
             attachment.id.to_string().into(),
@@ -2342,7 +2343,14 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
     .await;
 
   assert!(tokio::fs::try_exists(payload_path).await.unwrap());
-  assert!(tokio::fs::try_exists(timestamp_path).await.unwrap());
+  let metadata = WorkflowAttachmentState::parse_from_bytes(
+    &read_checksummed_data(&tokio::fs::read(metadata_path).await.unwrap()).unwrap(),
+  )
+  .unwrap();
+  assert_eq!(
+    metadata.occurred_at_micros,
+    Some(u64::try_from(occurred_at.unix_timestamp_micros()).unwrap())
+  );
 }
 
 #[tokio::test]
@@ -2352,14 +2360,13 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
   let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
   let attachment_store = buffer.workflow_attachment_store().get().await.unwrap();
   let attachment = attachment_store
-    .admit(bd_artifact_upload::UploadSource::Bytes(
-      b"attachment".to_vec(),
-    ))
+    .admit(UploadSource::Bytes(b"attachment".to_vec()), None)
     .await
     .unwrap();
   let attachment_directory = setup.tmp_dir.path().join("workflow-attachments");
   let payload_path = attachment_directory.join(format!("{}.payload", attachment.id));
-  let timestamp_path = attachment_directory.join(format!("{}.timestamp", attachment.id));
+  let metadata_path = attachment_directory.join(format!("{}.metadata", attachment.id));
+  let occurred_at = OffsetDateTime::now_utc();
   let state_store = TestStore::new().await;
   let state_store = (*state_store).clone();
   buffer = buffer
@@ -2394,7 +2401,7 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
           log_type: LogType::NORMAL,
           message: "Command completed".into(),
           session_id: "session".into(),
-          occurred_at: OffsetDateTime::now_utc(),
+          occurred_at,
           fields: [(
             COMMAND_ARTIFACT_ID_FIELD.into(),
             attachment.id.to_string().into(),
@@ -2410,7 +2417,14 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
     .await;
 
   assert!(tokio::fs::try_exists(payload_path).await.unwrap());
-  assert!(tokio::fs::try_exists(timestamp_path).await.unwrap());
+  let metadata = WorkflowAttachmentState::parse_from_bytes(
+    &read_checksummed_data(&tokio::fs::read(metadata_path).await.unwrap()).unwrap(),
+  )
+  .unwrap();
+  assert_eq!(
+    metadata.occurred_at_micros,
+    Some(u64::try_from(occurred_at.unix_timestamp_micros()).unwrap())
+  );
 }
 
 #[tokio::test]

@@ -32,11 +32,11 @@ async fn stage_waits_for_indexed_lease_ack() {
   let mut ack_tx = Some(ack_tx);
   mock_client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, source, session, _, _| {
+    .withf(move |id, source, session, _, _, _| {
       *id == artifact_id && *source == expected_source && session == "session"
     })
     .once()
-    .returning(move |_, _, _, persisted, _| {
+    .returning(move |_, _, _, _, persisted, _| {
       ack_tx.take().unwrap().send(persisted.unwrap()).unwrap();
       Ok(())
     });
@@ -64,9 +64,9 @@ async fn queue_backpressure_does_not_stall_another_batch() {
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, _, _, _, _| *id == first_id)
+    .withf(move |id, _, _, _, _, _| *id == first_id)
     .once()
-    .returning(move |_, _, _, persisted, _| {
+    .returning(move |_, _, _, _, persisted, _| {
       first_tx.take().unwrap().send(()).unwrap();
       persisted
         .unwrap()
@@ -76,9 +76,9 @@ async fn queue_backpressure_does_not_stall_another_batch() {
     });
   mock_client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, _, _, _, _| *id == second_id)
+    .withf(move |id, _, _, _, _, _| *id == second_id)
     .once()
-    .returning(|_, _, _, persisted, _| {
+    .returning(|_, _, _, _, persisted, _| {
       persisted.unwrap().send(Ok(())).unwrap();
       Ok(())
     });
@@ -111,7 +111,7 @@ async fn retryable_persistence_failure_is_reported() {
   mock_client
     .expect_enqueue_workflow_attachment()
     .once()
-    .returning(|_, _, _, persisted, _| {
+    .returning(|_, _, _, _, persisted, _| {
       persisted
         .unwrap()
         .send(Err(EnqueueError::RetryablePersistence(anyhow::anyhow!(
@@ -144,7 +144,7 @@ async fn permanent_staging_failure_does_not_block_other_attachments() {
   mock_client
     .expect_enqueue_workflow_attachment()
     .times(2)
-    .returning(move |id, _, _, persisted, _| {
+    .returning(move |id, _, _, _, persisted, _| {
       let result = if id == failed_id {
         Err(EnqueueError::Other(anyhow::anyhow!(
           "missing retained payload"
@@ -175,13 +175,89 @@ async fn permanent_staging_failure_does_not_block_other_attachments() {
 }
 
 #[tokio::test]
+async fn corrupt_metadata_does_not_block_healthy_attachment_staging() {
+  for restart in [false, true] {
+    let directory = tempfile::tempdir().unwrap();
+    let attachment_store = AttachmentStoreHandle::new(
+      directory.path().to_owned(),
+      ConfigLoader::new(directory.path()),
+    );
+    let store = attachment_store.get().await.unwrap();
+    let corrupt = store
+      .admit(UploadSource::Bytes(b"corrupt".to_vec()), None)
+      .await
+      .unwrap();
+    let healthy = store
+      .admit(
+        UploadSource::Bytes(b"healthy".to_vec()),
+        Some("image/jpeg".into()),
+      )
+      .await
+      .unwrap();
+    let path = directory
+      .path()
+      .join("workflow-attachments")
+      .join(format!("{}.metadata", corrupt.id));
+    let mut bytes = tokio::fs::read(&path).await.unwrap();
+    bytes[0] ^= 1;
+    tokio::fs::write(path, bytes).await.unwrap();
+    let attachment_store = if restart {
+      AttachmentStoreHandle::new(
+        directory.path().to_owned(),
+        ConfigLoader::new(directory.path()),
+      )
+    } else {
+      attachment_store
+    };
+    let mut client = bd_artifact_upload::MockClient::new();
+    client
+      .expect_enqueue_workflow_attachment()
+      .withf(move |id, _, session, content_type, _, _| {
+        *id == healthy.id && session == "healthy" && content_type.as_deref() == Some("image/jpeg")
+      })
+      .once()
+      .returning(|_, _, _, _, persisted, _| {
+        persisted.unwrap().send(Ok(())).unwrap();
+        Ok(())
+      });
+    let (handle, worker) = WorkflowAttachmentUploadHandle::new_with_attachment_store_and_test_hooks(
+      Arc::new(client),
+      attachment_store,
+      None,
+    );
+    let worker = tokio::spawn(worker.run());
+    let failures = handle
+      .stage(HashMap::from([
+        (corrupt.id, "corrupt".to_string()),
+        (healthy.id, "healthy".to_string()),
+      ]))
+      .await
+      .unwrap();
+    assert_eq!(failures.len(), 1);
+    assert_eq!(failures[0].artifact_id, corrupt.id);
+    assert!(failures[0].error.contains(
+      if restart {
+        "missing workflow attachment metadata"
+      } else {
+        "crc mismatch"
+      }
+    ));
+    drop(handle);
+    worker.await.unwrap();
+  }
+}
+
+#[tokio::test]
 async fn successful_upload_releases_the_retained_payload() {
   let directory = tempfile::tempdir().unwrap();
   let runtime = ConfigLoader::new(directory.path());
   let attachment_store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime);
   let store = attachment_store.get().await.unwrap();
   let admitted = store
-    .admit(UploadSource::Bytes(b"attachment".to_vec()))
+    .admit(
+      UploadSource::Bytes(b"attachment".to_vec()),
+      Some("application/vnd.example.capture".to_string()),
+    )
     .await
     .unwrap();
 
@@ -190,9 +266,13 @@ async fn successful_upload_releases_the_retained_payload() {
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, _, session, _, _| *id == admitted.id && session == "session")
+    .withf(move |id, _, session, content_type, _, _| {
+      *id == admitted.id
+        && session == "session"
+        && content_type.as_deref() == Some("application/vnd.example.capture")
+    })
     .once()
-    .returning(move |_, _, _, persisted, completion| {
+    .returning(move |_, _, _, _, persisted, completion| {
       persisted.unwrap().send(Ok(())).unwrap();
       completion_tx
         .take()

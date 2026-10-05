@@ -3176,6 +3176,15 @@ fn screenshot_device_command_stages_correlated_attachment() {
     assert_eq!(log.message(), "Command completed");
     assert_eq!(log.field("_command_status"), "success");
     assert_eq!(log.field("_command_artifact_id"), artifact_id);
+    assert_eq!(log.field("_command_artifact_content_type"), "image/jpeg");
+    assert_eq!(
+      log
+        .typed_fields()
+        .into_iter()
+        .find(|(key, _)| key == "_command_artifact_size_bytes")
+        .map(|(_, value)| value),
+      Some(DataValue::U64(u64::try_from(screenshot.len()).unwrap()))
+    );
     assert_eq!(log.field("_command_id"), command_id);
   });
 }
@@ -3264,7 +3273,7 @@ fn registered_custom_device_command_completes_without_attachment() {
   assert!(
     setup
       .send_configuration_update(with_command_outcome_buffer(
-        custom_device_command_configuration(command_id, registered_command_id,)
+        custom_device_command_configuration(command_id, registered_command_id)
       ))
       .is_none()
   );
@@ -3656,7 +3665,7 @@ fn registered_custom_device_command_stages_correlated_attachment() {
     result: Mutex::new(Some(CommandResult::Completed {
       fields: [("result".into(), "attached".into())].into(),
       attachment: Some(CommandAttachment {
-        source: bd_artifact_upload::UploadSource::Path(attachment_path),
+        source: bd_artifact_upload::UploadSource::Path(attachment_path.file_name().unwrap().into()),
         content_type: Some("application/vnd.example.capture".to_string()),
         state: [("source".into(), "handler".into())].into(),
       }),
@@ -3670,9 +3679,8 @@ fn registered_custom_device_command_stages_correlated_attachment() {
 
   assert!(
     setup
-      .send_configuration_update(custom_device_command_configuration(
-        command_id,
-        registered_command_id,
+      .send_configuration_update(with_command_outcome_buffer(
+        custom_device_command_configuration(command_id, registered_command_id,)
       ))
       .is_none()
   );
@@ -3711,6 +3719,36 @@ fn registered_custom_device_command_stages_correlated_attachment() {
         if artifact.artifact_id == artifact_id
     );
   });
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
+  let upload = setup.server.blocking_next_log_upload().unwrap();
+  let logs = upload.logs();
+  assert_eq!(logs.len(), 1);
+  let log = &logs[0];
+  assert_eq!(log.message(), "Command completed");
+  assert_eq!(log.field("_command_status"), "success");
+  assert_eq!(log.field("_command_id"), command_id);
+  assert_eq!(log.field("_command_artifact_id"), artifact_id);
+  assert_eq!(
+    log.field("_command_artifact_content_type"),
+    "application/vnd.example.capture"
+  );
+  assert_eq!(
+    log
+      .typed_fields()
+      .into_iter()
+      .find(|(key, _)| key == "_command_artifact_size_bytes")
+      .map(|(_, value)| value),
+    Some(DataValue::U64(
+      u64::try_from(b"custom-command-attachment".len()).unwrap()
+    ))
+  );
+  assert!(!attachment_path.exists());
 }
 
 #[test]
@@ -3767,15 +3805,20 @@ fn runtime_workflow_command_uses_registered_handler() {
 }
 
 #[test]
-fn workflow_command_attachment_uploads_zlib_and_releases_retained_payload() {
+fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
   let registered_command_id = "com.example.workflow.attachment";
   let attachment = b"workflow-command-attachment".to_vec();
   let handler: Arc<dyn RegisteredCommandHandler> = Arc::new(TestDeviceCommandHandler {
     result: Mutex::new(Some(CommandResult::Completed {
-      fields: [].into(),
+      fields: [
+        ("result".into(), "attached".into()),
+        ("_command_artifact_content_type".into(), "spoofed".into()),
+        ("_command_artifact_size_bytes".into(), DataValue::U64(999)),
+      ]
+      .into(),
       attachment: Some(CommandAttachment {
         source: bd_artifact_upload::UploadSource::Bytes(attachment.clone()),
-        content_type: None,
+        content_type: Some("application/vnd.example.capture".to_string()),
         state: [].into(),
       }),
     })),
@@ -3826,6 +3869,11 @@ fn workflow_command_attachment_uploads_zlib_and_releases_retained_payload() {
   let artifact_id = uuid::Uuid::parse_str(&artifact.artifact_id).unwrap();
   assert_eq!(artifact.type_id, "workflow_attachment");
   assert_eq!(artifact.session_id, session_id.as_ref());
+  assert_eq!(artifact.command_id, None);
+  assert_eq!(
+    artifact.content_type.as_deref(),
+    Some("application/vnd.example.capture")
+  );
   assert_eq!(
     artifact.payload_encoding.enum_value_or_default(),
     ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
@@ -3844,6 +3892,31 @@ fn workflow_command_attachment_uploads_zlib_and_releases_retained_payload() {
     artifact_id
   );
   assert!(!payload_path.exists());
+  for message in ["start", "run command", "Command completed"] {
+    let upload = setup.server.blocking_next_log_upload().unwrap();
+    let logs = upload.logs();
+    assert_eq!(logs.len(), 1);
+    let log = &logs[0];
+    assert_eq!(log.message(), message);
+    if message == "Command completed" {
+      assert_eq!(log.field("_command_status"), "success");
+      assert_eq!(log.field("result"), "attached");
+      assert_eq!(log.field("_command_artifact_id"), artifact_id.to_string());
+      assert_eq!(
+        log.field("_command_artifact_content_type"),
+        "application/vnd.example.capture"
+      );
+      assert_eq!(
+        log
+          .typed_fields()
+          .into_iter()
+          .find(|(key, _)| key == "_command_artifact_size_bytes")
+          .map(|(_, value)| value),
+        Some(DataValue::U64(u64::try_from(attachment.len()).unwrap()))
+      );
+      assert!(!log.has_field("_command_id"));
+    }
+  }
 }
 
 #[test]

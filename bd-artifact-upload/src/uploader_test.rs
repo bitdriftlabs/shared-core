@@ -31,8 +31,11 @@ use bd_runtime::runtime::{FeatureFlag as _, artifact_upload, attachment};
 use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::runtime::ValueKind;
 use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
-use std::io::{Read, Seek, Write};
-use std::path::Path;
+use flate2::Compression;
+use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
@@ -251,6 +254,7 @@ async fn retained_source_can_retry_after_sync_failure() {
       artifact_id,
       source_path.clone().into(),
       "session".to_string(),
+      None,
       Some(first_persisted_tx),
       None,
     )
@@ -275,6 +279,7 @@ async fn retained_source_can_retry_after_sync_failure() {
       artifact_id,
       source_path.into(),
       "session".to_string(),
+      None,
       Some(retry_persisted_tx),
       None,
     )
@@ -651,6 +656,79 @@ async fn disk_persistence() {
 }
 
 #[tokio::test]
+async fn command_upload_persistence_reports_original_size() {
+  let mut setup = Setup::new(1).await;
+  let contents = vec![42; 1000];
+  let mut file = setup.make_file(&[b"prefix:".as_slice(), contents.as_slice()].concat());
+  file.seek(SeekFrom::Start(7)).unwrap();
+  let source_path = PathBuf::from("capture");
+  setup
+    .filesystem
+    .write_file(&source_path, &contents)
+    .await
+    .unwrap();
+
+  for (source, expected_size_bytes) in [
+    (UploadSource::Bytes(contents.clone()), 1000),
+    (UploadSource::File(file), 1000),
+    (UploadSource::Path(source_path.clone()), 1000),
+    (UploadSource::Bytes(Vec::new()), 0),
+  ] {
+    let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+    let artifact_id = setup
+      .client
+      .enqueue_command_upload(
+        source,
+        "attachment".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
+        "command_id".to_string(),
+        None,
+        Some(persisted_tx),
+        Some(completion_tx),
+      )
+      .unwrap();
+    assert_eq!(
+      setup.entry_received_rx.recv().await.unwrap(),
+      artifact_id.to_string()
+    );
+    assert_eq!(persisted_rx.await.unwrap().unwrap(), expected_size_bytes);
+    let upload = setup.data_upload_rx.recv().await.unwrap();
+    assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+      assert_eq!(intent.payload.artifact_id, artifact_id.to_string());
+      intent.response_tx.send(IntentResponse {
+        uuid: intent.uuid,
+        decision: bd_api::upload::IntentDecision::UploadImmediately,
+      }).unwrap();
+    });
+    let upload = setup.data_upload_rx.recv().await.unwrap();
+    assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+      assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
+      assert_eq!(
+        upload.payload.payload_encoding.enum_value_or_default(),
+        ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+      );
+      let mut decoded = Vec::new();
+      ZlibDecoder::new(upload.payload.contents.as_slice()).read_to_end(&mut decoded).unwrap();
+      assert_eq!(decoded, contents[..usize::try_from(expected_size_bytes).unwrap()]);
+      upload.response_tx.send(UploadResponse {
+        uuid: upload.uuid,
+        success: true,
+      }).unwrap();
+    });
+    completion_rx.await.unwrap().unwrap();
+    assert_eq!(
+      setup.upload_complete_rx.recv().await.unwrap(),
+      artifact_id.to_string()
+    );
+  }
+  assert!(!setup.filesystem.exists(&source_path).await.unwrap());
+}
+
+#[tokio::test]
 async fn command_upload_preserves_content_type_after_restart() {
   let mut setup = Setup::new(1).await;
   let artifact_id = setup
@@ -692,6 +770,76 @@ async fn command_upload_preserves_content_type_after_restart() {
     assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
     assert_eq!(upload.payload.content_type.as_deref(), Some("application/vnd.example.capture"));
   });
+}
+
+#[tokio::test]
+async fn workflow_upload_preserves_content_type_after_restart() {
+  let mut setup = Setup::new(1).await;
+  let artifact_id = Uuid::new_v4();
+  let source = PathBuf::from(format!("workflow-attachments/{artifact_id}.payload"));
+  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+  encoder.write_all(b"attachment").unwrap();
+  let compressed = encoder.finish().unwrap();
+  setup
+    .filesystem
+    .create_dir(source.parent().unwrap())
+    .await
+    .unwrap();
+  setup
+    .filesystem
+    .write_file(&source, &compressed)
+    .await
+    .unwrap();
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_workflow_attachment(
+      artifact_id,
+      source,
+      "session_id".to_string(),
+      Some("application/vnd.example.capture".to_string()),
+      Some(persisted_tx),
+      None,
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    artifact_id.to_string()
+  );
+  persisted_rx.await.unwrap().unwrap();
+
+  let mut setup = setup.reinitialize().await;
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert!(intent.response_tx.is_closed());
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.artifact_id, artifact_id.to_string());
+    intent.response_tx.send(IntentResponse {
+      uuid: intent.uuid,
+      decision: bd_api::upload::IntentDecision::UploadImmediately,
+    }).unwrap();
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
+    assert_eq!(upload.payload.command_id, None);
+    assert_eq!(upload.payload.content_type.as_deref(), Some("application/vnd.example.capture"));
+    assert_eq!(
+      upload.payload.payload_encoding.enum_value().unwrap(),
+      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB,
+    );
+    assert_eq!(upload.payload.contents, compressed);
+    let mut decoded = Vec::new();
+    ZlibDecoder::new(upload.payload.contents.as_slice()).read_to_end(&mut decoded).unwrap();
+    assert_eq!(decoded, b"attachment");
+    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true }).unwrap();
+  });
+  assert_eq!(
+    setup.upload_complete_rx.recv().await.unwrap(),
+    artifact_id.to_string()
+  );
 }
 
 #[tokio::test]
@@ -1472,6 +1620,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       id,
       source.clone(),
       "session_id".into(),
+      Some("application/vnd.example.capture".to_string()),
       Some(persisted_tx),
       None,
     )
@@ -1490,6 +1639,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       id,
       source.clone(),
       "session_id".into(),
+      Some("application/vnd.example.capture".to_string()),
       Some(duplicate_persisted_tx),
       Some(completion_tx),
     )
@@ -1502,6 +1652,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       id,
       source.clone(),
       "other_session".into(),
+      None,
       Some(conflict_tx),
       None,
     )
@@ -1527,6 +1678,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
   let artifact_upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(artifact_upload, DataUpload::ArtifactUpload(upload) => {
     assert_eq!(upload.payload.artifact_id, id.to_string());
+    assert_eq!(upload.payload.content_type.as_deref(), Some("application/vnd.example.capture"));
     assert_eq!(upload.payload.contents, stored);
     assert_eq!(
       upload.payload.payload_encoding.enum_value_or_default(),
@@ -1569,6 +1721,7 @@ async fn workflow_upload_rejects_id_owned_by_another_artifact_type() {
       id,
       std::path::PathBuf::from(format!("workflow-attachments/{id}.payload")),
       "session_id".to_string(),
+      None,
       Some(persisted_tx),
       None,
     )

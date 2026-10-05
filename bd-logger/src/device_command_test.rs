@@ -16,6 +16,7 @@ use super::{
   device_command_outcome_log,
   failed_device_command_update_with_fields,
   no_attachment,
+  workflow_builtin_command_outcome,
   workflow_command_outcome,
 };
 use crate::workflow_attachment::AttachmentStoreHandle;
@@ -23,10 +24,19 @@ use bd_artifact_upload::UploadSource;
 use bd_log_primitives::{DataValue, LogFields, log_level};
 use bd_proto::protos::client::api::{DeviceCommandUpdate, device_command_update};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::workflow_command::{
+  WellKnownCommandType,
+  workflow_command_selector,
+};
 use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
+use bd_session_replay::{
+  DeviceCommandScreenshotCompletion,
+  RemoteScreenshotCaptureHandler,
+  Target,
+};
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
-use bd_workflows::workflow::WorkflowCommandOutcome;
+use bd_workflows::workflow::{CommandArtifactMetadata, WorkflowCommandOutcome};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -119,12 +129,12 @@ fn cloned_command_dispatchers_share_registrations() {
   assert!(!clone.unregister("custom"));
 }
 
-fn completed_attachment(source: UploadSource) -> CommandResult {
+fn completed_attachment(source: UploadSource, content_type: Option<String>) -> CommandResult {
   CommandResult::Completed {
     fields: [("handler_field".into(), "handler_value".into())].into(),
     attachment: Some(CommandAttachment {
       source,
-      content_type: None,
+      content_type,
       state: LogFields::default(),
     }),
   }
@@ -147,7 +157,11 @@ fn terminal_device_command_updates_produce_outcome_logs() {
     Some(context),
     artifact_attachment(artifact_id),
   );
-  let log = device_command_outcome_log(&completed).unwrap();
+  let log = device_command_outcome_log(
+    &completed,
+    Some(CommandArtifactMetadata::new(Some("image/jpeg".into()), 123)),
+  )
+  .unwrap();
   assert_eq!(log.log_level, log_level::INFO);
   assert_eq!(log.log_type, LogType::NORMAL);
   assert_eq!(log.message.as_str(), Some("Command completed"));
@@ -170,6 +184,23 @@ fn terminal_device_command_updates_produce_outcome_logs() {
     Some(artifact_id.to_string().as_str())
   );
   assert!(!log.fields.contains_key("_command_message"));
+  assert_eq!(
+    log
+      .fields
+      .get("_command_artifact_content_type")
+      .unwrap()
+      .value
+      .as_str(),
+    Some("image/jpeg")
+  );
+  assert_eq!(
+    log
+      .fields
+      .get("_command_artifact_size_bytes")
+      .unwrap()
+      .value,
+    DataValue::U64(123)
+  );
 
   let failed = failed_device_command_update_with_fields(
     &command_id,
@@ -181,7 +212,7 @@ fn terminal_device_command_updates_produce_outcome_logs() {
     ]
     .into(),
   );
-  let log = device_command_outcome_log(&failed).unwrap();
+  let log = device_command_outcome_log(&failed, None).unwrap();
   assert_eq!(log.log_level, log_level::ERROR);
   assert_eq!(
     log.fields.get("_command_status").unwrap().value.as_str(),
@@ -200,24 +231,168 @@ fn terminal_device_command_updates_produce_outcome_logs() {
     Some(command_id.as_str())
   );
   assert!(!log.fields.contains_key("error"));
+  assert!(!log.fields.contains_key("_command_artifact_id"));
+  assert!(!log.fields.contains_key("_command_artifact_content_type"));
+  assert!(!log.fields.contains_key("_command_artifact_size_bytes"));
 
   let completed_without_attachment =
     completed_device_command_update(&command_id, false, None, no_attachment());
+  let log = device_command_outcome_log(&completed_without_attachment, None).unwrap();
+  assert!(!log.fields.contains_key("_command_artifact_id"));
+  assert!(!log.fields.contains_key("_command_artifact_content_type"));
+  assert!(!log.fields.contains_key("_command_artifact_size_bytes"));
   assert!(
-    !device_command_outcome_log(&completed_without_attachment)
-      .unwrap()
-      .fields
-      .contains_key("_command_artifact_id")
-  );
-  assert!(
-    device_command_outcome_log(&DeviceCommandUpdate {
-      update_type: Some(device_command_update::Update_type::Accepted(
-        device_command_update::Accepted::default(),
-      )),
-      ..Default::default()
-    })
+    device_command_outcome_log(
+      &DeviceCommandUpdate {
+        update_type: Some(device_command_update::Update_type::Accepted(
+          device_command_update::Accepted::default(),
+        )),
+        ..Default::default()
+      },
+      None
+    )
     .is_none()
   );
+}
+
+#[tokio::test]
+async fn workflow_screenshot_preserves_jpeg_content_type() {
+  struct ScreenshotTarget;
+
+  impl Target for ScreenshotTarget {
+    fn capture_screen(&self) {
+      panic!("unexpected periodic screen capture");
+    }
+
+    fn capture_device_command_screenshot(&self, completion: DeviceCommandScreenshotCompletion) {
+      completion(Ok(vec![0xff, 0xd8, 0xff, 0xd9]));
+    }
+  }
+
+  let directory = tempfile::tempdir().unwrap();
+  let store = AttachmentStoreHandle::new(
+    directory.path().to_owned(),
+    ConfigLoader::new(directory.path()),
+  );
+  let outcome = workflow_builtin_command_outcome(
+    workflow_command_selector::BuiltinCommand {
+      type_: WellKnownCommandType::TAKE_SCREENSHOT.into(),
+      ..Default::default()
+    },
+    &HashMap::new(),
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    &store,
+  )
+  .await;
+  let WorkflowCommandOutcome::SucceededWithAttachment { artifact_id, .. } = outcome else {
+    panic!("expected screenshot attachment");
+  };
+  assert_eq!(
+    store
+      .get()
+      .await
+      .unwrap()
+      .content_type(artifact_id)
+      .await
+      .unwrap()
+      .as_deref(),
+    Some("image/jpeg")
+  );
+  let restarted = AttachmentStoreHandle::new(
+    directory.path().to_owned(),
+    ConfigLoader::new(directory.path()),
+  );
+  assert_eq!(
+    restarted
+      .get()
+      .await
+      .unwrap()
+      .content_type(artifact_id)
+      .await
+      .unwrap()
+      .as_deref(),
+    Some("image/jpeg")
+  );
+}
+
+#[tokio::test]
+async fn workflow_registered_handler_preserves_attachment_content_type() {
+  struct AttachmentHandler;
+
+  #[async_trait::async_trait]
+  impl RegisteredCommandHandler for AttachmentHandler {
+    async fn execute(&self, invocation: CommandInvocation) -> CommandResult {
+      assert_eq!(invocation.registered_command_id, "custom");
+      assert_eq!(invocation.command_id, None);
+      completed_attachment(
+        UploadSource::Bytes(b"attachment".to_vec()),
+        Some("application/vnd.example.capture".into()),
+      )
+    }
+  }
+
+  let directory = tempfile::tempdir().unwrap();
+  let store = AttachmentStoreHandle::new(
+    directory.path().to_owned(),
+    ConfigLoader::new(directory.path()),
+  );
+  let dispatcher = RegisteredCommandDispatcher::default();
+  dispatcher.register("custom".to_string(), Arc::new(AttachmentHandler));
+  let result = dispatcher
+    .get_handler("custom")
+    .unwrap()
+    .execute(CommandInvocation {
+      command_id: None,
+      registered_command_id: "custom".to_string(),
+      arguments: HashMap::new(),
+      session_id: "session".to_string(),
+    })
+    .await;
+  let outcome = workflow_command_outcome(result, &store).await;
+  let WorkflowCommandOutcome::SucceededWithAttachment {
+    artifact_id,
+    fields,
+    ..
+  } = outcome
+  else {
+    panic!("expected registered command attachment");
+  };
+  assert_eq!(Some(&"handler_value".into()), fields.get("handler_field"));
+  assert_eq!(
+    store
+      .get()
+      .await
+      .unwrap()
+      .content_type(artifact_id)
+      .await
+      .unwrap()
+      .as_deref(),
+    Some("application/vnd.example.capture")
+  );
+  let restarted = AttachmentStoreHandle::new(
+    directory.path().to_owned(),
+    ConfigLoader::new(directory.path()),
+  );
+  assert_eq!(
+    restarted
+      .get()
+      .await
+      .unwrap()
+      .content_type(artifact_id)
+      .await
+      .unwrap()
+      .as_deref(),
+    Some("application/vnd.example.capture")
+  );
+}
+
+#[test]
+fn command_artifact_metadata_defaults_content_type() {
+  for content_type in [None, Some(String::new())] {
+    let metadata = CommandArtifactMetadata::new(content_type, 7);
+    assert_eq!(metadata.content_type, "application/octet-stream");
+    assert_eq!(metadata.size_bytes, 7);
+  }
 }
 
 #[tokio::test]
@@ -234,7 +409,7 @@ async fn workflow_attachment_admission_failure_reports_command_failure() {
   let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime);
 
   let outcome = workflow_command_outcome(
-    completed_attachment(UploadSource::Bytes(vec![0; 2])),
+    completed_attachment(UploadSource::Bytes(vec![0; 2]), None),
     &store,
   )
   .await;
@@ -261,8 +436,11 @@ async fn unavailable_workflow_attachment_store_reports_command_failure() {
   let runtime = ConfigLoader::new(&invalid_sdk_directory);
   let store = AttachmentStoreHandle::new(invalid_sdk_directory, runtime);
 
-  let outcome =
-    workflow_command_outcome(completed_attachment(UploadSource::Bytes(vec![0])), &store).await;
+  let outcome = workflow_command_outcome(
+    completed_attachment(UploadSource::Bytes(vec![0]), None),
+    &store,
+  )
+  .await;
 
   match outcome {
     WorkflowCommandOutcome::Failed {

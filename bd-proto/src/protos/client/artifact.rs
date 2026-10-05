@@ -489,6 +489,182 @@ pub mod artifact_upload_index {
     }
 }
 
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.WorkflowAttachmentState)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct WorkflowAttachmentState {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.WorkflowAttachmentState.admitted_at_micros)
+    pub admitted_at_micros: u64,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.WorkflowAttachmentState.occurred_at_micros)
+    pub occurred_at_micros: ::std::option::Option<u64>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.WorkflowAttachmentState.content_type)
+    pub content_type: ::std::option::Option<::std::string::String>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.WorkflowAttachmentState.uploaded)
+    pub uploaded: bool,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.WorkflowAttachmentState.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a WorkflowAttachmentState {
+    fn default() -> &'a WorkflowAttachmentState {
+        <WorkflowAttachmentState as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl WorkflowAttachmentState {
+    pub fn new() -> WorkflowAttachmentState {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "admitted_at_micros",
+            |m: &WorkflowAttachmentState| { &m.admitted_at_micros },
+            |m: &mut WorkflowAttachmentState| { &mut m.admitted_at_micros },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "occurred_at_micros",
+            |m: &WorkflowAttachmentState| { &m.occurred_at_micros },
+            |m: &mut WorkflowAttachmentState| { &mut m.occurred_at_micros },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "content_type",
+            |m: &WorkflowAttachmentState| { &m.content_type },
+            |m: &mut WorkflowAttachmentState| { &mut m.content_type },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "uploaded",
+            |m: &WorkflowAttachmentState| { &m.uploaded },
+            |m: &mut WorkflowAttachmentState| { &mut m.uploaded },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<WorkflowAttachmentState>(
+            "WorkflowAttachmentState",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for WorkflowAttachmentState {
+    const NAME: &'static str = "WorkflowAttachmentState";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.admitted_at_micros = is.read_uint64()?;
+                },
+                16 => {
+                    self.occurred_at_micros = ::std::option::Option::Some(is.read_uint64()?);
+                },
+                26 => {
+                    self.content_type = ::std::option::Option::Some(is.read_string()?);
+                },
+                32 => {
+                    self.uploaded = is.read_bool()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.admitted_at_micros != 0 {
+            my_size += ::protobuf::rt::uint64_size(1, self.admitted_at_micros);
+        }
+        if let Some(v) = self.occurred_at_micros {
+            my_size += ::protobuf::rt::uint64_size(2, v);
+        }
+        if let Some(v) = self.content_type.as_ref() {
+            my_size += ::protobuf::rt::string_size(3, &v);
+        }
+        if self.uploaded != false {
+            my_size += 1 + 1;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.admitted_at_micros != 0 {
+            os.write_uint64(1, self.admitted_at_micros)?;
+        }
+        if let Some(v) = self.occurred_at_micros {
+            os.write_uint64(2, v)?;
+        }
+        if let Some(v) = self.content_type.as_ref() {
+            os.write_string(3, v)?;
+        }
+        if self.uploaded != false {
+            os.write_bool(4, self.uploaded)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> WorkflowAttachmentState {
+        WorkflowAttachmentState::new()
+    }
+
+    fn clear(&mut self) {
+        self.admitted_at_micros = 0;
+        self.occurred_at_micros = ::std::option::Option::None;
+        self.content_type = ::std::option::Option::None;
+        self.uploaded = false;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static WorkflowAttachmentState {
+        static instance: WorkflowAttachmentState = WorkflowAttachmentState {
+            admitted_at_micros: 0,
+            occurred_at_micros: ::std::option::Option::None,
+            content_type: ::std::option::Option::None,
+            uploaded: false,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for WorkflowAttachmentState {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("WorkflowAttachmentState").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for WorkflowAttachmentState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for WorkflowAttachmentState {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
 // @@protoc_insertion_point(enum:bitdrift_public.protobuf.client.v1.StorageFormat)
 pub enum StorageFormat {
@@ -578,8 +754,14 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x1af\n\rMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
     \x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging\
     .v1.DataR\x05value:\x028\x01B\n\n\x08_type_idB\x1a\n\x18_workflow_report\
-    _handoffB\r\n\x0b_command_idB\x0f\n\r_content_type*)\n\rStorageFormat\
-    \x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
+    _handoffB\r\n\x0b_command_idB\x0f\n\r_content_type\"\xe6\x01\n\x17Workfl\
+    owAttachmentState\x12,\n\x12admitted_at_micros\x18\x01\x20\x01(\x04R\x10\
+    admittedAtMicros\x121\n\x12occurred_at_micros\x18\x02\x20\x01(\x04H\0R\
+    \x10occurredAtMicros\x88\x01\x01\x12&\n\x0ccontent_type\x18\x03\x20\x01(\
+    \tH\x01R\x0bcontentType\x88\x01\x01\x12\x1a\n\x08uploaded\x18\x04\x20\
+    \x01(\x08R\x08uploadedB\x15\n\x13_occurred_at_microsB\x0f\n\r_content_ty\
+    pe*)\n\rStorageFormat\x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03RAW\
+    \x10\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -602,8 +784,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::payload::file_descriptor().clone());
             deps.push(super::workflow::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(2);
+            let mut messages = ::std::vec::Vec::with_capacity(3);
             messages.push(ArtifactUploadIndex::generated_message_descriptor_data());
+            messages.push(WorkflowAttachmentState::generated_message_descriptor_data());
             messages.push(artifact_upload_index::Artifact::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
             enums.push(StorageFormat::generated_enum_descriptor_data());

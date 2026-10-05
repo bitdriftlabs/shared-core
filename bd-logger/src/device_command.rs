@@ -31,6 +31,7 @@ use bd_proto::protos::workflow::workflow_command::{
 };
 use bd_workflows::workflow::{
   COMMAND_OUTCOME_MESSAGE,
+  CommandArtifactMetadata,
   CommandOutcome,
   WorkflowCommandCompletionToken,
   WorkflowCommandOutcome,
@@ -335,7 +336,7 @@ async fn workflow_builtin_command_outcome(
               fields: LogFields::default(),
               attachment: Some(CommandAttachment {
                 source: UploadSource::Bytes(screenshot),
-                content_type: None,
+                content_type: Some("image/jpeg".to_string()),
                 state: LogFields::default(),
               }),
             },
@@ -375,7 +376,10 @@ async fn workflow_command_outcome(
             };
           },
         };
-        let admitted = match store.admit(attachment.source).await {
+        let admitted = match store
+          .admit(attachment.source, attachment.content_type)
+          .await
+        {
           Ok(admitted) => admitted,
           Err(error) => {
             let message = format!("workflow attachment admission failed: {error}");
@@ -390,6 +394,7 @@ async fn workflow_command_outcome(
           message: None,
           fields,
           artifact_id: admitted.id,
+          artifact_metadata: admitted.artifact_metadata,
         };
       }
       WorkflowCommandOutcome::Succeeded {
@@ -522,7 +527,7 @@ async fn execute_screenshot_device_command(
 
   let attachment = CommandAttachment {
     source: UploadSource::Bytes(screenshot),
-    content_type: None,
+    content_type: Some("image/jpeg".to_string()),
     state: LogFields::default(),
   };
   let update = match stage_device_command_attachment(
@@ -534,8 +539,13 @@ async fn execute_screenshot_device_command(
   )
   .await
   {
-    Ok(artifact_id) => {
-      completed_device_command_update(&command_id, false, None, artifact_attachment(artifact_id))
+    Ok((artifact_id, metadata)) => {
+      return send_device_command_update_with_artifact(
+        &senders,
+        completed_device_command_update(&command_id, false, None, artifact_attachment(artifact_id)),
+        Some(metadata),
+      )
+      .await;
     },
     Err(error) => failed_device_command_update(&command_id, 2, &error.to_string()),
   };
@@ -696,6 +706,7 @@ async fn execute_custom_device_command(
     })
     .await;
 
+  let mut artifact_metadata = None;
   let update = match result {
     CommandResult::Completed { fields, attachment } => {
       let attachment = match attachment {
@@ -709,7 +720,10 @@ async fn execute_custom_device_command(
           )
           .await
           {
-            Ok(artifact_id) => artifact_attachment(artifact_id),
+            Ok((artifact_id, metadata)) => {
+              artifact_metadata = Some(metadata);
+              artifact_attachment(artifact_id)
+            },
             Err(error) => {
               return send_device_command_update(
                 &senders,
@@ -733,7 +747,7 @@ async fn execute_custom_device_command(
       failed_device_command_update_with_fields(&command_id, 2, fields)
     },
   };
-  send_device_command_update(&senders, update).await
+  send_device_command_update_with_artifact(&senders, update, artifact_metadata).await
 }
 
 async fn stage_device_command_attachment(
@@ -742,7 +756,8 @@ async fn stage_device_command_attachment(
   command_id: &str,
   session_id: &str,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-) -> anyhow::Result<Uuid> {
+) -> anyhow::Result<(Uuid, CommandArtifactMetadata)> {
+  let content_type = attachment.content_type.clone();
   let (persisted_tx, persisted_rx) = oneshot::channel();
   let (completion_tx, completion_rx) = oneshot::channel();
   let artifact_id = artifact_client.enqueue_command_upload(
@@ -757,11 +772,12 @@ async fn stage_device_command_attachment(
     Some(persisted_tx),
     Some(completion_tx),
   )?;
-  persisted_rx
+  let size_bytes = persisted_rx
     .await
     .map_err(|_| anyhow!("device command attachment persistence was interrupted"))??;
+  let metadata = CommandArtifactMetadata::new(content_type, size_bytes);
   match completion_rx.await {
-    Ok(Ok(())) => Ok(artifact_id),
+    Ok(Ok(())) => Ok((artifact_id, metadata)),
     Ok(Err(error)) => Err(anyhow!(error)),
     Err(_) => Err(anyhow!("device command attachment upload was interrupted")),
   }
@@ -863,7 +879,10 @@ fn failed_device_command_update_with_fields(
   }
 }
 
-fn device_command_outcome_log(update: &DeviceCommandUpdate) -> Option<LogLine> {
+fn device_command_outcome_log(
+  update: &DeviceCommandUpdate,
+  artifact_metadata: Option<CommandArtifactMetadata>,
+) -> Option<LogLine> {
   let (succeeded, context, artifact_id) = match update.update_type.as_ref()? {
     device_command_update::Update_type::Completed(completed) => {
       let artifact_id = match completed
@@ -900,6 +919,7 @@ fn device_command_outcome_log(update: &DeviceCommandUpdate) -> Option<LogLine> {
     message,
     fields,
     artifact_id,
+    artifact_metadata,
     command_id: Some(update.command_id.clone()),
   }
   .into_fields();
@@ -921,7 +941,15 @@ async fn send_device_command_update(
   senders: &DeviceCommandSenders,
   update: DeviceCommandUpdate,
 ) -> anyhow::Result<()> {
-  if let Some(log) = device_command_outcome_log(&update)
+  send_device_command_update_with_artifact(senders, update, None).await
+}
+
+async fn send_device_command_update_with_artifact(
+  senders: &DeviceCommandSenders,
+  update: DeviceCommandUpdate,
+  artifact_metadata: Option<CommandArtifactMetadata>,
+) -> anyhow::Result<()> {
+  if let Some(log) = device_command_outcome_log(&update, artifact_metadata)
     && let Err(error) = senders.log_sender.try_send_log(log)
   {
     log::debug!("failed to admit device command outcome log: {error}");

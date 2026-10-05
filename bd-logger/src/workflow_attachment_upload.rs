@@ -154,7 +154,7 @@ impl WorkflowAttachmentUploadWorker {
   ) -> Vec<WorkflowAttachmentStagingFailure> {
     let mut failures = Vec::new();
     for (id, session_id) in ids {
-      let already_uploaded = if let Some(store_handle) = &attachment_store {
+      let metadata = if let Some(store_handle) = &attachment_store {
         let store = match store_handle.get().await {
           Ok(store) => store,
           Err(error) => {
@@ -165,8 +165,15 @@ impl WorkflowAttachmentUploadWorker {
             continue;
           },
         };
-        match store.is_uploaded(id).await {
-          Ok(already_uploaded) => already_uploaded,
+        match store.metadata(id).await {
+          Ok(Some(metadata)) => Some(metadata),
+          Ok(None) => {
+            failures.push(WorkflowAttachmentStagingFailure {
+              artifact_id: id,
+              error: "missing workflow attachment metadata".to_string(),
+            });
+            continue;
+          },
           Err(error) => {
             failures.push(WorkflowAttachmentStagingFailure {
               artifact_id: id,
@@ -176,11 +183,12 @@ impl WorkflowAttachmentUploadWorker {
           },
         }
       } else {
-        false
+        None
       };
-      if already_uploaded {
+      if metadata.as_ref().is_some_and(|metadata| metadata.uploaded) {
         continue;
       }
+      let content_type = metadata.and_then(|metadata| metadata.content_type);
       let source = PathBuf::from(format!("workflow-attachments/{id}.payload"));
       let (completion_tx, completion_rx) = if attachment_store.is_some() {
         let (completion_tx, completion_rx) = oneshot::channel();
@@ -194,6 +202,7 @@ impl WorkflowAttachmentUploadWorker {
           id,
           source,
           session_id,
+          content_type,
           Some(persisted_tx),
           completion_tx,
         )
