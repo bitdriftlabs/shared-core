@@ -67,11 +67,13 @@
 #[path = "./lib_test.rs"]
 mod tests;
 
+mod conditional_export;
 pub mod otel;
 #[doc(hidden)]
 pub mod test;
 
 use anyhow::anyhow;
+use conditional_export::{CaptureGroup, ExportControl};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 pub use otel::{
   LogConfig,
@@ -201,6 +203,7 @@ struct TargetedLayer<L, Marker> {
   inner: L,
   predicate: MetadataPredicate,
   marker: PhantomData<fn() -> Marker>,
+  capture: Option<ExportControl>,
 }
 
 struct SpanRouteMarker<Marker>(PhantomData<fn() -> Marker>);
@@ -214,6 +217,7 @@ impl<L, Marker> TargetedLayer<L, Marker> {
       inner,
       predicate,
       marker: PhantomData,
+      capture: None,
     }
   }
 }
@@ -234,6 +238,9 @@ where
         .insert(SpanRouteMarker::<Marker>(PhantomData));
     }
 
+    if self.capture.is_some() {
+      ExportControl::register_child(attrs, id, &ctx);
+    }
     self.inner.on_new_span(attrs, id, ctx);
   }
 
@@ -269,13 +276,26 @@ where
 
   fn on_close(&self, id: Id, ctx: Context<'_, Registry>) {
     if span_matches_route::<Marker>(&ctx, &id) {
+      let group = self.capture.as_ref().and_then(|_| {
+        ctx
+          .span(&id)
+          .and_then(|span| span.extensions().get::<CaptureGroup>().cloned())
+      });
       self.inner.on_close(id, ctx);
+      if let Some(group) = group {
+        group.close_member();
+      }
     }
   }
 
   unsafe fn downcast_raw(&self, id: TypeId) -> Option<*const ()> {
     if id == TypeId::of::<Self>() {
       Some(std::ptr::from_ref(self).cast())
+    } else if id == TypeId::of::<ExportControl>() && self.capture.is_some() {
+      self
+        .capture
+        .as_ref()
+        .map(|control| std::ptr::from_ref(control).cast())
     } else {
       unsafe { self.inner.downcast_raw(id) }
     }
@@ -293,6 +313,15 @@ where
   L: Layer<Registry> + Send + Sync + 'static,
 {
   TargetedLayer::<L, DirectOtelRoute>::new(inner, otel::is_direct_otel_target).boxed()
+}
+
+pub(crate) fn box_capturing_otel_layer<L>(inner: L, control: ExportControl) -> RegistryLayer
+where
+  L: Layer<Registry> + Send + Sync + 'static,
+{
+  let mut layer = TargetedLayer::<L, DirectOtelRoute>::new(inner, otel::is_direct_otel_target);
+  layer.capture = Some(control);
+  layer.boxed()
 }
 
 fn box_non_direct_otel_layer<L>(inner: L) -> RegistryLayer
