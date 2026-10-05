@@ -8,7 +8,10 @@ use crate::conditional_export::ExportControl;
 use crate::{LogConfig, RegistryLayer, otel};
 use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
 use opentelemetry_sdk::error::OTelSdkResult;
+use opentelemetry_sdk::runtime::{Tokio, TokioCurrentThread};
+use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use opentelemetry_sdk::trace::{
+  BatchConfig,
   Sampler,
   SdkTracerProvider,
   SimpleSpanProcessor,
@@ -17,15 +20,16 @@ use opentelemetry_sdk::trace::{
 };
 use std::future::Future;
 use std::sync::{Arc, Mutex};
+use tokio::runtime::{Handle, RuntimeFlavor};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::SubscriberExt;
 
 #[derive(Clone, Default, Debug)]
-struct TestExporter(Arc<Mutex<Vec<SpanData>>>);
+pub(crate) struct TestExporter(Arc<Mutex<Vec<SpanData>>>);
 
 impl TestExporter {
-  fn exported_spans(&self) -> Vec<SpanData> {
+  pub(crate) fn exported_spans(&self) -> Vec<SpanData> {
     self.0.lock().unwrap().clone()
   }
 }
@@ -52,7 +56,7 @@ fn build_test_otel_with_limit(
     .with_max_attributes_per_span(max_attributes)
     .with_span_processor(control.processor(SimpleSpanProcessor::new(exporter.clone())))
     .build();
-  let tracer = control.tracer(provider.tracer(service_name.to_string()));
+  let tracer = ExportControl::tracer(provider.tracer(service_name.to_string()));
 
   (
     exporter,
@@ -76,6 +80,48 @@ impl TestTraceContext {
   #[must_use]
   pub fn with_max_attributes(service_name: &str, max_attributes: u32) -> Self {
     let (exporter, provider, otel_layer) = build_test_otel_with_limit(service_name, max_attributes);
+    Self::from_parts(exporter, provider, otel_layer)
+  }
+
+  #[must_use]
+  pub fn with_batch_config(service_name: &str, config: BatchConfig) -> Self {
+    let exporter = TestExporter::default();
+    let control = ExportControl::default();
+    let builder = SdkTracerProvider::builder().with_sampler(Sampler::AlwaysOn);
+    let provider = match Handle::current().runtime_flavor() {
+      RuntimeFlavor::CurrentThread => builder
+        .with_span_processor(
+          control.processor(
+            BatchSpanProcessor::builder(exporter.clone(), TokioCurrentThread)
+              .with_batch_config(config)
+              .build(),
+          ),
+        )
+        .build(),
+      RuntimeFlavor::MultiThread => builder
+        .with_span_processor(
+          control.processor(
+            BatchSpanProcessor::builder(exporter.clone(), Tokio)
+              .with_batch_config(config)
+              .build(),
+          ),
+        )
+        .build(),
+      flavor => panic!("unsupported test runtime: {flavor:?}"),
+    };
+    let tracer = ExportControl::tracer(provider.tracer(service_name.to_string()));
+    Self::from_parts(
+      exporter,
+      provider,
+      otel::build_direct_otel_layer(tracer, control),
+    )
+  }
+
+  fn from_parts(
+    exporter: TestExporter,
+    provider: SdkTracerProvider,
+    otel_layer: RegistryLayer,
+  ) -> Self {
     let subscriber = Registry::default().with(otel_layer);
 
     Self {
@@ -93,6 +139,10 @@ impl TestTraceContext {
   #[must_use]
   pub fn exported_spans(&self) -> Vec<SpanData> {
     self.exporter.exported_spans()
+  }
+
+  pub fn force_flush(&self) {
+    self.provider.force_flush().unwrap();
   }
 
   pub fn request_span(&self) -> (tracing::dispatcher::DefaultGuard, tracing::Span, String) {

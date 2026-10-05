@@ -349,7 +349,7 @@ pub(crate) fn build_otel_layer(
       ));
     },
   };
-  let tracer = control.tracer(provider.tracer(config.tracer_name.clone()));
+  let tracer = ExportControl::tracer(provider.tracer(config.tracer_name.clone()));
 
   let layer = build_direct_otel_layer(tracer, control);
 
@@ -512,21 +512,26 @@ impl Deref for ConditionalTrace {
 
 /// Instrument a Result-returning future and export its local trace only on the final error.
 /// Cancellation leaves the span suppressed. The span must be created with `otel_span_on_error!`.
-pub async fn instrument_on_error<F, T, E>(future: F, span: ConditionalTrace) -> Result<T, E>
+pub fn instrument_on_error<F, T, E>(
+  future: F,
+  span: ConditionalTrace,
+) -> impl Future<Output = Result<T, E>>
 where
   F: Future<Output = Result<T, E>>,
   E: Display,
 {
   let cancellation = CaptureDecision(span.decision.0.clone());
-  let result = future.instrument(span.span.clone()).await;
-  if let Err(error) = &result {
-    let description: String = error.to_string().chars().take(1_024).collect();
-    span.record("otel.status_code", "ERROR");
-    span.record("otel.status_description", description.as_str());
+  async move {
+    let result = future.instrument(span.span.clone()).await;
+    if let Err(error) = &result {
+      let description: String = error.to_string().chars().take(1_024).collect();
+      span.record("otel.status_code", "ERROR");
+      span.record("otel.status_description", description.as_str());
+    }
+    span.decide(result.is_err());
+    drop(cancellation);
+    result
   }
-  span.decide(result.is_err());
-  drop(cancellation);
-  result
 }
 
 /// Create a typed error-only local trace, linking any ambient trace rather than requiring a parent.

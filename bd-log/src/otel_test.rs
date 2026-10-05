@@ -6,9 +6,14 @@
 
 use super::active_tokio_runtime_flavor;
 use crate::test::{TestTraceContext, with_two_phase_test_otel};
-use opentelemetry::trace::{SpanId, Status};
+use opentelemetry::Value;
+use opentelemetry::trace::{SpanId, Status, TraceContextExt};
+use opentelemetry_sdk::trace::BatchConfigBuilder;
 use std::future::{pending, ready};
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::runtime::{Builder, RuntimeFlavor};
+use tokio::sync::Barrier;
 use tracing::Instrument as _;
 use tracing::instrument::WithSubscriber as _;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -188,6 +193,128 @@ async fn conditional_export_propagates_to_spawned_controlled_children() {
   assert_eq!(context.exported_spans().len(), 3);
 }
 
+async fn concurrent_batch_captures() {
+  let config = BatchConfigBuilder::default()
+    .with_max_queue_size(512)
+    .with_max_export_batch_size(16)
+    .with_scheduled_delay(Duration::from_secs(3_600))
+    .build();
+  let context = TestTraceContext::with_batch_config("concurrent-captures", config);
+  let dispatch = context.dispatch();
+  let barrier = Arc::new(Barrier::new(32));
+  let mut tasks = Vec::new();
+  for request_id in 0 .. 32_i64 {
+    let barrier = barrier.clone();
+    tasks.push(tokio::spawn(
+      async move {
+        let ordinary = crate::otel_info_span!("ordinary", request_id);
+        let (root, linked_context) = {
+          let _entered = ordinary.enter();
+          (
+            crate::otel_span_on_error!("root", request_id),
+            ordinary.context().span().span_context().clone(),
+          )
+        };
+        drop(ordinary);
+        let result = crate::otel::instrument_on_error(
+          async {
+            let child = crate::otel_info_span_if_parent!("child", request_id);
+            async {
+              crate::otel_info!(request_id, "child event");
+              tokio::task::yield_now().await;
+              drop(crate::otel_debug_span_if_parent!("grandchild", request_id));
+              drop(tracing::info_span!("excluded_library_span"));
+            }
+            .instrument(child)
+            .await;
+            barrier.wait().await;
+            if request_id % 2 == 0 {
+              Err("final failure")
+            } else {
+              Ok(())
+            }
+          },
+          root,
+        )
+        .await;
+        (request_id, linked_context, result.is_err())
+      }
+      .with_subscriber(dispatch.clone()),
+    ));
+  }
+  let mut outcomes = Vec::new();
+  for task in tasks {
+    outcomes.push(task.await.unwrap());
+  }
+  context.force_flush();
+  let spans = context.exported_spans();
+  assert_eq!(spans.len(), 32 + 16 * 3);
+  for (request_id, linked_context, failed) in outcomes {
+    let request_spans: Vec<_> = spans
+      .iter()
+      .filter(|span| {
+        span.attributes.iter().any(|attribute| {
+          attribute.key.as_str() == "request_id" && attribute.value == Value::I64(request_id)
+        })
+      })
+      .collect();
+    assert_eq!(request_spans.len(), if failed { 4 } else { 1 });
+    let ordinary = request_spans
+      .iter()
+      .find(|span| span.name == "ordinary")
+      .unwrap();
+    assert_eq!(ordinary.span_context.trace_id(), linked_context.trace_id());
+    assert_eq!(ordinary.span_context.span_id(), linked_context.span_id());
+    assert_eq!(ordinary.status, Status::Unset);
+    if failed {
+      let root = request_spans
+        .iter()
+        .find(|span| span.name == "root")
+        .unwrap();
+      let child = request_spans
+        .iter()
+        .find(|span| span.name == "child")
+        .unwrap();
+      let grandchild = request_spans
+        .iter()
+        .find(|span| span.name == "grandchild")
+        .unwrap();
+      assert_eq!(root.status, Status::error("final failure"));
+      assert_eq!(root.parent_span_id, SpanId::INVALID);
+      assert_eq!(child.parent_span_id, root.span_context.span_id());
+      assert_eq!(grandchild.parent_span_id, child.span_context.span_id());
+      assert_eq!(child.span_context.trace_id(), root.span_context.trace_id());
+      assert_eq!(
+        grandchild.span_context.trace_id(),
+        root.span_context.trace_id()
+      );
+      assert_eq!(child.events.len(), 1);
+      assert!(child.events[0].attributes.iter().any(|attribute| {
+        attribute.key.as_str() == "request_id" && attribute.value == Value::I64(request_id)
+      }));
+      assert_eq!(root.links.len(), 1);
+      assert_eq!(
+        root.links[0].span_context.trace_id(),
+        linked_context.trace_id()
+      );
+      assert_eq!(
+        root.links[0].span_context.span_id(),
+        linked_context.span_id()
+      );
+    }
+  }
+}
+
+#[tokio::test]
+async fn conditional_export_concurrent_batch_current_thread() {
+  concurrent_batch_captures().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn conditional_export_concurrent_batch_multi_thread() {
+  concurrent_batch_captures().await;
+}
+
 #[tokio::test]
 async fn conditional_export_nested_roots_have_independent_decisions() {
   let context = TestTraceContext::new("conditional-nested");
@@ -248,6 +375,24 @@ async fn conditional_export_cancellation_is_final_with_a_surviving_handle() {
       .await
       .is_pending()
   );
+  drop(request);
+  root.retain();
+  drop(root);
+  assert_eq!(context.exported_spans(), []);
+}
+
+#[tokio::test]
+async fn conditional_export_unpolled_cancellation_is_final_with_a_surviving_handle() {
+  let context = TestTraceContext::new("conditional-unpolled-cancellation");
+  let dispatch = context.dispatch();
+  let _guard = tracing::dispatcher::set_default(&dispatch);
+  let root = crate::otel_span_on_error!("cancelled");
+  {
+    let _entered = root.enter();
+    let child = crate::otel_info_span_if_parent!("already_completed_child");
+    drop(child);
+  }
+  let request = crate::otel::instrument_on_error(ready(Err::<(), _>("not executed")), root.clone());
   drop(request);
   root.retain();
   drop(root);
