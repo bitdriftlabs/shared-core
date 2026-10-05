@@ -17,6 +17,7 @@ use crate::config::{Action, Config, FlushBufferId, WorkflowDebugMode, WorkflowsC
 use crate::engine::{ProcessLocalPendingFlushState, WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{
+  CommandArtifactMetadata,
   Workflow,
   WorkflowCommandCompletionError,
   WorkflowCommandOutcome,
@@ -33,7 +34,7 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
 use bd_log_matcher::builder::{field_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{FieldsRef, Log, LogFields, LogMessage, log_level};
+use bd_log_primitives::{DataValue, FieldsRef, Log, LogFields, LogMessage, log_level};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{
   SankeyIntentRequest,
@@ -240,8 +241,17 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
       &token,
       WorkflowCommandOutcome::SucceededWithAttachment {
         message: Some("done".to_string()),
-        fields: [("_command_artifact_id".into(), "spoofed".into())].into(),
+        fields: [
+          ("_command_artifact_id".into(), "spoofed".into()),
+          ("_command_artifact_content_type".into(), "spoofed".into()),
+          ("_command_artifact_size_bytes".into(), DataValue::U64(999)),
+        ]
+        .into(),
         artifact_id,
+        artifact_metadata: CommandArtifactMetadata {
+          content_type: "image/jpeg".to_string(),
+          size_bytes: 123,
+        },
       },
       OffsetDateTime::now_utc(),
     )
@@ -249,6 +259,14 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
   assert_eq!(
     outcome_log.log.fields.get("_command_artifact_id"),
     Some(&artifact_id.to_string().into())
+  );
+  assert_eq!(
+    outcome_log.log.fields.get("_command_artifact_content_type"),
+    Some(&"image/jpeg".into())
+  );
+  assert_eq!(
+    outcome_log.log.fields.get("_command_artifact_size_bytes"),
+    Some(&DataValue::U64(123))
   );
   assert!(matches!(
     engine.complete_workflow_command(

@@ -24,7 +24,7 @@ use crate::config::{
 use crate::generate_log::generate_log_action;
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{FieldsRef, Log, LogFields, LogLevel, log_level};
+use bd_log_primitives::{DataValue, FieldsRef, Log, LogFields, LogLevel, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow_command::WorkflowCommandSelector;
 use bd_proto_util::serialization::TimestampMicros;
@@ -38,6 +38,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub const COMMAND_ARTIFACT_ID_FIELD: &str = "_command_artifact_id";
+pub const COMMAND_ARTIFACT_CONTENT_TYPE_FIELD: &str = "_command_artifact_content_type";
+pub const COMMAND_ARTIFACT_SIZE_BYTES_FIELD: &str = "_command_artifact_size_bytes";
 pub const COMMAND_OUTCOME_MESSAGE: &str = "Command completed";
 pub const COMMAND_ID_FIELD: &str = "_command_id";
 const COMMAND_MESSAGE_FIELD: &str = "_command_message";
@@ -78,12 +80,32 @@ impl WorkflowCommandRequest {
   }
 }
 
+/// Attachment details shared by workflow and direct device command outcomes.
+#[derive(Clone, Debug)]
+pub struct CommandArtifactMetadata {
+  pub content_type: String,
+  pub size_bytes: u64,
+}
+
+impl CommandArtifactMetadata {
+  #[must_use]
+  pub fn new(content_type: Option<String>, size_bytes: u64) -> Self {
+    Self {
+      content_type: content_type
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "application/octet-stream".to_string()),
+      size_bytes,
+    }
+  }
+}
+
 /// The terminal outcome shared by workflow and direct device commands.
 pub struct CommandOutcome {
   pub succeeded: bool,
   pub message: Option<String>,
   pub fields: LogFields,
   pub artifact_id: Option<Uuid>,
+  pub artifact_metadata: Option<CommandArtifactMetadata>,
   pub command_id: Option<String>,
 }
 
@@ -95,6 +117,7 @@ impl CommandOutcome {
       message,
       mut fields,
       artifact_id,
+      artifact_metadata,
       command_id,
     } = self;
     fields.retain(|key, _| !key.starts_with("_command_") && !key.starts_with("_workflow_command_"));
@@ -110,6 +133,16 @@ impl CommandOutcome {
         COMMAND_ARTIFACT_ID_FIELD.into(),
         artifact_id.to_string().into(),
       );
+      if let Some(metadata) = artifact_metadata {
+        fields.insert(
+          COMMAND_ARTIFACT_CONTENT_TYPE_FIELD.into(),
+          metadata.content_type.into(),
+        );
+        fields.insert(
+          COMMAND_ARTIFACT_SIZE_BYTES_FIELD.into(),
+          DataValue::U64(metadata.size_bytes),
+        );
+      }
     }
     if let Some(command_id) = command_id {
       fields.insert(COMMAND_ID_FIELD.into(), command_id.into());
@@ -152,6 +185,7 @@ pub enum WorkflowCommandOutcome {
     message: Option<String>,
     fields: bd_log_primitives::LogFields,
     artifact_id: Uuid,
+    artifact_metadata: CommandArtifactMetadata,
   },
   Failed {
     message: Option<String>,
@@ -161,14 +195,21 @@ pub enum WorkflowCommandOutcome {
 
 impl WorkflowCommandOutcome {
   pub(crate) fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
-    let (succeeded, message, fields, artifact_id) = match self {
-      Self::Succeeded { message, fields } => (true, message, fields, None),
+    let (succeeded, message, fields, artifact_id, artifact_metadata) = match self {
+      Self::Succeeded { message, fields } => (true, message, fields, None, None),
       Self::SucceededWithAttachment {
         message,
         fields,
         artifact_id,
-      } => (true, message, fields, Some(artifact_id)),
-      Self::Failed { message, fields } => (false, message, fields, None),
+        artifact_metadata,
+      } => (
+        true,
+        message,
+        fields,
+        Some(artifact_id),
+        Some(artifact_metadata),
+      ),
+      Self::Failed { message, fields } => (false, message, fields, None, None),
     };
 
     CommandOutcome {
@@ -176,6 +217,7 @@ impl WorkflowCommandOutcome {
       message,
       fields,
       artifact_id,
+      artifact_metadata,
       command_id: None,
     }
     .into_log(session_id, now)

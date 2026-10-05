@@ -82,13 +82,34 @@ pub async fn read_and_compress_limited(
   reader: impl AsyncRead + Unpin,
   max_input_bytes: u64,
 ) -> anyhow::Result<Vec<u8>> {
+  Ok(
+    read_and_compress_limited_with_size(reader, max_input_bytes)
+      .await?
+      .0,
+  )
+}
+
+pub async fn read_and_compress_limited_with_size(
+  reader: impl AsyncRead + Unpin,
+  max_input_bytes: u64,
+) -> anyhow::Result<(Vec<u8>, u64)> {
+  let input = read_limited(reader, max_input_bytes).await?;
+  let size_bytes = u64::try_from(input.len())?;
+  let compressed = tokio::task::spawn_blocking(move || write_compressed(&input)).await??;
+  Ok((compressed, size_bytes))
+}
+
+pub async fn read_limited(
+  reader: impl AsyncRead + Unpin,
+  max_input_bytes: u64,
+) -> anyhow::Result<Vec<u8>> {
   let mut reader = reader.take(max_input_bytes.saturating_add(1));
   let mut input = Vec::new();
   reader.read_to_end(&mut input).await?;
   if u64::try_from(input.len()).unwrap_or(u64::MAX) > max_input_bytes {
     anyhow::bail!("attachment exceeds size limit");
   }
-  tokio::task::spawn_blocking(move || write_compressed(&input)).await?
+  Ok(input)
 }
 
 pub fn read_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {

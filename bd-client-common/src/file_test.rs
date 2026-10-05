@@ -8,6 +8,7 @@
 use bd_macros::proto_serializable;
 use fs2::FileExt;
 use std::fs::File;
+use std::io::Cursor;
 use tempfile::TempDir;
 
 #[proto_serializable]
@@ -42,6 +43,25 @@ fn write_checksummed_data() {
       .unwrap()
       .as_slice()
   );
+}
+
+#[tokio::test]
+async fn bounded_attachment_reads_report_uncompressed_size() {
+  let bytes = vec![42; 1000];
+  let (compressed, size_bytes) =
+    super::read_and_compress_limited_with_size(Cursor::new(&bytes), 1000)
+      .await
+      .unwrap();
+  assert_eq!(size_bytes, 1000);
+  assert!(compressed.len() < bytes.len());
+  assert_eq!(super::read_compressed(&compressed).unwrap(), bytes);
+  assert_eq!(
+    super::read_limited(Cursor::new(&bytes), 1000)
+      .await
+      .unwrap(),
+    bytes
+  );
+  assert!(super::read_limited(Cursor::new(&bytes), 999).await.is_err());
 }
 
 #[test]

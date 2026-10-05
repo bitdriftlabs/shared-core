@@ -17,7 +17,7 @@ use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, STATE_SNAPSHOT_
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
   async_write_checksummed_data,
-  read_and_compress_limited,
+  read_and_compress_limited_with_size,
   read_checksummed_data,
   read_compressed_protobuf,
   write_checksummed_data,
@@ -133,7 +133,7 @@ struct NewUpload {
   command_id: Option<String>,
   content_type: Option<String>,
   #[approximate_size(skip)]
-  persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  persisted_tx: Option<PersistenceAck>,
   #[approximate_size(skip)]
   completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
 }
@@ -215,6 +215,34 @@ pub enum EnqueueError {
   Other(#[from] anyhow::Error),
 }
 
+//
+// PersistenceAck
+//
+
+#[derive(Debug)]
+enum PersistenceAck {
+  Upload(oneshot::Sender<std::result::Result<(), EnqueueError>>),
+  Command(oneshot::Sender<std::result::Result<u64, EnqueueError>>),
+}
+
+impl PersistenceAck {
+  fn send(self, result: std::result::Result<Option<u64>, EnqueueError>) {
+    match self {
+      Self::Upload(tx) => {
+        let _ = tx.send(result.map(|_| ()));
+      },
+      Self::Command(tx) => {
+        let result = result.and_then(|size_bytes| {
+          size_bytes.ok_or_else(|| {
+            EnqueueError::Other(anyhow::anyhow!("missing persisted command attachment size"))
+          })
+        });
+        let _ = tx.send(result);
+      },
+    }
+  }
+}
+
 fn retained_persistence_error(error: anyhow::Error) -> EnqueueError {
   if error
     .downcast_ref::<std::io::Error>()
@@ -233,6 +261,7 @@ pub trait Client: Send + Sync {
     artifact_id: Uuid,
     source_path: PathBuf,
     session_id: String,
+    content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<(), EnqueueError>;
@@ -248,6 +277,7 @@ pub trait Client: Send + Sync {
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError>;
 
+  /// Command persistence acknowledgements report the uncompressed payload size in bytes.
   fn enqueue_command_upload(
     &self,
     source: UploadSource,
@@ -258,7 +288,7 @@ pub trait Client: Send + Sync {
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: String,
     content_type: Option<String>,
-    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<u64, EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<Uuid, EnqueueError>;
 }
@@ -280,7 +310,7 @@ impl UploadClient {
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: Option<String>,
     content_type: Option<String>,
-    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    persisted_tx: Option<PersistenceAck>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
     let result = self
@@ -316,6 +346,7 @@ impl Client for UploadClient {
     artifact_id: Uuid,
     source_path: PathBuf,
     session_id: String,
+    content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<(), EnqueueError> {
@@ -333,8 +364,8 @@ impl Client for UploadClient {
       session_id,
       Vec::new(),
       None,
-      None,
-      persisted_tx,
+      content_type,
+      persisted_tx.map(PersistenceAck::Upload),
       completion_tx,
     )?;
     Ok(())
@@ -361,7 +392,7 @@ impl Client for UploadClient {
       feature_flags,
       None,
       None,
-      persisted_tx,
+      persisted_tx.map(PersistenceAck::Upload),
       None,
     )
   }
@@ -376,7 +407,7 @@ impl Client for UploadClient {
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: String,
     content_type: Option<String>,
-    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<u64, EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
     self.enqueue(
@@ -389,7 +420,7 @@ impl Client for UploadClient {
       feature_flags,
       Some(command_id),
       content_type,
-      persisted_tx,
+      persisted_tx.map(PersistenceAck::Command),
       completion_tx,
     )
   }
@@ -825,7 +856,7 @@ impl Uploader {
     source: UploadSource,
     target_path: &Path,
     path_source: &mut Option<(PathBuf, bool)>,
-  ) -> anyhow::Result<()> {
+  ) -> anyhow::Result<u64> {
     let max_attachment_bytes = u64::from(*self.max_attachment_bytes.read());
     let reader: Box<dyn AsyncRead + Unpin + Send> = match source {
       UploadSource::Bytes(contents) => Box::new(std::io::Cursor::new(contents)),
@@ -838,10 +869,12 @@ impl Uploader {
       UploadSource::Retained(_) => anyhow::bail!("command attachments cannot use retained sources"),
     };
 
-    let contents = read_and_compress_limited(reader, max_attachment_bytes).await?;
+    let (contents, size_bytes) =
+      read_and_compress_limited_with_size(reader, max_attachment_bytes).await?;
     let mut target_file = self.file_system.create_file(target_path).await?;
     target_file.write_all(&contents).await?;
-    Ok(())
+    log::debug!("wrote command attachment ({size_bytes} uncompressed bytes)");
+    Ok(size_bytes)
   }
 
   async fn track_new_upload(
@@ -855,7 +888,7 @@ impl Uploader {
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: Option<String>,
     content_type: Option<String>,
-    mut persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+    mut persisted_tx: Option<PersistenceAck>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) {
     if let Some(existing) = self
@@ -869,7 +902,7 @@ impl Uploader {
         && existing.session_id == session_id;
       if let Some(tx) = persisted_tx {
         let result = if matching_workflow_attachment {
-          Ok(())
+          Ok(None)
         } else {
           Err(EnqueueError::Other(anyhow::anyhow!(
             "workflow attachment ID belongs to another session or artifact type"
@@ -884,7 +917,7 @@ impl Uploader {
             .entry(uuid.to_string())
             .or_insert(completion_tx);
         }
-        let _ = tx.send(result);
+        tx.send(result);
       }
       return;
     }
@@ -922,7 +955,7 @@ impl Uploader {
       } else {
         self.stats.dropped.inc();
         if let Some(tx) = persisted_tx.take() {
-          let _ = tx.send(Err(EnqueueError::QueueFull));
+          tx.send(Err(EnqueueError::QueueFull));
         }
         return;
       }
@@ -940,11 +973,13 @@ impl Uploader {
 
     let target_path = ARTIFACT_UPLOAD_DIRECTORY.join(&uuid);
     let mut path_source = None;
+    let mut command_size_bytes = None;
     let (write_result, storage_format) = match source {
       source if command_attachment => (
         self
           .write_command_attachment(source, &target_path, &mut path_source)
-          .await,
+          .await
+          .map(|size_bytes| command_size_bytes = Some(size_bytes)),
         StorageFormat::RAW,
       ),
       UploadSource::Bytes(bytes) => {
@@ -953,7 +988,7 @@ impl Uploader {
           Err(e) => {
             log::warn!("failed to create file for artifact: {uuid} on disk: {e}");
             if let Some(tx) = persisted_tx.take() {
-              let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
+              tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
                 "failed to create file for artifact {uuid}: {e}"
               ))));
             }
@@ -974,7 +1009,7 @@ impl Uploader {
           Err(e) => {
             log::warn!("failed to create file for artifact: {uuid} on disk: {e}");
             if let Some(tx) = persisted_tx.take() {
-              let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
+              tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
                 "failed to create file for artifact {uuid}: {e}"
               ))));
             }
@@ -1053,7 +1088,7 @@ impl Uploader {
             "failed to write artifact to disk {uuid}: {e}"
           ))
         };
-        let _ = tx.send(Err(error));
+        tx.send(Err(error));
       }
 
       #[cfg(test)]
@@ -1133,7 +1168,7 @@ impl Uploader {
         } else {
           EnqueueError::Other(error)
         };
-        let _ = tx.send(Err(error));
+        tx.send(Err(error));
       }
       return;
     }
@@ -1146,7 +1181,7 @@ impl Uploader {
       );
     }
     if let Some(tx) = persisted_tx {
-      let _ = tx.send(Ok(()));
+      tx.send(Ok(command_size_bytes));
     }
     if let Some(completion_tx) = completion_tx {
       self.upload_completions.insert(uuid.clone(), completion_tx);
