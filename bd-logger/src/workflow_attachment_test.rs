@@ -1586,3 +1586,221 @@ async fn restart_discards_sidecars_with_incomplete_checksums() {
   assert!(!fs::try_exists(path).await.unwrap());
   assert!(!fs::try_exists(staging_path).await.unwrap());
 }
+
+#[tokio::test]
+async fn restart_preserves_staged_metadata_on_io_errors() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  let admitted = store
+    .admit(
+      UploadSource::Bytes(b"attachment".to_vec()),
+      Some("image/jpeg".into()),
+    )
+    .await
+    .unwrap();
+  let path = store.metadata_path(admitted.id);
+  let staging_path = super::sidecar_staging_path(&path).unwrap();
+  fs::rename(&path, &staging_path).await.unwrap();
+  let original = fs::read(&staging_path).await.unwrap();
+  for kind in [
+    io::ErrorKind::PermissionDenied,
+    io::ErrorKind::Interrupted,
+    io::ErrorKind::Other,
+  ] {
+    let error = super::discard_corrupt_sidecar(&staging_path, io::Error::new(kind, "injected"))
+      .await
+      .unwrap_err();
+    assert_eq!(error.kind(), kind);
+    assert_eq!(fs::read(&staging_path).await.unwrap(), original);
+  }
+
+  let restarted = new_store(&directory).await;
+  assert_eq!(
+    read_checked(&restarted, admitted.id).await.unwrap(),
+    b"attachment"
+  );
+  assert_eq!(
+    restarted
+      .content_type(admitted.id)
+      .await
+      .unwrap()
+      .as_deref(),
+    Some("image/jpeg")
+  );
+  assert_eq!(restarted.capacity.lock().files, 1);
+  assert!(!fs::try_exists(staging_path).await.unwrap());
+}
+
+#[tokio::test]
+async fn restart_isolates_nonregular_owned_entries() {
+  for extension in ["payload", "metadata", "metadata.partial"] {
+    for is_symlink in [
+      false,
+      #[cfg(unix)]
+      true,
+    ] {
+      let directory = tempfile::tempdir().unwrap();
+      let store = Arc::new(new_store(&directory).await);
+      let corrupt = store
+        .admit(UploadSource::Bytes(b"corrupt".to_vec()), None)
+        .await
+        .unwrap();
+      let healthy = store
+        .admit(UploadSource::Bytes(b"healthy".to_vec()), None)
+        .await
+        .unwrap();
+      let path = store
+        .directory
+        .join(format!("{}.{}", corrupt.id, extension));
+      if extension == "metadata.partial" {
+        fs::remove_file(store.metadata_path(corrupt.id))
+          .await
+          .unwrap();
+      } else {
+        fs::remove_file(&path).await.unwrap();
+      }
+      let external = directory.path().join("external");
+      fs::create_dir(&external).await.unwrap();
+      fs::write(external.join("sentinel"), b"external")
+        .await
+        .unwrap();
+      if is_symlink {
+        #[cfg(unix)]
+        fs::symlink(&external, &path).await.unwrap();
+      } else {
+        fs::create_dir(&path).await.unwrap();
+        fs::write(path.join("child"), b"corrupt").await.unwrap();
+        #[cfg(unix)]
+        fs::symlink(&external, path.join("link")).await.unwrap();
+      }
+
+      let restarted = Arc::new(new_store(&directory).await);
+      assert_eq!(
+        read_checked(&restarted, healthy.id).await.unwrap(),
+        b"healthy"
+      );
+      assert_eq!(restarted.capacity.lock().files, 1);
+      let remaining_bytes = fs::metadata(restarted.payload_path(healthy.id))
+        .await
+        .unwrap()
+        .len();
+      assert_eq!(restarted.capacity.lock().bytes, remaining_bytes);
+      assert_eq!(
+        fs::symlink_metadata(&path).await.unwrap_err().kind(),
+        io::ErrorKind::NotFound
+      );
+      assert!(
+        !fs::try_exists(restarted.payload_path(corrupt.id))
+          .await
+          .unwrap()
+      );
+      assert!(
+        !fs::try_exists(restarted.metadata_path(corrupt.id))
+          .await
+          .unwrap()
+      );
+      assert_eq!(
+        fs::read(external.join("sentinel")).await.unwrap(),
+        b"external"
+      );
+      let admitted = restarted
+        .admit(UploadSource::Bytes(b"new".to_vec()), None)
+        .await
+        .unwrap();
+      assert_eq!(read_checked(&restarted, admitted.id).await.unwrap(), b"new");
+    }
+  }
+}
+
+#[tokio::test]
+async fn restart_reclaims_orphan_and_uploaded_payloads() {
+  for state in ["orphan", "corrupt_staged", "uploaded"] {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(new_store(&directory).await);
+    let discarded = store
+      .admit(UploadSource::Bytes(b"discarded".to_vec()), None)
+      .await
+      .unwrap();
+    let healthy = store
+      .admit(UploadSource::Bytes(b"healthy".to_vec()), None)
+      .await
+      .unwrap();
+    let path = store.metadata_path(discarded.id);
+    let staging_path = super::sidecar_staging_path(&path).unwrap();
+    match state {
+      "orphan" => fs::remove_file(&path).await.unwrap(),
+      "corrupt_staged" => {
+        fs::rename(&path, &staging_path).await.unwrap();
+        fs::write(&staging_path, [0xff]).await.unwrap();
+      },
+      "uploaded" => {
+        let mut metadata = super::read_metadata(&path).await.unwrap();
+        metadata.uploaded = true;
+        super::write_metadata(&path, &metadata).await.unwrap();
+      },
+      _ => panic!("unexpected recovery state: {state}"),
+    }
+
+    let restarted = Arc::new(new_store(&directory).await);
+    assert_eq!(
+      read_checked(&restarted, healthy.id).await.unwrap(),
+      b"healthy"
+    );
+    assert_eq!(restarted.capacity.lock().files, 1);
+    let remaining_bytes = fs::metadata(restarted.payload_path(healthy.id))
+      .await
+      .unwrap()
+      .len();
+    assert_eq!(restarted.capacity.lock().bytes, remaining_bytes);
+    assert!(
+      !fs::try_exists(restarted.payload_path(discarded.id))
+        .await
+        .unwrap()
+    );
+    assert!(!fs::try_exists(staging_path).await.unwrap());
+    assert_eq!(fs::try_exists(&path).await.unwrap(), state == "uploaded");
+    assert_eq!(
+      restarted.is_uploaded(discarded.id).await.unwrap(),
+      state == "uploaded"
+    );
+    let admitted = restarted
+      .admit(UploadSource::Bytes(b"new".to_vec()), None)
+      .await
+      .unwrap();
+    assert_eq!(read_checked(&restarted, admitted.id).await.unwrap(), b"new");
+  }
+}
+
+#[test]
+fn lifecycle_metadata_reserve_covers_maximum_fields() {
+  let mut metadata = WorkflowAttachmentState::default();
+  let initial_size = metadata.compute_size();
+  metadata.occurred_at_micros = Some(u64::MAX);
+  metadata.uploaded = true;
+  assert_eq!(
+    metadata.compute_size() - initial_size,
+    super::MAX_LIFECYCLE_METADATA_BYTES
+  );
+}
+
+#[tokio::test]
+async fn restart_discards_invalid_owned_payload_names() {
+  for name in ["invalid".to_string(), Uuid::new_v4().simple().to_string()] {
+    let directory = tempfile::tempdir().unwrap();
+    let store = Arc::new(new_store(&directory).await);
+    let healthy = store
+      .admit(UploadSource::Bytes(b"healthy".to_vec()), None)
+      .await
+      .unwrap();
+    let path = store.directory.join(format!("{name}.payload"));
+    fs::write(&path, b"orphan").await.unwrap();
+
+    let restarted = new_store(&directory).await;
+    assert_eq!(
+      read_checked(&restarted, healthy.id).await.unwrap(),
+      b"healthy"
+    );
+    assert_eq!(restarted.capacity.lock().files, 1);
+    assert!(!fs::try_exists(path).await.unwrap());
+  }
+}
