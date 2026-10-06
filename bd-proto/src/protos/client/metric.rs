@@ -273,6 +273,10 @@ pub struct PendingAggregationIndex {
     pub pending_stats_pipeline_analytics_report: ::protobuf::MessageField<pending_aggregation_index::PendingStatsPipelineAnalyticsReport>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.next_client_stats_sequence)
     pub next_client_stats_sequence: u64,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.last_stats_upload_attempt_at)
+    pub last_stats_upload_attempt_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.stats_upload_attempt_in_progress)
+    pub stats_upload_attempt_in_progress: bool,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -290,7 +294,7 @@ impl PendingAggregationIndex {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut fields = ::std::vec::Vec::with_capacity(6);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "pending_files",
@@ -311,6 +315,16 @@ impl PendingAggregationIndex {
             "next_client_stats_sequence",
             |m: &PendingAggregationIndex| { &m.next_client_stats_sequence },
             |m: &mut PendingAggregationIndex| { &mut m.next_client_stats_sequence },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+            "last_stats_upload_attempt_at",
+            |m: &PendingAggregationIndex| { &m.last_stats_upload_attempt_at },
+            |m: &mut PendingAggregationIndex| { &mut m.last_stats_upload_attempt_at },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "stats_upload_attempt_in_progress",
+            |m: &PendingAggregationIndex| { &m.stats_upload_attempt_in_progress },
+            |m: &mut PendingAggregationIndex| { &mut m.stats_upload_attempt_in_progress },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<PendingAggregationIndex>(
             "PendingAggregationIndex",
@@ -342,6 +356,12 @@ impl ::protobuf::Message for PendingAggregationIndex {
                 32 => {
                     self.next_client_stats_sequence = is.read_uint64()?;
                 },
+                42 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.last_stats_upload_attempt_at)?;
+                },
+                48 => {
+                    self.stats_upload_attempt_in_progress = is.read_bool()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -369,6 +389,13 @@ impl ::protobuf::Message for PendingAggregationIndex {
         if self.next_client_stats_sequence != 0 {
             my_size += ::protobuf::rt::uint64_size(4, self.next_client_stats_sequence);
         }
+        if let Some(v) = self.last_stats_upload_attempt_at.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if self.stats_upload_attempt_in_progress != false {
+            my_size += 1 + 1;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -386,6 +413,12 @@ impl ::protobuf::Message for PendingAggregationIndex {
         }
         if self.next_client_stats_sequence != 0 {
             os.write_uint64(4, self.next_client_stats_sequence)?;
+        }
+        if let Some(v) = self.last_stats_upload_attempt_at.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+        }
+        if self.stats_upload_attempt_in_progress != false {
+            os.write_bool(6, self.stats_upload_attempt_in_progress)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -408,6 +441,8 @@ impl ::protobuf::Message for PendingAggregationIndex {
         self.unreported_stats_pipeline_analytics.clear();
         self.pending_stats_pipeline_analytics_report.clear();
         self.next_client_stats_sequence = 0;
+        self.last_stats_upload_attempt_at.clear();
+        self.stats_upload_attempt_in_progress = false;
         self.special_fields.clear();
     }
 
@@ -417,6 +452,8 @@ impl ::protobuf::Message for PendingAggregationIndex {
             unreported_stats_pipeline_analytics: ::protobuf::MessageField::none(),
             pending_stats_pipeline_analytics_report: ::protobuf::MessageField::none(),
             next_client_stats_sequence: 0,
+            last_stats_upload_attempt_at: ::protobuf::MessageField::none(),
+            stats_upload_attempt_in_progress: false,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -1830,7 +1867,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x20\x01(\x04R/statsFilesDroppedDueToPendingSnapshotCorruption\x12V\n)st\
     ats_files_dropped_due_to_index_recovery\x18\x06\x20\x01(\x04R#statsFiles\
     DroppedDueToIndexRecovery\x12=\n\x1bstats_index_recovery_events\x18\x07\
-    \x20\x01(\x04R\x18statsIndexRecoveryEvents\"\x9a\x07\n\x17PendingAggrega\
+    \x20\x01(\x04R\x18statsIndexRecoveryEvents\"\xbe\x08\n\x17PendingAggrega\
     tionIndex\x12l\n\rpending_files\x18\x01\x20\x03(\x0b2G.bitdrift_public.p\
     rotobuf.client.v1.PendingAggregationIndex.PendingFileR\x0cpendingFiles\
     \x12\x89\x01\n#unreported_stats_pipeline_analytics\x18\x02\x20\x01(\x0b2\
@@ -1839,22 +1876,25 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     report\x18\x03\x20\x01(\x0b2_.bitdrift_public.protobuf.client.v1.Pending\
     AggregationIndex.PendingStatsPipelineAnalyticsReportR#pendingStatsPipeli\
     neAnalyticsReport\x12;\n\x1anext_client_stats_sequence\x18\x04\x20\x01(\
-    \x04R\x17nextClientStatsSequence\x1a\xf0\x01\n\x0bPendingFile\x12\x12\n\
-    \x04name\x18\x01\x20\x01(\tR\x04name\x12=\n\x0cperiod_start\x18\x02\x20\
-    \x01(\x0b2\x1a.google.protobuf.TimestampR\x0bperiodStart\x129\n\nperiod_\
-    end\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tperiodEnd\x12\
-    \x1f\n\x0bretry_count\x18\x04\x20\x01(\rR\nretryCount\x122\n\x15client_s\
-    tats_sequence\x18\x05\x20\x01(\x04R\x13clientStatsSequence\x1a\x9c\x01\n\
-    #PendingStatsPipelineAnalyticsReport\x12\x1b\n\treport_id\x18\x01\x20\
-    \x01(\tR\x08reportId\x12X\n\tanalytics\x18\x02\x20\x01(\x0b2:.bitdrift_p\
-    ublic.protobuf.client.v1.StatsPipelineAnalyticsR\tanalytics\"%\n\x07Coun\
-    ter\x12\x14\n\x05value\x18\x02\x20\x01(\x04R\x05valueJ\x04\x08\x01\x10\
-    \x02\"3\n\x11DDSketchHistogram\x12\x1e\n\nserialized\x18\x01\x20\x01(\
-    \x0cR\nserialized\"/\n\x15InlineHistogramValues\x12\x16\n\x06values\x18\
-    \x01\x20\x03(\x01R\x06values\"\x8d\x04\n\x06Metric\x12\x14\n\x04name\x18\
-    \x01\x20\x01(\tH\0R\x04name\x12\x1d\n\tmetric_id\x18\x07\x20\x01(\tH\0R\
-    \x08metricId\x12H\n\x04tags\x18\x02\x20\x03(\x0b24.bitdrift_public.proto\
-    buf.client.v1.Metric.TagsEntryR\x04tags\x12G\n\x07counter\x18\x03\x20\
+    \x04R\x17nextClientStatsSequence\x12Z\n\x1clast_stats_upload_attempt_at\
+    \x18\x05\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x18lastStatsUpload\
+    AttemptAt\x12F\n\x20stats_upload_attempt_in_progress\x18\x06\x20\x01(\
+    \x08R\x1cstatsUploadAttemptInProgress\x1a\xf0\x01\n\x0bPendingFile\x12\
+    \x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12=\n\x0cperiod_start\x18\
+    \x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0bperiodStart\x129\n\
+    \nperiod_end\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tperio\
+    dEnd\x12\x1f\n\x0bretry_count\x18\x04\x20\x01(\rR\nretryCount\x122\n\x15\
+    client_stats_sequence\x18\x05\x20\x01(\x04R\x13clientStatsSequence\x1a\
+    \x9c\x01\n#PendingStatsPipelineAnalyticsReport\x12\x1b\n\treport_id\x18\
+    \x01\x20\x01(\tR\x08reportId\x12X\n\tanalytics\x18\x02\x20\x01(\x0b2:.bi\
+    tdrift_public.protobuf.client.v1.StatsPipelineAnalyticsR\tanalytics\"%\n\
+    \x07Counter\x12\x14\n\x05value\x18\x02\x20\x01(\x04R\x05valueJ\x04\x08\
+    \x01\x10\x02\"3\n\x11DDSketchHistogram\x12\x1e\n\nserialized\x18\x01\x20\
+    \x01(\x0cR\nserialized\"/\n\x15InlineHistogramValues\x12\x16\n\x06values\
+    \x18\x01\x20\x03(\x01R\x06values\"\x8d\x04\n\x06Metric\x12\x14\n\x04name\
+    \x18\x01\x20\x01(\tH\0R\x04name\x12\x1d\n\tmetric_id\x18\x07\x20\x01(\tH\
+    \0R\x08metricId\x12H\n\x04tags\x18\x02\x20\x03(\x0b24.bitdrift_public.pr\
+    otobuf.client.v1.Metric.TagsEntryR\x04tags\x12G\n\x07counter\x18\x03\x20\
     \x01(\x0b2+.bitdrift_public.protobuf.client.v1.CounterH\x01R\x07counter\
     \x12f\n\x12ddsketch_histogram\x18\x05\x20\x01(\x0b25.bitdrift_public.pro\
     tobuf.client.v1.DDSketchHistogramH\x01R\x11ddsketchHistogram\x12s\n\x17i\

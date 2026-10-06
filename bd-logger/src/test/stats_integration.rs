@@ -21,21 +21,25 @@ use bd_proto::protos::client::api::stats_upload_request::{
 use bd_proto::protos::client::metric::metric::{Data as MetricData, Metric_name_type};
 use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
 use bd_proto::protos::client::metric::{Counter, Metric, MetricsList, PendingAggregationIndex};
-use bd_runtime::runtime::FeatureFlag as _;
+use bd_runtime::runtime::stats::GlobalMinimumUploadIntervalFlag;
+use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_stats_common::Counter as _;
-use bd_test_helpers::runtime::ValueKind;
+use bd_test_helpers::runtime::{ValueKind, make_simple_update, make_update};
 use bd_test_helpers::test_api_server::{
   ExpectedStreamEvent,
   HandshakeResponsePlan,
   StartupStatsUploadResponse,
   StatsUploadResponsePlan,
+  StreamAction,
 };
-use bd_time::OffsetDateTimeExt;
+use bd_time::{OffsetDateTimeExt, TestTimeProvider};
 use std::collections::HashMap;
 use std::fs;
+use std::sync::Arc;
 use tempfile::TempDir;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
+use tokio::runtime::Runtime;
 
 const MAX_SNAPSHOTS_PER_UPLOAD: usize = 10;
 const STALE_SNAPSHOT_FILE: &str = "stale_snapshot";
@@ -130,6 +134,185 @@ fn seed_corrupt_stale_snapshot(directory: &TempDir, file_name: &str) {
 
 fn read_index(setup: &Setup) -> PendingAggregationIndex {
   read_compressed_protobuf(&fs::read(setup.pending_aggregation_index_file_path()).unwrap()).unwrap()
+}
+
+fn cache_runtime(directory: &TempDir, values: Vec<(&str, ValueKind)>) {
+  Runtime::new().unwrap().block_on(async {
+    let runtime = ConfigLoader::new(directory.path());
+    runtime
+      .update_snapshot(make_simple_update(values))
+      .await
+      .unwrap();
+    runtime.mark_safe().await;
+  });
+}
+
+#[test]
+fn global_upload_interval_survives_sdk_restart_with_cached_runtime() {
+  let directory = Arc::new(tempfile::tempdir_in(".").unwrap());
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let runtime_values = vec![(
+    GlobalMinimumUploadIntervalFlag::path(),
+    ValueKind::Int(60_000),
+  )];
+
+  // Cache and mark safe through the normal loader, rather than racing startup with a sleep.
+  cache_runtime(&directory, runtime_values.clone());
+  seed_stale_snapshot(&directory);
+  let mut first = Setup::new_with_options(SetupOptions {
+    sdk_directory: directory.clone(),
+    time_provider: Some(time.clone()),
+    extra_runtime_values: runtime_values.clone(),
+    handshake_response_plans: vec![HandshakeResponsePlan {
+      startup_stats_upload_response: Some(StartupStatsUploadResponse::Echo {
+        error: "retry later".to_string(),
+        metrics_dropped: 0,
+      }),
+      ..Default::default()
+    }],
+    ..Default::default()
+  });
+  let (_, handshake) = first.server.blocking_next_handshake_request().unwrap();
+  let upload = handshake.startup_stats_upload.as_ref().unwrap();
+  assert_eq!(upload.snapshot[0].retry_count, 0);
+  first.wait_for_startup_stats_upload_completion();
+  let index = read_index(&first);
+  assert_eq!(index.pending_files[0].retry_count, 1);
+  assert!(index.last_stats_upload_attempt_at.is_some());
+  assert!(!index.stats_upload_attempt_in_progress);
+  let source_sequence = index.pending_files[0].client_stats_sequence;
+  drop(first);
+
+  time.advance(1.seconds());
+  let mut restarted = Setup::new_with_options(SetupOptions {
+    sdk_directory: directory,
+    time_provider: Some(time),
+    extra_runtime_values: runtime_values,
+    ..Default::default()
+  });
+  let (_, handshake) = restarted.server.blocking_next_handshake_request().unwrap();
+  assert_ne!(handshake.runtime_version_nonce, "");
+  assert!(handshake.startup_stats_upload.is_none());
+  assert!(handshake.analytics.is_some());
+  assert!(handshake.state_update.is_some());
+  let index = read_index(&restarted);
+  assert_eq!(index.pending_files[0].name, STALE_SNAPSHOT_FILE);
+  assert_eq!(index.pending_files[0].retry_count, 1);
+  assert_eq!(
+    index.pending_files[0].client_stats_sequence,
+    source_sequence
+  );
+
+  // Rejection has no timer retry. A runtime change takes effect at the next existing trigger.
+  restarted
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::SendRuntime(make_update(
+      vec![(GlobalMinimumUploadIntervalFlag::path(), ValueKind::Int(0))],
+      "disabled".to_string(),
+    )));
+  let (_, response) = restarted.server.blocking_next_runtime_ack();
+  assert!(response.nack.is_none());
+  restarted.flush_and_upload_stats();
+  let upload = restarted.server.next_stat_upload().unwrap();
+  let retained = upload
+    .snapshot
+    .iter()
+    .find(|snapshot| {
+      snapshot.metrics().metric.iter().any(|metric| {
+        metric.metric_name_type == Some(Metric_name_type::Name("test:stale".to_string()))
+      })
+    })
+    .unwrap();
+  assert_eq!(retained.metrics().metric[0].counter().value, 1);
+  assert_eq!(retained.retry_count, 1);
+  assert_eq!(retained.client_stats_sequence, source_sequence);
+}
+
+#[test]
+fn global_upload_interval_recovers_unresolved_sdk_reservation_after_restart() {
+  let directory = Arc::new(tempfile::tempdir_in(".").unwrap());
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let runtime_values = vec![(
+    GlobalMinimumUploadIntervalFlag::path(),
+    ValueKind::Int(60_000),
+  )];
+  cache_runtime(&directory, runtime_values.clone());
+  seed_stale_snapshot(&directory);
+  let mut first = Setup::new_with_options(SetupOptions {
+    sdk_directory: directory.clone(),
+    time_provider: Some(time.clone()),
+    extra_runtime_values: runtime_values.clone(),
+    ..Default::default()
+  });
+  let (_, handshake) = first.server.blocking_next_handshake_request().unwrap();
+  let upload = handshake.startup_stats_upload.as_ref().unwrap();
+  assert_eq!(upload.snapshot[0].retry_count, 0);
+  let mut unresolved = read_index(&first);
+  assert!(unresolved.stats_upload_attempt_in_progress);
+  assert_eq!(unresolved.pending_files[0].retry_count, 1);
+  let source_sequence = unresolved.pending_files[0].client_stats_sequence;
+  drop(first);
+
+  // Restore the unresolved index with an old reference to model a crash and long downtime.
+  unresolved.last_stats_upload_attempt_at = OffsetDateTime::UNIX_EPOCH.into_proto();
+  fs::write(
+    directory
+      .path()
+      .join(STATS_DIRECTORY)
+      .join(PENDING_AGGREGATION_INDEX_FILE),
+    write_compressed_protobuf(&unresolved).unwrap(),
+  )
+  .unwrap();
+  time.advance(1.hours());
+  let mut restarted = Setup::new_with_options(SetupOptions {
+    sdk_directory: directory,
+    time_provider: Some(time),
+    extra_runtime_values: runtime_values,
+    ..Default::default()
+  });
+  let (_, handshake) = restarted.server.blocking_next_handshake_request().unwrap();
+  assert_ne!(handshake.runtime_version_nonce, "");
+  assert!(handshake.startup_stats_upload.is_none());
+  assert!(handshake.analytics.is_some());
+  assert!(handshake.state_update.is_some());
+  let recovered = read_index(&restarted);
+  assert!(!recovered.stats_upload_attempt_in_progress);
+  assert!(
+    recovered
+      .last_stats_upload_attempt_at
+      .as_ref()
+      .unwrap()
+      .seconds
+      > unresolved
+        .last_stats_upload_attempt_at
+        .as_ref()
+        .unwrap()
+        .seconds
+  );
+  assert_eq!(recovered.pending_files[0].name, STALE_SNAPSHOT_FILE);
+  assert_eq!(recovered.pending_files[0].retry_count, 1);
+  assert_eq!(
+    recovered.pending_files[0].client_stats_sequence,
+    source_sequence
+  );
+
+  restarted
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::SendRuntime(make_update(
+      vec![(GlobalMinimumUploadIntervalFlag::path(), ValueKind::Int(0))],
+      "disabled".to_string(),
+    )));
+  let (_, response) = restarted.server.blocking_next_runtime_ack();
+  assert!(response.nack.is_none());
+  restarted.flush_and_upload_stats();
+  let upload = restarted.server.next_stat_upload().unwrap();
+  let retained = upload
+    .snapshot
+    .iter()
+    .find(|snapshot| snapshot.client_stats_sequence == source_sequence)
+    .unwrap();
+  assert_eq!(retained.metrics().metric[0].counter().value, 1);
+  assert_eq!(retained.retry_count, 1);
 }
 
 #[test]

@@ -41,6 +41,7 @@ use bd_proto::protos::client::metric::{
   MetricsList,
   PendingAggregationIndex,
 };
+use bd_runtime::runtime::stats::GlobalMinimumUploadIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::{Counter, Histogram, labels};
@@ -54,14 +55,84 @@ use futures_util::poll;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
 use std::io::ErrorKind;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
+use tokio::fs::File;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinError;
 use tokio::time::timeout;
+
+#[derive(Clone, Default)]
+struct CountingFileSystem {
+  inner: Arc<TestFileSystem>,
+  snapshot_reads: Arc<AtomicUsize>,
+  index_writes: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl FileSystem for CountingFileSystem {
+  async fn exists(&self, path: &Path) -> anyhow::Result<bool> {
+    self.inner.exists(path).await
+  }
+
+  async fn list_files(&self, directory: &Path) -> anyhow::Result<Vec<String>> {
+    self.inner.list_files(directory).await
+  }
+
+  async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+    if path != STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE) {
+      self.snapshot_reads.fetch_add(1, Ordering::Relaxed);
+    }
+    self.inner.read_file(path).await
+  }
+
+  async fn open_file(&self, path: &Path) -> anyhow::Result<File> {
+    self.inner.open_file(path).await
+  }
+
+  async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
+    if path
+      == STATS_DIRECTORY
+        .join(&*PENDING_AGGREGATION_INDEX_FILE)
+        .with_extension("tmp")
+    {
+      self.index_writes.fetch_add(1, Ordering::Relaxed);
+    }
+    self.inner.write_file(path, data).await
+  }
+
+  async fn create_file(&self, path: &Path) -> anyhow::Result<File> {
+    self.inner.create_file(path).await
+  }
+
+  async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
+    self.inner.delete_file(path).await
+  }
+
+  async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    self.inner.rename_file(from, to).await
+  }
+
+  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    self.inner.link_file(from, to).await
+  }
+
+  async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
+    self.inner.sync_file_and_parent(path).await
+  }
+
+  async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
+    self.inner.remove_dir(path).await
+  }
+
+  async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {
+    self.inner.create_dir(path).await
+  }
+}
 
 async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
   write_test_index_with_start(fs, OffsetDateTime::UNIX_EPOCH, ready_to_upload).await;
@@ -224,12 +295,16 @@ fn runtime_periodic_schedule(
 
 pub struct TestHooksSender {
   pub upload_complete_tx: mpsc::Sender<()>,
+  pub upload_tick_complete_tx: mpsc::Sender<()>,
+  pub upload_abandoned_tx: mpsc::Sender<()>,
   pub flush_complete_tx: mpsc::Sender<()>,
   pub debounce_started_tx: mpsc::Sender<()>,
   pub flush_coalesced_tx: mpsc::Sender<()>,
 }
 pub struct TestHooksReceiver {
   pub upload_complete_rx: mpsc::Receiver<()>,
+  pub upload_tick_complete_rx: mpsc::Receiver<()>,
+  pub upload_abandoned_rx: mpsc::Receiver<()>,
   pub flush_complete_rx: mpsc::Receiver<()>,
   pub debounce_started_rx: mpsc::Receiver<()>,
   pub flush_coalesced_rx: mpsc::Receiver<()>,
@@ -242,18 +317,24 @@ pub struct TestHooks {
 impl Default for TestHooks {
   fn default() -> Self {
     let (upload_complete_tx, upload_complete_rx) = mpsc::channel(1);
+    let (upload_tick_complete_tx, upload_tick_complete_rx) = mpsc::channel(1);
+    let (upload_abandoned_tx, upload_abandoned_rx) = mpsc::channel(1);
     let (flush_complete_tx, flush_complete_rx) = mpsc::channel(1);
     let (debounce_started_tx, debounce_started_rx) = mpsc::channel(1);
     let (flush_coalesced_tx, flush_coalesced_rx) = mpsc::channel(1);
     Self {
       sender: TestHooksSender {
         upload_complete_tx,
+        upload_tick_complete_tx,
+        upload_abandoned_tx,
         flush_complete_tx,
         debounce_started_tx,
         flush_coalesced_tx,
       },
       receiver: Some(TestHooksReceiver {
         upload_complete_rx,
+        upload_tick_complete_rx,
+        upload_abandoned_rx,
         flush_complete_rx,
         debounce_started_rx,
         flush_coalesced_rx,
@@ -292,10 +373,12 @@ impl PeriodicSchedule for TrackingPeriodicSchedule {
 
 struct Setup {
   stats: Arc<Stats>,
+  handshake_stats: HandshakeStats,
   _directory: TempDir,
   shutdown_trigger: ComponentShutdownTrigger,
   runtime_loader: Arc<ConfigLoader>,
   flush_handle: tokio::task::JoinHandle<()>,
+  data_tx: mpsc::Sender<DataUpload>,
   data_rx: mpsc::Receiver<DataUpload>,
   test_time: Arc<TestTimeProvider>,
   periodic_flush_tick_tx: mpsc::Sender<()>,
@@ -366,7 +449,7 @@ impl Setup {
     let mut flush_handles = stats.flush_handle_helper(
       periodic_schedule,
       shutdown_trigger.make_shutdown(),
-      data_tx,
+      data_tx.clone(),
       Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader)),
       test_time.clone(),
       minimum_upload_interval,
@@ -375,6 +458,7 @@ impl Setup {
 
     let test_hooks = flush_handles.flusher.test_hooks();
     let explicit_flush_trigger = flush_handles.flush_trigger.clone();
+    let handshake_stats = flush_handles.handshake_stats;
     let flush_handle = tokio::spawn(async move {
       flush_handles.flusher.periodic_flush().await;
     });
@@ -382,10 +466,12 @@ impl Setup {
     Self {
       test_time,
       stats,
+      handshake_stats,
       _directory: directory,
       shutdown_trigger,
       runtime_loader,
       flush_handle,
+      data_tx,
       data_rx,
       periodic_flush_tick_tx,
       upload_tick_tx,
@@ -405,6 +491,56 @@ impl Setup {
 
   async fn wait_for_flush_coalesced(&mut self) {
     self.test_hooks.flush_coalesced_rx.recv().await.unwrap();
+  }
+
+  async fn set_global_upload_interval(&self, interval: u32) {
+    self
+      .runtime_loader
+      .update_snapshot(make_simple_update(vec![
+        (
+          GlobalMinimumUploadIntervalFlag::path(),
+          ValueKind::Int(interval),
+        ),
+        (
+          bd_runtime::runtime::stats::MinimumUploadIntervalFlag::path(),
+          ValueKind::Int(0),
+        ),
+        (
+          bd_runtime::runtime::stats::DiskFlushDebounceFlag::path(),
+          ValueKind::Int(0),
+        ),
+        (
+          bd_runtime::runtime::stats::MaxAggregationWindowPerFileFlag::path(),
+          ValueKind::Int(0),
+        ),
+        (
+          bd_runtime::runtime::stats::MaxAggregatedFilesFlag::path(),
+          ValueKind::Int(10),
+        ),
+      ]))
+      .await
+      .unwrap();
+  }
+
+  async fn upload_tick(&mut self) {
+    self.upload_tick_tx.send(()).await.unwrap();
+    self.test_hooks.flush_complete_rx.recv().await.unwrap();
+    self
+      .test_hooks
+      .upload_tick_complete_rx
+      .recv()
+      .await
+      .unwrap();
+  }
+
+  async fn occupy_upload_channel(&self) {
+    let (upload, _response_rx) =
+      Tracked::new("other-producer".to_string(), StatsUploadRequest::default());
+    self
+      .data_tx
+      .send(DataUpload::StatsUpload(upload))
+      .await
+      .unwrap();
   }
 
   fn do_explicit_flush(&self, completion: bd_completion::Sender<()>) {
@@ -458,6 +594,21 @@ impl Setup {
   async fn shutdown(self) -> Result<(), JoinError> {
     self.shutdown_trigger.shutdown().await;
     self.flush_handle.await
+  }
+}
+
+fn respond_to_stats_upload(
+  upload: Tracked<StatsUploadRequest, UploadResponse>,
+  success: Option<bool>,
+) {
+  if let Some(success) = success {
+    upload
+      .response_tx
+      .send(UploadResponse {
+        success,
+        uuid: upload.uuid,
+      })
+      .unwrap();
   }
 }
 
@@ -1264,9 +1415,10 @@ async fn batched_retry_counts_and_sequences_persist_across_restart() {
   assert_eq!(pending_upload.request.snapshot[0].retry_count, 1);
   assert_eq!(pending_upload.request.snapshot[1].retry_count, u32::MAX);
   file_manager
-    .record_pending_upload_attempt(&pending_upload.source_file_ids)
+    .try_begin_stats_upload_attempt(&pending_upload.source_file_ids)
     .await
     .unwrap();
+  file_manager.finish_stats_upload_attempt().await.unwrap();
   file_manager
     .complete_pending_upload(&pending_upload.source_file_ids, false)
     .await
@@ -1289,8 +1441,1007 @@ async fn batched_retry_counts_and_sequences_persist_across_restart() {
   assert_eq!(retried_upload.request.snapshot[1].client_stats_sequence, 8);
 }
 
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_backpressure_holds_reservation_until_channel_closes() {
+  let fs = Arc::new(TestFileSystem::new());
+  let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+  setup.set_global_upload_interval(10_000).await;
+  setup.occupy_upload_channel().await;
+  setup
+    .stats
+    .record_dynamic_counter(labels! {}, "deferred", 1);
+  let completion = setup.explicit_flush_trigger.flush().unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  completion.wait().await.unwrap();
+  assert!(
+    read_test_index(fs.as_ref())
+      .await
+      .stats_upload_attempt_in_progress
+  );
+  tokio::time::advance(60.std_seconds()).await;
+  setup.upload_tick().await;
+  let mut handshake = HandshakeRequest::default();
+  assert!(
+    setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+
+  drop(std::mem::replace(&mut setup.data_rx, mpsc::channel(1).1));
+  setup.test_hooks.upload_abandoned_rx.recv().await.unwrap();
+  let index = read_test_index(fs.as_ref()).await;
+  assert!(!index.stats_upload_attempt_in_progress);
+  assert_eq!(index.pending_files[0].retry_count, 1);
+  assert!(
+    setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  tokio::time::advance(9_999.std_milliseconds()).await;
+  assert!(
+    setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  tokio::time::advance(1.std_milliseconds()).await;
+  let upload = setup
+    .handshake_stats
+    .prepare_stats_handshake(&mut handshake)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(upload.payload.snapshot[0].retry_count, 1);
+  respond_to_stats_upload(upload, None);
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_deferred_handoff_does_not_reserve_twice() {
+  let fs = Arc::new(TestFileSystem::new());
+  let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+  setup.set_global_upload_interval(10_000).await;
+  setup.occupy_upload_channel().await;
+  setup
+    .stats
+    .record_dynamic_counter(labels! {}, "deferred", 1);
+  let completion = setup.explicit_flush_trigger.flush().unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  completion.wait().await.unwrap();
+  drop(setup.next_stat_upload().await);
+  let upload = setup.next_stat_upload().await;
+  assert_eq!(upload.payload.snapshot[0].retry_count, 0);
+  assert_eq!(
+    read_test_index(fs.as_ref()).await.pending_files[0].retry_count,
+    1
+  );
+  tokio::time::advance(60.std_seconds()).await;
+  let mut handshake = HandshakeRequest::default();
+  assert!(
+    setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  respond_to_stats_upload(upload, None);
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  assert!(
+    !read_test_index(fs.as_ref())
+      .await
+      .stats_upload_attempt_in_progress
+  );
+  tokio::time::advance(10.std_seconds()).await;
+  let upload = setup
+    .handshake_stats
+    .prepare_stats_handshake(&mut handshake)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(upload.payload.snapshot[0].retry_count, 1);
+  respond_to_stats_upload(upload, Some(true));
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_deferred_shutdown_restart_starts_full_cooldown() {
+  let fs = Arc::new(TestFileSystem::new());
+  let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+  setup.set_global_upload_interval(10_000).await;
+  setup.occupy_upload_channel().await;
+  setup
+    .stats
+    .record_dynamic_counter(labels! {}, "deferred", 1);
+  let completion = setup.explicit_flush_trigger.flush().unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  completion.wait().await.unwrap();
+  let before = read_test_index(fs.as_ref()).await;
+  assert!(before.stats_upload_attempt_in_progress);
+  assert_eq!(before.pending_files[0].retry_count, 1);
+  setup.shutdown().await.unwrap();
+  assert!(
+    read_test_index(fs.as_ref())
+      .await
+      .stats_upload_attempt_in_progress
+  );
+
+  let mut restarted = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+  restarted.set_global_upload_interval(10_000).await;
+  restarted.test_time.advance(1.hours());
+  let mut handshake = HandshakeRequest::default();
+  assert!(
+    restarted
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  let recovered = read_test_index(fs.as_ref()).await;
+  assert!(!recovered.stats_upload_attempt_in_progress);
+  assert_eq!(
+    recovered.pending_files[0].name,
+    before.pending_files[0].name
+  );
+  assert_eq!(recovered.pending_files[0].retry_count, 1);
+  tokio::time::advance(9_999.std_milliseconds()).await;
+  assert!(
+    restarted
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  tokio::time::advance(1.std_milliseconds()).await;
+  let upload = restarted
+    .handshake_stats
+    .prepare_stats_handshake(&mut handshake)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(upload.payload.snapshot[0].retry_count, 1);
+  assert_eq!(
+    upload.payload.snapshot[0].client_stats_sequence,
+    before.pending_files[0].client_stats_sequence
+  );
+  assert_eq!(
+    StatsRequestHelper::new(upload.payload.clone()).get_workflow_counter_for_snapshot(
+      0,
+      "deferred",
+      labels! {}
+    ),
+    Some(1)
+  );
+  respond_to_stats_upload(upload, Some(true));
+  restarted
+    .test_hooks
+    .upload_complete_rx
+    .recv()
+    .await
+    .unwrap();
+  restarted.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_activation_does_not_retract_disabled_queued_requests() {
+  let fs = Arc::new(TestFileSystem::new());
+  let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+  setup.set_global_upload_interval(0).await;
+  setup
+    .stats
+    .record_dynamic_counter(labels! {}, "periodic", 1);
+  setup.upload_tick().await;
+  setup
+    .stats
+    .record_dynamic_counter(labels! {}, "deferred", 2);
+  let completion = setup.explicit_flush_trigger.flush().unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  completion.wait().await.unwrap();
+  setup.set_global_upload_interval(10_000).await;
+  let periodic = setup.next_stat_upload().await;
+  let deferred = setup.next_stat_upload().await;
+  assert_eq!(
+    periodic.payload.upload_reason.enum_value_or_default(),
+    UploadReason::UPLOAD_REASON_PERIODIC
+  );
+  assert_eq!(
+    deferred.payload.upload_reason.enum_value_or_default(),
+    UploadReason::UPLOAD_REASON_EVENT_TRIGGERED
+  );
+  respond_to_stats_upload(periodic, None);
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  assert!(
+    read_test_index(fs.as_ref())
+      .await
+      .stats_upload_attempt_in_progress
+  );
+  respond_to_stats_upload(deferred, None);
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  assert!(
+    !read_test_index(fs.as_ref())
+      .await
+      .stats_upload_attempt_in_progress
+  );
+  let mut handshake = HandshakeRequest::default();
+  assert!(
+    setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  tokio::time::advance(10.std_seconds()).await;
+  let upload = setup
+    .handshake_stats
+    .prepare_stats_handshake(&mut handshake)
+    .await
+    .unwrap()
+    .unwrap();
+  respond_to_stats_upload(upload, None);
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_handshake_blocks_other_origins_until_completion_and_cooldown() {
+  for success in [Some(true), Some(false), None] {
+    let fs = Arc::new(TestFileSystem::new());
+    write_test_index(fs.as_ref(), true).await;
+    write_test_upload_request(
+      fs.as_ref(),
+      StatsUploadRequest {
+        snapshot: vec![counter_snapshot("startup", 1)],
+        ..Default::default()
+      },
+    )
+    .await;
+    let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+    setup.set_global_upload_interval(10_000).await;
+    let mut handshake = HandshakeRequest::default();
+    let startup = setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .unwrap();
+    assert_eq!(startup.payload.snapshot[0].retry_count, 0);
+    setup
+      .stats
+      .record_dynamic_counter(labels! {}, "retained", 2);
+    tokio::time::advance(60.std_seconds()).await;
+    setup.upload_tick().await;
+    assert!(setup.data_rx.try_recv().is_err());
+    let completion = setup.explicit_flush_trigger.flush().unwrap();
+    setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+    completion.wait().await.unwrap();
+    assert!(setup.data_rx.try_recv().is_err());
+    assert!(
+      read_test_index(fs.as_ref())
+        .await
+        .stats_upload_attempt_in_progress
+    );
+    assert!(
+      setup
+        .handshake_stats
+        .prepare_stats_handshake(&mut handshake)
+        .await
+        .unwrap()
+        .is_none()
+    );
+
+    respond_to_stats_upload(startup, success);
+    setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+    assert!(
+      !read_test_index(fs.as_ref())
+        .await
+        .stats_upload_attempt_in_progress
+    );
+    tokio::time::advance(9_999.std_milliseconds()).await;
+    setup.upload_tick().await;
+    assert!(setup.data_rx.try_recv().is_err());
+    tokio::time::advance(1.std_milliseconds()).await;
+    let completion = setup.explicit_flush_trigger.flush().unwrap();
+    setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+    completion.wait().await.unwrap();
+    let upload = setup.next_stat_upload().await;
+    assert_eq!(
+      upload.payload.upload_reason.enum_value_or_default(),
+      UploadReason::UPLOAD_REASON_EVENT_TRIGGERED
+    );
+    respond_to_stats_upload(upload, Some(true));
+    setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+    setup.shutdown().await.unwrap();
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_activation_waits_for_all_producer_completions() {
+  for outcomes in [
+    [Some(true), Some(false)],
+    [Some(false), Some(true)],
+    [None, Some(true)],
+    [Some(true), None],
+    [None, Some(false)],
+    [Some(false), None],
+  ] {
+    for reverse in [false, true] {
+      let fs = Arc::new(TestFileSystem::new());
+      let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+      setup.set_global_upload_interval(0).await;
+      setup
+        .stats
+        .record_dynamic_counter(labels! {}, "periodic", 1);
+      setup.upload_tick().await;
+      let periodic = setup.next_stat_upload().await;
+      setup.stats.record_dynamic_counter(labels! {}, "flush", 2);
+      let completion = setup.explicit_flush_trigger.flush().unwrap();
+      setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+      completion.wait().await.unwrap();
+      let flush = setup.next_stat_upload().await;
+      setup.set_global_upload_interval(10_000).await;
+      setup.stats.record_dynamic_counter(labels! {}, "blocked", 3);
+      let completion = setup.explicit_flush_trigger.flush().unwrap();
+      setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+      completion.wait().await.unwrap();
+      tokio::time::advance(60.std_seconds()).await;
+      let mut handshake = HandshakeRequest::default();
+      assert!(
+        setup
+          .handshake_stats
+          .prepare_stats_handshake(&mut handshake)
+          .await
+          .unwrap()
+          .is_none()
+      );
+      let uploads = if reverse {
+        [flush, periodic]
+      } else {
+        [periodic, flush]
+      };
+      for (index, (upload, success)) in uploads.into_iter().zip(outcomes).enumerate() {
+        respond_to_stats_upload(upload, success);
+        setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+        assert_eq!(
+          read_test_index(fs.as_ref())
+            .await
+            .stats_upload_attempt_in_progress,
+          index == 0
+        );
+        if index == 0 {
+          tokio::time::advance(60.std_seconds()).await;
+          setup.upload_tick().await;
+          assert!(setup.data_rx.try_recv().is_err());
+          assert!(
+            setup
+              .handshake_stats
+              .prepare_stats_handshake(&mut handshake)
+              .await
+              .unwrap()
+              .is_none()
+          );
+        }
+      }
+      tokio::time::advance(9_999.std_milliseconds()).await;
+      setup.upload_tick().await;
+      assert!(setup.data_rx.try_recv().is_err());
+      tokio::time::advance(1.std_milliseconds()).await;
+      setup.upload_tick().await;
+      let upload = setup.next_stat_upload().await;
+      respond_to_stats_upload(upload, None);
+      setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+      setup.shutdown().await.unwrap();
+    }
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_disabled_recovery_and_admission_write_once() {
+  let fs = CountingFileSystem::default();
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let manager = FileManager::new(Box::new(fs.clone()), time.clone(), &runtime);
+  assert!(manager.prepare_stats_upload(&[]).await);
+  drop(manager);
+  let manager = FileManager::new(Box::new(fs.clone()), time, &runtime);
+  fs.index_writes.store(0, Ordering::Relaxed);
+  assert!(manager.prepare_stats_upload(&[]).await);
+  assert_eq!(fs.index_writes.load(Ordering::Relaxed), 1);
+  assert!(read_test_index(&fs).await.stats_upload_attempt_in_progress);
+  manager.complete_stats_upload(&[], None).await.unwrap();
+  assert!(!read_test_index(&fs).await.stats_upload_attempt_in_progress);
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_completion_writes_index_once() {
+  for interval in [0, 10_000] {
+    for success in [Some(true), Some(false), None] {
+      let fs = CountingFileSystem::default();
+      write_test_index(&fs, true).await;
+      write_test_upload_request(
+        &fs,
+        StatsUploadRequest {
+          snapshot: vec![counter_snapshot("test", 1)],
+          ..Default::default()
+        },
+      )
+      .await;
+      let directory = tempfile::tempdir_in(".").unwrap();
+      let runtime = ConfigLoader::new(directory.path());
+      runtime
+        .update_snapshot(make_simple_update(vec![(
+          GlobalMinimumUploadIntervalFlag::path(),
+          ValueKind::Int(interval),
+        )]))
+        .await
+        .unwrap();
+      let manager = FileManager::new(
+        Box::new(fs.clone()),
+        Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+        &runtime,
+      );
+      let pending = manager
+        .get_or_create_pending_upload(false)
+        .await
+        .unwrap()
+        .unwrap();
+      assert!(manager.prepare_stats_upload(&pending.source_file_ids).await);
+      fs.index_writes.store(0, Ordering::Relaxed);
+      manager
+        .complete_stats_upload(&pending.source_file_ids, success)
+        .await
+        .unwrap();
+      assert_eq!(fs.index_writes.load(Ordering::Relaxed), 1);
+      let index = read_test_index(&fs).await;
+      assert!(!index.stats_upload_attempt_in_progress);
+      assert!(index.last_stats_upload_attempt_at.is_some());
+      assert_eq!(
+        index.pending_files.len(),
+        usize::from(success != Some(true))
+      );
+      let analytics = index.unreported_stats_pipeline_analytics.as_ref().unwrap();
+      assert_eq!(
+        analytics.stats_uploads_acknowledged_successfully,
+        u64::from(success == Some(true))
+      );
+      assert_eq!(
+        analytics.stats_uploads_acknowledged_unsuccessfully,
+        u64::from(success == Some(false))
+      );
+      if success != Some(true) {
+        assert_eq!(index.pending_files[0].retry_count, 1);
+      }
+    }
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_throttled_candidates_do_not_read_or_seal_snapshots() {
+  let fs = CountingFileSystem::default();
+  write_test_index(&fs, false).await;
+  write_test_upload_request(
+    &fs,
+    StatsUploadRequest {
+      snapshot: vec![counter_snapshot("test", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  let manager = FileManager::new(
+    Box::new(fs.clone()),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+    &runtime,
+  );
+  assert!(manager.prepare_stats_upload(&[]).await);
+  fs.index_writes.store(0, Ordering::Relaxed);
+  for only_if_old in [false, true, false] {
+    assert!(
+      manager
+        .get_or_create_pending_upload(only_if_old)
+        .await
+        .unwrap()
+        .is_none()
+    );
+  }
+  assert_eq!(fs.snapshot_reads.load(Ordering::Relaxed), 0);
+  assert_eq!(fs.index_writes.load(Ordering::Relaxed), 0);
+  let index = read_test_index(&fs).await;
+  assert!(index.pending_files[0].period_end.is_none());
+  assert_eq!(index.pending_files[0].retry_count, 0);
+  manager.complete_stats_upload(&[], None).await.unwrap();
+  fs.index_writes.store(0, Ordering::Relaxed);
+  tokio::time::advance(9_999.std_milliseconds()).await;
+  assert!(
+    manager
+      .get_or_create_pending_upload(false)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  assert_eq!(fs.snapshot_reads.load(Ordering::Relaxed), 0);
+  assert_eq!(fs.index_writes.load(Ordering::Relaxed), 0);
+  tokio::time::advance(1.std_milliseconds()).await;
+  let pending = manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(fs.snapshot_reads.load(Ordering::Relaxed), 1);
+  assert_eq!(pending.request.snapshot[0].retry_count, 0);
+  assert!(manager.prepare_stats_upload(&pending.source_file_ids).await);
+  manager
+    .complete_stats_upload(&pending.source_file_ids, Some(true))
+    .await
+    .unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_live_clock_jump_before_first_candidate() {
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let fs = Arc::new(TestFileSystem::new());
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let runtime = ConfigLoader::new(directory.path());
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  let make_manager = || FileManager::new(Box::new(fs.clone()), time.clone(), &runtime);
+  let manager = make_manager();
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  drop(manager);
+  time.advance(1.seconds());
+  let manager = make_manager();
+  assert!(
+    manager
+      .get_or_create_pending_upload(false)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  time.advance(1.hours());
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  tokio::time::advance(8_999.std_milliseconds()).await;
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  tokio::time::advance(1.std_milliseconds()).await;
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_recovery_write_failure_keeps_fail_open_upload_reserved() {
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let fs = Arc::new(TestFileSystem::new());
+  write_test_index(fs.as_ref(), true).await;
+  write_test_upload_request(
+    fs.as_ref(),
+    StatsUploadRequest {
+      snapshot: vec![counter_snapshot("test", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let runtime = ConfigLoader::new(directory.path());
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  let make_manager = || FileManager::new(Box::new(fs.clone()), time.clone(), &runtime);
+  let manager = make_manager();
+  let original = manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  assert!(
+    manager
+      .prepare_stats_upload(&original.source_file_ids)
+      .await
+  );
+  drop(manager);
+  let manager = make_manager();
+  let pending = manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(pending.request.snapshot[0].retry_count, 1);
+  fs.disk_full.store(true, Ordering::SeqCst);
+  assert!(manager.prepare_stats_upload(&pending.source_file_ids).await);
+  fs.disk_full.store(false, Ordering::SeqCst);
+  tokio::time::advance(60.std_seconds()).await;
+  assert!(!manager.prepare_stats_upload(&[]).await);
+  manager
+    .complete_stats_upload(&pending.source_file_ids, None)
+    .await
+    .unwrap();
+  let index = read_test_index(fs.as_ref()).await;
+  assert!(!index.stats_upload_attempt_in_progress);
+  assert_eq!(index.pending_files[0].retry_count, 2);
+  assert!(!manager.prepare_stats_upload(&[]).await);
+  tokio::time::advance(10.std_seconds()).await;
+  let retry = manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(retry.request.snapshot[0].retry_count, 2);
+  assert!(manager.prepare_stats_upload(&retry.source_file_ids).await);
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_persists_without_pending_files() {
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let runtime = ConfigLoader::new(directory.path());
+  let make_manager = || {
+    FileManager::new(
+      Box::new(RealFileSystem::new(directory.path().to_path_buf())),
+      time.clone(),
+      &runtime,
+    )
+  };
+  let manager = make_manager();
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  drop(manager);
+
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  time.advance(4.seconds());
+  let manager = make_manager();
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  tokio::time::advance(5_999.std_milliseconds()).await;
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  tokio::time::advance(1.std_milliseconds()).await;
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  let index = read_test_index(&fs).await;
+  assert_eq!(index.pending_files, [] as [PendingFile; 0]);
+  assert!(index.last_stats_upload_attempt_at.is_some());
+  assert!(!index.stats_upload_attempt_in_progress);
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_recovers_unresolved_attempt_once() {
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let make_manager = || {
+    FileManager::new(
+      Box::new(RealFileSystem::new(directory.path().to_path_buf())),
+      time.clone(),
+      &runtime,
+    )
+  };
+  let manager = make_manager();
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  drop(manager);
+  time.advance(1.hours());
+  let manager = make_manager();
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  drop(manager);
+  time.advance(10.seconds());
+  let manager = make_manager();
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_uses_monotonic_time_and_current_runtime() {
+  let fs = Arc::new(TestFileSystem::new());
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let manager = FileManager::new(Box::new(fs), time.clone(), &runtime);
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  time.advance(1.hours());
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  tokio::time::advance(5.std_seconds()).await;
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(5_000),
+    )]))
+    .await
+    .unwrap();
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  tokio::time::advance(5.std_seconds()).await;
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  tokio::time::advance(5.std_seconds()).await;
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  runtime
+    .update_snapshot(make_simple_update(vec![]))
+    .await
+    .unwrap();
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_waits_for_every_disabled_upload() {
+  let fs = Arc::new(TestFileSystem::new());
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  let manager = FileManager::new(
+    Box::new(fs.clone()),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+    &runtime,
+  );
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  assert!(
+    read_test_index(fs.as_ref())
+      .await
+      .stats_upload_attempt_in_progress
+  );
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  tokio::time::advance(60.std_seconds()).await;
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  assert!(
+    !read_test_index(fs.as_ref())
+      .await
+      .stats_upload_attempt_in_progress
+  );
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  tokio::time::advance(10.std_seconds()).await;
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_rollback_after_restart_gets_full_cooldown() {
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let runtime = ConfigLoader::new(directory.path());
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  let make_manager = || {
+    FileManager::new(
+      Box::new(RealFileSystem::new(directory.path().to_path_buf())),
+      time.clone(),
+      &runtime,
+    )
+  };
+  let manager = make_manager();
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  manager.finish_stats_upload_attempt().await.unwrap();
+  drop(manager);
+  time.advance(-1.hours());
+  let manager = make_manager();
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  tokio::time::advance(9_999.std_milliseconds()).await;
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  tokio::time::advance(1.std_milliseconds()).await;
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_failed_completion_write_recovers_reservation() {
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let fs = Arc::new(TestFileSystem::new());
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let runtime = ConfigLoader::new(directory.path());
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  let make_manager = || FileManager::new(Box::new(fs.clone()), time.clone(), &runtime);
+  let manager = make_manager();
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  fs.disk_full.store(true, Ordering::SeqCst);
+  assert!(manager.finish_stats_upload_attempt().await.is_err());
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  drop(manager);
+  fs.disk_full.store(false, Ordering::SeqCst);
+  time.advance(1.hours());
+  let manager = make_manager();
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+  let index = read_test_index(fs.as_ref()).await;
+  assert!(!index.stats_upload_attempt_in_progress);
+  tokio::time::advance(10.std_seconds()).await;
+  assert!(manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_storage_errors_fail_open_and_preserve_claims() {
+  let fs = Arc::new(TestFileSystem::new());
+  write_test_index(fs.as_ref(), true).await;
+  write_test_upload_request(
+    fs.as_ref(),
+    StatsUploadRequest {
+      snapshot: vec![counter_snapshot("test", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      GlobalMinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  let time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let manager = Arc::new(FileManager::new(
+    Box::new(fs.clone()),
+    time.clone(),
+    &runtime,
+  ));
+  let pending = manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  fs.disk_full.store(true, Ordering::SeqCst);
+  assert!(manager.prepare_stats_upload(&pending.source_file_ids).await);
+  manager.finish_stats_upload().await;
+  assert!(
+    manager
+      .get_or_create_pending_upload(false)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  fs.disk_full.store(false, Ordering::SeqCst);
+  assert!(!manager.prepare_stats_upload(&pending.source_file_ids).await);
+  manager
+    .complete_pending_upload(&pending.source_file_ids, true)
+    .await
+    .unwrap();
+  let report = manager
+    .prepare_stats_pipeline_analytics_report()
+    .await
+    .unwrap()
+    .unwrap();
+  manager
+    .acknowledge_stats_pipeline_analytics_report(&report.report_id)
+    .await
+    .unwrap();
+  let index = read_test_index(fs.as_ref()).await;
+  assert_eq!(index.pending_files, [] as [PendingFile; 0]);
+  assert!(index.pending_stats_pipeline_analytics_report.is_none());
+  assert!(index.last_stats_upload_attempt_at.is_some());
+  assert!(!index.stats_upload_attempt_in_progress);
+  assert!(!manager.try_begin_stats_upload_attempt(&[]).await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_write_failure_retains_claim() {
+  let fs = Arc::new(TestFileSystem::new());
+  write_test_index(fs.as_ref(), true).await;
+  write_test_upload_request(
+    fs.as_ref(),
+    StatsUploadRequest {
+      snapshot: vec![counter_snapshot("test", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  let directory = tempfile::tempdir_in(".").unwrap();
+  let runtime = ConfigLoader::new(directory.path());
+  let manager = FileManager::new(
+    Box::new(fs.clone()),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+    &runtime,
+  );
+  let pending = manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  fs.disk_full.store(true, Ordering::SeqCst);
+  assert!(
+    manager
+      .try_begin_stats_upload_attempt(&pending.source_file_ids)
+      .await
+      .is_err()
+  );
+  assert!(
+    manager
+      .get_or_create_pending_upload(false)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  fs.disk_full.store(false, Ordering::SeqCst);
+  manager.finish_stats_upload_attempt().await.unwrap();
+  manager
+    .release_pending_upload(&pending.source_file_ids)
+    .await
+    .unwrap();
+  let retry = manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(retry.request.snapshot[0].retry_count, 1);
+}
+
 #[tokio::test]
-async fn index_write_failure_releases_pending_upload() {
+async fn index_write_failure_retains_pending_upload_until_transport_closes() {
   let fs = Arc::new(TestFileSystem::new());
   write_test_index(fs.as_ref(), true).await;
   write_test_upload_request(
@@ -1317,11 +2468,22 @@ async fn index_write_failure_releases_pending_upload() {
   fs.disk_full.store(true, Ordering::SeqCst);
   assert!(
     file_manager
-      .record_pending_upload_attempt(&pending_upload.source_file_ids)
+      .try_begin_stats_upload_attempt(&pending_upload.source_file_ids)
       .await
       .is_err()
   );
   fs.disk_full.store(false, Ordering::SeqCst);
+  assert!(
+    file_manager
+      .get_or_create_pending_upload(false)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  file_manager
+    .release_pending_upload(&pending_upload.source_file_ids)
+    .await
+    .unwrap();
 
   let retry = file_manager
     .get_or_create_pending_upload(false)
@@ -1364,7 +2526,7 @@ async fn index_write_replaces_temporary_file_before_publication() {
     .unwrap()
     .unwrap();
   file_manager
-    .record_pending_upload_attempt(&pending_upload.source_file_ids)
+    .try_begin_stats_upload_attempt(&pending_upload.source_file_ids)
     .await
     .unwrap();
 
@@ -2926,6 +4088,11 @@ async fn closed_channel_releases_deferred_upload_for_restart() {
   drop(disconnected_receiver);
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
   setup.shutdown().await.unwrap();
+  assert!(
+    !read_test_index(fs.as_ref())
+      .await
+      .stats_upload_attempt_in_progress
+  );
 
   let mut restarted = Setup::new_with_filesystem(Box::new(fs), None, 500).await;
   restarted.upload_tick_tx.send(()).await.unwrap();
@@ -3199,6 +4366,197 @@ async fn explicit_flush_upload_failure() {
   // Completion should still fire
   rx.recv().await.unwrap();
 
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_queued_abandonment_starts_full_cooldown() {
+  let fs = Arc::new(TestFileSystem::new());
+  let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+  setup
+    .runtime_loader
+    .update_snapshot(make_simple_update(vec![
+      (
+        GlobalMinimumUploadIntervalFlag::path(),
+        ValueKind::Int(10_000),
+      ),
+      (
+        bd_runtime::runtime::stats::MaxAggregationWindowPerFileFlag::path(),
+        ValueKind::Int(0),
+      ),
+    ]))
+    .await
+    .unwrap();
+  setup.stats.record_dynamic_counter(labels! {}, "queued", 1);
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let queued = setup.next_stat_upload().await;
+  tokio::time::advance(60.std_seconds()).await;
+
+  let mut handshake = HandshakeRequest {
+    analytics: Some(handshake_request::Analytics::default()).into(),
+    ..Default::default()
+  };
+  assert!(
+    setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  assert!(
+    read_test_index(fs.as_ref())
+      .await
+      .stats_upload_attempt_in_progress
+  );
+  drop(queued);
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  let index = read_test_index(fs.as_ref()).await;
+  assert!(!index.stats_upload_attempt_in_progress);
+  assert_eq!(index.pending_files[0].retry_count, 1);
+  assert!(
+    setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+
+  tokio::time::advance(9.std_seconds()).await;
+  assert!(
+    setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+  tokio::time::advance(1.std_seconds()).await;
+  let admitted = setup
+    .handshake_stats
+    .prepare_stats_handshake(&mut handshake)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(admitted.payload.snapshot[0].retry_count, 1);
+  drop(admitted);
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn global_upload_interval_is_shared_across_all_origins() {
+  let fs = Arc::new(TestFileSystem::new());
+  let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+  setup
+    .runtime_loader
+    .update_snapshot(make_simple_update(vec![
+      (
+        GlobalMinimumUploadIntervalFlag::path(),
+        ValueKind::Int(60_000),
+      ),
+      (
+        bd_runtime::runtime::stats::MinimumUploadIntervalFlag::path(),
+        ValueKind::Int(0),
+      ),
+      (
+        bd_runtime::runtime::stats::DiskFlushDebounceFlag::path(),
+        ValueKind::Int(0),
+      ),
+      (
+        bd_runtime::runtime::stats::MaxAggregationWindowPerFileFlag::path(),
+        ValueKind::Int(0),
+      ),
+    ]))
+    .await
+    .unwrap();
+  setup.stats.record_dynamic_counter(labels! {}, "first", 1);
+  setup
+    .with_next_stats_upload_with_result(false, |request| {
+      assert_eq!(request.get_workflow_counter("first", labels! {}), Some(1));
+    })
+    .await;
+
+  let mut handshake = HandshakeRequest {
+    analytics: Some(handshake_request::Analytics::default()).into(),
+    ..Default::default()
+  };
+  let startup = setup
+    .handshake_stats
+    .prepare_stats_handshake(&mut handshake)
+    .await
+    .unwrap();
+  assert!(startup.is_none());
+
+  setup.stats.record_dynamic_counter(labels! {}, "second", 2);
+  let completion = setup.explicit_flush_trigger.flush().unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  completion.wait().await.unwrap();
+  assert!(setup.data_rx.try_recv().is_err());
+  let index = read_test_index(fs.as_ref()).await;
+  assert_eq!(index.pending_files.len(), 2);
+  assert_eq!(index.pending_files[0].retry_count, 1);
+  assert_eq!(index.pending_files[1].retry_count, 0);
+  let second_file_id = index.pending_files[1].name.clone();
+
+  tokio::time::advance(60.std_seconds()).await;
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let pending = setup.next_stat_upload().await;
+  let request = StatsRequestHelper::new(pending.payload.clone());
+  assert_eq!(
+    request.get_workflow_counter_for_snapshot(0, "first", labels! {}),
+    Some(1)
+  );
+  assert_eq!(
+    read_test_index(fs.as_ref()).await.pending_files[1].name,
+    second_file_id
+  );
+
+  // A queued or ACK-pending upload keeps the shared reservation beyond the interval.
+  tokio::time::advance(120.std_seconds()).await;
+  setup.stats.record_dynamic_counter(labels! {}, "third", 3);
+  let completion = setup.explicit_flush_trigger.flush().unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  completion.wait().await.unwrap();
+  assert!(setup.data_rx.try_recv().is_err());
+  assert!(
+    setup
+      .handshake_stats
+      .prepare_stats_handshake(&mut handshake)
+      .await
+      .unwrap()
+      .is_none()
+  );
+
+  pending
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: pending.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  assert!(setup.data_rx.try_recv().is_err());
+  let index = read_test_index(fs.as_ref()).await;
+  assert_eq!(index.pending_files[0].name, second_file_id);
+  assert_eq!(index.pending_files[0].retry_count, 0);
+
+  let completion = setup.explicit_flush_trigger.flush().unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  completion.wait().await.unwrap();
+  assert!(setup.data_rx.try_recv().is_err());
+  tokio::time::advance(60.std_seconds()).await;
+  setup
+    .with_next_stats_upload(|request| {
+      assert_eq!(
+        request.get_workflow_counter_for_snapshot(0, "second", labels! {}),
+        Some(2)
+      );
+    })
+    .await;
   setup.shutdown().await.unwrap();
 }
 

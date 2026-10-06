@@ -961,6 +961,25 @@ pub mod stats {
     "stats.minimum_upload_interval_ms",
     30.seconds()
   );
+
+  // An additional minimum interval across handshake, periodic, explicit flush, and retry stats
+  // uploads. Zero disables throttling. History is persisted even while disabled; failed and
+  // abandoned reservations consume the interval. Upload-history storage errors fail open.
+  // Every exposed payload holds a shared reservation until an ACK or response-channel closure;
+  // only then does the next cooldown start. Queued requests consume the budget even if never sent,
+  // and slow ACKs delay new uploads. Runtime changes affect new reservations: requests admitted
+  // while disabled are not retracted or re-paced after activation.
+  // Wall-clock downtime is credited once at manager construction, then elapsed time is monotonic.
+  // Rollback and unresolved restart history get a full cooldown. Forward wall jumps while running
+  // do not shorten it, but forward jumps across restart can bypass it.
+  // Rejected snapshots remain on disk until another existing trigger; no retry timer is added.
+  // Existing retention limits still apply, so a long interval can increase rotation losses. A
+  // missing runtime cache defaults to disabled even when persisted attempt history is present.
+  duration_feature_flag!(
+    GlobalMinimumUploadIntervalFlag,
+    "stats.global_minimum_upload_interval_ms",
+    0.seconds()
+  );
 }
 
 pub mod sleep_mode {
