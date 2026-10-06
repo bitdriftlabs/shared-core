@@ -36,7 +36,7 @@ use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfigurati
 use filter::transform::Transform_type;
 use filter::transform::regex_match_and_substitute_field::Scrubbing_target;
 use itertools::Itertools;
-use regex::Regex;
+use regex_lite::Regex;
 use std::borrow::Cow;
 use std::collections::HashSet;
 

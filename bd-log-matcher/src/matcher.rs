@@ -59,6 +59,7 @@ use bd_state::{Scope, state_value_as_cow};
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use rand::RngExt;
+use regex_lite::escape;
 use std::borrow::Cow;
 
 #[derive(Clone, Copy, Debug)]
@@ -561,10 +562,9 @@ impl Leaf {
         legacy_log_matcher::base_log_matcher::StringMatchType::EXACT => {
           (value.to_string(), Operator::OPERATOR_EQUALS)
         },
-        legacy_log_matcher::base_log_matcher::StringMatchType::PREFIX => (
-          format!("^{}.*", regex::escape(value)),
-          Operator::OPERATOR_REGEX,
-        ),
+        legacy_log_matcher::base_log_matcher::StringMatchType::PREFIX => {
+          (format!("^{}.*", escape(value)), Operator::OPERATOR_REGEX)
+        },
         legacy_log_matcher::base_log_matcher::StringMatchType::REGEX => {
           (value.to_string(), Operator::OPERATOR_REGEX)
         },
