@@ -23,7 +23,7 @@ use bd_proto::protos::workflow::workflow::workflow::{
 use bd_state::{Scope, state_value_as_cow};
 use bd_stats_common::MetricType;
 use protobuf::MessageField;
-use regex::Regex;
+use regex_lite::Regex;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
