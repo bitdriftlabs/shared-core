@@ -4047,6 +4047,7 @@ fn workflow_screenshot_command_uploads_attachment() {
   let artifact_id = uuid::Uuid::parse_str(&artifact.artifact_id).unwrap();
   assert_eq!(artifact.type_id, "workflow_attachment");
   assert_eq!(artifact.session_id, session_id.as_ref());
+  assert_eq!(artifact.content_type.as_deref(), Some("image/jpeg"));
   assert_eq!(
     artifact.payload_encoding.enum_value_or_default(),
     ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
@@ -4065,6 +4066,26 @@ fn workflow_screenshot_command_uploads_attachment() {
     artifact_id
   );
   assert!(!payload_path.exists());
+  for message in ["start", "run command", "Command completed"] {
+    let upload = setup.server.blocking_next_log_upload().unwrap();
+    let logs = upload.logs();
+    assert_eq!(logs.len(), 1);
+    let log = &logs[0];
+    assert_eq!(log.message(), message);
+    if message == "Command completed" {
+      assert_eq!(log.field("_command_status"), "success");
+      assert_eq!(log.field("_command_artifact_id"), artifact_id.to_string());
+      assert_eq!(log.field("_command_artifact_content_type"), "image/jpeg");
+      assert_eq!(
+        log
+          .typed_fields()
+          .into_iter()
+          .find(|(key, _)| key == "_command_artifact_size_bytes")
+          .map(|(_, value)| value),
+        Some(DataValue::U64(u64::try_from(screenshot.len()).unwrap()))
+      );
+    }
+  }
 }
 
 #[test]
