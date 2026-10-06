@@ -64,7 +64,7 @@ use bd_state::{
 use bd_stats_common::Counter as _;
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use bd_workflows::engine::ProcessLocalPendingFlushState;
-use futures_util::{Future, try_join};
+use futures_util::{Future, FutureExt, try_join};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -701,50 +701,59 @@ impl LoggerBuilder {
             () = api_shutdown.cancelled() => { Ok(()) }
           }
           .inspect(|()| log::debug!("logger API task stopped"))
-        },
+        }
+        .boxed(),
         async move {
           buffer_uploader
             .run()
             .await
             .inspect(|()| log::debug!("logger buffer uploader stopped"))
-        },
+        }
+        .boxed(),
         async move {
           config_writer.run().await;
           log::debug!("logger crash config writer stopped");
           Ok(())
-        },
+        }
+        .boxed(),
         async move {
           Box::pin(async_log_buffer.run(state_store, crash_monitor)).await;
           log::debug!("logger async log buffer stopped");
           Ok(())
-        },
+        }
+        .boxed(),
         async move {
           buffer_manager.process_flushes(flush_buffers_rx).await;
           log::debug!("logger buffer manager stopped");
           Ok(())
-        },
+        }
+        .boxed(),
         async move {
           stats_flusher.periodic_flush().await;
           log::debug!("logger stats flusher stopped");
           Ok(())
-        },
+        }
+        .boxed(),
         async move {
           artifact_uploader.run().await;
           log::debug!("logger artifact uploader stopped");
           Ok(())
-        },
+        }
+        .boxed(),
         async move {
           if let Some(worker) = state_upload_worker {
             worker.run().await;
           }
           log::debug!("logger state upload worker stopped");
           Ok(())
-        },
+        }
+        .boxed(),
         async move {
           workflow_upload_worker.run().await;
           log::debug!("logger workflow attachment worker stopped");
           Ok(())
-        },
+        }
+        .boxed(),
         async move {
           let mut shutdown = session_persistence_shutdown_handle.make_shutdown();
           session_persistence_worker
@@ -759,6 +768,7 @@ impl LoggerBuilder {
           log::debug!("logger session persistence worker stopped");
           Ok(())
         }
+        .boxed()
       )
       .map(|_| ())
     };
