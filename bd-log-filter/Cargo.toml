@@ -18,7 +18,7 @@ bd-state.path               = "../bd-state"
 bd-workspace-hack.workspace = true
 itertools.workspace         = true
 log.workspace               = true
-regex.workspace             = true
+regex-lite.workspace        = true
 time.workspace              = true
 
 [dev-dependencies]

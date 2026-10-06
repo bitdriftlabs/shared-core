@@ -171,6 +171,27 @@ fn test_message_regex_matcher() {
 }
 
 #[test]
+fn message_regex_uses_ascii_character_classes() {
+  let config = simple_log_matcher(LegacyBaseLogMatcher::Match_type::MessageMatch(
+    LegacyBaseLogMatcher::MessageMatch {
+      match_type: LegacyBaseLogMatcher::StringMatchType::REGEX.into(),
+      match_value: r"^\w+\s\d+$".to_string(),
+      ..Default::default()
+    },
+  ));
+
+  match_test_runner(
+    config,
+    vec![
+      (log_msg("user 123"), true),
+      (log_msg("café 123"), false),
+      (log_msg("user\u{a0}123"), false),
+      (log_msg("user ١٢٣"), false),
+    ],
+  );
+}
+
+#[test]
 fn test_tag_exact_matcher() {
   let config = simple_log_matcher(LegacyBaseLogMatcher::Match_type::TagMatch(
     LegacyBaseLogMatcher::TagMatch {
