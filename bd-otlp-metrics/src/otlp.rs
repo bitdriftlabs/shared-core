@@ -5,7 +5,11 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::metric::{CounterType, Metric as ModelMetric, MetricType};
+#[cfg(test)]
+#[path = "./otlp_test.rs"]
+mod tests;
+
+use crate::metric::{CounterType, Metric as ModelMetric, MetricType, MetricValue};
 use crate::protos::common::any_value::Value;
 use crate::protos::common::{AnyValue, KeyValue};
 use crate::protos::metrics::metric::Data;
@@ -40,6 +44,74 @@ pub enum OtlpCompression {
   Snappy,
 }
 
+//
+// OtlpMetric
+//
+
+/// Per-point wire metadata. Model timestamps are seconds; interval starts are nanoseconds.
+/// Numeric values retain the model's f64 precision; callers must check integer-to-float conversion.
+#[derive(Clone, Debug)]
+pub struct OtlpMetric {
+  pub metric: ModelMetric,
+  pub start_time_unix_nano: u64,
+  pub is_monotonic: bool,
+}
+
+fn validate_otlp_metric(sample: &OtlpMetric) -> anyhow::Result<()> {
+  let end = sample
+    .metric
+    .timestamp
+    .checked_mul(1_000_000_000)
+    .ok_or_else(|| anyhow::anyhow!("OTLP timestamp exceeds the nanosecond range"))?;
+  if sample.start_time_unix_nano >= end {
+    anyhow::bail!("OTLP interval start must precede its end");
+  }
+  let kind = sample.metric.get_id().mtype().unwrap_or(MetricType::Gauge);
+  if sample.is_monotonic && !matches!(kind, MetricType::Counter(_)) {
+    anyhow::bail!("OTLP monotonicity applies only to counters");
+  }
+  match (kind, &sample.metric.value) {
+    (
+      MetricType::Counter(_) | MetricType::Gauge | MetricType::DirectGauge,
+      MetricValue::Simple(value),
+    ) => {
+      if !value.is_finite() || (sample.is_monotonic && *value < 0.0) {
+        anyhow::bail!("OTLP numeric value must be finite and nonnegative for monotonic counters");
+      }
+    },
+    (MetricType::Summary, MetricValue::Summary(summary)) => {
+      if !summary.sample_count.is_finite()
+        || summary.sample_count < 0.0
+        || summary.sample_count >= 18_446_744_073_709_551_616.0
+        || summary.sample_count.fract() != 0.0
+      {
+        anyhow::bail!("OTLP summary count must be an integral value in the u64 range");
+      }
+      if !summary.sample_sum.is_finite()
+        || summary.quantiles.iter().any(|quantile| {
+          !quantile.quantile.is_finite()
+            || !(0.0 ..= 1.0).contains(&quantile.quantile)
+            || !quantile.value.is_finite()
+        })
+      {
+        anyhow::bail!("OTLP summary values must be finite with quantiles between zero and one");
+      }
+      let mut quantiles: Vec<_> = summary
+        .quantiles
+        .iter()
+        .map(|quantile| quantile.quantile)
+        .collect();
+      quantiles.sort_by(f64::total_cmp);
+      quantiles.dedup();
+      if quantiles.len() != summary.quantiles.len() {
+        anyhow::bail!("OTLP summary quantiles must be unique");
+      }
+    },
+    _ => anyhow::bail!("unsupported OTLP interval metric or mismatched value type"),
+  }
+  Ok(())
+}
+
 fn tags_to_key_value(metric: &ModelMetric) -> Vec<KeyValue> {
   metric
     .get_id()
@@ -61,13 +133,21 @@ fn tags_to_key_value(metric: &ModelMetric) -> Vec<KeyValue> {
     .collect()
 }
 
-fn make_simple_metric(samples: Vec<ModelMetric>, name: Bytes, mtype: MetricType) -> Option<Metric> {
+fn make_simple_metric(
+  samples: Vec<OtlpMetric>,
+  name: Bytes,
+  mtype: MetricType,
+  is_monotonic: bool,
+) -> Option<Metric> {
   let data_points = samples
     .into_iter()
     .map(|sample| NumberDataPoint {
-      attributes: tags_to_key_value(&sample),
-      time_unix_nano: sample.timestamp * 1_000_000_000,
-      value: Some(number_data_point::Value::AsDouble(sample.value.to_simple())),
+      attributes: tags_to_key_value(&sample.metric),
+      start_time_unix_nano: sample.start_time_unix_nano,
+      time_unix_nano: sample.metric.timestamp * 1_000_000_000,
+      value: Some(number_data_point::Value::AsDouble(
+        sample.metric.value.to_simple(),
+      )),
       ..Default::default()
     })
     .collect();
@@ -81,6 +161,7 @@ fn make_simple_metric(samples: Vec<ModelMetric>, name: Bytes, mtype: MetricType)
       }),
       MetricType::Counter(counter_type) => Data::Sum(Sum {
         data_points,
+        is_monotonic,
         aggregation_temporality: match counter_type {
           CounterType::Absolute => {
             AggregationTemporality::AGGREGATION_TEMPORALITY_CUMULATIVE.into()
@@ -95,11 +176,11 @@ fn make_simple_metric(samples: Vec<ModelMetric>, name: Bytes, mtype: MetricType)
   })
 }
 
-fn make_histogram_metric(samples: Vec<ModelMetric>, name: Bytes) -> Option<Metric> {
+fn make_histogram_metric(samples: Vec<OtlpMetric>, name: Bytes) -> Option<Metric> {
   let data_points = samples
     .into_iter()
     .map(|sample| {
-      let histogram = sample.value.to_histogram();
+      let histogram = sample.metric.value.to_histogram();
       let mut bucket_counts: Vec<u64> = histogram
         .buckets
         .iter()
@@ -124,8 +205,9 @@ fn make_histogram_metric(samples: Vec<ModelMetric>, name: Bytes) -> Option<Metri
       #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
       let count = histogram.sample_count as u64;
       HistogramDataPoint {
-        attributes: tags_to_key_value(&sample),
-        time_unix_nano: sample.timestamp * 1_000_000_000,
+        attributes: tags_to_key_value(&sample.metric),
+        start_time_unix_nano: sample.start_time_unix_nano,
+        time_unix_nano: sample.metric.timestamp * 1_000_000_000,
         count,
         sum: Some(histogram.sample_sum),
         bucket_counts,
@@ -146,27 +228,36 @@ fn make_histogram_metric(samples: Vec<ModelMetric>, name: Bytes) -> Option<Metri
   })
 }
 
-fn make_summary_metric(samples: Vec<ModelMetric>, name: Bytes) -> Option<Metric> {
+fn make_summary_metric(
+  samples: Vec<OtlpMetric>,
+  name: Bytes,
+  sort_quantiles: bool,
+) -> Option<Metric> {
   let data_points = samples
     .into_iter()
     .map(|sample| {
-      let summary = sample.value.to_summary();
+      let summary = sample.metric.value.to_summary();
       #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
       let count = summary.sample_count as u64;
+      let mut quantile_values: Vec<_> = summary
+        .quantiles
+        .iter()
+        .map(|quantile| ValueAtQuantile {
+          quantile: quantile.quantile,
+          value: quantile.value,
+          ..Default::default()
+        })
+        .collect();
+      if sort_quantiles {
+        quantile_values.sort_by(|left, right| left.quantile.total_cmp(&right.quantile));
+      }
       SummaryDataPoint {
-        attributes: tags_to_key_value(&sample),
-        time_unix_nano: sample.timestamp * 1_000_000_000,
+        attributes: tags_to_key_value(&sample.metric),
+        start_time_unix_nano: sample.start_time_unix_nano,
+        time_unix_nano: sample.metric.timestamp * 1_000_000_000,
         count,
         sum: summary.sample_sum,
-        quantile_values: summary
-          .quantiles
-          .iter()
-          .map(|quantile| ValueAtQuantile {
-            quantile: quantile.quantile,
-            value: quantile.value,
-            ..Default::default()
-          })
-          .collect(),
+        quantile_values,
         ..Default::default()
       }
     })
@@ -184,12 +275,42 @@ fn make_summary_metric(samples: Vec<ModelMetric>, name: Bytes) -> Option<Metric>
 
 #[must_use]
 pub fn encode_otlp_metrics(samples: Vec<ModelMetric>, compression: OtlpCompression) -> Bytes {
-  let metrics_by_name_and_type: HashMap<(Bytes, MetricType), Vec<ModelMetric>> = samples
+  encode_samples(
+    samples
+      .into_iter()
+      .map(|metric| OtlpMetric {
+        metric,
+        start_time_unix_nano: 0,
+        is_monotonic: false,
+      })
+      .collect(),
+    compression,
+    false,
+  )
+}
+
+pub fn encode_otlp_metrics_with_metadata(
+  samples: Vec<OtlpMetric>,
+  compression: OtlpCompression,
+) -> anyhow::Result<Bytes> {
+  for sample in &samples {
+    validate_otlp_metric(sample)?;
+  }
+  Ok(encode_samples(samples, compression, true))
+}
+
+fn encode_samples(
+  samples: Vec<OtlpMetric>,
+  compression: OtlpCompression,
+  sort_quantiles: bool,
+) -> Bytes {
+  let metrics_by_name_and_type: HashMap<(Bytes, MetricType, bool), Vec<OtlpMetric>> = samples
     .into_iter()
     .fold(HashMap::new(), |mut metrics, sample| {
       let key = (
-        sample.get_id().name().clone(),
-        sample.get_id().mtype().unwrap_or(MetricType::Gauge),
+        sample.metric.get_id().name().clone(),
+        sample.metric.get_id().mtype().unwrap_or(MetricType::Gauge),
+        sample.is_monotonic,
       );
       metrics.entry(key).or_default().push(sample);
       metrics
@@ -197,12 +318,12 @@ pub fn encode_otlp_metrics(samples: Vec<ModelMetric>, compression: OtlpCompressi
 
   let metrics = metrics_by_name_and_type
     .into_iter()
-    .filter_map(|((name, mtype), samples)| match mtype {
+    .filter_map(|((name, mtype, is_monotonic), samples)| match mtype {
       MetricType::Gauge | MetricType::DirectGauge | MetricType::Counter(_) => {
-        make_simple_metric(samples, name, mtype)
+        make_simple_metric(samples, name, mtype, is_monotonic)
       },
       MetricType::Histogram => make_histogram_metric(samples, name),
-      MetricType::Summary => make_summary_metric(samples, name),
+      MetricType::Summary => make_summary_metric(samples, name, sort_quantiles),
       MetricType::DeltaGauge | MetricType::Timer | MetricType::BulkTimer => {
         log::warn!("unsupported OTLP metric type: {mtype:?}");
         None
