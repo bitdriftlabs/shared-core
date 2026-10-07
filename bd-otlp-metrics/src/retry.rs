@@ -10,7 +10,8 @@ use backoff::backoff::Backoff;
 use futures::Future;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use tokio::time::sleep;
+use std::time::Duration;
+use tokio::time::{Instant, sleep_until};
 
 const DEFAULT_BUDGET: f64 = 0.1;
 
@@ -32,6 +33,35 @@ pub struct RetryConfig {
 struct LockedData {
   active_requests: u64,
   active_retries: u64,
+}
+
+//
+// ActiveRequest
+//
+
+struct ActiveRequest<'a> {
+  locked_data: &'a Mutex<LockedData>,
+  retry_active: bool,
+}
+
+impl ActiveRequest<'_> {
+  fn finish_retry(&mut self) {
+    if self.retry_active {
+      let mut locked_data = self.locked_data.lock();
+      debug_assert!(locked_data.active_retries > 0);
+      locked_data.active_retries -= 1;
+      self.retry_active = false;
+    }
+  }
+}
+
+impl Drop for ActiveRequest<'_> {
+  fn drop(&mut self) {
+    self.finish_retry();
+    let mut locked_data = self.locked_data.lock();
+    debug_assert!(locked_data.active_requests > 0);
+    locked_data.active_requests -= 1;
+  }
 }
 
 // Retry budgets are fractional, so admission compares counters in the configured float domain.
@@ -67,6 +97,9 @@ impl Retry {
     retry_count: &mut u32,
     backoff: &mut impl Backoff,
     notify: &mut impl FnMut(),
+    retry_after: Option<Duration>,
+    deadline: Option<Instant>,
+    request: &mut ActiveRequest<'_>,
   ) -> bool {
     *retry_count += 1;
     if self
@@ -82,6 +115,16 @@ impl Retry {
       log::debug!("no further retries available (backoff exhausted)");
       return false;
     };
+
+    let delay = retry_after.map_or(backoff, |delay| delay.max(backoff));
+    let Some(wakeup) = Instant::now().checked_add(delay) else {
+      log::debug!("retry delay exceeds the clock range");
+      return false;
+    };
+    if deadline.is_some_and(|deadline| wakeup >= deadline) {
+      log::debug!("retry delay exceeds the remaining delivery budget");
+      return false;
+    }
 
     if !{
       let mut locked_data = self.locked_data.lock();
@@ -101,9 +144,10 @@ impl Retry {
       return false;
     }
 
+    request.retry_active = true;
     notify();
-    if !backoff.is_zero() {
-      sleep(backoff).await;
+    if !delay.is_zero() {
+      sleep_until(wakeup).await;
     }
     log::debug!("retry sleep complete");
     true
@@ -114,44 +158,57 @@ impl Retry {
     self.config.budget.unwrap_or(DEFAULT_BUDGET)
   }
 
-  #[allow(unused_assignments)]
   pub async fn retry_notify<T, E, FutureType: Future<Output = Result<T, backoff::Error<E>>>>(
+    &self,
+    backoff: impl Backoff,
+    operation: impl FnMut() -> FutureType,
+    notify: impl FnMut(),
+  ) -> Result<T, E> {
+    self
+      .retry_notify_until(backoff, operation, notify, None)
+      .await
+  }
+
+  pub async fn retry_notify_until<
+    T,
+    E,
+    FutureType: Future<Output = Result<T, backoff::Error<E>>>,
+  >(
     &self,
     mut backoff: impl Backoff,
     mut operation: impl FnMut() -> FutureType,
     mut notify: impl FnMut(),
+    deadline: Option<Instant>,
   ) -> Result<T, E> {
     self.locked_data.lock().active_requests += 1;
-    let mut doing_retry = false;
+    let mut request = ActiveRequest {
+      locked_data: &self.locked_data,
+      retry_active: false,
+    };
     let mut retry_count = 0;
-    let result = loop {
+    loop {
       let result = operation().await;
-      if doing_retry {
-        let mut locked_data = self.locked_data.lock();
-        debug_assert!(locked_data.active_retries > 0);
-        locked_data.active_retries -= 1;
-        doing_retry = false;
-      }
+      request.finish_retry();
 
       match result {
         Ok(result) => break Ok(result),
         Err(backoff::Error::Permanent(error)) => break Err(error),
-        Err(backoff::Error::Transient { err, .. }) => {
-          if self
-            .maybe_retry(&mut retry_count, &mut backoff, &mut notify)
+        Err(backoff::Error::Transient { err, retry_after }) => {
+          if !self
+            .maybe_retry(
+              &mut retry_count,
+              &mut backoff,
+              &mut notify,
+              retry_after,
+              deadline,
+              &mut request,
+            )
             .await
           {
-            doing_retry = true;
-          } else {
             break Err(err);
           }
         },
       }
-    };
-
-    let mut locked_data = self.locked_data.lock();
-    debug_assert!(locked_data.active_requests > 0);
-    locked_data.active_requests -= 1;
-    result
+    }
   }
 }
