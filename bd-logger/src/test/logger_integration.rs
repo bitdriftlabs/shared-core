@@ -12,6 +12,7 @@ use crate::{
   AnnotatedLogField,
   AppVersionExtra,
   CommandAttachment,
+  CommandError,
   CommandInvocation,
   CommandResult,
   DataValue,
@@ -3413,7 +3414,7 @@ fn runtime_device_command_handlers_follow_registration_changes() {
   }) => {
     assert_matches!(
       failed.context.as_ref().and_then(|context| context.fields.get("error")),
-      Some(value) if value.data_type == Some(Data_type::StringData("unregistered device command".to_string()))
+      Some(value) if value.data_type == Some(Data_type::StringData("command unknown".to_string()))
     );
   });
 
@@ -3615,7 +3616,7 @@ fn registered_custom_device_command_reports_failure_context() {
   let registered_command_id = "com.example.capture.failure";
   let handler: Arc<dyn RegisteredCommandHandler> = Arc::new(TestDeviceCommandHandler {
     result: Mutex::new(Some(CommandResult::Failed {
-      error: "capture failed".to_string(),
+      error: CommandError::HandlerFailed("capture failed".to_string()),
       fields: [("reason".into(), "camera unavailable".into())].into(),
     })),
   });
@@ -4108,7 +4109,7 @@ fn unregistered_custom_device_command_fails_without_acceptance() {
   }) => {
     assert_matches!(
       failed.context.as_ref().and_then(|context| context.fields.get("error")),
-      Some(value) if value.data_type == Some(Data_type::StringData("unregistered device command".to_string()))
+      Some(value) if value.data_type == Some(Data_type::StringData("command unknown".to_string()))
     );
   });
   setup.logger_handle.flush_state(Block::Yes {
@@ -4123,7 +4124,7 @@ fn unregistered_custom_device_command_fails_without_acceptance() {
     let log = &log_upload.logs()[0];
     assert_eq!(log.message(), "Command completed");
     assert_eq!(log.field("_command_status"), "failure");
-    assert_eq!(log.field("_command_message"), "unregistered device command");
+    assert_eq!(log.field("_command_message"), "command unknown");
     assert_eq!(log.field("_command_id"), command_id);
   });
 }

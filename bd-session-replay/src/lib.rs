@@ -65,7 +65,6 @@ pub struct RemoteScreenshotCaptureHandler {
   target: Arc<dyn Target + Send + Sync>,
   active_capture_id: Arc<AtomicU64>,
   next_capture_id: Arc<AtomicU64>,
-  capture_timeout: std::time::Duration,
 }
 
 struct ActiveCaptureGuard {
@@ -86,21 +85,15 @@ impl Drop for ActiveCaptureGuard {
 
 impl RemoteScreenshotCaptureHandler {
   pub fn new(target: Arc<dyn Target + Send + Sync>) -> Self {
-    Self::with_timeout(target, std::time::Duration::from_secs(30))
-  }
-
-  fn with_timeout(
-    target: Arc<dyn Target + Send + Sync>,
-    capture_timeout: std::time::Duration,
-  ) -> Self {
     Self {
       target,
       active_capture_id: Arc::new(AtomicU64::new(0)),
       next_capture_id: Arc::new(AtomicU64::new(1)),
-      capture_timeout,
     }
   }
 
+  /// Waits for the platform callback. The caller owns the execution deadline; dropping this future
+  /// releases the capture slot without allowing an older callback to release a newer capture.
   pub async fn capture(&self) -> Result<Vec<u8>, String> {
     let capture_id = self.next_capture_id.fetch_add(1, Ordering::Relaxed);
     if self
@@ -125,11 +118,9 @@ impl RemoteScreenshotCaptureHandler {
         let _ = completion_tx.send(result);
       }));
 
-    match tokio::time::timeout(self.capture_timeout, completion_rx).await {
-      Ok(Ok(result)) => result,
-      Ok(Err(_)) => Err("remote screenshot capture was interrupted".to_string()),
-      Err(_) => Err("remote screenshot capture timed out".to_string()),
-    }
+    completion_rx
+      .await
+      .map_err(|_| "remote screenshot capture was interrupted".to_string())?
   }
 }
 

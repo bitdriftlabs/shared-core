@@ -12,7 +12,7 @@ mod builder_test;
 use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
-use crate::device_command::RegisteredCommandDispatcher;
+use crate::device_command::{CommandExecutionPolicy, RegisteredCommandDispatcher};
 use crate::directory_lock::DirectoryLock;
 use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::internal::InternalLogger;
@@ -405,6 +405,7 @@ impl LoggerBuilder {
     let pending_trigger_uploads = PendingTriggerUploadsStore::new(&self.params.sdk_directory);
     let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
     let command_dispatcher = RegisteredCommandDispatcher::new(self.command_handlers);
+    let command_execution_policy = CommandExecutionPolicy::new(&runtime_loader);
 
     let (async_log_buffer, async_log_buffer_communication_tx, remote_screenshot_capture_handler) =
       AsyncLogBuffer::<LoggerReplay>::new(
@@ -432,6 +433,7 @@ impl LoggerBuilder {
         self.params.session_replay_target,
         self.params.events_listener_target,
         command_dispatcher.clone(),
+        command_execution_policy.clone(),
         config_update_rx,
         report_proc_rx,
         shutdown_handle.clone(),
@@ -655,6 +657,7 @@ impl LoggerBuilder {
           session_strategy.clone(),
           artifact_client,
           command_dispatcher,
+          command_execution_policy,
           remote_screenshot_capture_handler,
           &scope.scope("config"),
         ),

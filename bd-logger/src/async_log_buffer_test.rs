@@ -21,7 +21,11 @@ use crate::async_log_buffer::{
 };
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
-use crate::device_command::{RegisteredCommandDispatcher, WorkflowCommandCompletion};
+use crate::device_command::{
+  CommandExecutionPolicy,
+  RegisteredCommandDispatcher,
+  WorkflowCommandCompletion,
+};
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
@@ -296,6 +300,7 @@ impl Setup {
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
       RegisteredCommandDispatcher::default(),
+      CommandExecutionPolicy::new(&self.runtime),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
@@ -330,6 +335,7 @@ impl Setup {
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
       RegisteredCommandDispatcher::default(),
+      CommandExecutionPolicy::new(&self.runtime),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),

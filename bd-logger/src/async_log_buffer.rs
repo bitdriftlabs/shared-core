@@ -10,6 +10,7 @@
 mod async_log_buffer_test;
 
 use crate::device_command::{
+  CommandExecutionPolicy,
   RegisteredCommandDispatcher,
   WorkflowCommandCompletion,
   WorkflowCommandDispatcher,
@@ -636,6 +637,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
     command_dispatcher: RegisteredCommandDispatcher,
+    command_execution_policy: CommandExecutionPolicy,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
     report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
@@ -729,6 +731,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         replayer,
         workflow_command_dispatcher: WorkflowCommandDispatcher::new(
           command_dispatcher,
+          command_execution_policy,
           workflow_command_completion_tx,
           workflow_attachment_store.clone(),
           remote_screenshot_capture_handler.clone(),
