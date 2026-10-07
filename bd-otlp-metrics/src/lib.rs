@@ -43,6 +43,7 @@ pub use delivery::{BackoffFactory, DeliveryEngine, DeliveryObserver};
 pub use http::{
   HttpRemoteWriteClient,
   HttpRemoteWriteError,
+  HttpRetryPolicy,
   MockHttpRemoteWriteClient,
   should_retry,
 };
@@ -69,5 +70,11 @@ pub use offload::{
   SerializedOffloadRequest,
   maybe_queue_for_retry,
 };
-pub use otlp::{OtlpCompression, deserialize_otlp_metrics_request, encode_otlp_metrics};
+pub use otlp::{
+  OtlpCompression,
+  OtlpMetric,
+  deserialize_otlp_metrics_request,
+  encode_otlp_metrics,
+  encode_otlp_metrics_with_metadata,
+};
 pub use retry::{Retry, RetryConfig};
