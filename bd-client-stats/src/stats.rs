@@ -186,7 +186,10 @@ impl HandshakeStats {
       // Flusher is the sole owner of completion processing. If it has stopped, no task can
       // observe the receiver closing when the stream StateTracker drops, so release this claim
       // immediately instead of leaving the source files in flight.
-      self.file_manager.release_pending_upload(&error.0.1).await?;
+      self
+        .file_manager
+        .complete_stats_upload(&error.0.1, None)
+        .await?;
       anyhow::bail!("stats flusher shut down before API upload completion was registered");
     }
 
@@ -220,23 +223,30 @@ impl StatsHandshakeExtension for HandshakeStats {
       return Ok(None);
     };
 
+    if !self
+      .file_manager
+      .prepare_stats_upload(&source_file_ids)
+      .await
+    {
+      self
+        .file_manager
+        .release_pending_upload(&source_file_ids)
+        .await?;
+      return Ok(None);
+    }
+
     let upload_uuid = batch_transport_uuid(&source_file_ids);
     request.upload_uuid.clone_from(&upload_uuid);
     request.sent_at = self.time_provider.now().into_proto();
     request.upload_reason = UploadReason::UPLOAD_REASON_HANDSHAKE.into();
-    observe_upload_attempt(&request, UploadReason::UPLOAD_REASON_HANDSHAKE);
     let (startup_stats_upload, response_rx) = TrackedStatsUploadRequest::new(upload_uuid, request);
+    observe_upload_attempt(
+      &startup_stats_upload.payload,
+      UploadReason::UPLOAD_REASON_HANDSHAKE,
+    );
     self
       .register_api_upload_completion(source_file_ids.clone(), response_rx)
       .await?;
-    if let Err(error) = self
-      .file_manager
-      .record_pending_upload_attempt(&source_file_ids)
-      .await
-    {
-      log::debug!("failed to persist handshake stats upload attempt: {error}");
-    }
-
     Ok(Some(startup_stats_upload))
   }
 
@@ -690,7 +700,7 @@ pub struct Flusher {
   // handshake upload may be registered while either is awaiting an ACK. `uploads` is the only
   // place that resolves claimed persisted files after transport handoff.
   uploads: FuturesUnordered<UploadFuture>,
-  // Unlike admitted uploads, only one request may wait for the shared channel. A full channel
+  // Unlike dispatched uploads, only one request may wait for the shared channel. A full channel
   // must not block this task from persisting stats, accepting flush requests, observing shutdown,
   // or handling existing completions, so retain one request and wait for its permit as a select
   // arm instead.
@@ -800,13 +810,13 @@ impl Flusher {
           && self.pending_data_upload.is_none() => {
           self.resume_periodic_backlog_drain().await;
         },
-        // A retained request owns a FileManager claim but no transport receiver. Wait for capacity
-        // alongside every other event, then atomically transfer that ownership to `uploads`.
+        // A retained request owns a FileManager claim and reservation but no registered completion
+        // future. Wait for capacity, then atomically transfer that ownership to `uploads`.
         permit = self.data_flush_tx.clone().reserve_owned(), if self
           .pending_data_upload
           .is_some() => {
           match permit {
-            Ok(permit) => self.dispatch_pending_upload(permit).await,
+            Ok(permit) => self.dispatch_pending_upload(permit),
             Err(_) => {
               let () = self.abandon_pending_upload().await;
             },
@@ -821,6 +831,7 @@ impl Flusher {
           self.handle_disk_flush_deadline().await;
         },
         () = self.shutdown.cancelled() => {
+          // A deferred request may never enter the API channel; its persisted retry count remains.
           self.flush_trigger.fail_open_epoch();
           return;
         },
@@ -865,6 +876,8 @@ impl Flusher {
         log::debug!("skipping periodic stats upload because its disk flush failed");
       },
     }
+    #[cfg(test)]
+    let _ignored = self.test_hooks.sender.upload_tick_complete_tx.try_send(());
   }
 
   async fn handle_upload_tick(&mut self) {
@@ -1021,7 +1034,7 @@ impl Flusher {
       );
       if let Err(error) = self
         .file_manager
-        .release_pending_upload(&source_file_ids)
+        .complete_stats_upload(&source_file_ids, None)
         .await
       {
         log::debug!("failed to abandon stats upload without an ACK: {error}");
@@ -1032,7 +1045,11 @@ impl Flusher {
         UploadContext::Flush(..) => {
           self.flush_in_flight = false;
         },
-        UploadContext::Startup(..) => {},
+        UploadContext::Startup(..) => {
+          if let Some(callback) = &self.startup_upload_completed_for_test {
+            callback();
+          }
+        },
       }
       #[cfg(test)]
       self
@@ -1100,7 +1117,8 @@ impl Flusher {
           {
             // Startup sends one capped batch per handshake. After a periodic upload succeeds,
             // continue draining remaining old snapshots so a persisted backlog does not wait for
-            // another handshake or periodic interval. These uploads bypass the minimum interval.
+            // another handshake or periodic interval. These candidates bypass the flush-triggered
+            // minimum interval, but still pass through the shared global upload limiter.
             let _ = self
               .dispatch_prepared_upload(prepared_upload, PendingUploadContext::Periodic)
               .await;
@@ -1366,6 +1384,17 @@ impl Flusher {
         .get_or_create_pending_upload(only_if_file_is_old)
         .await?
       {
+        if !flusher
+          .file_manager
+          .prepare_stats_upload(&pending_upload.source_file_ids)
+          .await
+        {
+          flusher
+            .file_manager
+            .release_pending_upload(&pending_upload.source_file_ids)
+            .await?;
+          return Ok(None);
+        }
         return Ok(Some(Flusher::prepare_pending_upload(
           pending_upload,
           upload_reason,
@@ -1406,6 +1435,7 @@ impl Flusher {
     request.upload_uuid = transport_uuid;
     request.upload_reason = upload_reason.into();
     let (stats, response_rx) = TrackedStatsUploadRequest::new(request.upload_uuid.clone(), request);
+    observe_upload_attempt(&stats.payload, upload_reason);
 
     log::debug!(
       "prepared {upload_reason:?} stats upload: uuid={}, snapshots={}, metrics={}",
@@ -1418,8 +1448,6 @@ impl Flusher {
         .map(|s| s.metrics().metric.len())
         .sum::<usize>(),
     );
-
-    observe_upload_attempt(&stats.payload, upload_reason);
 
     PreparedUpload {
       data_upload: DataUpload::StatsUpload(stats),
@@ -1446,10 +1474,11 @@ impl Flusher {
 
     match self.data_flush_tx.clone().try_reserve_owned() {
       Ok(permit) => {
-        self.dispatch_pending_upload(permit).await;
+        self.dispatch_pending_upload(permit);
         UploadDispatch::Dispatched
       },
       Err(mpsc::error::TrySendError::Full(_)) => {
+        // Preparation already advanced the retry count, although API handoff has not happened yet.
         log::debug!(
           "deferring {upload_kind} stats upload for {source_file_count} source files: shared \
            data-upload channel is full"
@@ -1467,7 +1496,7 @@ impl Flusher {
     }
   }
 
-  async fn dispatch_pending_upload(&mut self, permit: mpsc::OwnedPermit<DataUpload>) {
+  fn dispatch_pending_upload(&mut self, permit: mpsc::OwnedPermit<DataUpload>) {
     // Taking the retained state and sending through its permit is the ownership transition from
     // local backpressure storage to the transport's StateTracker and response receiver.
     let Some(PendingDataUpload {
@@ -1482,16 +1511,6 @@ impl Flusher {
     let source_file_count = prepared_upload.metadata.source_file_ids.len();
     permit.send(prepared_upload.data_upload);
     log::debug!("dispatched {upload_kind} stats upload for {source_file_count} source files");
-
-    // The request is now visible to the transport, so record the attempt before waiting for its
-    // response. Failure to record is non-fatal because the claim still protects this batch.
-    if let Err(error) = self
-      .file_manager
-      .record_pending_upload_attempt(&prepared_upload.metadata.source_file_ids)
-      .await
-    {
-      log::debug!("failed to persist stats upload attempt: {error}");
-    }
 
     self.push_upload_future(
       prepared_upload.response_rx,
@@ -1520,6 +1539,8 @@ impl Flusher {
   async fn abandon_pending_upload(&mut self) {
     // A closed channel means no transport task will ever own the receiver. Release the retained
     // claim here so the same persisted files can be selected by a future flusher after restart.
+    // The attempt was counted during preparation; abandoning it does not refund the retry count,
+    // even though the request never entered the API channel or reached the network.
     let Some(PendingDataUpload {
       prepared_upload,
       context,
@@ -1535,11 +1556,13 @@ impl Flusher {
     );
     if let Err(error) = self
       .file_manager
-      .release_pending_upload(&prepared_upload.metadata.source_file_ids)
+      .complete_stats_upload(&prepared_upload.metadata.source_file_ids, None)
       .await
     {
       log::debug!("failed to release pending stats upload: {error}");
     }
+    #[cfg(test)]
+    let _ignored = self.test_hooks.sender.upload_abandoned_tx.try_send(());
   }
 
   async fn process_pending_upload_completion(
@@ -1560,7 +1583,7 @@ impl Flusher {
     handle_unexpected(
       self
         .file_manager
-        .complete_pending_upload(&metadata.source_file_ids, upload_response.success)
+        .complete_stats_upload(&metadata.source_file_ids, Some(upload_response.success))
         .await,
       "complete pending upload",
     );

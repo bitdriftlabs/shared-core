@@ -17,16 +17,22 @@ use bd_proto::protos::client::metric::pending_aggregation_index::{
   PendingStatsPipelineAnalyticsReport,
 };
 use bd_proto::protos::client::metric::{PendingAggregationIndex, StatsPipelineAnalytics};
-use bd_runtime::runtime::stats::{MaxAggregatedFilesFlag, MaxAggregationWindowPerFileFlag};
+use bd_runtime::runtime::stats::{
+  GlobalMinimumUploadIntervalFlag,
+  MaxAggregatedFilesFlag,
+  MaxAggregationWindowPerFileFlag,
+};
 use bd_runtime::runtime::{ConfigLoader, Watch};
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use protobuf::Message;
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::result::Result::Ok;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
-use time::Duration;
+use time::{Duration, OffsetDateTime};
 use tokio::sync::Mutex;
+use tokio::time::Instant;
 
 /// Root directory for all files used for storage and uploading.
 pub static STATS_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "stats_uploads".into());
@@ -86,6 +92,10 @@ struct InitializedInner {
   in_flight_uploads: HashSet<String>,
   unreported_stats_pipeline_analytics: StatsPipelineAnalytics,
   pending_stats_pipeline_analytics_report: Option<PendingStatsPipelineAnalyticsReport>,
+  last_stats_upload_attempt_at: Option<OffsetDateTime>,
+  stats_upload_attempt_in_progress: bool,
+  outstanding_stats_uploads: usize,
+  stats_upload_elapsed: Option<(Instant, Duration)>,
 }
 enum Inner {
   NotInitialized(Option<Arc<dyn FileSystem>>),
@@ -94,8 +104,11 @@ enum Inner {
 pub struct FileManager {
   inner: Mutex<Inner>,
   time_provider: Arc<dyn TimeProvider>,
+  started_at: (Instant, OffsetDateTime),
   max_aggregated_files: Watch<u32, MaxAggregatedFilesFlag>,
   max_aggregation_window_per_file: Watch<Duration, MaxAggregationWindowPerFileFlag>,
+  global_minimum_upload_interval: Watch<Duration, GlobalMinimumUploadIntervalFlag>,
+  upload_history_error_reported: AtomicBool,
 }
 
 impl InitializedInner {
@@ -156,10 +169,11 @@ impl InitializedInner {
     }
   }
 
-  fn claim_pending_uploads(&mut self, source_file_ids: &[String]) {
-    self
-      .in_flight_uploads
-      .extend(source_file_ids.iter().cloned());
+  fn finish_stats_upload(&mut self, now: OffsetDateTime) {
+    self.last_stats_upload_attempt_at = Some(now);
+    self.outstanding_stats_uploads = self.outstanding_stats_uploads.saturating_sub(1);
+    self.stats_upload_attempt_in_progress = self.outstanding_stats_uploads != 0;
+    self.stats_upload_elapsed = Some((Instant::now(), Duration::ZERO));
   }
 
   fn allocate_client_stats_sequence(&mut self) -> anyhow::Result<u64> {
@@ -181,6 +195,11 @@ impl InitializedInner {
         .clone()
         .into(),
       next_client_stats_sequence: self.next_client_stats_sequence,
+      last_stats_upload_attempt_at: self
+        .last_stats_upload_attempt_at
+        .and_then(|timestamp| timestamp.into_proto().into_option())
+        .into(),
+      stats_upload_attempt_in_progress: self.stats_upload_attempt_in_progress,
       ..Default::default()
     };
 
@@ -340,6 +359,13 @@ impl Inner {
           pending_stats_pipeline_analytics_report: index
             .pending_stats_pipeline_analytics_report
             .into_option(),
+          last_stats_upload_attempt_at: index
+            .last_stats_upload_attempt_at
+            .as_ref()
+            .map(TimestampExt::to_offset_date_time),
+          stats_upload_attempt_in_progress: index.stats_upload_attempt_in_progress,
+          outstanding_stats_uploads: 0,
+          stats_upload_elapsed: None,
         }));
 
         if recovered_from_existing_directory && let Self::Initialized(inner) = self {
@@ -361,12 +387,170 @@ impl FileManager {
     time_provider: Arc<dyn TimeProvider>,
     runtime_loader: &ConfigLoader,
   ) -> Self {
+    let started_at = (Instant::now(), time_provider.now());
     Self {
       inner: Mutex::new(Inner::NotInitialized(Some(Arc::from(file_system)))),
       time_provider,
+      started_at,
       max_aggregated_files: runtime_loader.register_int_watch(),
       max_aggregation_window_per_file: runtime_loader.register_duration_watch(),
+      global_minimum_upload_interval: runtime_loader.register_duration_watch(),
+      upload_history_error_reported: AtomicBool::new(false),
     }
+  }
+
+  // Hold the reservation until ACK or tracker closure so queued requests cannot accumulate and
+  // later be sent together, even after their preparation interval has elapsed.
+  pub async fn prepare_stats_upload(&self, source_file_ids: &[String]) -> bool {
+    match self.try_begin_stats_upload_attempt(source_file_ids).await {
+      Ok(allowed) => allowed,
+      Err(error) => {
+        self.report_upload_history_error(&error);
+        true
+      },
+    }
+  }
+
+  pub async fn finish_stats_upload(&self) {
+    self.observe_upload_history_result(&self.finish_stats_upload_attempt().await);
+  }
+
+  fn observe_upload_history_result(&self, result: &anyhow::Result<()>) {
+    match result {
+      Ok(()) => self
+        .upload_history_error_reported
+        .store(false, Ordering::Relaxed),
+      Err(error) => self.report_upload_history_error(error),
+    }
+  }
+
+  fn report_upload_history_error(&self, error: &anyhow::Error) {
+    if !self
+      .upload_history_error_reported
+      .swap(true, Ordering::Relaxed)
+    {
+      log::warn!("stats upload history persistence failed; allowing uploads: {error}");
+    }
+  }
+
+  /// Reserves an upload and persists its history before exposing the payload.
+  pub async fn try_begin_stats_upload_attempt(
+    &self,
+    source_file_ids: &[String],
+  ) -> anyhow::Result<bool> {
+    let mut inner = self.inner.lock().await;
+    let initialized = inner.get_initialized().await?;
+    let now = self.time_provider.now();
+    let mut recovery_error = None;
+    let mut recovered_unresolved = false;
+
+    // Credit downtime from construction, then use monotonic elapsed time, including before the
+    // first candidate. Unresolved persisted reservations recover with a full cooldown.
+    if initialized.stats_upload_elapsed.is_none() {
+      if initialized.stats_upload_attempt_in_progress {
+        initialized.last_stats_upload_attempt_at = Some(now);
+        initialized.stats_upload_attempt_in_progress = false;
+        initialized.stats_upload_elapsed = Some((Instant::now(), Duration::ZERO));
+        recovered_unresolved = true;
+        log::debug!("recovered unresolved stats upload attempt with a full cooldown");
+      } else if let Some(last_attempt) = initialized.last_stats_upload_attempt_at {
+        initialized.stats_upload_elapsed = Some((
+          self.started_at.0,
+          (self.started_at.1 - last_attempt).max(Duration::ZERO),
+        ));
+      }
+    }
+
+    if self.stats_upload_is_throttled(initialized) {
+      if !recovered_unresolved {
+        return Ok(false);
+      }
+      match initialized.write_index().await {
+        Ok(()) => return Ok(false),
+        Err(error) => recovery_error = Some(error),
+      }
+    }
+
+    initialized.last_stats_upload_attempt_at = Some(now);
+    initialized.stats_upload_attempt_in_progress = true;
+    initialized.outstanding_stats_uploads += 1;
+    initialized.stats_upload_elapsed = Some((Instant::now(), Duration::ZERO));
+    // Count at preparation, even when pacing is disabled, to share the reservation's index write.
+    // A closed API channel, or SDK shutdown/process death while waiting for channel capacity, can
+    // leave this attempt counted without the request ever being handed to the API or sent.
+    initialized.increment_retry_counts(source_file_ids);
+    // A recovery write failure still exposes a fail-open payload, so reserve and count it before
+    // returning the error, just as for an admission write failure.
+    if let Some(error) = recovery_error {
+      return Err(error);
+    }
+    initialized.write_index().await?;
+    Ok(true)
+  }
+
+  /// Starts the next cooldown after an ACK or response-channel closure.
+  pub async fn finish_stats_upload_attempt(&self) -> anyhow::Result<()> {
+    let mut inner = self.inner.lock().await;
+    let initialized = inner.get_initialized().await?;
+    initialized.finish_stats_upload(self.time_provider.now());
+    initialized.write_index().await
+  }
+
+  fn stats_upload_is_throttled(&self, initialized: &InitializedInner) -> bool {
+    let minimum_interval = *self.global_minimum_upload_interval.read();
+    if minimum_interval <= Duration::ZERO {
+      return false;
+    }
+    // An unresolved restart marker must reach admission once so it can be recovered and persisted.
+    if initialized.stats_upload_elapsed.is_none() && initialized.stats_upload_attempt_in_progress {
+      return false;
+    }
+    let elapsed = initialized
+      .stats_upload_elapsed
+      .or_else(|| {
+        initialized
+          .last_stats_upload_attempt_at
+          .map(|last_attempt| {
+            (
+              self.started_at.0,
+              (self.started_at.1 - last_attempt).max(Duration::ZERO),
+            )
+          })
+      })
+      .map(|(reference, credit)| {
+        credit.saturating_add(reference.elapsed().try_into().unwrap_or(Duration::MAX))
+      });
+    let throttled = initialized.stats_upload_attempt_in_progress
+      || elapsed.is_some_and(|elapsed| elapsed < minimum_interval);
+    if throttled {
+      log::debug!(
+        "throttling stats upload: outstanding={}, elapsed={elapsed:?}, minimum={minimum_interval}",
+        initialized.outstanding_stats_uploads
+      );
+    }
+    throttled
+  }
+
+  /// Completes a reservation and its source files with one index write. None means no ACK arrived.
+  pub async fn complete_stats_upload(
+    &self,
+    source_file_ids: &[String],
+    success: Option<bool>,
+  ) -> anyhow::Result<()> {
+    let mut inner = self.inner.lock().await;
+    let initialized = inner.get_initialized().await?;
+    initialized.finish_stats_upload(self.time_provider.now());
+    initialized.release_pending_uploads(source_file_ids);
+    if let Some(success) = success {
+      initialized.record_upload_ack(success);
+    }
+    let result = if success == Some(true) {
+      initialized.delete_pending_uploads(source_file_ids).await
+    } else {
+      initialized.write_index().await
+    };
+    self.observe_upload_history_result(&result);
+    result
   }
 
   // Read an existing snapshot from disk to merge into, or create a new one.
@@ -518,6 +702,12 @@ impl FileManager {
     loop {
       let mut inner = self.inner.lock().await;
       let initialized_inner = inner.get_initialized().await?;
+
+      // Avoid sealing, reading, and decompressing snapshots that cannot be admitted. Admission
+      // checks again after selection because another producer may reserve while disk reads run.
+      if self.stats_upload_is_throttled(initialized_inner) {
+        return Ok(None);
+      }
 
       if initialized_inner.index.is_empty() {
         log::debug!("no pending upload: index is empty");
@@ -672,25 +862,6 @@ impl FileManager {
     initialized_inner
       .delete_pending_uploads(source_file_ids)
       .await
-  }
-
-  // Records an upload attempt after the transport has accepted it. The outbound snapshot carries
-  // the pre-increment retry count, so any retry after a process exit is counted correctly.
-  pub async fn record_pending_upload_attempt(
-    &self,
-    source_file_ids: &[String],
-  ) -> anyhow::Result<()> {
-    let mut inner = self.inner.lock().await;
-    let initialized_inner = inner.get_initialized().await?;
-
-    initialized_inner.increment_retry_counts(source_file_ids);
-    initialized_inner.release_pending_uploads(source_file_ids);
-    let write_result = initialized_inner.write_index().await;
-    if write_result.is_ok() {
-      initialized_inner.claim_pending_uploads(source_file_ids);
-    }
-
-    write_result
   }
 
   // Releases a claimed upload that was never handed off to the transport.
