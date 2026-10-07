@@ -41,13 +41,14 @@ use bd_workflows::workflow::{
   WorkflowCommandOutcome,
   WorkflowCommandRequest,
 };
+use futures_util::FutureExt;
 use parking_lot::{Mutex, RwLock};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 const MAX_SCREENSHOT_BYTES: usize = 2 * 1024 * 1024;
@@ -222,16 +223,6 @@ pub struct CommandExecutionPolicy {
   timeout: DurationWatch<ExecutionTimeoutFlag>,
 }
 
-struct CommandExecutionTask<T> {
-  handle: JoinHandle<Result<T, CommandError>>,
-}
-
-impl<T> Drop for CommandExecutionTask<T> {
-  fn drop(&mut self) {
-    self.handle.abort();
-  }
-}
-
 impl CommandExecutionPolicy {
   pub(crate) fn new(runtime: &ConfigLoader) -> Self {
     Self {
@@ -241,33 +232,22 @@ impl CommandExecutionPolicy {
 
   async fn execute<F, T>(&self, command: &str, execution: F) -> Result<T, CommandError>
   where
-    F: Future<Output = Result<T, CommandError>> + Send + 'static,
-    T: Send + 'static,
+    F: Future<Output = Result<T, CommandError>>,
   {
     let timeout = *self.timeout.read();
     if timeout.is_zero() {
       return Err(CommandError::Timeout);
     }
     log::debug!("command {command} execution started with timeout {timeout}");
-    let deadline = timeout.sleep();
-    tokio::pin!(deadline);
-    let mut execution = CommandExecutionTask {
-      handle: tokio::spawn(execution),
-    };
-    tokio::select! {
-      biased;
-      () = &mut deadline => {
+    match timeout
+      .timeout(AssertUnwindSafe(execution).catch_unwind())
+      .await
+    {
+      Ok(Ok(result)) => result,
+      Ok(Err(_)) => Err(CommandError::Other("command handler panicked".into())),
+      Err(_) => {
         log::debug!("command {command} execution timed out after {timeout}");
-        execution.handle.abort();
-        let _ = (&mut execution.handle).await;
         Err(CommandError::Timeout)
-      },
-      result = &mut execution.handle => match result {
-        Ok(result) => result,
-        Err(error) if error.is_panic() => {
-          Err(CommandError::Other("command handler panicked".into()))
-        },
-        Err(_) => Err(CommandError::Other("command handler stopped".into())),
       },
     }
   }

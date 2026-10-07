@@ -475,7 +475,7 @@ async fn registered_command_execution_preserves_success() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn command_execution_timeout_cancels_owned_task() {
+async fn command_execution_timeout_drops_future() {
   let (_directory, _runtime, policy) = command_runtime();
   let (started_tx, started_rx) = oneshot::channel();
   let (dropped_tx, mut dropped_rx) = oneshot::channel();
@@ -501,7 +501,7 @@ async fn command_execution_timeout_cancels_owned_task() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn cancelling_command_execution_aborts_owned_task() {
+async fn cancelling_command_execution_drops_future() {
   let (_directory, _runtime, policy) = command_runtime();
   let (started_tx, started_rx) = oneshot::channel();
   let (dropped_tx, dropped_rx) = oneshot::channel();
@@ -581,7 +581,7 @@ async fn zero_command_execution_timeout_does_not_start_work() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn command_execution_deadline_wins_at_completion_boundary() {
+async fn command_execution_preserves_ready_result_at_timeout_boundary() {
   let (_directory, _runtime, policy) = command_runtime();
   let (started_tx, started_rx) = oneshot::channel();
   let execution = tokio::spawn(async move {
@@ -596,7 +596,20 @@ async fn command_execution_deadline_wins_at_completion_boundary() {
   });
   started_rx.await.unwrap();
   tokio::time::advance(Duration::seconds(5).unsigned_abs()).await;
-  assert_eq!(execution.await.unwrap(), Err(CommandError::Timeout));
+  assert_eq!(execution.await.unwrap(), Ok(()));
+}
+
+#[tokio::test]
+async fn command_execution_polls_borrowed_future_in_calling_task() {
+  let (_directory, _runtime, policy) = command_runtime();
+  let command = String::from("inline");
+  let caller = tokio::task::try_id();
+  let result = policy
+    .execute(&command, async {
+      Ok((tokio::task::try_id(), command.as_str()))
+    })
+    .await;
+  assert_eq!(result, Ok((caller, "inline")));
 }
 
 #[tokio::test]
