@@ -182,6 +182,12 @@ pub enum CommandError {
   /// Returned by the platform when its command concurrency limit is reached.
   #[error("max command concurrency reached")]
   MaxCommandConcurrency,
+  /// Returned by the platform when another invocation of the same command is still active.
+  #[error("command already executing")]
+  AlreadyExecuting,
+  /// Returned by the platform when it cannot parse an invocation's arguments.
+  #[error("{0}")]
+  InvalidArguments(String),
   #[error("{0}")]
   HandlerFailed(String),
   #[error("{0}")]
@@ -191,8 +197,13 @@ pub enum CommandError {
 impl CommandError {
   fn into_message(self) -> String {
     match self {
-      Self::HandlerFailed(message) | Self::Other(message) => message,
-      Self::Timeout | Self::CommandUnknown | Self::MaxCommandConcurrency => self.to_string(),
+      Self::InvalidArguments(message) | Self::HandlerFailed(message) | Self::Other(message) => {
+        message
+      },
+      Self::Timeout
+      | Self::CommandUnknown
+      | Self::MaxCommandConcurrency
+      | Self::AlreadyExecuting => self.to_string(),
     }
   }
 }
