@@ -307,8 +307,11 @@ where
         OwnedValuePath::from(path.to_vec()).into(),
       ));
     };
-    let index = usize::try_from(*index).map_err(|_| PathError::IndexOutOfRange(*index))?;
-    self.get(index).resolve(&path[1 ..])
+    let unsigned_index = usize::try_from(*index).map_err(|_| PathError::IndexOutOfRange(*index))?;
+    let Some(value) = self.iter().nth(unsigned_index) else {
+      return Err(PathError::IndexOutOfRange(*index));
+    };
+    value.resolve(&path[1 ..])
   }
 
   fn schema() -> Kind {
