@@ -624,6 +624,10 @@ async fn typed_command_errors_preserve_workflow_messages_and_fields() {
       "max command concurrency reached",
     ),
     (
+      CommandError::InvalidArguments("argument 'verbose' has an invalid value".into()),
+      "argument 'verbose' has an invalid value",
+    ),
+    (
       CommandError::HandlerFailed("capture failed".into()),
       "capture failed",
     ),
