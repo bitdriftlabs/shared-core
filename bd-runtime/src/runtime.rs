@@ -1105,6 +1105,14 @@ pub mod attachment {
   int_feature_flag!(MaxBytes, "attachment.max_bytes", 5 * 1024 * 1024);
 }
 
+pub mod device_command {
+  duration_feature_flag!(
+    ExecutionTimeoutFlag,
+    "device_command.execution_timeout_ms",
+    time::Duration::seconds(5)
+  );
+}
+
 pub mod workflow_attachment {
   int_feature_flag!(
     MaxOwnedBytes,

@@ -105,17 +105,15 @@ async fn late_screenshot_callback_does_not_release_newer_capture() {
     completions: Mutex::default(),
     capture_started_tx,
   });
-  let handler =
-    RemoteScreenshotCaptureHandler::with_timeout(target.clone(), std::time::Duration::from_secs(1));
+  let handler = RemoteScreenshotCaptureHandler::new(target.clone());
 
   let first_handler = handler.clone();
-  let first_capture = tokio::spawn(async move { first_handler.capture().await });
+  let first_capture = tokio::spawn(async move {
+    tokio::time::timeout(std::time::Duration::from_secs(1), first_handler.capture()).await
+  });
   capture_started_rx.recv().await.unwrap();
   tokio::time::advance(std::time::Duration::from_secs(1)).await;
-  assert_eq!(
-    first_capture.await.unwrap(),
-    Err("remote screenshot capture timed out".to_string())
-  );
+  assert!(first_capture.await.unwrap().is_err());
 
   let second_handler = handler.clone();
   let second_capture = tokio::spawn(async move { second_handler.capture().await });
@@ -137,8 +135,7 @@ async fn cancelled_screenshot_capture_releases_slot() {
     completions: Mutex::default(),
     capture_started_tx,
   });
-  let handler =
-    RemoteScreenshotCaptureHandler::with_timeout(target.clone(), std::time::Duration::from_secs(1));
+  let handler = RemoteScreenshotCaptureHandler::new(target.clone());
 
   let first_handler = handler.clone();
   let first_capture = tokio::spawn(async move { first_handler.capture().await });

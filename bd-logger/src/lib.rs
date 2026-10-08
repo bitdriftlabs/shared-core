@@ -47,6 +47,7 @@ pub(crate) mod test;
 pub use crate::app_version::AppVersionExtra;
 pub use crate::device_command::{
   CommandAttachment,
+  CommandError,
   CommandInvocation,
   CommandResult,
   RegisteredCommandHandler,

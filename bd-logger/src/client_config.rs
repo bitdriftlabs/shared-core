@@ -10,7 +10,11 @@
 mod client_config_test;
 
 use crate::async_log_buffer::Sender as LogSender;
-use crate::device_command::{DeviceCommandDispatcher, RegisteredCommandDispatcher};
+use crate::device_command::{
+  CommandExecutionPolicy,
+  DeviceCommandDispatcher,
+  RegisteredCommandDispatcher,
+};
 use crate::logging_state::{BufferProducers, ConfigUpdate};
 use crate::write_log_to_buffer;
 use anyhow::anyhow;
@@ -273,6 +277,7 @@ impl LoggerUpdate {
     session_strategy: Arc<bd_session::Strategy>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     command_dispatcher: RegisteredCommandDispatcher,
+    command_execution_policy: CommandExecutionPolicy,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
     scope: &Scope,
   ) -> Self {
@@ -287,6 +292,7 @@ impl LoggerUpdate {
         session_strategy,
         artifact_client,
         command_dispatcher,
+        command_execution_policy,
         remote_screenshot_capture_handler,
       ),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),

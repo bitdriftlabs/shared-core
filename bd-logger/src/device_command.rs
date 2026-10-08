@@ -27,8 +27,12 @@ use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{Data, LogType};
 use bd_proto::protos::workflow::workflow_command::{
   WellKnownCommandType,
+  WorkflowCommandSelector,
   workflow_command_selector,
 };
+use bd_runtime::runtime::device_command::ExecutionTimeoutFlag;
+use bd_runtime::runtime::{ConfigLoader, DurationWatch};
+use bd_time::TimeDurationExt;
 use bd_workflows::workflow::{
   COMMAND_OUTCOME_MESSAGE,
   CommandArtifactMetadata,
@@ -37,8 +41,11 @@ use bd_workflows::workflow::{
   WorkflowCommandOutcome,
   WorkflowCommandRequest,
 };
+use futures_util::FutureExt;
 use parking_lot::{Mutex, RwLock};
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
@@ -62,6 +69,7 @@ pub struct DeviceCommandDispatcher {
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   command_dispatcher: RegisteredCommandDispatcher,
+  execution_policy: CommandExecutionPolicy,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   active_command_ids: Mutex<HashSet<String>>,
 }
@@ -80,6 +88,7 @@ impl DeviceCommandDispatcher {
     session_strategy: Arc<bd_session::Strategy>,
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     command_dispatcher: RegisteredCommandDispatcher,
+    execution_policy: CommandExecutionPolicy,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   ) -> Self {
     Self {
@@ -91,6 +100,7 @@ impl DeviceCommandDispatcher {
       session_strategy,
       artifact_client,
       command_dispatcher,
+      execution_policy,
       remote_screenshot_capture_handler,
       active_command_ids: Mutex::default(),
     }
@@ -122,6 +132,7 @@ impl DeviceCommandDispatcher {
     let session_strategy = self.session_strategy.clone();
     let artifact_client = self.artifact_client.clone();
     let command_dispatcher = self.command_dispatcher.clone();
+    let execution_policy = self.execution_policy.clone();
     let remote_screenshot_capture_handler = self.remote_screenshot_capture_handler.clone();
     tokio::task::spawn(async move {
       if let Err(error) = execute_device_command(
@@ -131,6 +142,7 @@ impl DeviceCommandDispatcher {
         session_strategy,
         artifact_client,
         command_dispatcher,
+        execution_policy,
         remote_screenshot_capture_handler,
       )
       .await
@@ -159,6 +171,32 @@ pub struct CommandAttachment {
   pub state: LogFields,
 }
 
+/// The reason a command failed. Detailed messages retain their existing wire/log representation.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum CommandError {
+  /// The execution deadline expired. Platform work may finish after its Rust future is cancelled.
+  #[error("command timed out")]
+  Timeout,
+  #[error("command unknown")]
+  CommandUnknown,
+  /// Returned by the platform when its command concurrency limit is reached.
+  #[error("max command concurrency reached")]
+  MaxCommandConcurrency,
+  #[error("{0}")]
+  HandlerFailed(String),
+  #[error("{0}")]
+  Other(String),
+}
+
+impl CommandError {
+  fn into_message(self) -> String {
+    match self {
+      Self::HandlerFailed(message) | Self::Other(message) => message,
+      Self::Timeout | Self::CommandUnknown | Self::MaxCommandConcurrency => self.to_string(),
+    }
+  }
+}
+
 /// The terminal outcome of an application-defined command.
 #[derive(Debug)]
 pub enum CommandResult {
@@ -167,15 +205,83 @@ pub enum CommandResult {
     attachment: Option<CommandAttachment>,
   },
   Failed {
-    error: String,
+    error: CommandError,
     fields: LogFields,
   },
 }
 
 /// Handles an opaque command selected by its registered command ID.
+/// Direct and workflow invocations have a runtime-configurable execution timeout, defaulting to
+/// five seconds. Handlers must yield to allow deadlines and cancellation to be observed.
 #[async_trait::async_trait]
 pub trait RegisteredCommandHandler: Send + Sync {
   async fn execute(&self, invocation: CommandInvocation) -> CommandResult;
+}
+
+#[derive(Clone)]
+pub struct CommandExecutionPolicy {
+  timeout: DurationWatch<ExecutionTimeoutFlag>,
+}
+
+impl CommandExecutionPolicy {
+  pub(crate) fn new(runtime: &ConfigLoader) -> Self {
+    Self {
+      timeout: runtime.register_duration_watch(),
+    }
+  }
+
+  async fn execute<F, T>(&self, command: &str, execution: F) -> Result<T, CommandError>
+  where
+    F: Future<Output = Result<T, CommandError>>,
+  {
+    let timeout = *self.timeout.read();
+    if timeout.is_zero() {
+      return Err(CommandError::Timeout);
+    }
+    log::debug!("command {command} execution started with timeout {timeout}");
+    match timeout
+      .timeout(AssertUnwindSafe(execution).catch_unwind())
+      .await
+    {
+      Ok(Ok(result)) => result,
+      Ok(Err(_)) => Err(CommandError::Other("command handler panicked".into())),
+      Err(_) => {
+        log::debug!("command {command} execution timed out after {timeout}");
+        Err(CommandError::Timeout)
+      },
+    }
+  }
+
+  async fn execute_registered(
+    &self,
+    handler: Arc<dyn RegisteredCommandHandler>,
+    invocation: CommandInvocation,
+  ) -> CommandResult {
+    let registered_command_id = invocation.registered_command_id.clone();
+    match self
+      .execute(&registered_command_id, async move {
+        Ok(handler.execute(invocation).await)
+      })
+      .await
+    {
+      Ok(result) => result,
+      Err(error) => CommandResult::Failed {
+        error,
+        fields: LogFields::default(),
+      },
+    }
+  }
+
+  async fn capture_screenshot(
+    &self,
+    handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+  ) -> Result<Vec<u8>, CommandError> {
+    self
+      .execute("screenshot", async move {
+        handler.capture().await.map_err(CommandError::HandlerFailed)
+      })
+      .await
+  }
 }
 
 #[derive(Clone, Default)]
@@ -229,8 +335,10 @@ pub struct WorkflowCommandCompletion {
   pub outcome: WorkflowCommandOutcome,
 }
 
+#[derive(Clone)]
 pub struct WorkflowCommandDispatcher {
   command_dispatcher: RegisteredCommandDispatcher,
+  execution_policy: CommandExecutionPolicy,
   completion_tx: Sender<WorkflowCommandCompletion>,
   attachment_store: AttachmentStoreHandle,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
@@ -239,12 +347,14 @@ pub struct WorkflowCommandDispatcher {
 impl WorkflowCommandDispatcher {
   pub fn new(
     command_dispatcher: RegisteredCommandDispatcher,
+    execution_policy: CommandExecutionPolicy,
     completion_tx: Sender<WorkflowCommandCompletion>,
     attachment_store: AttachmentStoreHandle,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   ) -> Self {
     Self {
       command_dispatcher,
+      execution_policy,
       completion_tx,
       attachment_store,
       remote_screenshot_capture_handler,
@@ -255,48 +365,12 @@ impl WorkflowCommandDispatcher {
     let token = request.completion_token();
     let completion_tx = self.completion_tx.clone();
     let command_selector = request.command_selector.clone();
-    let command_dispatcher = self.command_dispatcher.clone();
+    let dispatcher = self.clone();
     let attachment_store = self.attachment_store.clone();
-    let remote_screenshot_capture_handler = self.remote_screenshot_capture_handler.clone();
     let session_id = request.session_id.clone();
 
     tokio::task::spawn(async move {
-      let arguments = command_selector.arguments;
-      let outcome = match command_selector.command_selector {
-        Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
-          if let Some(handler) = command_dispatcher.get_handler(&command.registered_command_id) {
-            let execution = tokio::task::spawn(async move {
-              handler
-                .execute(CommandInvocation {
-                  command_id: None,
-                  registered_command_id: command.registered_command_id,
-                  arguments,
-                  session_id,
-                })
-                .await
-            });
-            match execution.await {
-              Ok(result) => workflow_command_outcome(result, &attachment_store).await,
-              Err(error) if error.is_panic() => {
-                workflow_command_failure("workflow command handler panicked")
-              },
-              Err(_) => workflow_command_failure("workflow command handler stopped"),
-            }
-          } else {
-            workflow_command_failure("unregistered workflow command")
-          }
-        },
-        Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
-          workflow_builtin_command_outcome(
-            command,
-            &arguments,
-            remote_screenshot_capture_handler,
-            &attachment_store,
-          )
-          .await
-        },
-        None => workflow_command_failure("unsupported workflow command"),
-      };
+      let outcome = dispatcher.execute(command_selector, session_id).await;
       if let Err(error) = completion_tx
         .send(WorkflowCommandCompletion { token, outcome })
         .await
@@ -316,19 +390,66 @@ impl WorkflowCommandDispatcher {
       }
     });
   }
+
+  async fn execute(
+    &self,
+    command_selector: WorkflowCommandSelector,
+    session_id: String,
+  ) -> WorkflowCommandOutcome {
+    let arguments = command_selector.arguments;
+    match command_selector.command_selector {
+      Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
+        if let Some(handler) = self
+          .command_dispatcher
+          .get_handler(&command.registered_command_id)
+        {
+          let result = self
+            .execution_policy
+            .execute_registered(
+              handler,
+              CommandInvocation {
+                command_id: None,
+                registered_command_id: command.registered_command_id,
+                arguments,
+                session_id,
+              },
+            )
+            .await;
+          workflow_command_outcome(result, &self.attachment_store).await
+        } else {
+          workflow_command_failure(CommandError::CommandUnknown)
+        }
+      },
+      Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
+        workflow_builtin_command_outcome(
+          command,
+          &arguments,
+          self.remote_screenshot_capture_handler.clone(),
+          &self.execution_policy,
+          &self.attachment_store,
+        )
+        .await
+      },
+      None => workflow_command_failure(CommandError::CommandUnknown),
+    }
+  }
 }
 
 async fn workflow_builtin_command_outcome(
   command: workflow_command_selector::BuiltinCommand,
   arguments: &HashMap<String, Data>,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+  execution_policy: &CommandExecutionPolicy,
   attachment_store: &AttachmentStoreHandle,
 ) -> WorkflowCommandOutcome {
   match command.type_.enum_value() {
     Ok(WellKnownCommandType::TAKE_SCREENSHOT) if arguments.is_empty() => {
-      match remote_screenshot_capture_handler.capture().await {
+      match execution_policy
+        .capture_screenshot(remote_screenshot_capture_handler)
+        .await
+      {
         Ok(screenshot) if let Err(error) = validate_screenshot(&screenshot) => {
-          workflow_command_failure(error)
+          workflow_command_failure(CommandError::Other(error.into()))
         },
         Ok(screenshot) => {
           workflow_command_outcome(
@@ -344,16 +465,16 @@ async fn workflow_builtin_command_outcome(
           )
           .await
         },
-        Err(error) => workflow_command_failure(&error),
+        Err(error) => workflow_command_failure(error),
       }
     },
-    _ => workflow_command_failure("unsupported workflow command"),
+    _ => workflow_command_failure(CommandError::CommandUnknown),
   }
 }
 
-fn workflow_command_failure(message: &str) -> WorkflowCommandOutcome {
+fn workflow_command_failure(error: CommandError) -> WorkflowCommandOutcome {
   WorkflowCommandOutcome::Failed {
-    message: Some(message.to_string()),
+    message: Some(error.into_message()),
     fields: LogFields::default(),
   }
 }
@@ -403,7 +524,7 @@ async fn workflow_command_outcome(
       }
     },
     CommandResult::Failed { error, fields } => WorkflowCommandOutcome::Failed {
-      message: Some(error),
+      message: Some(error.into_message()),
       fields,
     },
   }
@@ -416,6 +537,7 @@ async fn execute_device_command(
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   command_dispatcher: RegisteredCommandDispatcher,
+  execution_policy: CommandExecutionPolicy,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
 ) -> anyhow::Result<()> {
   let command_id = command.command_id.to_string();
@@ -431,6 +553,7 @@ async fn execute_device_command(
         session_strategy,
         artifact_client,
         command_dispatcher,
+        execution_policy,
       )
       .await
     },
@@ -451,6 +574,7 @@ async fn execute_device_command(
             senders,
             session_strategy,
             artifact_client,
+            execution_policy,
             remote_screenshot_capture_handler,
           )
           .await
@@ -458,7 +582,7 @@ async fn execute_device_command(
         _ => {
           send_device_command_update(
             &senders,
-            failed_device_command_update(&command_id, 1, "unsupported device command"),
+            failed_device_command_update(&command_id, 1, CommandError::CommandUnknown),
           )
           .await
         },
@@ -467,7 +591,7 @@ async fn execute_device_command(
     None => {
       send_device_command_update(
         &senders,
-        failed_device_command_update(&command_id, 1, "unsupported device command"),
+        failed_device_command_update(&command_id, 1, CommandError::CommandUnknown),
       )
       .await
     },
@@ -479,6 +603,7 @@ async fn execute_screenshot_device_command(
   senders: DeviceCommandSenders,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
+  execution_policy: CommandExecutionPolicy,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
 ) -> anyhow::Result<()> {
   send_device_command_update(
@@ -499,17 +624,20 @@ async fn execute_screenshot_device_command(
     Err(error) => {
       send_device_command_update(
         &senders,
-        failed_device_command_update(&command_id, 2, &error.to_string()),
+        failed_device_command_update(&command_id, 2, CommandError::Other(error.to_string())),
       )
       .await?;
       return Ok(());
     },
   };
-  let screenshot = match remote_screenshot_capture_handler.capture().await {
+  let screenshot = match execution_policy
+    .capture_screenshot(remote_screenshot_capture_handler)
+    .await
+  {
     Ok(screenshot) if let Err(error) = validate_screenshot(&screenshot) => {
       send_device_command_update(
         &senders,
-        failed_device_command_update(&command_id, 2, error),
+        failed_device_command_update(&command_id, 2, CommandError::Other(error.into())),
       )
       .await?;
       return Ok(());
@@ -518,7 +646,7 @@ async fn execute_screenshot_device_command(
     Err(error) => {
       send_device_command_update(
         &senders,
-        failed_device_command_update(&command_id, 2, &error),
+        failed_device_command_update(&command_id, 2, error),
       )
       .await?;
       return Ok(());
@@ -547,7 +675,9 @@ async fn execute_screenshot_device_command(
       )
       .await;
     },
-    Err(error) => failed_device_command_update(&command_id, 2, &error.to_string()),
+    Err(error) => {
+      failed_device_command_update(&command_id, 2, CommandError::Other(error.to_string()))
+    },
   };
   send_device_command_update(&senders, update).await
 }
@@ -575,7 +705,7 @@ async fn execute_buffer_dump_device_command(
     Err(error) => {
       send_device_command_update(
         &senders,
-        failed_device_command_update(&command_id, 1, &error.to_string()),
+        failed_device_command_update(&command_id, 1, CommandError::Other(error.to_string())),
       )
       .await?;
       return Ok(());
@@ -586,7 +716,11 @@ async fn execute_buffer_dump_device_command(
   if trigger_upload_tx.send(trigger_upload).await.is_err() {
     send_device_command_update(
       &senders,
-      failed_device_command_update(&command_id, 1, "trigger upload manager is unavailable"),
+      failed_device_command_update(
+        &command_id,
+        1,
+        CommandError::Other("trigger upload manager is unavailable".into()),
+      ),
     )
     .await?;
     return Ok(());
@@ -595,7 +729,11 @@ async fn execute_buffer_dump_device_command(
   let Ok(admission) = admission_rx.await else {
     send_device_command_update(
       &senders,
-      failed_device_command_update(&command_id, 1, "buffer dump upload could not be prepared"),
+      failed_device_command_update(
+        &command_id,
+        1,
+        CommandError::Other("buffer dump upload could not be prepared".into()),
+      ),
     )
     .await?;
     return Ok(());
@@ -639,10 +777,16 @@ async fn execute_buffer_dump_device_command(
       }),
       log_batches_attachment(admission.total_result_bytes),
     ),
-    Ok(TriggerUploadCompletion::Failed) => {
-      failed_device_command_update(&command_id, 2, "buffer dump upload failed")
-    },
-    Err(_) => failed_device_command_update(&command_id, 2, "buffer dump upload did not complete"),
+    Ok(TriggerUploadCompletion::Failed) => failed_device_command_update(
+      &command_id,
+      2,
+      CommandError::Other("buffer dump upload failed".into()),
+    ),
+    Err(_) => failed_device_command_update(
+      &command_id,
+      2,
+      CommandError::Other("buffer dump upload did not complete".into()),
+    ),
   };
   send_device_command_update(&senders, update).await
 }
@@ -655,11 +799,16 @@ async fn execute_custom_device_command(
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   command_dispatcher: RegisteredCommandDispatcher,
+  execution_policy: CommandExecutionPolicy,
 ) -> anyhow::Result<()> {
   let Ok(command_id_uuid) = Uuid::parse_str(&command_id) else {
     send_device_command_update(
       &senders,
-      failed_device_command_update(&command_id, 1, "invalid device command id"),
+      failed_device_command_update(
+        &command_id,
+        1,
+        CommandError::Other("invalid device command id".into()),
+      ),
     )
     .await?;
     return Ok(());
@@ -667,7 +816,7 @@ async fn execute_custom_device_command(
   let Some(handler) = command_dispatcher.get_handler(&registered_command_id) else {
     send_device_command_update(
       &senders,
-      failed_device_command_update(&command_id, 1, "unregistered device command"),
+      failed_device_command_update(&command_id, 1, CommandError::CommandUnknown),
     )
     .await?;
     return Ok(());
@@ -691,19 +840,22 @@ async fn execute_custom_device_command(
     Err(error) => {
       send_device_command_update(
         &senders,
-        failed_device_command_update(&command_id, 2, &error.to_string()),
+        failed_device_command_update(&command_id, 2, CommandError::Other(error.to_string())),
       )
       .await?;
       return Ok(());
     },
   };
-  let result = handler
-    .execute(CommandInvocation {
-      command_id: Some(command_id_uuid),
-      registered_command_id,
-      arguments,
-      session_id: session_id.clone(),
-    })
+  let result = execution_policy
+    .execute_registered(
+      handler,
+      CommandInvocation {
+        command_id: Some(command_id_uuid),
+        registered_command_id,
+        arguments,
+        session_id: session_id.clone(),
+      },
+    )
     .await;
 
   let mut artifact_metadata = None;
@@ -727,7 +879,11 @@ async fn execute_custom_device_command(
             Err(error) => {
               return send_device_command_update(
                 &senders,
-                failed_device_command_update(&command_id, 2, &error.to_string()),
+                failed_device_command_update(
+                  &command_id,
+                  2,
+                  CommandError::Other(error.to_string()),
+                ),
               )
               .await;
             },
@@ -743,7 +899,7 @@ async fn execute_custom_device_command(
       )
     },
     CommandResult::Failed { error, mut fields } => {
-      fields.insert("error".into(), error.into());
+      fields.insert("error".into(), error.into_message().into());
       failed_device_command_update_with_fields(&command_id, 2, fields)
     },
   };
@@ -852,12 +1008,12 @@ fn device_command_context(fields: LogFields) -> DeviceCommandResultContext {
 fn failed_device_command_update(
   command_id: &str,
   update_sequence_number: u64,
-  error: &str,
+  error: CommandError,
 ) -> DeviceCommandUpdate {
   failed_device_command_update_with_fields(
     command_id,
     update_sequence_number,
-    [("error".into(), error.to_string().into())].into(),
+    [("error".into(), error.into_message().into())].into(),
   )
 }
 
