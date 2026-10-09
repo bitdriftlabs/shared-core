@@ -8,8 +8,14 @@
 use bd_log_matcher::matcher::{MatchContext, Tree};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage};
+#[cfg(test)]
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::logging::payload::LogType;
+#[cfg(test)]
+use bd_proto_util::serialization::inline::ProtoDeserialize;
+use bd_proto_util::serialization::inline::views::config::BufferConfigList as BufferConfigView;
+#[cfg(test)]
+use protobuf::Message;
 use std::borrow::Cow;
 
 // A single buffer filter, containing the matchers used to determine if logs should be written to
@@ -32,24 +38,30 @@ pub struct BufferSelector {
 }
 
 impl BufferSelector {
-  pub fn new(config: &BufferConfigList) -> anyhow::Result<Self> {
-    let mut buffer_filters = Vec::new();
-
-    for buffer_config in &config.buffer_config {
-      let mut matchers = Vec::new();
-      for filter in &buffer_config.filters {
-        if let Some(filter_matcher) = &filter.filter.as_ref() {
-          matchers.push((filter.id.clone(), Tree::new_legacy(filter_matcher)?));
+  pub fn from_view(config: &BufferConfigView<'_>) -> anyhow::Result<Self> {
+    let buffer_filters = config
+      .buffer_config()?
+      .iter()
+      .map(|buffer| {
+        let mut matchers = Vec::new();
+        for filter in buffer.filters()? {
+          if let Some(matcher) = filter.filter()? {
+            matchers.push((filter.id()?.to_owned(), Tree::from_legacy_view(&matcher)?));
+          }
         }
-      }
-
-      buffer_filters.push(BufferFilter {
-        buffer_id: buffer_config.id.clone(),
-        matchers,
-      });
-    }
-
+        Ok(BufferFilter {
+          buffer_id: buffer.id()?.to_owned(),
+          matchers,
+        })
+      })
+      .collect::<anyhow::Result<_>>()?;
     Ok(Self { buffer_filters })
+  }
+
+  #[cfg(test)]
+  pub fn new(config: &BufferConfigList) -> anyhow::Result<Self> {
+    let bytes = config.write_to_bytes()?;
+    Self::from_view(&BufferConfigView::from_proto_bytes(&bytes)?)
   }
 
   // Evaluates a log line against the buffer matchers. Returns the list of the name of the buffers

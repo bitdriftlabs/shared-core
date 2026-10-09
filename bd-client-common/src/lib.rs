@@ -14,11 +14,12 @@
   clippy::unwrap_used
 )]
 
-use bd_proto::protos::client::api::{self, ApiRequest, HandshakeRequest};
+use bd_proto::protos::client::api::{ApiRequest, HandshakeRequest};
 use std::future::{Future, pending};
 use tokio::time::Interval;
 
 pub mod artifact;
+mod configuration;
 pub mod error;
 pub mod file;
 pub mod file_system;
@@ -29,6 +30,7 @@ pub mod safe_file_cache;
 pub mod sdk_status;
 pub mod test;
 
+pub use configuration::RawConfigurationUpdate;
 pub use platform_mutex::{PlatformMutex, PlatformMutexGuard};
 
 #[cfg(test)]
@@ -93,7 +95,7 @@ pub trait ClientConfigurationUpdate: Send + Sync {
   /// Unconditionally mark any cached config as "safe" to use.
   async fn mark_safe(&self);
 
-  async fn try_apply_config(&self, configuration_update: api::ConfigurationUpdate) -> ApiRequest;
+  async fn try_apply_config(&self, configuration_update: RawConfigurationUpdate) -> ApiRequest;
 
   async fn clear_cached_config(&self);
 }

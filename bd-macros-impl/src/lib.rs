@@ -18,6 +18,7 @@ use syn::{Data, DeriveInput, Fields, Meta, parse_macro_input};
 
 mod approximate_size;
 mod enum_impl;
+mod proto_deserialize;
 mod struct_impl;
 mod validation;
 
@@ -187,4 +188,13 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(ApproximateSize, attributes(approximate_size))]
 pub fn derive_approximate_size(item: TokenStream) -> TokenStream {
   approximate_size::derive(parse_macro_input!(item as DeriveInput)).into()
+}
+
+/// Generates decoding into an owned runtime struct from borrowed protobuf fields.
+#[proc_macro_attribute]
+pub fn proto_deserialize(attr: TokenStream, item: TokenStream) -> TokenStream {
+  let input = parse_macro_input!(item as DeriveInput);
+  proto_deserialize::expand_config(attr.into(), input)
+    .unwrap_or_else(|error| error.to_compile_error())
+    .into()
 }

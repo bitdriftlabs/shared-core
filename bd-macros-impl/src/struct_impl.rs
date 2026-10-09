@@ -68,6 +68,11 @@ pub struct FieldAttrs {
   /// Useful for converting types (e.g., serialize `usize` as `u64`).
   pub serialize_as: Option<syn::Type>,
 
+  pub decode_as: Option<syn::Type>,
+  pub deserialize_with: Option<syn::Path>,
+  pub oneof: bool,
+  pub message: bool,
+
   /// Whether this field is a protobuf enum type (`#[field(proto_enum)]`).
   /// Enables special handling for proto3 enum default values.
   pub proto_enum: bool,
@@ -79,12 +84,24 @@ impl FieldAttrs {
   /// This function extracts all protobuf-related metadata from a field's attributes,
   /// including field numbering, serialization options, and special handling flags.
   pub fn parse(field: &Field) -> Self {
+    Self::parse_impl(field, false).expect("Invalid field attributes")
+  }
+
+  pub fn parse_deserialize(field: &Field) -> syn::Result<Self> {
+    Self::parse_impl(field, true)
+  }
+
+  fn parse_impl(field: &Field, strict: bool) -> syn::Result<Self> {
     let mut tag = None;
     let mut skip = false;
     let mut required = false;
     let mut repeated = false;
     let mut default_expr = None;
     let mut serialize_as = None;
+    let mut decode_as = None;
+    let mut deserialize_with = None;
+    let mut oneof = false;
+    let mut message = false;
     let mut proto_enum = false;
 
     for attr in &field.attrs {
@@ -99,11 +116,11 @@ impl FieldAttrs {
         }
 
         // Parse nested metadata for key-value pairs
-        let _ = attr.parse_nested_meta(|meta| {
+        let result = attr.parse_nested_meta(|meta| {
           if meta.path.is_ident("id") {
             // Parse: id = 1
             let value = meta.value()?;
-            tag = Some(value.parse::<syn::LitInt>()?.base10_parse().unwrap());
+            tag = Some(value.parse::<syn::LitInt>()?.base10_parse()?);
           } else if meta.path.is_ident("skip") {
             // Parse: skip (flag only)
             skip = true;
@@ -125,22 +142,43 @@ impl FieldAttrs {
             // Parse: serialize_as = "Type"
             let value = meta.value()?;
             let s: syn::LitStr = value.parse()?;
-            serialize_as = Some(syn::parse_str(&s.value()).expect("Invalid type in serialize_as"));
+            serialize_as = Some(s.parse()?);
+          } else if meta.path.is_ident("decode_as") {
+            let value: syn::LitStr = meta.value()?.parse()?;
+            decode_as = Some(value.parse()?);
+          } else if meta.path.is_ident("deserialize_with") {
+            let value: syn::LitStr = meta.value()?.parse()?;
+            deserialize_with = Some(value.parse()?);
+          } else if meta.path.is_ident("oneof") {
+            oneof = true;
+          } else if meta.path.is_ident("message") {
+            message = true;
+          } else if strict {
+            return Err(meta.error("unknown decoding field attribute"));
           }
           Ok(())
         });
+        if strict {
+          result?;
+        }
+      } else if strict && attr.path().is_ident("field") {
+        return Err(syn::Error::new_spanned(attr, "expected #[field(...)]"));
       }
     }
 
-    Self {
+    Ok(Self {
       tag,
       skip,
       required,
       repeated,
       default_expr,
       serialize_as,
+      decode_as,
+      deserialize_with,
+      oneof,
+      message,
       proto_enum,
-    }
+    })
   }
 }
 

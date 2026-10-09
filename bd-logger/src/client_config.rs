@@ -9,38 +9,32 @@
 #[path = "./client_config_test.rs"]
 mod client_config_test;
 
+#[path = "./client_config/decode.rs"]
+mod decode;
+
 use crate::async_log_buffer::Sender as LogSender;
+use crate::buffer_selector::BufferSelector;
 use crate::device_command::{DeviceCommandDispatcher, RegisteredCommandDispatcher};
 use crate::logging_state::{BufferProducers, ConfigUpdate};
 use crate::write_log_to_buffer;
-use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUpload};
-use bd_buffer::RingBuffer as _;
-use bd_client_common::HANDSHAKE_FLAG_CONFIG_UP_TO_DATE;
+use bd_buffer::{BufferSettings, RingBuffer as _};
 use bd_client_common::error::InvariantError;
-use bd_client_common::file::write_compressed_protobuf;
+use bd_client_common::file::{read_compressed, write_compressed};
 use bd_client_common::payload_conversion::{ClientConfigurationUpdateAck, IntoRequest};
 use bd_client_common::safe_file_cache::SafeFileCache;
+use bd_client_common::{HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, RawConfigurationUpdate};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{EncodableLog, FieldsRef};
-use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, DeviceCommandRequest};
-use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
-use bd_proto::protos::client::api::{
-  ApiRequest,
-  ConfigurationUpdate,
-  ConfigurationUpdateAck,
-  HandshakeRequest,
-};
-use bd_proto::protos::config::v1::config::BufferConfigList;
-use bd_proto::protos::filter::filter::FiltersConfiguration;
-use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
+use bd_proto::protos::client::api::{ApiRequest, ConfigurationUpdateAck, HandshakeRequest};
 use bd_stats_common::Counter as _;
 use bd_time::TimeProvider;
 use bd_workflows::config::WorkflowsConfiguration;
+use decode::TailUpdate;
 use itertools::Itertools;
 use parking_lot::Mutex;
 use protobuf::Chars;
@@ -60,30 +54,22 @@ pub trait ApplyConfig {
   ) -> anyhow::Result<()>;
 }
 
-#[cfg_attr(test, derive(Debug, Default, PartialEq))]
 pub struct Configuration {
-  buffer: BufferConfigList,
-  workflows: WorkflowsConfigurationProto,
-  debug_workflows: WorkflowsConfigurationProto,
-  bdtail: BdTailConfigurations,
-  filters: FiltersConfiguration,
+  buffer: Vec<BufferSettings>,
+  buffer_selector: BufferSelector,
+  workflows: WorkflowsConfiguration,
+  bdtail: TailUpdate,
+  filters: FilterChain,
+  filter_parse_failures: u64,
 }
 
-impl Configuration {
-  fn new(sow: StateOfTheWorld) -> Self {
-    Self {
-      buffer: sow.buffer_config_list.unwrap_or_default(),
-      workflows: sow.workflows_configuration.unwrap_or_default(),
-      debug_workflows: sow.debug_workflows.unwrap_or_default(),
-      bdtail: sow.bdtail_configuration.unwrap_or_default(),
-      filters: sow.filters_configuration.unwrap_or_default(),
-    }
-  }
+fn decode_cached_configuration(bytes: &[u8]) -> anyhow::Result<RawConfigurationUpdate> {
+  RawConfigurationUpdate::new(&read_compressed(bytes)?)
 }
 
 // Manages config validation and persistence.
 pub struct Config<A: ApplyConfig> {
-  file_cache: SafeFileCache<ConfigurationUpdate>,
+  file_cache: SafeFileCache<RawConfigurationUpdate>,
 
   // The currently applied version id, if a configuration has been applied.
   configuration_version_id: Mutex<Option<String>>,
@@ -114,10 +100,11 @@ impl<A: ApplyConfig> Config<A> {
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
   ) -> Self {
     Self {
-      file_cache: SafeFileCache::new_with_time_provider(
+      file_cache: SafeFileCache::new_with_decoder(
         "config",
         sdk_directory,
         time_provider.clone(),
+        decode_cached_configuration,
       ),
       configuration_version_id: Mutex::default(),
       apply_config,
@@ -130,18 +117,12 @@ impl<A: ApplyConfig> Config<A> {
   // containing the error details.
   async fn process_configuration_update_inner(
     &self,
-    update: ConfigurationUpdate,
+    update: RawConfigurationUpdate,
     from_cache: bool,
   ) -> anyhow::Result<()> {
-    let config = update
-      .update_type
-      .ok_or_else(|| anyhow!("An invalid match configuration was received: missing oneof"))?;
-
-    let Update_type::StateOfTheWorld(sotw) = config;
-
     self
       .apply_config
-      .apply_configuration(Configuration::new(sotw), from_cache)
+      .apply_configuration(Configuration::from_bytes(&update.bytes)?, from_cache)
       .await?;
 
     // Since we've validated that the configuration works and has been applied, we keep track
@@ -154,9 +135,9 @@ impl<A: ApplyConfig> Config<A> {
 
   pub async fn process_configuration_update(
     &self,
-    update: ConfigurationUpdate,
+    update: RawConfigurationUpdate,
   ) -> anyhow::Result<()> {
-    let compressed_protobuf = write_compressed_protobuf(&update)?;
+    let compressed_protobuf = write_compressed(&update.bytes)?;
     let version_nonce = update.version_nonce.clone();
 
     // Upon applying the configuration successfully, write the configuration proto to disk.
@@ -202,7 +183,7 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate f
     self.file_cache.reset().await;
   }
 
-  async fn try_apply_config(&self, configuration_update: ConfigurationUpdate) -> ApiRequest {
+  async fn try_apply_config(&self, configuration_update: RawConfigurationUpdate) -> ApiRequest {
     let version_nonce = configuration_update.version_nonce.clone();
 
     let nack = if let Err(e) = self
@@ -295,31 +276,6 @@ impl LoggerUpdate {
   }
 }
 
-fn device_commands_from_bdtail(
-  bdtail: &BdTailConfigurations,
-) -> anyhow::Result<Vec<DeviceCommandRequest>> {
-  bdtail
-    .active_streams
-    .iter()
-    .filter_map(|stream| {
-      stream
-        .device_command
-        .as_ref()
-        .map(|command| (stream, command))
-    })
-    .map(|(stream, command)| {
-      if command.command_id.as_str() != stream.stream_id.as_str() {
-        anyhow::bail!(
-          "device command id {:?} does not match BDTail stream id {:?}",
-          command.command_id,
-          stream.stream_id,
-        );
-      }
-      Ok(command.clone())
-    })
-    .collect()
-}
-
 #[async_trait::async_trait]
 impl ApplyConfig for LoggerUpdate {
   async fn apply_configuration(
@@ -329,16 +285,13 @@ impl ApplyConfig for LoggerUpdate {
   ) -> anyhow::Result<()> {
     let Configuration {
       buffer,
+      buffer_selector,
       workflows,
-      debug_workflows,
-      bdtail,
+      mut bdtail,
       filters,
+      filter_parse_failures,
     } = configuration;
-    let device_commands = device_commands_from_bdtail(&bdtail)?;
-    let has_active_tail_streams = bdtail
-      .active_streams
-      .iter()
-      .any(|stream| stream.device_command.is_none());
+    let has_active_tail_streams = bdtail.has_live_streams;
 
     // During startup, this first trigger-buffer config update is the ordering barrier for
     // trigger-upload recovery. The buffer manager does not return until the full trigger-buffer
@@ -348,7 +301,7 @@ impl ApplyConfig for LoggerUpdate {
     // trigger buffers before new thread-local producers are exposed to normal log writing.
     let maybe_stream_buffer = self
       .buffer_manager
-      .update_from_config(&buffer, has_active_tail_streams)
+      .update_buffers(&buffer, has_active_tail_streams)
       .await?;
     self
       .workflow_attachment_cleanup_ready
@@ -356,18 +309,19 @@ impl ApplyConfig for LoggerUpdate {
 
     debug_assert_eq!(maybe_stream_buffer.is_some(), has_active_tail_streams);
 
-    let workflows_configuration =
-      WorkflowsConfiguration::new(workflows.workflows, debug_workflows.workflows);
-    let (filter_chain, filter_config_parse_failure_count) = FilterChain::new(filters);
+    let workflows_configuration = workflows;
+    let filter_chain = filters;
     self
       .filter_config_parse_failure
-      .inc_by(filter_config_parse_failure_count);
+      .inc_by(filter_parse_failures);
+
+    let device_commands = std::mem::take(&mut bdtail.device_commands);
 
     if let Err(e) = self
       .config_update_tx
       .send(ConfigUpdate {
         buffer_producers: BufferProducers::new(&self.buffer_manager)?,
-        buffer_selector: crate::buffer_selector::BufferSelector::new(&buffer)?,
+        buffer_selector,
         // TODO(Augustyniak): Propagate the information about invalid workflows to server.
         workflows_configuration,
         tail_configs: TailConfigurations::new(
@@ -421,41 +375,19 @@ pub struct TailConfigurations {
 
 impl TailConfigurations {
   fn new(
-    config: BdTailConfigurations,
+    config: TailUpdate,
     producer: impl FnOnce() -> anyhow::Result<bd_buffer::Producer>,
     on_parse_failure: impl Fn(),
   ) -> anyhow::Result<Self> {
+    for _ in 0 .. config.parse_failures {
+      on_parse_failure();
+    }
     if config.active_streams.is_empty() {
       log::debug!("zero active bdtail streams");
       return Ok(Self::default());
     }
 
-    let mut active_streams = Vec::new();
-    for stream in config.active_streams {
-      // Command-bearing entries are one-shot dispatch envelopes. Their buffer records are tagged
-      // during command upload, so adding them here would duplicate the command output as live tail
-      // traffic.
-      if stream.device_command.is_some() {
-        continue;
-      }
-
-      let matcher = if let Some(matcher_config) = stream.matcher.into_option() {
-        match bd_log_matcher::matcher::Tree::new(&matcher_config) {
-          Ok(matcher) => Some(matcher),
-          Err(e) => {
-            // If the are unable to parse the config, ignore the stream config but do not fail
-            // the overall config update.
-            log::debug!("failed to parse stream match config: {e}");
-            on_parse_failure();
-            continue;
-          },
-        }
-      } else {
-        None
-      };
-
-      active_streams.push((stream.stream_id.clone(), matcher));
-    }
+    let active_streams = config.active_streams;
 
     if active_streams.is_empty() {
       log::debug!("zero active live bdtail streams");

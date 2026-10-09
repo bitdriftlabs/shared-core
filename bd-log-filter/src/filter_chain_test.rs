@@ -5,11 +5,15 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![allow(clippy::unwrap_used)]
+
 use crate::FilterChain;
 use bd_log_matcher::builder::{message_equals, message_regex_matches};
 use bd_log_primitives::{DataValue, Log, LogFields, log_level};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto_util::serialization::inline::ProtoDeserialize;
+use bd_proto_util::serialization::inline::views::filter::FiltersConfiguration as ConfigurationView;
 use bd_test_helpers::filter::macros::{
   regex_match_and_substitute_field,
   regex_match_and_substitute_global,
@@ -17,6 +21,7 @@ use bd_test_helpers::filter::macros::{
 };
 use bd_test_helpers::{capture_field, field_value, remove_field, set_field};
 use pretty_assertions::assert_eq;
+use protobuf::Message;
 use time::macros::datetime;
 
 #[test]
@@ -59,7 +64,7 @@ fn filter_transforms_are_applied_in_order() {
 
 #[test]
 fn filters_are_applied_in_order() {
-  let (filter_chain, _) = FilterChain::new(FiltersConfiguration {
+  let (filter_chain, _) = decode_filter_chain(FiltersConfiguration {
     filters: vec![
       Filter {
         matcher: Some(message_equals("matching")).into(),
@@ -582,7 +587,7 @@ fn make_filter_chain(
   matcher: bd_proto::protos::log_matcher::log_matcher::LogMatcher,
   transforms: std::vec::Vec<bd_proto::protos::filter::filter::filter::Transform>,
 ) -> FilterChain {
-  FilterChain::new(FiltersConfiguration {
+  decode_filter_chain(FiltersConfiguration {
     filters: vec![Filter {
       matcher: Some(matcher).into(),
       transforms,
@@ -591,6 +596,34 @@ fn make_filter_chain(
     ..Default::default()
   })
   .0
+}
+
+fn decode_filter_chain(config: FiltersConfiguration) -> (FilterChain, u64) {
+  let bytes = config.write_to_bytes().unwrap();
+  let view = ConfigurationView::from_proto_bytes(&bytes).unwrap();
+  let expected_failures = FilterChain::new(config).1;
+  let decoded = FilterChain::from_view(&view).unwrap();
+  assert_eq!(decoded.1, expected_failures);
+  decoded
+}
+
+#[test]
+fn invalid_filter_does_not_discard_valid_filters() {
+  let (filters, failures) = decode_filter_chain(FiltersConfiguration {
+    filters: vec![
+      Filter::default(),
+      Filter {
+        matcher: Some(message_equals("matching")).into(),
+        transforms: vec![set_field!(captured("foo") = field_value!("bar"))],
+        ..Default::default()
+      },
+    ],
+    ..Default::default()
+  });
+  assert_eq!(failures, 1);
+  let mut log = make_log("matching", [].into(), [].into());
+  filters.process(&mut log, &state_reader());
+  assert_eq!(log.fields, LogFields::from([("foo".into(), "bar".into())]));
 }
 
 fn make_log(message: &str, fields: LogFields, matching_fields: LogFields) -> Log {

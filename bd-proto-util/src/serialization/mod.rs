@@ -25,6 +25,7 @@ use protobuf::{CodedInputStream, CodedOutputStream};
 // Submodules
 #[macro_use]
 pub mod macros;
+pub mod inline;
 pub mod map;
 pub mod runtime;
 pub mod types;

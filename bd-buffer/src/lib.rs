@@ -32,6 +32,7 @@ pub use ffi::AbslCode;
 pub use ring_buffer::{
   BufferEvent,
   BufferEventWithResponse,
+  BufferSettings,
   BuffersWithAck,
   Consumer,
   CursorConsumer,

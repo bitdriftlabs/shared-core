@@ -17,6 +17,7 @@ ahash.workspace             = true
 anyhow.workspace            = true
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
+bd-proto-util.path          = "../bd-proto-util"
 bd-state.path               = "../bd-state"
 bd-workspace-hack.workspace = true
 itertools.workspace         = true

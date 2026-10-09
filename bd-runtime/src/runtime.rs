@@ -11,7 +11,7 @@ mod runtime_test;
 
 use anyhow::anyhow;
 use bd_client_common::HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE;
-use bd_client_common::file::write_compressed_protobuf;
+use bd_client_common::file::{read_compressed, write_compressed_protobuf};
 use bd_client_common::payload_conversion::{IntoRequest, RuntimeConfigurationUpdateAck};
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -23,6 +23,7 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::client::runtime::Runtime;
 use bd_proto::protos::client::runtime::runtime::Value;
+use bd_proto_util::serialization::inline::ProtoDeserialize;
 use bd_time::{SystemTimeProvider, TimeProvider};
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -182,7 +183,12 @@ impl ConfigLoader {
   ) -> Arc<Self> {
     Arc::new(Self {
       state: Mutex::new(LoaderState::new(Runtime::default(), None)),
-      file_cache: SafeFileCache::new_with_time_provider("runtime", sdk_directory, time_provider),
+      file_cache: SafeFileCache::new_with_decoder(
+        "runtime",
+        sdk_directory,
+        time_provider,
+        decode_cached_runtime,
+      ),
     })
   }
 
@@ -345,6 +351,9 @@ impl ConfigLoader {
 }
 
 // TODO(snowp): Consider moving feature flags to their own crate and/or file.
+fn decode_cached_runtime(bytes: &[u8]) -> anyhow::Result<RuntimeUpdate> {
+  RuntimeUpdate::from_proto_bytes(&read_compressed(bytes)?)
+}
 
 // Feature flags
 //

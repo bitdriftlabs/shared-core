@@ -55,6 +55,7 @@ pub struct SafeFileCache<T> {
   locked_state: Mutex<LockedState>,
   name: &'static str,
   time_provider: Arc<dyn TimeProvider>,
+  decoder: fn(&[u8]) -> anyhow::Result<T>,
   phantom: PhantomData<T>,
 }
 #[derive(Default)]
@@ -75,6 +76,23 @@ impl<T: Message> SafeFileCache<T> {
     sdk_directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
   ) -> Self {
+    Self::new_with_decoder(
+      name,
+      sdk_directory,
+      time_provider,
+      read_compressed_protobuf::<T>,
+    )
+  }
+}
+
+impl<T> SafeFileCache<T> {
+  #[must_use]
+  pub fn new_with_decoder(
+    name: &'static str,
+    sdk_directory: &Path,
+    time_provider: Arc<dyn TimeProvider>,
+    decoder: fn(&[u8]) -> anyhow::Result<T>,
+  ) -> Self {
     // Create the directory if it doesn't exist.
     let directory = sdk_directory.join(name);
     log::debug!(
@@ -88,6 +106,7 @@ impl<T: Message> SafeFileCache<T> {
       directory,
       locked_state: Mutex::default(),
       time_provider,
+      decoder,
       phantom: PhantomData,
     }
   }
@@ -263,7 +282,7 @@ impl<T: Message> SafeFileCache<T> {
       .await?;
 
     let bytes = tokio::fs::read(&self.protobuf_file()).await?;
-    let protobuf: T = read_compressed_protobuf(&bytes)?;
+    let protobuf = (self.decoder)(&bytes)?;
 
     Ok((false, Some(protobuf)))
   }

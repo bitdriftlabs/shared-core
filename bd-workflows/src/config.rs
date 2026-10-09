@@ -9,11 +9,15 @@
 #[path = "./config_test.rs"]
 mod tests;
 
+#[path = "./config/decode.rs"]
+mod decode;
+
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
 use bd_api::TriggerUploadStreaming;
 use bd_log_matcher::matcher::{JsonPathToken, Tree, extract_json_path, parse_json_path};
 use bd_log_primitives::{FieldsRef, LogMessage};
+use bd_macros::proto_deserialize;
 use bd_proto::protos::workflow::save_field::SaveField;
 use bd_proto::protos::workflow::save_field::save_field::Save_field_type;
 use bd_proto::protos::workflow::workflow;
@@ -170,6 +174,9 @@ pub struct Config {
 
 impl Config {
   pub fn new(config: WorkflowConfigProto, mode: WorkflowDebugMode) -> anyhow::Result<Self> {
+    #[cfg(test)]
+    let inline = tests::decode_inline(&config, mode);
+
     if config.states.is_empty() {
       bail!("invalid workflow states configuration: states list is empty");
     }
@@ -206,7 +213,7 @@ impl Config {
       bail!("invalid workflow configuration: initial state must have at least one transition");
     }
 
-    Ok(Self {
+    let parsed = Self {
       inner: InnerConfig {
         id: config.id.clone(),
         states,
@@ -217,7 +224,10 @@ impl Config {
         )?,
       },
       mode,
-    })
+    };
+    #[cfg(test)]
+    tests::assert_inline_parity(&parsed, inline);
+    Ok(parsed)
   }
 
   pub(crate) fn inner(&self) -> &InnerConfig {
@@ -1040,16 +1050,42 @@ impl ActionEmitMetric {
 // MetricMultiTag
 //
 
+#[proto_deserialize]
 #[derive(Clone, Debug)]
 pub struct MetricMultiTag {
+  #[field(id = 1, decode_as = "i32", deserialize_with = "Self::decode_scope")]
   pub scope: Scope,
+  #[field(id = 2)]
   pub key_tag_name: String,
+  #[field(id = 3)]
   pub value_tag_name: String,
+  #[field(
+    id = 4,
+    decode_as = "Option<&str>",
+    deserialize_with = "Self::decode_key_regex"
+  )]
   key_regex: Option<Regex>,
+  #[field(
+    id = 5,
+    decode_as = "Option<&str>",
+    deserialize_with = "Self::decode_value_regex"
+  )]
   value_regex: Option<Regex>,
 }
 
 impl MetricMultiTag {
+  fn decode_scope(value: i32) -> anyhow::Result<Scope> {
+    parse_state_scope(protobuf::EnumOrUnknown::from_i32(value).enum_value_or_default())
+  }
+
+  fn decode_key_regex(pattern: Option<&str>) -> anyhow::Result<Option<Regex>> {
+    compile_optional_regex(pattern, "key")
+  }
+
+  fn decode_value_regex(pattern: Option<&str>) -> anyhow::Result<Option<Regex>> {
+    compile_optional_regex(pattern, "value")
+  }
+
   pub(crate) fn new(proto: MultiTagProto) -> anyhow::Result<Self> {
     Ok(Self {
       scope: parse_state_scope(proto.scope.enum_value_or_default())?,

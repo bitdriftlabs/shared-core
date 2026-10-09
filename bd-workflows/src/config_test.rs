@@ -7,12 +7,20 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
-use super::{ActionEmitMetric, JsonFieldExtraction, TagValue, ValueIncrement};
+use super::{
+  ActionEmitMetric,
+  Config,
+  JsonFieldExtraction,
+  TagValue,
+  ValueIncrement,
+  WorkflowDebugMode,
+};
 use bd_log_matcher::matcher::JsonPathToken;
 use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   KeyOrIndex,
   key_or_index,
 };
+use bd_proto::protos::workflow::workflow::Workflow;
 use bd_proto::protos::workflow::workflow::workflow::FieldExtracted;
 use bd_proto::protos::workflow::workflow::workflow::action::action_emit_metric::{
   Counter,
@@ -26,6 +34,15 @@ use bd_proto::protos::workflow::workflow::workflow::action::{
 };
 use bd_proto::protos::workflow::workflow::workflow::field_extracted::{Extraction_type, JsonPath};
 use key_or_index::Key_or_index;
+use protobuf::Message;
+
+pub(super) fn decode_inline(config: &Workflow, mode: WorkflowDebugMode) -> anyhow::Result<Config> {
+  Config::from_proto_bytes(&config.write_to_bytes().unwrap(), mode)
+}
+
+pub(super) fn assert_inline_parity(expected: &Config, actual: anyhow::Result<Config>) {
+  assert_eq!(expected, &actual.unwrap());
+}
 
 #[test]
 fn compiles_json_field_extraction_for_tags_and_values() {

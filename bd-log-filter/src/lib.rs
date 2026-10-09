@@ -18,6 +18,8 @@
 #[path = "./filter_chain_test.rs"]
 mod filter_chain_test;
 
+mod decode;
+
 use anyhow::{Context, Result, anyhow};
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::TinyMap;
@@ -56,6 +58,11 @@ pub struct FilterChain {
 }
 
 impl FilterChain {
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    self.filters.is_empty()
+  }
+
   // Returns the creates `FilterChain` instance and the number of filters that could not be created
   // due to config parsing failures.
   pub fn new(configs: FiltersConfiguration) -> (Self, u64) {

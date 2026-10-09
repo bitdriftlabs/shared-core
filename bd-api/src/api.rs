@@ -42,7 +42,6 @@ use bd_grpc_codec::{
 use bd_log_primitives::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_metadata::Metadata;
 use bd_network_quality::{NetworkQuality, NetworkQualityMonitor};
-use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::client_state_update::Update_type as ClientStateUpdateType;
 pub use bd_proto::protos::client::api::log_upload_intent_response::{
   Decision as LogsUploadDecision,
@@ -61,7 +60,6 @@ pub use bd_proto::protos::client::api::upload_artifact_intent_response::{
 };
 use bd_proto::protos::client::api::{
   ApiRequest,
-  ApiResponse,
   ArtifactPayloadEncoding,
   ClientKillFile,
   ClientStateUpdate,
@@ -78,6 +76,7 @@ use bd_proto::protos::state::scope::StateScope;
 use bd_runtime::runtime::DurationWatch;
 use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
+use response::{ApiResponse, Response as Response_type};
 use std::cmp::max;
 use std::collections::HashMap;
 use std::future::pending;
@@ -89,6 +88,9 @@ use time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 use tokio::time::{Instant, Sleep, sleep};
+
+#[path = "./response.rs"]
+mod response;
 
 const WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID: &str = "workflow_attachment";
 
@@ -1224,7 +1226,7 @@ impl Api {
         Some(Response_type::Handshake(_)) => {
           anyhow::bail!("unexpected api response: spurious handshake")
         },
-        Some(Response_type::Pong(_)) => stream_state.maybe_schedule_ping(),
+        Some(Response_type::Pong) => stream_state.maybe_schedule_ping(),
         Some(Response_type::ErrorShutdown(error)) => {
           log::debug!(
             "close with status {:?}, message {:?}",
@@ -1351,7 +1353,7 @@ impl Api {
             stream_state.send_request(request).await?;
           }
         },
-        Some(Response_type::StateUpdate(_)) => {
+        Some(Response_type::StateUpdate) => {
           if let Some(in_flight_state_update) = in_flight_state_update.take()
             && let Some(session_update) = in_flight_state_update.session_update
           {

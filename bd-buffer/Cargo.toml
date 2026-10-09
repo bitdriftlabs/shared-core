@@ -29,6 +29,7 @@ intrusive-collections.workspace = true
 log.workspace                   = true
 memmap2.workspace               = true
 parking_lot.workspace           = true
+protobuf.workspace              = true
 static_assertions.workspace     = true
 thiserror.workspace             = true
 time.workspace                  = true

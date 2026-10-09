@@ -9,6 +9,8 @@
 #[path = "./ring_buffer_test.rs"]
 mod ring_buffer_test;
 
+#[path = "./ring_buffer/config.rs"]
+mod config;
 use crate::buffer::{
   self,
   AggregateRingBuffer,
@@ -31,6 +33,7 @@ use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_stats_common::labels;
 use bd_time::OffsetDateTimeExt as _;
 use bd_versioned_kv::{RetentionHandle, RetentionRegistry};
+pub use config::BufferSettings;
 use futures::future::join_all;
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -246,6 +249,19 @@ impl Manager {
     config: &BufferConfigList,
     streaming: bool,
   ) -> anyhow::Result<Option<Arc<VolatileRingBuffer>>> {
+    let settings = config
+      .buffer_config
+      .iter()
+      .map(BufferSettings::from)
+      .collect::<Vec<_>>();
+    self.update_buffers(&settings, streaming).await
+  }
+
+  pub async fn update_buffers(
+    &self,
+    config: &[BufferSettings],
+    streaming: bool,
+  ) -> anyhow::Result<Option<Arc<VolatileRingBuffer>>> {
     // Clone the set of ring buffers for us to reconcile changes. We clone here to avoid mutating
     // self during the reconciliation process as an error might leave this in a bad state.
     // We are not locking this structure for the whole duration of the method since no one else is
@@ -255,7 +271,7 @@ impl Manager {
     let mut updated_buffers = HashMap::new();
     let mut new_buffers = Vec::new();
 
-    for buffer in &config.buffer_config {
+    for buffer in config {
       let buffer_type = bd_client_common::error::required_proto_enum(buffer.type_, "buffer type")?;
       if let Some((buffer_type, existing_buffer)) = current_buffers.remove(&buffer.id) {
         updated_buffers.insert(buffer.id.clone(), (buffer_type, existing_buffer.clone()));
@@ -272,14 +288,8 @@ impl Manager {
         // add some kind of cleanup logic (maybe on startup) which cleans up unreferenced buffers.
 
         // TODO(snowp): Make these fields required.
-        let volatile_buffer_size = buffer
-          .buffer_sizes
-          .as_ref()
-          .map_or(10_000, |sizes| sizes.volatile_buffer_size_bytes);
-        let non_volatile_buffer_size = buffer
-          .buffer_sizes
-          .as_ref()
-          .map_or(100_000, |sizes| sizes.non_volatile_buffer_size_bytes);
+        let volatile_buffer_size = buffer.volatile_buffer_size_bytes;
+        let non_volatile_buffer_size = buffer.non_volatile_buffer_size_bytes;
         log::debug!(
           "creating buffer with volatile_size={volatile_buffer_size}, \
            non_volatile_size={non_volatile_buffer_size}"

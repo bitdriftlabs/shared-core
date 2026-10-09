@@ -9,7 +9,11 @@
 use crate::serialization::runtime::Tag;
 use crate::{self as bd_proto_util};
 use anyhow::Result;
-use bd_macros::proto_serializable;
+use bd_macros::{proto_deserialize, proto_serializable};
+use bd_proto::protos::client::runtime::Runtime;
+use bd_proto::protos::logging::payload::Data as LoggingData;
+use bd_proto::protos::state::state_payload::StateValue;
+use bd_proto_util::serialization::inline::ProtoDeserialize;
 use bd_proto_util::serialization::{
   ProtoFieldDeserialize,
   ProtoFieldSerialize,
@@ -17,6 +21,171 @@ use bd_proto_util::serialization::{
   ProtoMessageSerialize,
 };
 use protobuf::{CodedInputStream, CodedOutputStream, Message};
+use std::fmt::Debug;
+
+fn retained_parity<T>(bytes: &[u8]) -> Result<()>
+where
+  T: for<'a> ProtoDeserialize<'a> + Message + PartialEq + Debug,
+{
+  assert_eq!(T::from_proto_bytes(bytes)?, T::parse_from_bytes(bytes)?);
+  Ok(())
+}
+
+#[test]
+fn response_retained_recursive_values_and_maps_match_generated_decoder() -> Result<()> {
+  for bytes in [
+    vec![10, 1, b'x'],
+    vec![18, 5, 10, 0, 18, 1, 255],
+    vec![24, 255, 1],
+    vec![48, 1],
+    vec![58, 10, 10, 8, 10, 1, b'k', 18, 3, 10, 1, b'v'],
+    vec![66, 9, 10, 3, 10, 1, b'v', 10, 2, 24, 9],
+  ] {
+    retained_parity::<LoggingData>(&bytes)?;
+    let mut state = Vec::new();
+    {
+      let mut output = CodedOutputStream::vec(&mut state);
+      output.write_bytes(5, &bytes)?;
+      output.flush()?;
+    }
+    retained_parity::<StateValue>(&state)?;
+  }
+  let mut numeric = Vec::new();
+  {
+    let mut output = CodedOutputStream::vec(&mut numeric);
+    output.write_double(4, 1.25)?;
+    output.flush()?;
+  }
+  retained_parity::<LoggingData>(&numeric)?;
+  numeric.clear();
+  {
+    let mut output = CodedOutputStream::vec(&mut numeric);
+    output.write_int64(5, -8)?;
+    output.flush()?;
+  }
+  retained_parity::<LoggingData>(&numeric)?;
+  retained_parity::<Runtime>(&[
+    10, 7, 10, 1, b'k', 18, 2, 8, 1, 10, 7, 10, 1, b'k', 18, 2, 16, 42, 10, 8, 10, 1, b's', 18, 3,
+    26, 1, b'v',
+  ])?;
+  Ok(())
+}
+
+#[test]
+fn decoding_only_converts_final_wire_value() -> Result<()> {
+  use bd_proto_util::serialization::inline::ProtoDeserialize;
+
+  struct RuntimeNumber(u32);
+
+  #[proto_deserialize]
+  struct Converted {
+    #[field(
+      id = 1,
+      required,
+      decode_as = "&str",
+      deserialize_with = "parse_number"
+    )]
+    number: RuntimeNumber,
+    #[field(id = 2)]
+    label: Option<String>,
+  }
+
+  fn parse_number(value: &str) -> Result<RuntimeNumber> {
+    Ok(RuntimeNumber(value.parse::<u32>()?))
+  }
+
+  let decoded = Converted::from_proto_bytes(&[10, 1, b'x', 10, 2, b'4', b'2'])?;
+  assert_eq!(decoded.number.0, 42);
+  assert_eq!(decoded.label, None);
+  assert!(Converted::from_proto_bytes(&[]).is_err());
+  assert!(Converted::from_proto_bytes(&[10, 1, b'x']).is_err());
+  Ok(())
+}
+
+#[test]
+fn decoding_only_preserves_defaults_presence_and_collections() -> Result<()> {
+  use bd_proto_util::serialization::inline::ProtoDeserialize;
+
+  #[proto_deserialize]
+  struct Defaults {
+    #[field(id = 1, default = "7")]
+    number: u32,
+    #[field(id = 2)]
+    label: Option<String>,
+    #[field(id = 3, repeated)]
+    labels: Vec<String>,
+    #[field(id = 4)]
+    payload: Vec<u8>,
+    #[field(id = 5)]
+    enabled: bool,
+    #[field(id = 6)]
+    weight: f64,
+    #[field(skip, default = "String::from(\"runtime\")")]
+    runtime: String,
+  }
+
+  let absent = Defaults::from_proto_bytes(&[])?;
+  assert_eq!(absent.number, 7);
+  assert!(absent.label.is_none());
+  assert_eq!(absent.labels, Vec::<String>::new());
+  assert_eq!(absent.payload, Vec::<u8>::new());
+  assert!(!absent.enabled);
+  assert_eq!(absent.weight, 0.0);
+  assert_eq!(absent.runtime, "runtime");
+
+  let mut bytes = Vec::new();
+  {
+    let mut output = CodedOutputStream::vec(&mut bytes);
+    output.write_uint32(1, 0)?;
+    output.write_string(2, "")?;
+    output.write_string(3, "first")?;
+    output.write_string(3, "second")?;
+    output.write_bytes(4, b"old")?;
+    output.write_bytes(4, b"new")?;
+    output.write_bool(5, true)?;
+    output.write_double(6, 1.25)?;
+    output.write_uint32(99, 123)?;
+    output.flush()?;
+  }
+  let present = Defaults::from_proto_bytes(&bytes)?;
+  assert_eq!(present.number, 0);
+  assert_eq!(present.label.as_deref(), Some(""));
+  assert_eq!(present.labels, ["first", "second"]);
+  assert_eq!(present.payload, b"new");
+  assert!(present.enabled);
+  assert_eq!(present.weight, 1.25);
+  assert!(Defaults::from_proto_bytes(&[32, 1, 34, 0]).is_err());
+  assert!(Defaults::from_proto_bytes(&[8, 0x80]).is_err());
+  Ok(())
+}
+
+#[test]
+fn decoding_only_passes_merged_nested_views_to_conversion() -> Result<()> {
+  use bd_proto_util::serialization::inline::{Message, ProtoDeserialize};
+
+  #[proto_deserialize]
+  struct Parent {
+    #[field(
+      id = 1,
+      decode_as = "Option<Message<'_>>",
+      deserialize_with = "decode_child"
+    )]
+    child: Option<(String, String)>,
+  }
+
+  fn decode_child(child: Option<Message<'_>>) -> Result<Option<(String, String)>> {
+    child
+      .map(|child| Ok((child.string(1)?.to_owned(), child.string(2)?.to_owned())))
+      .transpose()
+  }
+
+  assert_eq!(Parent::from_proto_bytes(&[])?.child, None);
+  assert_eq!(
+    Parent::from_proto_bytes(&[10, 3, 10, 1, b'a', 10, 3, 18, 1, b'b'])?.child,
+    Some(("a".to_owned(), "b".to_owned())),
+  );
+  Ok(())
+}
 
 #[test]
 fn test_simple_struct() -> Result<()> {
@@ -55,6 +224,65 @@ fn test_simple_struct() -> Result<()> {
   let foo2 = Foo::deserialize(&mut is)?;
 
   assert_eq!(foo, foo2);
+  Ok(())
+}
+
+#[test]
+fn decoding_only_dispatches_oneofs_and_nested_messages() -> Result<()> {
+  use bd_proto_util::serialization::inline::ProtoDeserialize;
+
+  #[proto_deserialize]
+  #[derive(Default)]
+  struct Payload {
+    #[field(id = 1)]
+    name: String,
+  }
+
+  #[proto_deserialize]
+  enum Response {
+    #[field(id = 1)]
+    Payload(Payload),
+    #[field(id = 2)]
+    Empty,
+  }
+
+  #[proto_deserialize]
+  struct Envelope {
+    #[field(oneof)]
+    response: Option<Response>,
+  }
+
+  assert!(Envelope::from_proto_bytes(&[])?.response.is_none());
+  let Some(Response::Payload(payload)) =
+    Envelope::from_proto_bytes(&[24, 1, 10, 3, 10, 1, b'a'])?.response
+  else {
+    panic!("payload expected");
+  };
+  assert_eq!(payload.name, "a");
+  assert!(matches!(
+    Envelope::from_proto_bytes(&[18, 0])?.response,
+    Some(Response::Empty)
+  ));
+  Ok(())
+}
+
+#[test]
+fn decoding_only_constructs_retained_types_and_borrowed_views() -> Result<()> {
+  use bd_proto_util::serialization::inline::{Message, ProtoDeserialize};
+  use protobuf::well_known_types::duration::Duration;
+
+  #[proto_deserialize(view)]
+  struct Borrowed<'a> {
+    #[field(id = 1)]
+    label: &'a str,
+    #[field(id = 2)]
+    child: Option<Message<'a>>,
+  }
+
+  assert_eq!(Duration::from_proto_bytes(&[8, 7, 16, 1])?.seconds, 7);
+  let view = Borrowed::from_proto_bytes(&[10, 1, b'a', 18, 2, 8, 1])?;
+  assert_eq!(view.label()?, "a");
+  assert_eq!(view.child()?.unwrap().uint(1)?, 1);
   Ok(())
 }
 

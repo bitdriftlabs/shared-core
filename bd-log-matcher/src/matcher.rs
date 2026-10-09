@@ -24,6 +24,12 @@ mod json_path_test;
 #[path = "./json_path.rs"]
 mod json_path;
 
+#[path = "./matcher/inline.rs"]
+mod inline;
+
+#[path = "./matcher/legacy_decode.rs"]
+mod legacy_decode;
+
 use crate::value_matcher::{DoubleMatch, IntMatch, StringMatch, ValueOrSavedFieldId};
 use crate::version;
 use anyhow::{Result, anyhow};
@@ -38,7 +44,6 @@ use base_log_matcher::tag_match::Value_match::{
 };
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{DataValue, FieldsRef, LogLevel, LogMessage};
-use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::StringMatchType;
 use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher as LegacyBaseLogMatcher,
   base_log_matcher as legacy_base_log_matcher,
@@ -56,10 +61,11 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   key_or_index,
 };
 use bd_state::{Scope, state_value_as_cow};
+pub use inline::{parse_json_path_inline, parse_json_path_view};
+use legacy_decode::map_string_value;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use rand::RngExt;
-use regex_lite::escape;
 use std::borrow::Cow;
 
 #[derive(Clone, Copy, Debug)]
@@ -557,22 +563,6 @@ pub fn resolve_json_path_for_testing<'a>(
 
 impl Leaf {
   fn new_legacy(log_matcher: &LegacyBaseLogMatcher) -> Result<Self> {
-    fn map_string_value(value: &str, match_type: StringMatchType) -> Result<StringMatch> {
-      let (value, operator) = match match_type {
-        legacy_log_matcher::base_log_matcher::StringMatchType::EXACT => {
-          (value.to_string(), Operator::OPERATOR_EQUALS)
-        },
-        legacy_log_matcher::base_log_matcher::StringMatchType::PREFIX => {
-          (format!("^{}.*", escape(value)), Operator::OPERATOR_REGEX)
-        },
-        legacy_log_matcher::base_log_matcher::StringMatchType::REGEX => {
-          (value.to_string(), Operator::OPERATOR_REGEX)
-        },
-      };
-
-      StringMatch::new(operator.into(), value.into())
-    }
-
     match log_matcher
       .match_type
       .as_ref()

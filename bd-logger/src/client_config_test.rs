@@ -9,11 +9,16 @@ use super::{Config, Configuration};
 use anyhow::anyhow;
 use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
 use bd_client_common::sdk_status::SdkStatusTracker;
-use bd_client_common::{ClientConfigurationUpdate, HANDSHAKE_FLAG_CONFIG_UP_TO_DATE};
+use bd_client_common::{
+  ClientConfigurationUpdate,
+  HANDSHAKE_FLAG_CONFIG_UP_TO_DATE,
+  RawConfigurationUpdate,
+};
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use pretty_assertions::assert_eq;
+use protobuf::Message;
 use tempfile::TempDir;
 use tokio::sync::mpsc::channel;
 
@@ -36,15 +41,16 @@ impl super::ApplyConfig for TestUpdate {
   }
 }
 
-fn configuration_update() -> ConfigurationUpdate {
-  ConfigurationUpdate {
+fn configuration_update() -> RawConfigurationUpdate {
+  let update = ConfigurationUpdate {
     version_nonce: "hello".to_string(),
     update_type: Some(Update_type::StateOfTheWorld(StateOfTheWorld {
       buffer_config_list: Some(BufferConfigList::default()).into(),
       ..Default::default()
     })),
     ..Default::default()
-  }
+  };
+  RawConfigurationUpdate::new(&update.write_to_bytes().unwrap()).unwrap()
 }
 
 #[tokio::test]
@@ -59,10 +65,15 @@ async fn process_and_load() {
     .await
     .unwrap();
 
-  assert_eq!(
-    Configuration::default(),
-    configuration_rx.recv().await.unwrap()
-  );
+  let configuration = configuration_rx.recv().await.unwrap();
+  assert_eq!(configuration.buffer.len(), 0);
+  assert!(configuration.workflows.is_empty());
+  assert_eq!(configuration.bdtail.active_streams.len(), 0);
+  assert_eq!(configuration.bdtail.device_commands.len(), 0);
+  assert!(!configuration.bdtail.has_live_streams);
+  assert_eq!(configuration.bdtail.parse_failures, 0);
+  assert!(configuration.filters.is_empty());
+  assert_eq!(configuration.filter_parse_failures, 0);
 
   let (configuration_tx, mut configuration_rx) = channel(2);
   let update = TestUpdate { configuration_tx };
