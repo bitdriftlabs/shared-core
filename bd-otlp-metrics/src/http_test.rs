@@ -5,9 +5,11 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{HttpRemoteWriteError, should_retry};
+use super::{HttpRemoteWriteError, decode_otlp_response, should_retry};
 use crate::http::HttpRetryPolicy;
+use crate::protos::metrics_service::{ExportMetricsPartialSuccess, ExportMetricsServiceResponse};
 use http::{HeaderMap, StatusCode};
+use protobuf::Message;
 use std::iter::once;
 use std::time::Duration;
 use time::OffsetDateTime;
@@ -98,5 +100,66 @@ fn retry_after_seconds_and_dates_are_opt_in() {
       "{value}"
     );
     assert_eq!(HttpRetryPolicy::RemoteWrite.retry_after(&error, now), None);
+  }
+}
+
+#[test]
+fn otlp_success_responses_include_empty_protobuf() {
+  for response in [
+    ExportMetricsServiceResponse::default(),
+    ExportMetricsServiceResponse {
+      partial_success: Some(ExportMetricsPartialSuccess::default()).into(),
+      ..Default::default()
+    },
+  ] {
+    decode_otlp_response(&response.write_to_bytes().unwrap()).unwrap();
+  }
+  decode_otlp_response(&[]).unwrap();
+}
+
+#[test]
+fn otlp_partial_success_is_terminal_and_redacted() {
+  for (rejected, message) in [
+    (2, ""),
+    (2, "Bearer receiver-secret"),
+    (0, "receiver-secret"),
+  ] {
+    let response = ExportMetricsServiceResponse {
+      partial_success: Some(ExportMetricsPartialSuccess {
+        rejected_data_points: rejected,
+        error_message: message.into(),
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    };
+    let error = decode_otlp_response(&response.write_to_bytes().unwrap()).unwrap_err();
+    assert!(matches!(
+      &error,
+      HttpRemoteWriteError::PartialSuccess { rejected_data_points, .. }
+        if *rejected_data_points == u64::try_from(rejected).unwrap()
+    ));
+    assert!(!HttpRetryPolicy::Otlp.should_retry(&error));
+    assert!(!format!("{error:?}: {error}").contains("receiver-secret"));
+  }
+}
+
+#[test]
+fn otlp_malformed_responses_and_negative_rejections_are_terminal() {
+  let negative = ExportMetricsServiceResponse {
+    partial_success: Some(ExportMetricsPartialSuccess {
+      rejected_data_points: -1,
+      ..Default::default()
+    })
+    .into(),
+    ..Default::default()
+  }
+  .write_to_bytes()
+  .unwrap();
+  for body in [b"receiver-secret".as_slice(), negative.as_slice()] {
+    let error = decode_otlp_response(body).unwrap_err();
+    assert!(matches!(error, HttpRemoteWriteError::Permanent(_)));
+    assert!(!HttpRetryPolicy::Otlp.should_retry(&error));
+    assert!(!format!("{error:?}: {error}").contains("receiver-secret"));
   }
 }
