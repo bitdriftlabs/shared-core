@@ -45,6 +45,7 @@ pub use http::{
   HttpRemoteWriteError,
   HttpRetryPolicy,
   MockHttpRemoteWriteClient,
+  decode_otlp_response,
   should_retry,
 };
 pub use metric::{
