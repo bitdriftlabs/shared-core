@@ -28,6 +28,7 @@ use crate::workflow_attachment::AttachmentStoreHandle;
 use bd_api::DataUpload;
 use bd_artifact_upload::{Client, MockClient, UploadSource};
 use bd_event_buffer::{EventBuffer, EventBufferLimits};
+use bd_log_primitives::command_attachment::AttachmentSource;
 use bd_log_primitives::{DataValue, LogFields, log_level};
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
 use bd_proto::protos::client::api::{DeviceCommandUpdate, device_command_update};
@@ -788,38 +789,13 @@ fn terminal_device_command_updates_produce_outcome_logs() {
     log.fields.get("_command_status").unwrap().value.as_str(),
     Some("success")
   );
-  assert_eq!(
-    log.fields.get("_command_id").unwrap().value.as_str(),
-    Some(command_id.as_str())
-  );
   assert_eq!(log.fields.get("count").unwrap().value, DataValue::U64(7));
-  assert_eq!(
-    log
-      .fields
-      .get("_command_artifact_id")
-      .unwrap()
-      .value
-      .as_str(),
-    Some(artifact_id.to_string().as_str())
-  );
+  let attachment = log.command_attachment.as_ref().unwrap();
+  assert_eq!(attachment.source, AttachmentSource::DIRECT_COMMAND);
+  assert_eq!(attachment.artifact_id, artifact_id.to_string());
   assert!(!log.fields.contains_key("_command_message"));
-  assert_eq!(
-    log
-      .fields
-      .get("_command_artifact_content_type")
-      .unwrap()
-      .value
-      .as_str(),
-    Some("image/jpeg")
-  );
-  assert_eq!(
-    log
-      .fields
-      .get("_command_artifact_size_bytes")
-      .unwrap()
-      .value,
-    DataValue::U64(123)
-  );
+  assert_eq!(attachment.content_type, "image/jpeg");
+  assert_eq!(attachment.size_bytes, 123);
 
   let failed = failed_device_command_update_with_fields(
     &command_id,
@@ -827,7 +803,6 @@ fn terminal_device_command_updates_produce_outcome_logs() {
     [
       ("error".into(), "not registered".into()),
       ("reason".into(), "missing".into()),
-      ("_command_id".into(), "spoofed".into()),
     ]
     .into(),
   );
@@ -844,10 +819,6 @@ fn terminal_device_command_updates_produce_outcome_logs() {
   assert_eq!(
     log.fields.get("reason").unwrap().value.as_str(),
     Some("missing")
-  );
-  assert_eq!(
-    log.fields.get("_command_id").unwrap().value.as_str(),
-    Some(command_id.as_str())
   );
   assert!(!log.fields.contains_key("error"));
   assert!(!log.fields.contains_key("_command_artifact_id"));

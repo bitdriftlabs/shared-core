@@ -150,6 +150,7 @@ impl AnnotatedWorkflowsEngine {
       matching_fields: [].into(),
       session_id: "1231231231312312312312".into(),
       occurred_at: OffsetDateTime::now_utc(),
+      command_attachment: None,
       capture_session: None,
     };
 

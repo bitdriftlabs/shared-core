@@ -511,6 +511,7 @@ fn workflow_generated_log(
       })
       .collect(),
     attributes_overrides,
+    command_attachment: log.command_attachment,
     capture_session: log.capture_session,
   };
   (log, context)
@@ -824,6 +825,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       message,
       fields,
       matching_fields,
+      command_attachment: None,
       attributes_overrides,
       capture_session,
     };
@@ -858,6 +860,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       message,
       fields,
       matching_fields,
+      command_attachment: None,
       attributes_overrides,
       capture_session,
     };
@@ -1110,8 +1113,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     for (outcome_log, completion_token) in logs {
       let artifact_id = outcome_log
-        .field_value(bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD)
-        .and_then(|value| uuid::Uuid::parse_str(&value).ok());
+        .command_attachment
+        .as_ref()
+        .and_then(|attachment| uuid::Uuid::parse_str(&attachment.artifact_id).ok());
       let occurred_at = outcome_log.occurred_at;
       let (log, context) = workflow_generated_log(
         outcome_log,
@@ -1306,6 +1310,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           matching_fields: metadata.matching_fields,
           occurred_at: timestamp,
           session_id,
+          command_attachment: log.command_attachment,
           capture_session: log.capture_session,
         };
 
@@ -1628,6 +1633,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       fields: crash_log.fields,
       matching_fields: [].into(),
       attributes_overrides,
+      command_attachment: None,
       capture_session: Some("crash_handler"),
     };
     let context = admission_context(

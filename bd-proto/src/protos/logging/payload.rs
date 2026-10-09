@@ -1022,6 +1022,252 @@ impl ::protobuf::reflect::ProtobufValue for ArrayData {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.logging.v1.CommandAttachment)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct CommandAttachment {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.CommandAttachment.artifact_id)
+    pub artifact_id: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.CommandAttachment.content_type)
+    pub content_type: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.CommandAttachment.size_bytes)
+    pub size_bytes: u64,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.CommandAttachment.source)
+    pub source: ::protobuf::EnumOrUnknown<command_attachment::Source>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.logging.v1.CommandAttachment.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a CommandAttachment {
+    fn default() -> &'a CommandAttachment {
+        <CommandAttachment as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl CommandAttachment {
+    pub fn new() -> CommandAttachment {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "artifact_id",
+            |m: &CommandAttachment| { &m.artifact_id },
+            |m: &mut CommandAttachment| { &mut m.artifact_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "content_type",
+            |m: &CommandAttachment| { &m.content_type },
+            |m: &mut CommandAttachment| { &mut m.content_type },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "size_bytes",
+            |m: &CommandAttachment| { &m.size_bytes },
+            |m: &mut CommandAttachment| { &mut m.size_bytes },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "source",
+            |m: &CommandAttachment| { &m.source },
+            |m: &mut CommandAttachment| { &mut m.source },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CommandAttachment>(
+            "CommandAttachment",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for CommandAttachment {
+    const NAME: &'static str = "CommandAttachment";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.artifact_id = is.read_string()?;
+                },
+                18 => {
+                    self.content_type = is.read_string()?;
+                },
+                24 => {
+                    self.size_bytes = is.read_uint64()?;
+                },
+                32 => {
+                    self.source = is.read_enum_or_unknown()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.artifact_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.artifact_id);
+        }
+        if !self.content_type.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.content_type);
+        }
+        if self.size_bytes != 0 {
+            my_size += ::protobuf::rt::uint64_size(3, self.size_bytes);
+        }
+        if self.source != ::protobuf::EnumOrUnknown::new(command_attachment::Source::UNSPECIFIED) {
+            my_size += ::protobuf::rt::int32_size(4, self.source.value());
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.artifact_id.is_empty() {
+            os.write_string(1, &self.artifact_id)?;
+        }
+        if !self.content_type.is_empty() {
+            os.write_string(2, &self.content_type)?;
+        }
+        if self.size_bytes != 0 {
+            os.write_uint64(3, self.size_bytes)?;
+        }
+        if self.source != ::protobuf::EnumOrUnknown::new(command_attachment::Source::UNSPECIFIED) {
+            os.write_enum(4, ::protobuf::EnumOrUnknown::value(&self.source))?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> CommandAttachment {
+        CommandAttachment::new()
+    }
+
+    fn clear(&mut self) {
+        self.artifact_id.clear();
+        self.content_type.clear();
+        self.size_bytes = 0;
+        self.source = ::protobuf::EnumOrUnknown::new(command_attachment::Source::UNSPECIFIED);
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static CommandAttachment {
+        static instance: CommandAttachment = CommandAttachment {
+            artifact_id: ::std::string::String::new(),
+            content_type: ::std::string::String::new(),
+            size_bytes: 0,
+            source: ::protobuf::EnumOrUnknown::from_i32(0),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for CommandAttachment {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("CommandAttachment").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for CommandAttachment {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for CommandAttachment {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `CommandAttachment`
+pub mod command_attachment {
+    #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+    // @@protoc_insertion_point(enum:bitdrift_public.protobuf.logging.v1.CommandAttachment.Source)
+    pub enum Source {
+        // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.CommandAttachment.Source.UNSPECIFIED)
+        UNSPECIFIED = 0,
+        // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.CommandAttachment.Source.WORKFLOW)
+        WORKFLOW = 1,
+        // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.logging.v1.CommandAttachment.Source.DIRECT_COMMAND)
+        DIRECT_COMMAND = 2,
+    }
+
+    impl ::protobuf::Enum for Source {
+        const NAME: &'static str = "Source";
+
+        fn value(&self) -> i32 {
+            *self as i32
+        }
+
+        fn from_i32(value: i32) -> ::std::option::Option<Source> {
+            match value {
+                0 => ::std::option::Option::Some(Source::UNSPECIFIED),
+                1 => ::std::option::Option::Some(Source::WORKFLOW),
+                2 => ::std::option::Option::Some(Source::DIRECT_COMMAND),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        fn from_str(str: &str) -> ::std::option::Option<Source> {
+            match str {
+                "UNSPECIFIED" => ::std::option::Option::Some(Source::UNSPECIFIED),
+                "WORKFLOW" => ::std::option::Option::Some(Source::WORKFLOW),
+                "DIRECT_COMMAND" => ::std::option::Option::Some(Source::DIRECT_COMMAND),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        const VALUES: &'static [Source] = &[
+            Source::UNSPECIFIED,
+            Source::WORKFLOW,
+            Source::DIRECT_COMMAND,
+        ];
+    }
+
+    impl ::protobuf::EnumFull for Source {
+        fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().enum_by_package_relative_name("CommandAttachment.Source").unwrap()).clone()
+        }
+
+        fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+            let index = *self as usize;
+            Self::enum_descriptor().value_by_index(index)
+        }
+    }
+
+    impl ::std::default::Default for Source {
+        fn default() -> Self {
+            Source::UNSPECIFIED
+        }
+    }
+
+    impl Source {
+        pub(in super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+            ::protobuf::reflect::GeneratedEnumDescriptorData::new::<Source>("CommandAttachment.Source")
+        }
+    }
+}
+
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.logging.v1.Log)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct Log {
@@ -1044,6 +1290,8 @@ pub struct Log {
     pub stream_ids: ::std::vec::Vec<::std::string::String>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.compressed_contents)
     pub compressed_contents: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.logging.v1.Log.command_attachment)
+    pub command_attachment: ::protobuf::MessageField<CommandAttachment>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.logging.v1.Log.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -1061,7 +1309,7 @@ impl Log {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(9);
+        let mut fields = ::std::vec::Vec::with_capacity(10);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "timestamp_unix_micro",
@@ -1108,6 +1356,11 @@ impl Log {
             |m: &Log| { &m.compressed_contents },
             |m: &mut Log| { &mut m.compressed_contents },
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, CommandAttachment>(
+            "command_attachment",
+            |m: &Log| { &m.command_attachment },
+            |m: &mut Log| { &mut m.command_attachment },
+        ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Log>(
             "Log",
             fields,
@@ -1153,6 +1406,9 @@ impl ::protobuf::Message for Log {
                 74 => {
                     self.compressed_contents = is.read_bytes()?;
                 },
+                82 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.command_attachment)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -1194,6 +1450,10 @@ impl ::protobuf::Message for Log {
         if !self.compressed_contents.is_empty() {
             my_size += ::protobuf::rt::bytes_size(9, &self.compressed_contents);
         }
+        if let Some(v) = self.command_attachment.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -1227,6 +1487,9 @@ impl ::protobuf::Message for Log {
         if !self.compressed_contents.is_empty() {
             os.write_bytes(9, &self.compressed_contents)?;
         }
+        if let Some(v) = self.command_attachment.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(10, v, os)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -1253,6 +1516,7 @@ impl ::protobuf::Message for Log {
         self.log_type = ::protobuf::EnumOrUnknown::new(LogType::NORMAL);
         self.stream_ids.clear();
         self.compressed_contents.clear();
+        self.command_attachment.clear();
         self.special_fields.clear();
     }
 
@@ -1267,6 +1531,7 @@ impl ::protobuf::Message for Log {
             log_type: ::protobuf::EnumOrUnknown::from_i32(0),
             stream_ids: ::std::vec::Vec::new(),
             compressed_contents: ::std::vec::Vec::new(),
+            command_attachment: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -1692,25 +1957,33 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     (\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.proto\
     buf.logging.v1.DataR\x05value:\x028\x01\"L\n\tArrayData\x12?\n\x05items\
     \x18\x01\x20\x03(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05ite\
-    ms\"\xb8\x05\n\x03Log\x120\n\x14timestamp_unix_micro\x18\x01\x20\x01(\
-    \x04R\x12timestampUnixMicro\x12\x1b\n\tlog_level\x18\x02\x20\x01(\rR\x08\
-    logLevel\x12C\n\x07message\x18\x03\x20\x01(\x0b2).bitdrift_public.protob\
-    uf.logging.v1.DataR\x07message\x12F\n\x06fields\x18\x04\x20\x03(\x0b2..b\
-    itdrift_public.protobuf.logging.v1.Log.FieldR\x06fields\x12\x1d\n\nsessi\
-    on_id\x18\x05\x20\x01(\tR\tsessionId\x12\x1d\n\naction_ids\x18\x06\x20\
-    \x03(\tR\tactionIds\x12G\n\x08log_type\x18\x07\x20\x01(\x0e2,.bitdrift_p\
-    ublic.protobuf.logging.v1.LogTypeR\x07logType\x12\x1d\n\nstream_ids\x18\
-    \x08\x20\x03(\tR\tstreamIds\x12/\n\x13compressed_contents\x18\t\x20\x01(\
-    \x0cR\x12compressedContents\x1aZ\n\x05Field\x12\x10\n\x03key\x18\x01\x20\
-    \x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.p\
-    rotobuf.logging.v1.DataR\x05value\x1a\xa1\x01\n\x12CompressedContents\
-    \x12C\n\x07message\x18\x01\x20\x01(\x0b2).bitdrift_public.protobuf.loggi\
-    ng.v1.DataR\x07message\x12F\n\x06fields\x18\x02\x20\x03(\x0b2..bitdrift_\
-    public.protobuf.logging.v1.Log.FieldR\x06fields*x\n\x07LogType\x12\n\n\
-    \x06NORMAL\x10\0\x12\n\n\x06REPLAY\x10\x01\x12\r\n\tLIFECYCLE\x10\x02\
-    \x12\x0c\n\x08RESOURCE\x10\x03\x12\x10\n\x0cINTERNAL_SDK\x10\x04\x12\x08\
-    \n\x04VIEW\x10\x05\x12\n\n\x06DEVICE\x10\x06\x12\x06\n\x02UX\x10\x07\x12\
-    \x08\n\x04SPAN\x10\x08b\x06proto3\
+    ms\"\x8a\x02\n\x11CommandAttachment\x12\x1f\n\x0bartifact_id\x18\x01\x20\
+    \x01(\tR\nartifactId\x12!\n\x0ccontent_type\x18\x02\x20\x01(\tR\x0bconte\
+    ntType\x12\x1d\n\nsize_bytes\x18\x03\x20\x01(\x04R\tsizeBytes\x12U\n\x06\
+    source\x18\x04\x20\x01(\x0e2=.bitdrift_public.protobuf.logging.v1.Comman\
+    dAttachment.SourceR\x06source\";\n\x06Source\x12\x0f\n\x0bUNSPECIFIED\
+    \x10\0\x12\x0c\n\x08WORKFLOW\x10\x01\x12\x12\n\x0eDIRECT_COMMAND\x10\x02\
+    \"\x9f\x06\n\x03Log\x120\n\x14timestamp_unix_micro\x18\x01\x20\x01(\x04R\
+    \x12timestampUnixMicro\x12\x1b\n\tlog_level\x18\x02\x20\x01(\rR\x08logLe\
+    vel\x12C\n\x07message\x18\x03\x20\x01(\x0b2).bitdrift_public.protobuf.lo\
+    gging.v1.DataR\x07message\x12F\n\x06fields\x18\x04\x20\x03(\x0b2..bitdri\
+    ft_public.protobuf.logging.v1.Log.FieldR\x06fields\x12\x1d\n\nsession_id\
+    \x18\x05\x20\x01(\tR\tsessionId\x12\x1d\n\naction_ids\x18\x06\x20\x03(\t\
+    R\tactionIds\x12G\n\x08log_type\x18\x07\x20\x01(\x0e2,.bitdrift_public.p\
+    rotobuf.logging.v1.LogTypeR\x07logType\x12\x1d\n\nstream_ids\x18\x08\x20\
+    \x03(\tR\tstreamIds\x12/\n\x13compressed_contents\x18\t\x20\x01(\x0cR\
+    \x12compressedContents\x12e\n\x12command_attachment\x18\n\x20\x01(\x0b26\
+    .bitdrift_public.protobuf.logging.v1.CommandAttachmentR\x11commandAttach\
+    ment\x1aZ\n\x05Field\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\
+    \x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.Dat\
+    aR\x05value\x1a\xa1\x01\n\x12CompressedContents\x12C\n\x07message\x18\
+    \x01\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x07message\
+    \x12F\n\x06fields\x18\x02\x20\x03(\x0b2..bitdrift_public.protobuf.loggin\
+    g.v1.Log.FieldR\x06fields*x\n\x07LogType\x12\n\n\x06NORMAL\x10\0\x12\n\n\
+    \x06REPLAY\x10\x01\x12\r\n\tLIFECYCLE\x10\x02\x12\x0c\n\x08RESOURCE\x10\
+    \x03\x12\x10\n\x0cINTERNAL_SDK\x10\x04\x12\x08\n\x04VIEW\x10\x05\x12\n\n\
+    \x06DEVICE\x10\x06\x12\x06\n\x02UX\x10\x07\x12\x08\n\x04SPAN\x10\x08b\
+    \x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1728,16 +2001,18 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(0);
-            let mut messages = ::std::vec::Vec::with_capacity(7);
+            let mut messages = ::std::vec::Vec::with_capacity(8);
             messages.push(BinaryData::generated_message_descriptor_data());
             messages.push(Data::generated_message_descriptor_data());
             messages.push(MapData::generated_message_descriptor_data());
             messages.push(ArrayData::generated_message_descriptor_data());
+            messages.push(CommandAttachment::generated_message_descriptor_data());
             messages.push(Log::generated_message_descriptor_data());
             messages.push(log::Field::generated_message_descriptor_data());
             messages.push(log::CompressedContents::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(1);
+            let mut enums = ::std::vec::Vec::with_capacity(2);
             enums.push(LogType::generated_enum_descriptor_data());
+            enums.push(command_attachment::Source::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

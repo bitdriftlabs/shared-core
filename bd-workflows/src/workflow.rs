@@ -23,8 +23,9 @@ use crate::config::{
 };
 use crate::generate_log::generate_log_action;
 use bd_log_matcher::matcher::MatchContext;
+use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{DataValue, FieldsRef, Log, LogFields, LogLevel, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogFields, LogLevel, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow_command::WorkflowCommandSelector;
 use bd_proto_util::serialization::TimestampMicros;
@@ -37,11 +38,7 @@ use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-pub const COMMAND_ARTIFACT_ID_FIELD: &str = "_command_artifact_id";
-pub const COMMAND_ARTIFACT_CONTENT_TYPE_FIELD: &str = "_command_artifact_content_type";
-pub const COMMAND_ARTIFACT_SIZE_BYTES_FIELD: &str = "_command_artifact_size_bytes";
 pub const COMMAND_OUTCOME_MESSAGE: &str = "Command completed";
-pub const COMMAND_ID_FIELD: &str = "_command_id";
 const COMMAND_MESSAGE_FIELD: &str = "_command_message";
 const COMMAND_STATUS_FIELD: &str = "_command_status";
 
@@ -104,21 +101,17 @@ pub struct CommandOutcome {
   pub succeeded: bool,
   pub message: Option<String>,
   pub fields: LogFields,
-  pub artifact_id: Option<Uuid>,
-  pub artifact_metadata: Option<CommandArtifactMetadata>,
-  pub command_id: Option<String>,
+  pub attachment: Option<LogAttachment>,
 }
 
 impl CommandOutcome {
   #[must_use]
-  pub fn into_fields(self) -> (LogLevel, LogFields) {
+  pub fn into_log_parts(self) -> (LogLevel, LogFields, Option<LogAttachment>) {
     let Self {
       succeeded,
       message,
       mut fields,
-      artifact_id,
-      artifact_metadata,
-      command_id,
+      attachment,
     } = self;
     fields.retain(|key, _| !key.starts_with("_command_") && !key.starts_with("_workflow_command_"));
     fields.insert(
@@ -128,25 +121,6 @@ impl CommandOutcome {
     if let Some(message) = message {
       fields.insert(COMMAND_MESSAGE_FIELD.into(), message.into());
     }
-    if let Some(artifact_id) = artifact_id {
-      fields.insert(
-        COMMAND_ARTIFACT_ID_FIELD.into(),
-        artifact_id.to_string().into(),
-      );
-      if let Some(metadata) = artifact_metadata {
-        fields.insert(
-          COMMAND_ARTIFACT_CONTENT_TYPE_FIELD.into(),
-          metadata.content_type.into(),
-        );
-        fields.insert(
-          COMMAND_ARTIFACT_SIZE_BYTES_FIELD.into(),
-          DataValue::U64(metadata.size_bytes),
-        );
-      }
-    }
-    if let Some(command_id) = command_id {
-      fields.insert(COMMAND_ID_FIELD.into(), command_id.into());
-    }
 
     (
       if succeeded {
@@ -155,12 +129,13 @@ impl CommandOutcome {
         log_level::ERROR
       },
       fields,
+      attachment,
     )
   }
 
   #[must_use]
   pub fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
-    let (log_level, fields) = self.into_fields();
+    let (log_level, fields, command_attachment) = self.into_log_parts();
     Log {
       log_type: LogType::NORMAL,
       log_level,
@@ -169,6 +144,7 @@ impl CommandOutcome {
       occurred_at: now,
       fields,
       matching_fields: LogFields::default(),
+      command_attachment: command_attachment.map(Box::new),
       capture_session: None,
     }
   }
@@ -216,9 +192,14 @@ impl WorkflowCommandOutcome {
       succeeded,
       message,
       fields,
-      artifact_id,
-      artifact_metadata,
-      command_id: None,
+      attachment: artifact_id
+        .zip(artifact_metadata)
+        .map(|(artifact_id, metadata)| LogAttachment {
+          artifact_id: artifact_id.to_string(),
+          content_type: metadata.content_type,
+          size_bytes: metadata.size_bytes,
+          source: AttachmentSource::WORKFLOW,
+        }),
     }
     .into_log(session_id, now)
   }

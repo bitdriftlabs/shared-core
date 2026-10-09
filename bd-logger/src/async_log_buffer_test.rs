@@ -48,6 +48,7 @@ use bd_event_buffer::{
 use bd_log_filter::FilterChain;
 use bd_log_matcher::builder::message_equals;
 use bd_log_metadata::MetadataProvider;
+use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -87,11 +88,7 @@ use bd_time::{OffsetDateTimeExt, SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
-use bd_workflows::workflow::{
-  COMMAND_ARTIFACT_ID_FIELD,
-  WorkflowCommandCompletionToken,
-  WorkflowCommandOutcome,
-};
+use bd_workflows::workflow::{WorkflowCommandCompletionToken, WorkflowCommandOutcome};
 use futures_util::poll;
 use protobuf::Message;
 use std::collections::VecDeque;
@@ -1160,6 +1157,7 @@ fn normal_log(message: &str) -> LogLine {
     fields: [].into(),
     matching_fields: [].into(),
     attributes_overrides: None,
+    command_attachment: None,
     capture_session: None,
   }
 }
@@ -1414,6 +1412,7 @@ fn workflow_generated_logs_keep_the_parent_context_and_overrides() {
       matching_fields: [].into(),
       session_id: "ignored-by-generated-log".into(),
       occurred_at: OffsetDateTime::UNIX_EPOCH,
+      command_attachment: None,
       capture_session: Some("generated"),
     },
     Some(EventContext::PreviousProcess {
@@ -1546,15 +1545,30 @@ fn log_line_size_is_computed_correctly() {
       fields: [("foo".into(), AnnotatedLogField::new_ootb("bar"))].into(),
       matching_fields: [].into(),
       attributes_overrides: None,
+      command_attachment: None,
       capture_session: None,
     }
   }
 
-  let baseline_log_expected_size = 566;
+  let baseline_log_expected_size = 574;
   let baseline_log = create_baseline_log();
   assert_eq!(
     baseline_log_expected_size,
     baseline_log.approximate_size_bytes()
+  );
+
+  let attachment = LogAttachment {
+    artifact_id: "artifact".to_string(),
+    content_type: "image/jpeg".to_string(),
+    size_bytes: 7,
+    source: AttachmentSource::WORKFLOW,
+  };
+  let attachment_size = attachment.approximate_size_bytes();
+  let mut log_with_attachment = create_baseline_log();
+  log_with_attachment.command_attachment = Some(Box::new(attachment));
+  assert_eq!(
+    baseline_log_expected_size + attachment_size,
+    log_with_attachment.approximate_size_bytes()
   );
 
   // The approximate accounting reserves string capacity. Appending to the three-byte message grows
@@ -1600,11 +1614,12 @@ fn annotated_log_line_size_is_computed_correctly() {
       matching_fields: [].into(),
       session_id: "foo".into(),
       occurred_at: time::OffsetDateTime::now_utc(),
+      command_attachment: None,
       capture_session: None,
     }
   }
 
-  let baseline_log_expected_size = 550;
+  let baseline_log_expected_size = 558;
   let baseline_log = create_baseline_log();
   assert_eq!(
     baseline_log_expected_size,
@@ -2201,6 +2216,7 @@ async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads()
           matching_fields: LogFields::default(),
           occurred_at: OffsetDateTime::UNIX_EPOCH,
           session_id: "session".into(),
+          command_attachment: None,
           capture_session: None,
         },
         Some(token.clone()),
@@ -2259,12 +2275,14 @@ async fn failed_workflow_outcome_replay_releases_attachment() {
           message: "Command completed".into(),
           session_id: "session".into(),
           occurred_at: OffsetDateTime::now_utc(),
-          fields: [(
-            COMMAND_ARTIFACT_ID_FIELD.into(),
-            attachment.id.to_string().into(),
-          )]
-          .into(),
+          fields: LogFields::default(),
           matching_fields: LogFields::default(),
+          command_attachment: Some(Box::new(LogAttachment {
+            artifact_id: attachment.id.to_string(),
+            content_type: "application/octet-stream".to_string(),
+            size_bytes: 9,
+            source: AttachmentSource::WORKFLOW,
+          })),
           capture_session: None,
         },
         None,
@@ -2334,12 +2352,14 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
           message: "Command completed".into(),
           session_id: "session".into(),
           occurred_at,
-          fields: [(
-            COMMAND_ARTIFACT_ID_FIELD.into(),
-            attachment.id.to_string().into(),
-          )]
-          .into(),
+          fields: LogFields::default(),
           matching_fields: LogFields::default(),
+          command_attachment: Some(Box::new(LogAttachment {
+            artifact_id: attachment.id.to_string(),
+            content_type: "application/octet-stream".to_string(),
+            size_bytes: 9,
+            source: AttachmentSource::WORKFLOW,
+          })),
           capture_session: None,
         },
         None,
@@ -2391,6 +2411,7 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
         matching_fields: LogFields::default(),
         occurred_at: OffsetDateTime::now_utc(),
         session_id: "session".into(),
+        command_attachment: None,
         capture_session: None,
       }],
       committed_workflow_attachment: true,
@@ -2408,12 +2429,14 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
           message: "Command completed".into(),
           session_id: "session".into(),
           occurred_at,
-          fields: [(
-            COMMAND_ARTIFACT_ID_FIELD.into(),
-            attachment.id.to_string().into(),
-          )]
-          .into(),
+          fields: LogFields::default(),
           matching_fields: LogFields::default(),
+          command_attachment: Some(Box::new(LogAttachment {
+            artifact_id: attachment.id.to_string(),
+            content_type: "application/octet-stream".to_string(),
+            size_bytes: 9,
+            source: AttachmentSource::WORKFLOW,
+          })),
           capture_session: None,
         },
         None,
@@ -2473,6 +2496,7 @@ async fn logs_resource_utilization_log() {
     fields: AnnotatedLogFields::new(),
     matching_fields: AnnotatedLogFields::new(),
     attributes_overrides: None,
+    command_attachment: None,
     capture_session: None,
   };
 
@@ -2674,6 +2698,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
         time::OffsetDateTime::now_utc(),
       ),
     ),
+    command_attachment: None,
     capture_session: None,
   };
   sender.try_send_log(log).unwrap();
@@ -2780,6 +2805,7 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
         time::OffsetDateTime::now_utc(),
       ),
     ),
+    command_attachment: None,
     capture_session: None,
   };
 

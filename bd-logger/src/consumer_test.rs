@@ -44,6 +44,7 @@ use bd_buffer::{
 };
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
+use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::ApiRequest;
 use bd_proto::protos::client::api::api_request::Request_type;
@@ -684,6 +685,7 @@ fn make_test_log(t: time::OffsetDateTime) -> Vec<u8> {
       matching_fields: [].into(),
       session_id: String::new().into(),
       occurred_at: t,
+      command_attachment: None,
       capture_session: None,
     },
     u64::MAX,
@@ -704,17 +706,16 @@ fn workflow_artifact_ids_are_found_in_raw_and_compressed_batches() {
         log_level: log_level::INFO,
         log_type: LogType::NORMAL,
         message: "workflow outcome".into(),
-        fields: [
-          (
-            bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD.into(),
-            artifact_id.to_string().into(),
-          ),
-          ("padding".into(), padding.into()),
-        ]
-        .into(),
+        fields: [("padding".into(), padding.into())].into(),
         matching_fields: [].into(),
         session_id: "session".into(),
         occurred_at: time::OffsetDateTime::now_utc(),
+        command_attachment: Some(Box::new(LogAttachment {
+          artifact_id: artifact_id.to_string(),
+          content_type: "image/jpeg".to_string(),
+          size_bytes: 0,
+          source: AttachmentSource::WORKFLOW,
+        })),
         capture_session: None,
       },
       compression_threshold,
@@ -729,7 +730,7 @@ fn workflow_artifact_ids_are_found_in_raw_and_compressed_batches() {
 
   let ids = super::workflow_artifact_ids_for_logs(&[
     encode(u64::MAX, String::new()),
-    encode(0, "x".repeat(3 * 1024 * 1024)),
+    encode(1, "x".repeat(3 * 1024 * 1024)),
   ])
   .unwrap();
   assert_eq!(ids.get(&artifact_id).map(String::as_str), Some("session"));
@@ -744,20 +745,16 @@ fn direct_command_artifacts_are_not_workflow_attachments() {
       log_level: log_level::INFO,
       log_type: LogType::NORMAL,
       message: "Command completed".into(),
-      fields: [
-        (
-          bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD.into(),
-          artifact_id.to_string().into(),
-        ),
-        (
-          bd_workflows::workflow::COMMAND_ID_FIELD.into(),
-          uuid::Uuid::new_v4().to_string().into(),
-        ),
-      ]
-      .into(),
+      fields: [].into(),
       matching_fields: [].into(),
       session_id: "session".into(),
       occurred_at: time::OffsetDateTime::now_utc(),
+      command_attachment: Some(Box::new(LogAttachment {
+        artifact_id: artifact_id.to_string(),
+        content_type: "image/jpeg".to_string(),
+        size_bytes: 0,
+        source: AttachmentSource::DIRECT_COMMAND,
+      })),
       capture_session: None,
     },
     u64::MAX,

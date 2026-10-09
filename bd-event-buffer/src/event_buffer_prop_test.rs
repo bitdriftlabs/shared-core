@@ -5,8 +5,6 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::unwrap_used)]
-
 use super::{AdmissionOutcome, EventBufferLimits, EventBufferState, RetentionLane};
 use proptest::prelude::*;
 use std::env;

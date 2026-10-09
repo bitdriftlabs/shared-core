@@ -15,6 +15,7 @@ use anyhow::anyhow;
 use bd_api::upload::TrackedDeviceCommandUpdate;
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadCompletion};
 use bd_artifact_upload::UploadSource;
+use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::{AnnotatedLogField, AnnotatedLogFields, DataValue, LogFields, LogLine};
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
 use bd_proto::protos::client::api::device_command_update::completed::{Attachment, attachment};
@@ -1081,15 +1082,20 @@ fn device_command_outcome_log(
       .remove("error")
       .and_then(|value| value.as_str().map(str::to_owned))
   };
-  let (log_level, fields) = CommandOutcome {
+  let (log_level, fields, command_attachment) = CommandOutcome {
     succeeded,
     message,
     fields,
-    artifact_id,
-    artifact_metadata,
-    command_id: Some(update.command_id.clone()),
+    attachment: artifact_id
+      .zip(artifact_metadata)
+      .map(|(artifact_id, metadata)| LogAttachment {
+        artifact_id: artifact_id.to_string(),
+        content_type: metadata.content_type,
+        size_bytes: metadata.size_bytes,
+        source: AttachmentSource::DIRECT_COMMAND,
+      }),
   }
-  .into_fields();
+  .into_log_parts();
   Some(LogLine {
     log_level,
     log_type: LogType::NORMAL,
@@ -1099,6 +1105,7 @@ fn device_command_outcome_log(
       .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
       .collect(),
     matching_fields: AnnotatedLogFields::default(),
+    command_attachment: command_attachment.map(Box::new),
     attributes_overrides: None,
     capture_session: None,
   })

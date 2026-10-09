@@ -66,6 +66,7 @@ fn make_log_bytes(timestamp: OffsetDateTime) -> Vec<u8> {
       matching_fields: [].into(),
       session_id: String::new().into(),
       occurred_at: timestamp,
+      command_attachment: None,
       capture_session: None,
     },
     u64::MAX,

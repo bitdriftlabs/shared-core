@@ -18,6 +18,7 @@ use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::{Counter, Histogram};
 use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
+use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{EncodableLog, FieldsRef, Log, LogMessage, LossyIntToU32, log_level};
 use bd_log_util::warn_every;
@@ -331,12 +332,9 @@ impl ProcessingPipeline {
     let mut log = EncodableLog::new(log, (*self.min_log_compression_size.read()).into());
     let has_workflow_attachment = log
       .log
-      .fields
-      .contains_key(bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD)
-      && !log
-        .log
-        .fields
-        .contains_key(bd_workflows::workflow::COMMAND_ID_FIELD);
+      .command_attachment
+      .as_ref()
+      .is_some_and(|attachment| attachment.source == AttachmentSource::WORKFLOW);
 
     if !has_workflow_attachment {
       match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
@@ -424,7 +422,7 @@ impl ProcessingPipeline {
       &result.triggered_flushes_buffer_ids,
       &written_to_buffers,
       &log.log.message,
-      &log.log.fields,
+      (&log.log.fields, log.log.command_attachment.as_deref()),
       &log.log.session_id,
       log.log.occurred_at,
     );
@@ -508,7 +506,7 @@ impl ProcessingPipeline {
       &result.triggered_flushes_buffer_ids,
       &result.log_destination_buffer_ids,
       &"State Change".into(),
-      fields,
+      (fields, None),
       session_id,
       state_change.timestamp,
     );
@@ -558,7 +556,7 @@ impl ProcessingPipeline {
     triggered_flushes_buffer_ids: &TinySet<Cow<'_, str>>,
     written_to_buffers: &TinySet<Cow<'_, str>>,
     log_message: &LogMessage,
-    log_fields: &LogFields,
+    (log_fields, command_attachment): (&LogFields, Option<&LogAttachment>),
     session_id: &str,
     occurred_at: OffsetDateTime,
   ) -> bool {
@@ -613,6 +611,7 @@ impl ProcessingPipeline {
 
           // Use RawLogRef directly for zero-allocation serialization
           let raw_log = bd_log_primitives::RawLogRef {
+            command_attachment,
             occurred_at: occurred_at.unix_timestamp_micros(),
             log_level: log_level::DEBUG,
             message: log_message,

@@ -159,6 +159,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
         occurred_at: log.occurred_at,
         fields: bd_test_helpers::workflow::make_tags(log.tags),
         matching_fields: LogFields::new(),
+        command_attachment: None,
         capture_session: None,
       }),
       &self.log_destination_buffer_ids,

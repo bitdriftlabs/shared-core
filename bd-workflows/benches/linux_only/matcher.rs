@@ -139,6 +139,7 @@ fn run_runtime_bench<T: Future<Output = WorkflowsEngine>>(engine: impl FnOnce() 
         fields: FieldsRef::new(&fields, &fields),
         session_id: "session_id",
         occurred_at: OffsetDateTime::now_utc(),
+        command_attachment: None,
         capture_session: None,
       };
       engine.process_log(&log, &TinySet::default(), now);

@@ -58,6 +58,7 @@ impl Helper {
         matching_fields: [("_generate_log_id".into(), "id".into(),),].into(),
         session_id: String::new().into(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
+        command_attachment: None,
         capture_session: None,
       }),
       generate_log_action(

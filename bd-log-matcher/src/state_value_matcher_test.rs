@@ -5,8 +5,6 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::unwrap_used)]
-
 use super::StateValueMatcher;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_proto::protos::state::matcher::StateValueMatch;

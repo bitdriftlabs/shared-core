@@ -54,6 +54,7 @@ fn make_test_log_bytes(t: OffsetDateTime) -> Vec<u8> {
       matching_fields: [].into(),
       session_id: String::new().into(),
       occurred_at: t,
+      command_attachment: None,
       capture_session: None,
     },
     u64::MAX,

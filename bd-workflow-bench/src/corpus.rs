@@ -108,6 +108,7 @@ impl ExportLog {
         matching_fields: LogFields::default(),
         session_id: self.session_id.into(),
         occurred_at,
+        command_attachment: None,
         capture_session: None,
       },
     })

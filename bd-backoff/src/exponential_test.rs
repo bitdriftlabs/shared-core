@@ -4,8 +4,6 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#![allow(clippy::unwrap_used)]
-
 use super::{ExponentialBackoffBuilder, ExponentialBackoffFinite, Finite};
 use crate::clock::Clock;
 use crate::{FiniteBackoff as _, InfiniteBackoff as _};

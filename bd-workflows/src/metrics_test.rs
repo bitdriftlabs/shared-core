@@ -51,6 +51,7 @@ fn metric_increment_value_extraction() {
     log_type: LogType::NORMAL,
     fields,
     matching_fields: matching_only_fields,
+    command_attachment: None,
     capture_session: None,
   };
 
@@ -148,6 +149,7 @@ fn session_start_metrics_use_triggering_log_payload() {
     log_type: LogType::NORMAL,
     fields: [("device_id".into(), "ios".into())].into(),
     matching_fields: LogFields::default(),
+    command_attachment: None,
     capture_session: None,
   };
 
@@ -226,6 +228,7 @@ fn counter_label_extraction() {
     log_type: LogType::NORMAL,
     fields,
     matching_fields: matching_only_fields,
+    command_attachment: None,
     capture_session: None,
   };
 
@@ -320,6 +323,7 @@ fn metric_multi_tag_fans_out_over_matching_state_entries() {
     log_type: LogType::NORMAL,
     fields: [("payload".into(), r#"{"tag":"nested"}"#.into())].into(),
     matching_fields: LogFields::default(),
+    command_attachment: None,
     capture_session: None,
   };
 
@@ -406,6 +410,7 @@ fn metric_multi_tag_with_no_matches_emits_nothing() {
     log_type: LogType::NORMAL,
     fields: LogFields::default(),
     matching_fields: LogFields::default(),
+    command_attachment: None,
     capture_session: None,
   };
 
@@ -479,6 +484,7 @@ fn json_metric_values_and_tags() {
     ]
     .into(),
     matching_fields: LogFields::default(),
+    command_attachment: None,
     capture_session: None,
   };
   let tags = BTreeMap::from([

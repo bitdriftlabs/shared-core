@@ -602,6 +602,7 @@ fn make_log(message: &str, fields: LogFields, matching_fields: LogFields) -> Log
     matching_fields,
     session_id: "session_id".into(),
     occurred_at: datetime!(2020-01-01 0:00 UTC),
+    command_attachment: None,
     capture_session: None,
   }
 }
