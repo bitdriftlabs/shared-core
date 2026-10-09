@@ -2850,6 +2850,155 @@ async fn exclusive_workflow_duration_limit() {
 }
 
 #[tokio::test]
+async fn duration_expiry_is_persisted() {
+  for parallel in [false, true] {
+    for tracing in [false, true] {
+      let terminal = state("terminal");
+      let active = state("active").declare_transition(&terminal, rule!(message_equals("finish")));
+      let actions = if tracing {
+        vec![make_start_tracing_action()]
+      } else {
+        vec![]
+      };
+      let start = state("start").declare_transition_with_actions(
+        &active,
+        rule!(message_equals("start")),
+        &actions,
+      );
+      let builder = WorkflowBuilder::new("workflow", &[&start, &active, &terminal])
+        .with_duration_limit(1.seconds());
+      let builder = if parallel {
+        builder.with_parallel_execution(Some(3))
+      } else {
+        builder
+      };
+      let config = builder.make_config();
+      let setup = Setup::new();
+      let mut engine = setup
+        .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+          vec![config.clone()],
+        ))
+        .await;
+      let started_at = datetime!(2026-01-01 00:00 UTC);
+
+      engine.process_log(TestLog::new("start").with_occurred_at(started_at));
+      engine_assert_active_runs!(engine; 0; "active");
+      assert_eq!(engine.is_tracing_active(), tracing);
+      engine.maybe_persist(true).await;
+      assert!(!engine.needs_state_persistence);
+      let persisted_state = setup.make_state_store().load().await.unwrap();
+      assert_eq!(persisted_state.workflows[0].runs().len(), 1);
+
+      engine.process_log(TestLog::new("not matching").with_occurred_at(started_at + 2.seconds()));
+      engine_assert_active_runs!(engine; 0; "start");
+      assert!(!engine.is_tracing_active());
+      assert!(
+        engine.needs_state_persistence,
+        "parallel={parallel}, tracing={tracing}"
+      );
+      setup
+        .collector
+        .assert_counter_eq(1, "workflows:matched_logs_total", labels! {});
+      engine.maybe_persist(true).await;
+      assert!(!engine.needs_state_persistence);
+      setup.collector.assert_counter_eq(
+        2,
+        "workflows:state_persistences_total",
+        labels! {"result" => "success"},
+      );
+      drop(engine);
+
+      let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+      let persisted_state = setup.make_state_store().load().await.unwrap();
+      assert_eq!(persisted_state.workflows.len(), 0);
+      assert_eq!(persisted_state.active_run_tracing_count, 0);
+      let mut engine = setup
+        .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+          vec![config],
+        ))
+        .await;
+      assert_eq!(engine.state.workflows[0].runs().len(), 0);
+      assert!(!engine.is_tracing_active());
+      engine.process_log(TestLog::new("not matching").with_occurred_at(started_at + 3.seconds()));
+      assert!(!engine.needs_state_persistence);
+    }
+  }
+}
+
+#[tokio::test]
+async fn parallel_duration_expiry_preserves_surviving_run() {
+  let terminal = state("terminal");
+  let older = state("older").declare_transition(&terminal, rule!(message_equals("finish older")));
+  let newer = state("newer").declare_transition(&terminal, rule!(message_equals("finish newer")));
+  let start = state("start")
+    .declare_transition_with_actions(
+      &older,
+      rule!(message_equals("start older")),
+      &[make_start_tracing_action()],
+    )
+    .declare_transition_with_actions(
+      &newer,
+      rule!(message_equals("start newer")),
+      &[make_start_tracing_action()],
+    );
+  let config = WorkflowBuilder::new("workflow", &[&start, &older, &newer, &terminal])
+    .with_parallel_execution(Some(3))
+    .with_duration_limit(3.seconds())
+    .make_config();
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![config.clone()],
+    ))
+    .await;
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+
+  engine.process_log(TestLog::new("start older").with_occurred_at(started_at));
+  engine.process_log(TestLog::new("start newer").with_occurred_at(started_at + 2.seconds()));
+  engine_assert_active_runs!(engine; 0; "newer", "older");
+  assert_eq!(engine.state.active_run_tracing_count, 2);
+  engine.maybe_persist(true).await;
+  assert!(!engine.needs_state_persistence);
+  let persisted_state = setup.make_state_store().load().await.unwrap();
+  assert_eq!(persisted_state.workflows[0].runs().len(), 2);
+  assert_eq!(persisted_state.active_run_tracing_count, 2);
+
+  engine.process_log(TestLog::new("not matching").with_occurred_at(started_at + 4.seconds()));
+  engine_assert_active_runs!(engine; 0; "start", "newer");
+  assert_eq!(engine.state.active_run_tracing_count, 1);
+  assert!(engine.needs_state_persistence);
+  setup
+    .collector
+    .assert_counter_eq(2, "workflows:matched_logs_total", labels! {});
+  engine.maybe_persist(true).await;
+  assert!(!engine.needs_state_persistence);
+  setup.collector.assert_counter_eq(
+    2,
+    "workflows:state_persistences_total",
+    labels! {"result" => "success"},
+  );
+  drop(engine);
+
+  let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let persisted_state = setup.make_state_store().load().await.unwrap();
+  assert_eq!(persisted_state.workflows[0].runs().len(), 1);
+  assert_eq!(persisted_state.active_run_tracing_count, 1);
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![config],
+    ))
+    .await;
+  engine_assert_active_runs!(engine; 0; "newer");
+  assert_eq!(engine.state.active_run_tracing_count, 1);
+  assert!(engine.is_tracing_active());
+
+  engine.process_log(TestLog::new("finish newer").with_occurred_at(started_at + 4.seconds()));
+  engine_assert_active_runs!(engine; 0; "start");
+  assert_eq!(engine.state.active_run_tracing_count, 0);
+  assert!(!engine.is_tracing_active());
+}
+
+#[tokio::test]
 async fn duration_expired_command_does_not_consume_its_cooldown() {
   let terminal = state("terminal");
   let command = state("command").declare_transition(&terminal, workflow_command_rule());

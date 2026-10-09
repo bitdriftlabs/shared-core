@@ -618,6 +618,7 @@ impl Workflow {
       match run_result.state {
         RunState::Stopped => {
           self.runs.remove(index);
+          result.stats.run_stopped = true;
         },
         RunState::Completed => {
           debug_assert!(
@@ -964,13 +965,14 @@ impl<'a> WorkflowResult<'a> {
 pub(crate) struct WorkflowResultStats {
   pub(crate) matched_logs_count: u32,
   processed_timeout: bool,
+  run_stopped: bool,
   pub(crate) tracing_starts: u32,
   pub(crate) tracing_ends: u32,
 }
 
 impl WorkflowResultStats {
   pub(crate) const fn did_make_progress(&self) -> bool {
-    self.matched_logs_count > 0 || self.processed_timeout
+    self.matched_logs_count > 0 || self.processed_timeout || self.run_stopped
   }
 }
 

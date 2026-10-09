@@ -404,6 +404,7 @@ fn timeout_no_parallel_match() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -437,6 +438,7 @@ fn timeout_no_parallel_match() {
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -467,6 +469,7 @@ fn timeout_no_parallel_match() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -497,6 +500,7 @@ fn timeout_no_parallel_match() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -983,6 +987,7 @@ fn timeout_not_start() {
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1013,6 +1018,7 @@ fn timeout_not_start() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1130,6 +1136,7 @@ fn timeout_from_start() {
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1180,6 +1187,7 @@ fn multiple_start_nodes_initial_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1209,6 +1217,7 @@ fn multiple_start_nodes_initial_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1241,6 +1250,7 @@ fn multiple_start_nodes_initial_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1289,6 +1299,7 @@ fn multiple_start_nodes_initial_branching() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1315,6 +1326,7 @@ fn multiple_start_nodes_initial_branching() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1341,6 +1353,7 @@ fn multiple_start_nodes_initial_branching() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1406,6 +1419,7 @@ fn basic_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1438,6 +1452,7 @@ fn basic_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1571,6 +1586,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1605,6 +1621,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1630,6 +1647,7 @@ fn exclusive_workflow_matched_logs_count_limit() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: true,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1677,6 +1695,7 @@ fn exclusive_workflow_log_rule_count() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1703,6 +1722,7 @@ fn exclusive_workflow_log_rule_count() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1738,6 +1758,7 @@ fn exclusive_workflow_log_rule_count() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1796,6 +1817,7 @@ fn debug_with_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1832,6 +1854,7 @@ fn debug_with_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1861,6 +1884,7 @@ fn debug_with_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1890,6 +1914,7 @@ fn debug_with_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1961,6 +1986,7 @@ fn branching_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -1988,6 +2014,7 @@ fn branching_exclusive_workflow() {
     WorkflowResultStats {
       matched_logs_count: 0,
       processed_timeout: false,
+      run_stopped: false,
       tracing_starts: 0,
       tracing_ends: 0,
     },
@@ -2010,6 +2037,7 @@ fn branching_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
@@ -2046,6 +2074,7 @@ fn branching_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        run_stopped: false,
         tracing_starts: 0,
         tracing_ends: 0,
       },
