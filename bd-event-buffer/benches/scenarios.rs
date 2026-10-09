@@ -66,6 +66,7 @@ fn log(
       fields: AnnotatedLogFields::default(),
       matching_fields: AnnotatedLogFields::default(),
       attributes_overrides: None,
+      command_attachment: None,
       capture_session: None,
     },
     context,

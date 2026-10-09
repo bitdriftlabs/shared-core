@@ -5,8 +5,9 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::cast_possible_truncation, clippy::unwrap_used)]
+#![allow(clippy::cast_possible_truncation)]
 
+use crate::command_attachment::{AttachmentSource, LogAttachment};
 use crate::{DataValue, EncodableLog, Log, LogFieldValue, LogType, TypedLogLevel, log_level};
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
@@ -32,7 +33,8 @@ fn custom_proto_encoder() {
       | "action_ids"
       | "log_type"
       | "stream_ids"
-      | "compressed_contents" => {},
+      | "compressed_contents"
+      | "command_attachment" => {},
       other => panic!("unexpected field added to Log proto: {other}"),
     });
   Field::descriptor()
@@ -148,6 +150,7 @@ fn data_encoding() {
       matching_fields: AHashMap::new(),
       session_id: "test_session".into(),
       occurred_at: OffsetDateTime::now_utc(),
+      command_attachment: None,
       capture_session: None,
     };
     let mut encodable = EncodableLog::new(log, 1000);
@@ -185,6 +188,12 @@ fn encodable_log_produces_valid_proto() {
     matching_fields: AHashMap::new(),
     session_id: "test_session_123".into(),
     occurred_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
+    command_attachment: Some(Box::new(LogAttachment {
+      artifact_id: "artifact".to_string(),
+      content_type: "image/jpeg".to_string(),
+      size_bytes: 123,
+      source: AttachmentSource::DIRECT_COMMAND,
+    })),
     capture_session: None,
   };
 
@@ -212,6 +221,13 @@ fn encodable_log_produces_valid_proto() {
   );
   assert_eq!(decoded.action_ids, vec!["action1", "action2"]);
   assert_eq!(decoded.stream_ids, vec!["stream1"]);
+  assert_eq!(decoded.command_attachment.artifact_id, "artifact");
+  assert_eq!(decoded.command_attachment.content_type, "image/jpeg");
+  assert_eq!(decoded.command_attachment.size_bytes, 123);
+  assert_eq!(
+    decoded.command_attachment.source.enum_value().unwrap(),
+    AttachmentSource::DIRECT_COMMAND
+  );
 
   // Verify the message
   let message_data = decoded.message.unwrap();
@@ -254,6 +270,12 @@ fn encodable_log_compression_works() {
     matching_fields: AHashMap::new(),
     session_id: "sess".into(),
     occurred_at: OffsetDateTime::from_unix_timestamp(1_500_000_000).unwrap(),
+    command_attachment: Some(Box::new(LogAttachment {
+      artifact_id: "artifact".to_string(),
+      content_type: "image/jpeg".to_string(),
+      size_bytes: 0,
+      source: AttachmentSource::WORKFLOW,
+    })),
     capture_session: None,
   };
 
@@ -288,6 +310,13 @@ fn encodable_log_compression_works() {
   );
   assert_eq!(decoded.action_ids, vec!["a1"]);
   assert_eq!(decoded.stream_ids, vec!["s1"]);
+  assert_eq!(decoded.command_attachment.artifact_id, "artifact");
+  assert_eq!(decoded.command_attachment.content_type, "image/jpeg");
+  assert_eq!(decoded.command_attachment.size_bytes, 0);
+  assert_eq!(
+    decoded.command_attachment.source.enum_value().unwrap(),
+    AttachmentSource::WORKFLOW
+  );
 }
 
 #[test]
@@ -300,6 +329,7 @@ fn extract_timestamp_works() {
     matching_fields: AHashMap::new(),
     session_id: "test".into(),
     occurred_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
+    command_attachment: None,
     capture_session: None,
   };
 

@@ -5,8 +5,6 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::unwrap_used)]
-
 use super::{CanonicalType, ValidationResult, validate_field_type};
 use protobuf::reflect::{RuntimeFieldType, RuntimeType};
 

@@ -98,6 +98,10 @@ pub enum EventContext {
 //
 
 #[derive(ApproximateSize, Debug)]
+#[allow(
+  clippy::large_enum_variant,
+  reason = "Keep ordinary log ingress allocation-free."
+)]
 pub enum LoggerIngressPayload {
   Log(LogLine),
   FeatureFlagExposure {

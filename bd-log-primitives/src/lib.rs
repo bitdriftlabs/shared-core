@@ -18,9 +18,11 @@
 #[path = "./lib_test.rs"]
 mod lib_test;
 
+pub mod command_attachment;
 pub mod tiny_set;
 pub mod zlib;
 
+use crate::command_attachment::LogAttachment;
 use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
 use bd_macros::{ApproximateSize, proto_serializable};
@@ -56,6 +58,7 @@ pub struct LogLine {
   pub fields: AnnotatedLogFields,
   #[approximate_size(with = approximate_ahash_map_children_bytes)]
   pub matching_fields: AnnotatedLogFields,
+  pub command_attachment: Option<Box<LogAttachment>>,
   pub attributes_overrides: Option<LogAttributesOverrides>,
   #[approximate_size(skip)]
   pub capture_session: Option<&'static str>,
@@ -687,6 +690,8 @@ pub struct RawLogRef<'a> {
   pub log_type: LogType,
   #[field(id = 8, repeated)]
   pub stream_ids: &'a [&'a str],
+  #[field(id = 10)]
+  pub command_attachment: Option<&'a LogAttachment>,
 }
 
 /// A reference wrapper for serializing a compressed log entry.
@@ -714,6 +719,8 @@ pub struct CompressedLogRef<'a> {
   pub stream_ids: &'a [&'a str],
   #[field(id = 9)]
   pub compressed_contents: &'a [u8],
+  #[field(id = 10)]
+  pub command_attachment: Option<&'a LogAttachment>,
 }
 
 //
@@ -735,6 +742,7 @@ pub struct Log {
   pub fields: LogFields,
   #[approximate_size(with = approximate_ahash_map_children_bytes)]
   pub matching_fields: LogFields,
+  pub command_attachment: Option<Box<LogAttachment>>,
   pub session_id: Arc<str>,
   pub occurred_at: time::OffsetDateTime,
   #[approximate_size(skip)]
@@ -764,6 +772,7 @@ impl Log {
     stream_ids: &'a [&'a str],
   ) -> RawLogRef<'a> {
     RawLogRef {
+      command_attachment: self.command_attachment.as_deref(),
       occurred_at: self.occurred_at.unix_timestamp_micros(),
       log_level: self.log_level,
       message: &self.message,
@@ -784,6 +793,7 @@ impl Log {
     compressed_contents: &'a [u8],
   ) -> CompressedLogRef<'a> {
     CompressedLogRef {
+      command_attachment: self.command_attachment.as_deref(),
       occurred_at: self.occurred_at.unix_timestamp_micros(),
       log_level: self.log_level,
       session_id: &self.session_id,
@@ -860,6 +870,7 @@ impl EncodableLog {
     Ok(
       if let Some(compressed) = &cached.compressed_contents {
         CompressedLogRef {
+          command_attachment: self.log.command_attachment.as_deref(),
           occurred_at: self.log.occurred_at.unix_timestamp_micros(),
           log_level: self.log.log_level,
           session_id: &self.log.session_id,
@@ -871,6 +882,7 @@ impl EncodableLog {
         .compute_message_size()
       } else {
         RawLogRef {
+          command_attachment: self.log.command_attachment.as_deref(),
           occurred_at: self.log.occurred_at.unix_timestamp_micros(),
           log_level: self.log.log_level,
           message: &self.log.message,
@@ -902,6 +914,7 @@ impl EncodableLog {
     // Use proc-macro-generated serialization
     if let Some(compressed) = &cached.compressed_contents {
       CompressedLogRef {
+        command_attachment: self.log.command_attachment.as_deref(),
         occurred_at: self.log.occurred_at.unix_timestamp_micros(),
         log_level: self.log.log_level,
         session_id: &self.log.session_id,
@@ -913,6 +926,7 @@ impl EncodableLog {
       .serialize_message(os)
     } else {
       RawLogRef {
+        command_attachment: self.log.command_attachment.as_deref(),
         occurred_at: self.log.occurred_at.unix_timestamp_micros(),
         log_level: self.log.log_level,
         message: &self.log.message,

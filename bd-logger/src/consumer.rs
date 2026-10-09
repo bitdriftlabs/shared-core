@@ -41,8 +41,7 @@ use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
 use bd_log_primitives::EncodableLog;
-use bd_proto::protos::logging::payload::Log as ProtoLog;
-use bd_proto::protos::logging::payload::log::CompressedContents;
+use bd_log_primitives::command_attachment::{AttachmentSource, extract_command_attachment};
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::Counter as _;
@@ -50,10 +49,8 @@ use bd_time::OffsetDateTimeExt;
 use bd_versioned_kv::RetentionHandle;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::future::try_join_all;
-use protobuf::Message as _;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
-use std::io::Read as _;
 use std::mem::take;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -70,31 +67,15 @@ const DEVICE_COMMAND_ADMISSION_TIMEOUT: std::time::Duration = std::time::Duratio
 fn workflow_artifact_ids_for_logs(logs: &[Vec<u8>]) -> anyhow::Result<HashMap<uuid::Uuid, String>> {
   let mut ids = HashMap::new();
   for bytes in logs {
-    let log = ProtoLog::parse_from_bytes(bytes)?;
-    let fields = if log.compressed_contents.is_empty() {
-      log.fields
-    } else {
-      let mut decoded = Vec::new();
-      flate2::read::ZlibDecoder::new(log.compressed_contents.as_slice())
-        .read_to_end(&mut decoded)?;
-      // TODO: Persist workflow attachment references alongside staged logs to avoid decoding
-      // compressed payloads during upload preparation.
-      CompressedContents::parse_from_bytes(&decoded)?.fields
-    };
-    // TODO(mattklein123): Authenticate workflow attachment provenance instead of relying on this
-    // reserved field being unavailable to public logger callers.
-    if fields
-      .iter()
-      .any(|field| field.key == bd_workflows::workflow::COMMAND_ID_FIELD)
+    if let Some((session_id, attachment)) = extract_command_attachment(bytes)?
+      && attachment
+        .source
+        .enum_value()
+        .map_err(|source| anyhow::anyhow!("unknown attachment source: {source}"))?
+        == AttachmentSource::WORKFLOW
+      && let Ok(id) = uuid::Uuid::parse_str(&attachment.artifact_id)
     {
-      continue;
-    }
-    for field in fields {
-      if field.key == bd_workflows::workflow::COMMAND_ARTIFACT_ID_FIELD
-        && let Ok(id) = uuid::Uuid::parse_str(field.value.string_data())
-      {
-        ids.insert(id, log.session_id.clone());
-      }
+      ids.insert(id, session_id);
     }
   }
   Ok(ids)

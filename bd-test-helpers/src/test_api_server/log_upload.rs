@@ -7,7 +7,7 @@
 
 use bd_log_primitives::DataValue;
 use bd_proto::protos::client::api::LogUploadRequest;
-use bd_proto::protos::logging::payload::{Log, LogType};
+use bd_proto::protos::logging::payload::{CommandAttachment, Log, LogType};
 use protobuf::Message;
 
 #[derive(Debug)]
@@ -59,6 +59,11 @@ impl LogUpload {
 pub struct WrappedLog(Log);
 
 impl WrappedLog {
+  #[must_use]
+  pub fn command_attachment(&self) -> Option<&CommandAttachment> {
+    self.0.command_attachment.as_ref()
+  }
+
   #[must_use]
   pub fn compressed_contents(&self) -> &[u8] {
     &self.0.compressed_contents

@@ -31,6 +31,7 @@ use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_log_matcher::builder::{and, feature_flag_equals, field_equals, message_equals};
 use bd_log_metadata::LogFields;
 use bd_log_primitives::AnnotatedLogFields;
+use bd_log_primitives::command_attachment::AttachmentSource;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{
   BdTailConfigurations,
@@ -2813,7 +2814,6 @@ fn buffer_dump_device_command_uploads_and_reports_terminal_context() {
     assert_eq!(log_upload.logs().len(), 1);
     assert_eq!(log_upload.logs()[0].message(), "Command completed");
     assert_eq!(log_upload.logs()[0].field("_command_status"), "success");
-    assert_eq!(log_upload.logs()[0].field("_command_id"), command_id);
     assert_eq!(
       log_upload.logs()[0]
         .typed_fields()
@@ -3176,17 +3176,11 @@ fn screenshot_device_command_stages_correlated_attachment() {
     let log = &log_upload.logs()[0];
     assert_eq!(log.message(), "Command completed");
     assert_eq!(log.field("_command_status"), "success");
-    assert_eq!(log.field("_command_artifact_id"), artifact_id);
-    assert_eq!(log.field("_command_artifact_content_type"), "image/jpeg");
-    assert_eq!(
-      log
-        .typed_fields()
-        .into_iter()
-        .find(|(key, _)| key == "_command_artifact_size_bytes")
-        .map(|(_, value)| value),
-      Some(DataValue::U64(u64::try_from(screenshot.len()).unwrap()))
-    );
-    assert_eq!(log.field("_command_id"), command_id);
+    let attachment = log.command_attachment().unwrap();
+    assert_eq!(attachment.artifact_id, artifact_id);
+    assert_eq!(attachment.content_type, "image/jpeg");
+    assert_eq!(attachment.source.enum_value().unwrap(), AttachmentSource::DIRECT_COMMAND);
+    assert_eq!(attachment.size_bytes, u64::try_from(screenshot.len()).unwrap());
   });
 }
 
@@ -3251,7 +3245,6 @@ fn screenshot_device_command_reports_capture_and_validation_failures() {
       assert_eq!(log.message(), "Command completed");
       assert_eq!(log.field("_command_status"), "failure");
       assert_eq!(log.field("_command_message"), expected_error);
-      assert_eq!(log.field("_command_id"), command_id);
     });
   }
 }
@@ -3312,7 +3305,6 @@ fn registered_custom_device_command_completes_without_attachment() {
     let log = &log_upload.logs()[0];
     assert_eq!(log.message(), "Command completed");
     assert_eq!(log.field("_command_status"), "success");
-    assert_eq!(log.field("_command_id"), command_id);
     assert_eq!(log.field("result"), "completed");
   });
 }
@@ -3733,21 +3725,19 @@ fn registered_custom_device_command_stages_correlated_attachment() {
   let log = &logs[0];
   assert_eq!(log.message(), "Command completed");
   assert_eq!(log.field("_command_status"), "success");
-  assert_eq!(log.field("_command_id"), command_id);
-  assert_eq!(log.field("_command_artifact_id"), artifact_id);
+  let attachment = log.command_attachment().unwrap();
+  assert_eq!(attachment.artifact_id, artifact_id);
+  assert_eq!(attachment.content_type, "application/vnd.example.capture");
   assert_eq!(
-    log.field("_command_artifact_content_type"),
-    "application/vnd.example.capture"
+    attachment.source.enum_value().unwrap(),
+    AttachmentSource::DIRECT_COMMAND
   );
+  assert!(!log.has_field("_command_artifact_id"));
+  assert!(!log.has_field("_command_artifact_content_type"));
+  assert!(!log.has_field("_command_artifact_size_bytes"));
   assert_eq!(
-    log
-      .typed_fields()
-      .into_iter()
-      .find(|(key, _)| key == "_command_artifact_size_bytes")
-      .map(|(_, value)| value),
-    Some(DataValue::U64(
-      u64::try_from(b"custom-command-attachment".len()).unwrap()
-    ))
+    attachment.size_bytes,
+    u64::try_from(b"custom-command-attachment".len()).unwrap()
   );
   assert!(!attachment_path.exists());
 }
@@ -3902,20 +3892,20 @@ fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
     if message == "Command completed" {
       assert_eq!(log.field("_command_status"), "success");
       assert_eq!(log.field("result"), "attached");
-      assert_eq!(log.field("_command_artifact_id"), artifact_id.to_string());
+      let metadata = log.command_attachment().unwrap();
+      assert_eq!(metadata.artifact_id, artifact_id.to_string());
+      assert_eq!(metadata.content_type, "application/vnd.example.capture");
       assert_eq!(
-        log.field("_command_artifact_content_type"),
-        "application/vnd.example.capture"
+        metadata.source.enum_value().unwrap(),
+        AttachmentSource::WORKFLOW
       );
+      assert!(!log.has_field("_command_artifact_id"));
+      assert!(!log.has_field("_command_artifact_content_type"));
+      assert!(!log.has_field("_command_artifact_size_bytes"));
       assert_eq!(
-        log
-          .typed_fields()
-          .into_iter()
-          .find(|(key, _)| key == "_command_artifact_size_bytes")
-          .map(|(_, value)| value),
-        Some(DataValue::U64(u64::try_from(attachment.len()).unwrap()))
+        metadata.size_bytes,
+        u64::try_from(attachment.len()).unwrap()
       );
-      assert!(!log.has_field("_command_id"));
     }
   }
 }
@@ -4075,15 +4065,19 @@ fn workflow_screenshot_command_uploads_attachment() {
     assert_eq!(log.message(), message);
     if message == "Command completed" {
       assert_eq!(log.field("_command_status"), "success");
-      assert_eq!(log.field("_command_artifact_id"), artifact_id.to_string());
-      assert_eq!(log.field("_command_artifact_content_type"), "image/jpeg");
+      let metadata = log.command_attachment().unwrap();
+      assert_eq!(metadata.artifact_id, artifact_id.to_string());
+      assert_eq!(metadata.content_type, "image/jpeg");
       assert_eq!(
-        log
-          .typed_fields()
-          .into_iter()
-          .find(|(key, _)| key == "_command_artifact_size_bytes")
-          .map(|(_, value)| value),
-        Some(DataValue::U64(u64::try_from(screenshot.len()).unwrap()))
+        metadata.source.enum_value().unwrap(),
+        AttachmentSource::WORKFLOW
+      );
+      assert!(!log.has_field("_command_artifact_id"));
+      assert!(!log.has_field("_command_artifact_content_type"));
+      assert!(!log.has_field("_command_artifact_size_bytes"));
+      assert_eq!(
+        metadata.size_bytes,
+        u64::try_from(screenshot.len()).unwrap()
       );
     }
   }
@@ -4125,7 +4119,6 @@ fn unregistered_custom_device_command_fails_without_acceptance() {
     assert_eq!(log.message(), "Command completed");
     assert_eq!(log.field("_command_status"), "failure");
     assert_eq!(log.field("_command_message"), "command unknown");
-    assert_eq!(log.field("_command_id"), command_id);
   });
 }
 

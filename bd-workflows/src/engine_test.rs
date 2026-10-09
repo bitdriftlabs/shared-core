@@ -256,18 +256,10 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
       OffsetDateTime::now_utc(),
     )
     .unwrap();
-  assert_eq!(
-    outcome_log.log.fields.get("_command_artifact_id"),
-    Some(&artifact_id.to_string().into())
-  );
-  assert_eq!(
-    outcome_log.log.fields.get("_command_artifact_content_type"),
-    Some(&"image/jpeg".into())
-  );
-  assert_eq!(
-    outcome_log.log.fields.get("_command_artifact_size_bytes"),
-    Some(&DataValue::U64(123))
-  );
+  let attachment = outcome_log.log.command_attachment.as_ref().unwrap();
+  assert_eq!(attachment.artifact_id, artifact_id.to_string());
+  assert_eq!(attachment.content_type, "image/jpeg");
+  assert_eq!(attachment.size_bytes, 123);
   assert!(matches!(
     engine.complete_workflow_command(
       &token,
@@ -2541,6 +2533,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
       matching_fields: LogFields::new(),
       session_id: "foo_session".into(),
       occurred_at: OffsetDateTime::now_utc(),
+      command_attachment: None,
       capture_session: None,
     }),
     &TinySet::default(),
@@ -4201,6 +4194,7 @@ async fn generate_log_multiple() {
         matching_fields: [("_generate_log_id".into(), "id1".into(),)].into(),
         session_id: String::new().into(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
+        command_attachment: None,
         capture_session: None,
       },
       Log {
@@ -4211,6 +4205,7 @@ async fn generate_log_multiple() {
         matching_fields: [("_generate_log_id".into(), "id2".into(),)].into(),
         session_id: String::new().into(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
+        command_attachment: None,
         capture_session: None,
       }
     ]
@@ -4304,6 +4299,7 @@ async fn generate_log_action() {
       matching_fields: [("_generate_log_id".into(), "id".into(),)].into(),
       session_id: String::new().into(),
       occurred_at: OffsetDateTime::UNIX_EPOCH,
+      command_attachment: None,
       capture_session: None,
     }]
   );
