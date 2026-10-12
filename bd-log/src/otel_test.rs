@@ -400,6 +400,190 @@ async fn conditional_export_unpolled_cancellation_is_final_with_a_surviving_hand
 }
 
 #[tokio::test]
+async fn conditional_export_sampling_decides_only_at_completion() {
+  for sampled in [false, true] {
+    for failed in [false, true] {
+      let context = TestTraceContext::new("conditional-sampling");
+      let dispatch = context.dispatch();
+      let _guard = tracing::dispatcher::set_default(&dispatch);
+      let root = crate::otel_span_on_error!("operation");
+      let result = crate::otel::instrument_on_error_or_sample(
+        async {
+          drop(crate::otel_info_span_if_parent!("request"));
+          if failed { Err("final error") } else { Ok(42) }
+        },
+        root,
+        sampled,
+      )
+      .await;
+      assert_eq!(result, if failed { Err("final error") } else { Ok(42) });
+      let spans = context.exported_spans();
+      assert_eq!(spans.len(), if sampled || failed { 2 } else { 0 });
+      if let Some(root) = spans.iter().find(|span| span.name == "operation") {
+        assert_eq!(
+          root.status,
+          if failed {
+            Status::error("final error")
+          } else {
+            Status::Unset
+          }
+        );
+        assert_eq!(root.dropped_attributes_count, 0);
+      }
+    }
+  }
+}
+
+#[tokio::test]
+async fn conditional_export_sampling_retains_valid_creation_parent_only() {
+  for valid_parent in [false, true] {
+    let context = TestTraceContext::new("conditional-parent-sampling");
+    let dispatch = context.dispatch();
+    let _guard = tracing::dispatcher::set_default(&dispatch);
+    let parent = if valid_parent {
+      crate::otel_info_span!("parent")
+    } else {
+      tracing::info_span!("ordinary_parent")
+    };
+    let root = {
+      let _entered = parent.enter();
+      crate::otel_span_on_error!("operation")
+    };
+    assert_eq!(root.has_ambient_parent(), valid_parent);
+    let parent_context = parent.context();
+    drop(parent);
+    let result = crate::otel::instrument_on_error_or_sample(
+      async {
+        drop(crate::otel_info_span_if_parent!("request"));
+        Ok::<_, &str>(42)
+      },
+      root,
+      false,
+    )
+    .await;
+    assert_eq!(result, Ok(42));
+    let spans = context.exported_spans();
+    assert_eq!(spans.len(), if valid_parent { 3 } else { 0 });
+    if valid_parent {
+      let root = spans.iter().find(|span| span.name == "operation").unwrap();
+      assert_eq!(root.parent_span_id, SpanId::INVALID);
+      assert_eq!(root.links.len(), 1);
+      assert_eq!(
+        root.links[0].span_context.trace_id(),
+        parent_context.span().span_context().trace_id()
+      );
+      assert_eq!(
+        root.links[0].span_context.span_id(),
+        parent_context.span().span_context().span_id()
+      );
+      assert_eq!(root.status, Status::Unset);
+    }
+  }
+}
+
+#[tokio::test]
+async fn conditional_export_sampling_ignores_context_without_direct_otel_parent() {
+  for ordinary_child in [false, true] {
+    let context = TestTraceContext::new("conditional-direct-parent");
+    let dispatch = context.dispatch();
+    let _guard = tracing::dispatcher::set_default(&dispatch);
+    let source = crate::otel_info_span!("context_source");
+    let source_context = source.context();
+    let parent = if ordinary_child {
+      tracing::info_span!("ordinary_child")
+    } else {
+      tracing::Span::none()
+    };
+    let root = {
+      let _ambient = source_context.attach();
+      let _source = ordinary_child.then(|| source.enter());
+      let _entered = parent.enter();
+      assert!(crate::current_trace_context_headers().is_some());
+      assert!(crate::otel_info_span_if_parent!("excluded").is_disabled());
+      crate::otel_span_on_error!("operation")
+    };
+    assert!(!root.has_ambient_parent());
+    assert_eq!(
+      crate::otel::instrument_on_error_or_sample(ready(Ok::<_, &str>(42)), root, false).await,
+      Ok(42)
+    );
+    drop(parent);
+    assert_eq!(context.exported_spans(), []);
+    drop(source);
+    let spans = context.exported_spans();
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0].name, "context_source");
+  }
+}
+
+#[tokio::test]
+async fn conditional_export_parent_does_not_retain_cancelled_or_error_only_success() {
+  let context = TestTraceContext::new("conditional-parent-cancellation");
+  let dispatch = context.dispatch();
+  let _guard = tracing::dispatcher::set_default(&dispatch);
+  let parent = crate::otel_info_span!("parent");
+  let (error_only, cancelled) = {
+    let _entered = parent.enter();
+    (
+      crate::otel_span_on_error!("error_only"),
+      crate::otel_span_on_error!("cancelled"),
+    )
+  };
+  crate::otel::instrument_on_error(ready(Ok::<_, &str>(())), error_only)
+    .await
+    .unwrap();
+  let mut request = Box::pin(crate::otel::instrument_on_error_or_sample(
+    async {
+      drop(crate::otel_info_span_if_parent!("request"));
+      pending::<Result<(), &str>>().await
+    },
+    cancelled.clone(),
+    false,
+  ));
+  assert!(
+    std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
+      .await
+      .is_pending()
+  );
+  drop(request);
+  cancelled.retain();
+  drop(cancelled);
+  drop(parent);
+  let spans = context.exported_spans();
+  assert_eq!(spans.len(), 1);
+  assert_eq!(spans[0].name, "parent");
+}
+
+#[tokio::test]
+async fn conditional_export_sampled_cancellation_is_final() {
+  for polled in [false, true] {
+    let context = TestTraceContext::new("conditional-sampled-cancellation");
+    let dispatch = context.dispatch();
+    let _guard = tracing::dispatcher::set_default(&dispatch);
+    let root = crate::otel_span_on_error!("cancelled");
+    let mut request = Box::pin(crate::otel::instrument_on_error_or_sample(
+      async {
+        drop(crate::otel_info_span_if_parent!("request"));
+        pending::<Result<(), &str>>().await
+      },
+      root.clone(),
+      true,
+    ));
+    if polled {
+      assert!(
+        std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
+          .await
+          .is_pending()
+      );
+    }
+    drop(request);
+    root.retain();
+    drop(root);
+    assert_eq!(context.exported_spans(), []);
+  }
+}
+
+#[tokio::test]
 async fn conditional_export_only_retains_final_errors_with_any_attribute_budget() {
   for limit in [0, 1, 16] {
     let context = TestTraceContext::with_max_attributes("conditional-export-test", limit);
