@@ -181,16 +181,6 @@ pub fn set_remote_parent(span: &tracing::Span, headers: &TraceContextHeaders) ->
     .is_ok()
 }
 
-#[must_use]
-pub fn add_trace_link(span: &tracing::Span, headers: &TraceContextHeaders) -> bool {
-  let Some(span_context) = remote_span_context(headers) else {
-    return false;
-  };
-
-  span.add_link(span_context);
-  true
-}
-
 //
 // LogOutput
 //
@@ -443,11 +433,11 @@ fn build_tonic_metadata(headers: &BTreeMap<String, String>) -> anyhow::Result<Me
 // ConditionalTrace
 //
 
-/// An independent local root whose final decision applies to its controlled child spans.
+/// An independently retained local capture whose decision applies to its controlled child spans.
 /// Clones share one decision. Dropping the last handle without a decision discards the capture.
 /// Only the existing dedicated OTEL target is recorded; ordinary library spans stay excluded.
 /// Propagate a tracing parent handle to detached tasks so their membership is registered before
-/// lazy SDK span creation. Trace headers and links do not carry local capture ownership.
+/// lazy SDK span creation. Trace parentage does not determine local capture ownership.
 #[derive(Clone, Debug)]
 pub struct ConditionalTrace {
   span: tracing::Span,
@@ -471,11 +461,18 @@ impl Drop for CaptureDecision {
 }
 
 impl ConditionalTrace {
-  /// Register a newly created, unstarted root. Prefer `otel_span_on_error!` for root creation.
+  /// Register a newly created, unstarted capture span with no tracing parent.
+  /// The OTEL parent is set separately so nested captures keep independent ownership.
+  /// Prefer `otel_span_on_error!` for capture creation.
   #[doc(hidden)]
   #[must_use]
   pub fn new(span: tracing::Span, limits: TraceCaptureLimits) -> Self {
     let has_ambient_parent = current_span_is_direct_otel();
+    let parent_context = if has_ambient_parent {
+      tracing::Span::current().context()
+    } else {
+      opentelemetry::Context::new()
+    };
     let group = span
       .with_subscriber(|(_, dispatch)| {
         dispatch
@@ -484,7 +481,7 @@ impl ConditionalTrace {
       })
       .flatten();
     if let Some(group) = &group {
-      let _ = span.set_parent(opentelemetry::Context::new().with_value(group.clone()));
+      let _ = span.set_parent(parent_context.with_value(group.clone()));
     }
     Self {
       span,
@@ -493,7 +490,7 @@ impl ConditionalTrace {
     }
   }
 
-  /// Whether the entered parent at root creation qualified for the `otel_*_if_parent!` macros.
+  /// Whether the entered parent at capture creation qualified for the `otel_*_if_parent!` macros.
   #[must_use]
   pub fn has_ambient_parent(&self) -> bool {
     self.has_ambient_parent
@@ -533,8 +530,8 @@ where
 }
 
 /// Export final errors, selected successes, and completed operations with a direct OTEL parent.
-/// Parent eligibility uses the `otel_*_if_parent!` predicate at root creation; cancellation remains
-/// suppressed in every case.
+/// Parent eligibility uses the `otel_*_if_parent!` predicate at capture creation; cancellation
+/// remains suppressed in every case.
 pub fn instrument_on_error_or_sample<F, T, E>(
   future: F,
   span: ConditionalTrace,
@@ -571,14 +568,14 @@ where
   }
 }
 
-/// Create a typed error-only local trace, linking any ambient trace rather than requiring a parent.
+/// Create an independently retained capture beneath the current direct OTEL parent, or a trace root
+/// when no such parent exists. Parent eligibility matches the `otel_*_if_parent!` macros.
 /// Use `otel::instrument_on_error` to decide retention from the operation's final Result.
 /// Local debug lifecycle output can still display suppressed spans; only collector export is gated.
 /// Use `limits: TraceCaptureLimits { ... }` before the name to override the default buffer limits.
 #[macro_export]
 macro_rules! otel_span_on_error {
   (limits: $limits:expr, $name:expr $(, $($fields:tt)*)?) => {{
-    let headers = $crate::current_trace_context_headers();
     let span = $crate::otel::__tracing::span!(
       target: $crate::OTEL_TARGET,
       parent: None,
@@ -588,11 +585,7 @@ macro_rules! otel_span_on_error {
       otel.status_description = $crate::otel::__tracing::field::Empty
       $(, $($fields)*)?
     );
-    let capture = $crate::otel::ConditionalTrace::new(span, $limits);
-    if let Some(headers) = headers {
-      let _ = $crate::add_trace_link(&capture, &headers);
-    }
-    capture
+    $crate::otel::ConditionalTrace::new(span, $limits)
   }};
   ($name:expr $(, $($fields:tt)*)?) => {{
     $crate::otel_span_on_error!(

@@ -208,7 +208,7 @@ async fn concurrent_batch_captures() {
     tasks.push(tokio::spawn(
       async move {
         let ordinary = crate::otel_info_span!("ordinary", request_id);
-        let (root, linked_context) = {
+        let (root, parent_context) = {
           let _entered = ordinary.enter();
           (
             crate::otel_span_on_error!("root", request_id),
@@ -237,7 +237,7 @@ async fn concurrent_batch_captures() {
           root,
         )
         .await;
-        (request_id, linked_context, result.is_err())
+        (request_id, parent_context, result.is_err())
       }
       .with_subscriber(dispatch.clone()),
     ));
@@ -249,7 +249,7 @@ async fn concurrent_batch_captures() {
   context.force_flush();
   let spans = context.exported_spans();
   assert_eq!(spans.len(), 32 + 16 * 3);
-  for (request_id, linked_context, failed) in outcomes {
+  for (request_id, parent_context, failed) in outcomes {
     let request_spans: Vec<_> = spans
       .iter()
       .filter(|span| {
@@ -263,8 +263,8 @@ async fn concurrent_batch_captures() {
       .iter()
       .find(|span| span.name == "ordinary")
       .unwrap();
-    assert_eq!(ordinary.span_context.trace_id(), linked_context.trace_id());
-    assert_eq!(ordinary.span_context.span_id(), linked_context.span_id());
+    assert_eq!(ordinary.span_context.trace_id(), parent_context.trace_id());
+    assert_eq!(ordinary.span_context.span_id(), parent_context.span_id());
     assert_eq!(ordinary.status, Status::Unset);
     if failed {
       let root = request_spans
@@ -280,7 +280,7 @@ async fn concurrent_batch_captures() {
         .find(|span| span.name == "grandchild")
         .unwrap();
       assert_eq!(root.status, Status::error("final failure"));
-      assert_eq!(root.parent_span_id, SpanId::INVALID);
+      assert_eq!(root.parent_span_id, parent_context.span_id());
       assert_eq!(child.parent_span_id, root.span_context.span_id());
       assert_eq!(grandchild.parent_span_id, child.span_context.span_id());
       assert_eq!(child.span_context.trace_id(), root.span_context.trace_id());
@@ -292,15 +292,8 @@ async fn concurrent_batch_captures() {
       assert!(child.events[0].attributes.iter().any(|attribute| {
         attribute.key.as_str() == "request_id" && attribute.value == Value::I64(request_id)
       }));
-      assert_eq!(root.links.len(), 1);
-      assert_eq!(
-        root.links[0].span_context.trace_id(),
-        linked_context.trace_id()
-      );
-      assert_eq!(
-        root.links[0].span_context.span_id(),
-        linked_context.span_id()
-      );
+      assert_eq!(root.links.len(), 0);
+      assert_eq!(root.span_context.trace_id(), parent_context.trace_id());
     }
   }
 }
@@ -320,6 +313,8 @@ async fn conditional_export_nested_roots_have_independent_decisions() {
   let context = TestTraceContext::new("conditional-nested");
   let dispatch = context.dispatch();
   let _guard = tracing::dispatcher::set_default(&dispatch);
+  let outer = crate::otel_span_on_error!("outer");
+  let outer_context = outer.context();
   crate::otel::instrument_on_error(
     async {
       let outer_child = crate::otel_info_span_if_parent!("outer_child");
@@ -336,7 +331,7 @@ async fn conditional_export_nested_roots_have_independent_decisions() {
       .unwrap_err();
       Ok::<_, &str>(())
     },
-    crate::otel_span_on_error!("outer"),
+    outer,
   )
   .await
   .unwrap();
@@ -347,13 +342,58 @@ async fn conditional_export_nested_roots_have_independent_decisions() {
     .iter()
     .find(|span| span.name == "inner_child")
     .unwrap();
-  assert_eq!(root.links.len(), 1);
-  assert_eq!(root.parent_span_id, SpanId::INVALID);
-  assert_eq!(child.parent_span_id, root.span_context.span_id());
-  assert_ne!(
-    root.links[0].span_context.trace_id(),
-    root.span_context.trace_id()
+  assert_eq!(root.links.len(), 0);
+  assert_eq!(
+    root.parent_span_id,
+    outer_context.span().span_context().span_id()
   );
+  assert_eq!(child.parent_span_id, root.span_context.span_id());
+  assert_eq!(
+    root.span_context.trace_id(),
+    outer_context.span().span_context().trace_id()
+  );
+}
+
+#[tokio::test]
+async fn conditional_export_parent_cancellation_does_not_suppress_child_failure() {
+  let context = TestTraceContext::new("conditional-parent-cancelled");
+  let dispatch = context.dispatch();
+  let _guard = tracing::dispatcher::set_default(&dispatch);
+  let outer = crate::otel_span_on_error!("outer");
+  let inner = {
+    let _entered = outer.enter();
+    crate::otel_span_on_error!("inner")
+  };
+  let parent_context = outer.context();
+  drop(crate::otel::instrument_on_error(
+    pending::<Result<(), &str>>(),
+    outer,
+  ));
+  assert_eq!(context.exported_spans(), []);
+  crate::otel::instrument_on_error(
+    async {
+      drop(crate::otel_info_span_if_parent!("request"));
+      Err::<(), _>("child failed")
+    },
+    inner,
+  )
+  .await
+  .unwrap_err();
+  let spans = context.exported_spans();
+  assert_eq!(spans.len(), 2);
+  let inner = spans.iter().find(|span| span.name == "inner").unwrap();
+  assert_eq!(inner.status, Status::error("child failed"));
+  assert_eq!(
+    inner.parent_span_id,
+    parent_context.span().span_context().span_id()
+  );
+  assert_eq!(
+    inner.span_context.trace_id(),
+    parent_context.span().span_context().trace_id()
+  );
+  for span in &spans {
+    assert_eq!(span.links.len(), 0);
+  }
 }
 
 #[tokio::test]
@@ -466,14 +506,13 @@ async fn conditional_export_sampling_retains_valid_creation_parent_only() {
     assert_eq!(spans.len(), if valid_parent { 3 } else { 0 });
     if valid_parent {
       let root = spans.iter().find(|span| span.name == "operation").unwrap();
-      assert_eq!(root.parent_span_id, SpanId::INVALID);
-      assert_eq!(root.links.len(), 1);
+      assert_eq!(root.links.len(), 0);
       assert_eq!(
-        root.links[0].span_context.trace_id(),
+        root.span_context.trace_id(),
         parent_context.span().span_context().trace_id()
       );
       assert_eq!(
-        root.links[0].span_context.span_id(),
+        root.parent_span_id,
         parent_context.span().span_context().span_id()
       );
       assert_eq!(root.status, Status::Unset);
@@ -659,12 +698,12 @@ async fn conditional_export_discards_cancelled_and_recovered_errors() {
 }
 
 #[test]
-fn conditional_export_survives_two_stage_logger_setup_and_links_parent() {
+fn conditional_export_survives_two_stage_logger_setup_and_preserves_parent() {
   let (spans, ()) = with_two_phase_test_otel("conditional-export-test", async {
     let parent = crate::otel_info_span!("parent");
     let failure = {
       let _entered = parent.enter();
-      crate::otel_span_on_error!("linked_failure")
+      crate::otel_span_on_error!("parented_failure")
     };
     crate::otel::instrument_on_error(ready(Err::<(), _>("failed")), failure)
       .await
@@ -680,19 +719,11 @@ fn conditional_export_survives_two_stage_logger_setup_and_links_parent() {
   let parent = spans.iter().find(|span| span.name == "parent").unwrap();
   let failure = spans
     .iter()
-    .find(|span| span.name == "linked_failure")
+    .find(|span| span.name == "parented_failure")
     .unwrap();
-  assert_eq!(failure.parent_span_id, SpanId::INVALID);
-  assert_eq!(failure.links.len(), 1);
+  assert_eq!(failure.parent_span_id, parent.span_context.span_id());
+  assert_eq!(failure.links.len(), 0);
   assert_eq!(
-    failure.links[0].span_context.trace_id(),
-    parent.span_context.trace_id()
-  );
-  assert_eq!(
-    failure.links[0].span_context.span_id(),
-    parent.span_context.span_id()
-  );
-  assert_ne!(
     failure.span_context.trace_id(),
     parent.span_context.trace_id()
   );

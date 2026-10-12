@@ -84,7 +84,6 @@ pub use otel::{
   TRACEPARENT_HEADER,
   TRACESTATE_HEADER,
   TraceContextHeaders,
-  add_trace_link,
   current_trace_context_headers,
   current_trace_request_id,
   set_remote_parent,
@@ -346,7 +345,7 @@ where
 // then attach OTEL once config is available. The global filter reload path can keep using
 // `tracing_subscriber::reload::Layer`, because it does not participate in `WithContext`
 // downcasting. The layer collection itself, however, must preserve downcasts to the *current*
-// inner OTEL layer so `current_trace_context_headers`, `set_remote_parent`, and `add_trace_link`
+// inner OTEL layer so `current_trace_context_headers` and `set_remote_parent`
 // continue to work after reconfiguration.
 //
 // This wrapper is deliberately narrow:
