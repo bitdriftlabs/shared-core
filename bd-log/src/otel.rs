@@ -452,6 +452,7 @@ fn build_tonic_metadata(headers: &BTreeMap<String, String>) -> anyhow::Result<Me
 pub struct ConditionalTrace {
   span: tracing::Span,
   decision: Arc<CaptureDecision>,
+  has_ambient_parent: bool,
 }
 
 //
@@ -474,6 +475,7 @@ impl ConditionalTrace {
   #[doc(hidden)]
   #[must_use]
   pub fn new(span: tracing::Span, limits: TraceCaptureLimits) -> Self {
+    let has_ambient_parent = current_span_is_direct_otel();
     let group = span
       .with_subscriber(|(_, dispatch)| {
         dispatch
@@ -487,7 +489,14 @@ impl ConditionalTrace {
     Self {
       span,
       decision: Arc::new(CaptureDecision(group)),
+      has_ambient_parent,
     }
+  }
+
+  /// Whether the entered parent at root creation qualified for the `otel_*_if_parent!` macros.
+  #[must_use]
+  pub fn has_ambient_parent(&self) -> bool {
+    self.has_ambient_parent
   }
 
   /// Retain the complete local group when its spans close. The first decision is final.
@@ -520,6 +529,34 @@ where
   F: Future<Output = Result<T, E>>,
   E: Display,
 {
+  instrument_with_retention(future, span, false)
+}
+
+/// Export final errors, selected successes, and completed operations with a direct OTEL parent.
+/// Parent eligibility uses the `otel_*_if_parent!` predicate at root creation; cancellation remains
+/// suppressed in every case.
+pub fn instrument_on_error_or_sample<F, T, E>(
+  future: F,
+  span: ConditionalTrace,
+  retain_on_success: bool,
+) -> impl Future<Output = Result<T, E>>
+where
+  F: Future<Output = Result<T, E>>,
+  E: Display,
+{
+  let retain_on_success = retain_on_success || span.has_ambient_parent();
+  instrument_with_retention(future, span, retain_on_success)
+}
+
+fn instrument_with_retention<F, T, E>(
+  future: F,
+  span: ConditionalTrace,
+  retain_on_success: bool,
+) -> impl Future<Output = Result<T, E>>
+where
+  F: Future<Output = Result<T, E>>,
+  E: Display,
+{
   let cancellation = CaptureDecision(span.decision.0.clone());
   async move {
     let result = future.instrument(span.span.clone()).await;
@@ -528,7 +565,7 @@ where
       span.record("otel.status_code", "ERROR");
       span.record("otel.status_description", description.as_str());
     }
-    span.decide(result.is_err());
+    span.decide(result.is_err() || retain_on_success);
     drop(cancellation);
     result
   }
