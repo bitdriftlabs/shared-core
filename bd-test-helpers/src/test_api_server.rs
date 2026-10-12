@@ -19,6 +19,7 @@ use bd_grpc_codec::{Compression, OptimizeFor};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
+use bd_proto::protos::client::api::device_command_update_ack::Disposition;
 use bd_proto::protos::client::api::handshake_response::{self, StreamSettings};
 use bd_proto::protos::client::api::log_upload_intent_response::{Decision, UploadImmediately};
 use bd_proto::protos::client::api::{
@@ -52,6 +53,7 @@ use bd_time::{TimeDurationExt, ToProtoDuration};
 use http_body_util::StreamBody;
 use log_upload::LogUpload;
 use protobuf::MessageField;
+use protobuf::well_known_types::timestamp::Timestamp;
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -271,6 +273,7 @@ impl BlockedLogUploadResponse {
 // Helper scoped to a single stream for processing requests.
 struct RequestProcessor {
   stream_id: i32,
+  sdk_instance_id: String,
   stream_state: Arc<ServiceState>,
   close_after_request: AtomicBool,
   post_handshake_response: Option<ApiResponse>,
@@ -285,6 +288,7 @@ impl RequestProcessor {
   async fn process_request(&mut self, request: &ApiRequest) -> Option<ApiResponse> {
     match &request.request_type {
       Some(Request_type::Handshake(h)) => {
+        self.sdk_instance_id.clone_from(&h.sdk_instance_id);
         log::debug!("[S{}] received handshake", self.stream_id);
 
         let attributes_as_strings = h
@@ -591,6 +595,7 @@ impl RequestProcessor {
             DeviceCommandUpdateAck {
               command_id: update.command_id.clone(),
               update_sequence_number: update.update_sequence_number,
+              disposition: Disposition::DISPOSITION_APPLIED.into(),
               ..Default::default()
             },
           )),
@@ -680,6 +685,7 @@ async fn mux(
   tokio::spawn(async move {
     let mut request_processor = RequestProcessor {
       stream_id,
+      sdk_instance_id: String::new(),
       stream_state: stream_state.clone(),
       close_after_request: AtomicBool::new(false),
       post_handshake_response: None,
@@ -712,11 +718,29 @@ async fn mux(
                 response_type: Some(Response_type::RuntimeUpdate(runtime)),
                 ..Default::default()
               },
-            StreamAction::SendConfiguration(configuration) =>
+            StreamAction::SendConfiguration(mut configuration) => {
+              if let Some(Update_type::StateOfTheWorld(state)) = configuration.update_type.as_mut()
+                && let Some(tails) = state.bdtail_configuration.as_mut()
+              {
+                for stream in &mut tails.active_streams {
+                  if let Some(command) = stream.device_command.as_mut() {
+                    if command.sdk_instance_id.is_empty() {
+                      command.sdk_instance_id = request_processor.sdk_instance_id.clone().into();
+                    }
+                    if command.expires_at.is_none() {
+                      command.expires_at = Some(Timestamp {
+                        seconds: time::OffsetDateTime::now_utc().unix_timestamp() + 24 * 60 * 60,
+                        ..Default::default()
+                      }).into();
+                    }
+                  }
+                }
+              }
               ApiResponse {
                 response_type: Some(Response_type::ConfigurationUpdate(configuration)),
                 ..Default::default()
-              },
+              }
+            },
               StreamAction::CloseStream => {
                 break 'stream;
               }

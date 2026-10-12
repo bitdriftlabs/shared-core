@@ -1270,11 +1270,6 @@ impl Uploader {
           log::debug!("upload of artifact: {name} succeeded");
           break;
         },
-        Ok(_) if command_id.is_some() => {
-          return Err(Error::Unhandled(anyhow::anyhow!(
-            "command artifact upload was rejected by the server"
-          )));
-        },
         Ok(_) | Err(_) => {},
       }
 

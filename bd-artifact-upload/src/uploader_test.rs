@@ -1302,7 +1302,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
 }
 
 #[tokio::test]
-async fn command_upload_rejection_completes_with_failure_without_stopping_uploader() {
+async fn command_upload_negative_ack_retries_without_stopping_uploader() {
   let mut setup = Setup::new(2).await;
   let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
   let id = setup
@@ -1338,7 +1338,16 @@ async fn command_upload_rejection_completes_with_failure_without_stopping_upload
       success: false,
     }).unwrap();
   });
-  assert_matches!(completion_rx.await.unwrap(), Err(error) if error.contains("rejected"));
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.artifact_id, id.to_string());
+    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
+    upload.response_tx.send(UploadResponse {
+      uuid: upload.uuid,
+      success: true,
+    }).unwrap();
+  });
+  completion_rx.await.unwrap().unwrap();
 
   let follow_up_id = setup
     .client
@@ -1406,7 +1415,7 @@ async fn evicted_command_upload_completes_with_failure() {
 }
 
 #[tokio::test]
-async fn corrupt_command_upload_completes_with_failure() {
+async fn corrupt_command_upload_discard_completes_without_retry() {
   let mut setup = Setup::new(1).await;
   let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
   let id = setup
@@ -1449,10 +1458,10 @@ async fn corrupt_command_upload_completes_with_failure() {
     );
     upload.response_tx.send(UploadResponse {
       uuid: upload.uuid,
-      success: false,
+      success: true,
     }).unwrap();
   });
-  assert_matches!(completion_rx.await.unwrap(), Err(error) if error.contains("rejected"));
+  completion_rx.await.unwrap().unwrap();
 }
 
 #[tokio::test]

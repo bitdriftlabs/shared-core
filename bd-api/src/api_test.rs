@@ -8,7 +8,13 @@
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream, TestHooks};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::reconnect::ReconnectState;
-use crate::upload::{Tracked, TrackedDeviceCommandUpdate};
+use crate::upload::{
+  DeviceCommandState,
+  DeviceCommandUpdateTracker,
+  MAX_KNOWN_COMMANDS,
+  Tracked,
+  TrackedDeviceCommandUpdate,
+};
 use crate::{
   DataUpload,
   SimpleNetworkQualityProvider,
@@ -33,8 +39,10 @@ use bd_internal_logging::{LogFields, LogLevel};
 use bd_key_value::Store;
 use bd_metadata::{Metadata, Platform};
 use bd_network_quality::{NetworkQuality, NetworkQualityResolver as _};
+use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
+use bd_proto::protos::client::api::device_command_update_ack::Disposition as AckDisposition;
 use bd_proto::protos::client::api::handshake_response::StreamSettings;
 use bd_proto::protos::client::api::state_update_request::StartedSession;
 use bd_proto::protos::client::api::{
@@ -56,6 +64,7 @@ use bd_proto::protos::client::api::{
   StatsUploadRequest,
   StatsUploadResponse,
   UploadArtifactRequest,
+  UploadArtifactResponse,
   client_state_update,
   device_command_update,
 };
@@ -69,7 +78,7 @@ use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
-use protobuf::MessageField;
+use protobuf::{EnumOrUnknown, MessageField};
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex};
@@ -79,6 +88,7 @@ use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, timeout};
+use uuid::Uuid;
 
 //
 // EmptyMetadata
@@ -1802,7 +1812,183 @@ async fn flush_buffers_response_forwards_streaming_to_trigger_upload() {
   );
 }
 
-#[tokio::test]
+fn pending_command_update() -> (
+  TrackedDeviceCommandUpdate,
+  tokio::sync::oneshot::Receiver<()>,
+) {
+  let update = DeviceCommandUpdate {
+    command_id: Uuid::new_v4().to_string(),
+    update_sequence_number: 1,
+    update_type: Some(device_command_update::Update_type::Accepted(
+      device_command_update::Accepted::default(),
+    )),
+    ..Default::default()
+  };
+  TrackedDeviceCommandUpdate::new(update.command_id.clone(), update)
+}
+
+#[tokio::test(start_paused = true)]
+async fn device_command_retry_is_paced_after_idle() {
+  let mut setup = Setup::new().await;
+  setup.next_stream(1.seconds()).await.unwrap();
+  setup.handshake_response(0, None, None).await;
+  assert!(setup.next_request(10.seconds()).await.is_none());
+  let (tracked, response) = pending_command_update();
+  let update = tracked.payload.clone();
+  setup
+    .send_request(DataUpload::DeviceCommandUpdate(tracked))
+    .await;
+  assert_matches!(
+    setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::DeviceCommandUpdate(request)) if request == update
+  );
+  assert!(setup.next_request(900.milliseconds()).await.is_none());
+  assert_matches!(
+    setup.next_request(200.milliseconds()).await.unwrap().request_type,
+    Some(Request_type::DeviceCommandUpdate(request)) if request == update
+  );
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::DeviceCommandUpdateAck(
+        DeviceCommandUpdateAck {
+          command_id: update.command_id,
+          update_sequence_number: update.update_sequence_number,
+          disposition: AckDisposition::DISPOSITION_APPLIED.into(),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    })
+    .await;
+  response.await.unwrap();
+  assert!(setup.next_request(2.seconds()).await.is_none());
+}
+
+#[tokio::test(start_paused = true)]
+async fn device_command_retry_keeps_sleep_mode_stream_active_until_acknowledged() {
+  let (idle_tx, mut idle_rx) = channel(1);
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    None,
+    Some(idle_tx),
+    None,
+    Arc::new(EmptyMetadata),
+  )
+  .await;
+  setup.sleep_mode_active.send(true).unwrap();
+  setup.next_stream(1.seconds()).await.unwrap();
+  setup.handshake_response(0, None, None).await;
+  let (tracked, mut response) = pending_command_update();
+  let update = tracked.payload.clone();
+  setup
+    .send_request(DataUpload::DeviceCommandUpdate(tracked))
+    .await;
+  for _ in 0 .. 21 {
+    assert_matches!(
+      setup.next_request(1100.milliseconds()).await.unwrap().request_type,
+      Some(Request_type::DeviceCommandUpdate(request)) if request == update
+    );
+  }
+  assert_eq!(
+    idle_rx.try_recv(),
+    Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+  );
+  assert_eq!(
+    response.try_recv(),
+    Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+  );
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::DeviceCommandUpdateAck(
+        DeviceCommandUpdateAck {
+          command_id: update.command_id,
+          update_sequence_number: update.update_sequence_number,
+          disposition: AckDisposition::DISPOSITION_APPLIED.into(),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    })
+    .await;
+  response.await.unwrap();
+  idle_rx.recv().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn device_command_retry_bypasses_sleep_mode_reconnect_delay() {
+  let mut setup = Setup::new().await;
+  setup.sleep_mode_active.send(true).unwrap();
+  setup.next_stream(1.seconds()).await.unwrap();
+  setup.handshake_response(0, None, None).await;
+  let (tracked, response) = pending_command_update();
+  let update = tracked.payload.clone();
+  setup
+    .send_request(DataUpload::DeviceCommandUpdate(tracked))
+    .await;
+  setup.next_request(1.seconds()).await.unwrap();
+  setup.close_stream().await;
+  setup.next_stream(2.seconds()).await.unwrap();
+  setup.handshake_response(0, None, None).await;
+  assert_matches!(
+    setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::DeviceCommandUpdate(request)) if request == update
+  );
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::DeviceCommandUpdateAck(
+        DeviceCommandUpdateAck {
+          command_id: update.command_id,
+          update_sequence_number: update.update_sequence_number,
+          disposition: AckDisposition::DISPOSITION_APPLIED.into(),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    })
+    .await;
+  response.await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn command_artifact_acknowledgements_use_standard_upload_results() {
+  let mut setup = Setup::new().await;
+  setup.next_stream(1.seconds()).await.unwrap();
+  setup.handshake_response(0, None, None).await;
+
+  for error in ["temporary failure", ""] {
+    let upload_uuid = Uuid::new_v4().to_string();
+    let (tracked, response) = Tracked::new(
+      upload_uuid.clone(),
+      UploadArtifactRequest {
+        upload_uuid: upload_uuid.clone(),
+        command_id: Some(Uuid::new_v4().to_string()),
+        ..Default::default()
+      },
+    );
+    setup
+      .data_tx
+      .send(DataUpload::ArtifactUpload(tracked))
+      .await
+      .unwrap();
+    assert_matches!(
+      setup.next_request(1.seconds()).await.unwrap().request_type,
+      Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == upload_uuid
+    );
+    setup
+      .send_response(ApiResponse {
+        response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
+          upload_uuid,
+          error: error.to_string(),
+          ..Default::default()
+        })),
+        ..Default::default()
+      })
+      .await;
+    assert_eq!(response.await.unwrap().success, error.is_empty());
+  }
+}
+
+#[tokio::test(start_paused = true)]
 async fn device_command_updates_retry_until_acknowledged() {
   let mut setup = Setup::new().await;
   assert!(setup.next_stream(1.seconds()).await.is_some());
@@ -1857,6 +2043,7 @@ async fn device_command_updates_retry_until_acknowledged() {
               command_id: update.command_id.clone(),
               update_sequence_number: update.update_sequence_number,
               error: "retry".to_string(),
+              disposition: AckDisposition::DISPOSITION_RETRYABLE.into(),
               ..Default::default()
             },
           )),
@@ -1864,7 +2051,7 @@ async fn device_command_updates_retry_until_acknowledged() {
         })
         .await;
       assert_matches!(
-        setup.next_request(1.seconds()).await.unwrap().request_type,
+        setup.next_request(2.seconds()).await.unwrap().request_type,
         Some(Request_type::DeviceCommandUpdate(request)) if request == update
       );
     }
@@ -1875,6 +2062,7 @@ async fn device_command_updates_retry_until_acknowledged() {
           DeviceCommandUpdateAck {
             command_id: update.command_id,
             update_sequence_number: update.update_sequence_number,
+            disposition: AckDisposition::DISPOSITION_APPLIED.into(),
             ..Default::default()
           },
         )),
@@ -1883,6 +2071,207 @@ async fn device_command_updates_retry_until_acknowledged() {
       .await;
     assert!(response_rx.await.is_ok());
   }
+}
+
+#[tokio::test(start_paused = true)]
+async fn device_command_update_survives_stream_replacement() {
+  let mut setup = Setup::new().await;
+  setup.next_stream(1.seconds()).await.unwrap();
+  setup.handshake_response(0, None, None).await;
+  let update = DeviceCommandUpdate {
+    command_id: Uuid::new_v4().to_string(),
+    update_sequence_number: 1,
+    update_type: Some(device_command_update::Update_type::Accepted(
+      device_command_update::Accepted::default(),
+    )),
+    ..Default::default()
+  };
+  let (tracked, mut response_rx) =
+    TrackedDeviceCommandUpdate::new(update.command_id.clone(), update.clone());
+  setup
+    .data_tx
+    .send(DataUpload::DeviceCommandUpdate(tracked))
+    .await
+    .unwrap();
+  assert_matches!(
+    setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::DeviceCommandUpdate(request)) if request == update
+  );
+  for _ in 0 .. 3 {
+    setup.close_stream().await;
+    setup.next_stream(30.seconds()).await.unwrap();
+    assert_eq!(
+      response_rx.try_recv(),
+      Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    );
+    setup.handshake_response(0, None, None).await;
+    assert_matches!(
+      setup.next_request(1.seconds()).await.unwrap().request_type,
+      Some(Request_type::DeviceCommandUpdate(request)) if request == update
+    );
+  }
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::DeviceCommandUpdateAck(
+        DeviceCommandUpdateAck {
+          command_id: update.command_id,
+          update_sequence_number: update.update_sequence_number,
+          disposition: AckDisposition::DISPOSITION_APPLIED.into(),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    })
+    .await;
+  response_rx.await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn device_command_update_ack_dispositions_preserve_or_retire_original_waiter() {
+  for retired in [false, true] {
+    let update = DeviceCommandUpdate {
+      command_id: Uuid::new_v4().to_string(),
+      update_sequence_number: 2,
+      ..Default::default()
+    };
+    let (tracked, mut receiver) =
+      TrackedDeviceCommandUpdate::new(update.command_id.clone(), update.clone());
+    let mut tracker = DeviceCommandUpdateTracker::default();
+    tracker.track_device_command_update(tracked).unwrap();
+    let mut ack = DeviceCommandUpdateAck {
+      command_id: update.command_id.clone(),
+      update_sequence_number: update.update_sequence_number,
+      ..Default::default()
+    };
+    for disposition in [
+      AckDisposition::DISPOSITION_RETRYABLE.into(),
+      AckDisposition::DISPOSITION_UNSPECIFIED.into(),
+      EnumOrUnknown::from_i32(99),
+    ] {
+      ack.disposition = disposition;
+      tracker.resolve_device_command_update(&ack);
+      assert_eq!(tracker.pending_updates(), vec![update.clone()]);
+      assert_eq!(
+        receiver.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+      );
+    }
+    ack.disposition = if retired {
+      AckDisposition::DISPOSITION_RETIRED.into()
+    } else {
+      AckDisposition::DISPOSITION_APPLIED.into()
+    };
+    tracker.resolve_device_command_update(&ack);
+    assert_eq!(receiver.await.is_ok(), !retired);
+    assert_eq!(tracker.retained_update_count(), 0);
+    tracker.resolve_device_command_update(&ack);
+    assert_eq!(tracker.retained_update_count(), 0);
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn device_command_update_waiter_retires_without_a_stream() {
+  let update = DeviceCommandUpdate {
+    command_id: Uuid::new_v4().to_string(),
+    update_sequence_number: 1,
+    ..Default::default()
+  };
+  let (tracked, mut receiver) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
+  let tracked = tracked.with_remaining_time(std::time::Duration::from_secs(2));
+  let mut tracker = DeviceCommandUpdateTracker::default();
+  tracker.track_device_command_update(tracked).unwrap();
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  assert_eq!(
+    receiver.try_recv(),
+    Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+  );
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  assert_matches!(receiver.await, Err(_));
+  assert_eq!(tracker.pending_updates(), vec![]);
+  assert_eq!(tracker.retained_update_count(), 0);
+}
+
+#[test]
+fn device_command_registry_backpressures_until_original_expiry_and_fences_new_sdk() {
+  let clock = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let state = DeviceCommandState::new(clock.clone());
+  let command = DeviceCommandRequest {
+    command_id: Uuid::new_v4().to_string().into(),
+    sdk_instance_id: state.sdk_instance_id.clone().into(),
+    expires_at: Some(protobuf::well_known_types::timestamp::Timestamp {
+      seconds: 10,
+      ..Default::default()
+    })
+    .into(),
+    ..Default::default()
+  };
+  for _ in 0 .. MAX_KNOWN_COMMANDS {
+    let mut occupied = command.clone();
+    occupied.command_id = Uuid::new_v4().to_string().into();
+    occupied.expires_at.as_mut().unwrap().seconds = 2;
+    assert!(state.admit(&occupied));
+  }
+  assert!(!state.admit(&command));
+  assert_eq!(state.known_command_ids().len(), MAX_KNOWN_COMMANDS);
+  assert_eq!(
+    state.admission_retry_delay(&command),
+    Some(2.seconds().unsigned_abs())
+  );
+  clock.advance(2.seconds());
+  assert!(state.admit(&command));
+  assert!(!state.admit(&command));
+  assert_eq!(
+    state.known_command_ids(),
+    vec![command.command_id.to_string()]
+  );
+  let recreated = DeviceCommandState::new(clock.clone());
+  assert_ne!(recreated.sdk_instance_id, state.sdk_instance_id);
+  assert!(!recreated.admit(&command));
+  assert_eq!(recreated.known_command_ids(), Vec::<String>::new());
+  clock.advance(8.seconds());
+  assert!(!state.admit(&command));
+  assert_eq!(state.known_command_ids(), Vec::<String>::new());
+}
+
+#[test]
+fn device_command_update_tracker_rejects_excess_without_eviction() {
+  let mut tracker = crate::upload::DeviceCommandUpdateTracker::default();
+  let mut receivers = vec![];
+  for sequence in 0 .. crate::upload::MAX_KNOWN_COMMANDS {
+    let update = DeviceCommandUpdate {
+      command_id: Uuid::new_v4().to_string(),
+      update_sequence_number: u64::try_from(sequence).unwrap(),
+      ..Default::default()
+    };
+    let (tracked, receiver) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
+    tracker.track_device_command_update(tracked).unwrap();
+    receivers.push(receiver);
+  }
+  let (excess, mut rejected) =
+    TrackedDeviceCommandUpdate::new(Uuid::new_v4().to_string(), DeviceCommandUpdate::default());
+  assert_matches!(tracker.track_device_command_update(excess), Err(_));
+  assert_eq!(
+    tracker.pending_updates().len(),
+    crate::upload::MAX_KNOWN_COMMANDS
+  );
+  assert_eq!(
+    rejected.try_recv(),
+    Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+  );
+  for receiver in &mut receivers {
+    assert_eq!(
+      receiver.try_recv(),
+      Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    );
+  }
+  let mut tracker = crate::upload::DeviceCommandUpdateTracker::default();
+  let oversized = DeviceCommandUpdate {
+    command_id: "x".repeat(4 * 1024 * 1024),
+    ..Default::default()
+  };
+  let (tracked, _) = TrackedDeviceCommandUpdate::new(String::new(), oversized);
+  assert_matches!(tracker.track_device_command_update(tracked), Err(_));
+  assert_eq!(tracker.pending_updates(), vec![]);
 }
 
 #[tokio::test(start_paused = true)]

@@ -27,6 +27,7 @@ use crate::{
   RegisteredCommandHandler,
   StartupReplayEligibility,
 };
+use bd_api::upload::DeviceCommandState;
 use bd_api::{
   AggregatedNetworkQualityProvider,
   DataUpload,
@@ -646,6 +647,7 @@ impl LoggerBuilder {
         self.test_hooks.clone(),
       );
 
+      let command_state = Arc::new(DeviceCommandState::new(time_provider.clone()));
       let updater = Arc::new(client_config::Config::new_with_time_provider(
         &self.params.sdk_directory,
         LoggerUpdate::new(
@@ -660,6 +662,7 @@ impl LoggerBuilder {
           command_dispatcher,
           command_execution_policy,
           remote_screenshot_capture_handler,
+          command_state.clone(),
           &scope.scope("config"),
         ),
         time_provider.clone(),
@@ -687,7 +690,8 @@ impl LoggerBuilder {
         opaque_entity_updates_rx,
         sdk_status_tracker,
         Some(Arc::new(handshake_stats)),
-      );
+      )
+      .with_device_command_state(command_state);
 
       let mut config_writer = bd_crash_handler::ConfigWriter::new(
         &runtime_loader,
