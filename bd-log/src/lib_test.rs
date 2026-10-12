@@ -4,7 +4,6 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-use opentelemetry::trace::TraceContextExt;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use tracing::span::{Attributes, Id};
@@ -198,60 +197,25 @@ fn trace_context_headers_round_trip_remote_parent() {
 }
 
 #[test]
-fn trace_context_headers_round_trip_trace_link() {
-  let (spans, (parent_trace_id, parent_span_id, linked_trace_id)) =
-    crate::test::with_two_phase_test_otel("bd-log-test", async {
-      let (headers, parent_trace_id, parent_span_id) = {
-        let parent = crate::otel_info_span!("parent");
-        let _parent_entered = parent.enter();
-        let span_context = opentelemetry::Context::current()
-          .span()
-          .span_context()
-          .clone();
-
-        (
-          crate::current_trace_context_headers().unwrap(),
-          span_context.trace_id(),
-          span_context.span_id(),
-        )
-      };
-
-      let linked = crate::otel_info_span!("linked");
-      assert!(crate::add_trace_link(&linked, &headers));
-      let _linked_entered = linked.enter();
-
-      let invalid = crate::otel_info_span!("invalid");
-      assert!(!crate::add_trace_link(
-        &invalid,
-        &crate::TraceContextHeaders::default(),
-      ));
-      let _invalid_entered = invalid.enter();
-
-      assert_ne!(
-        opentelemetry::Context::current()
-          .span()
-          .span_context()
-          .trace_id(),
-        parent_trace_id
-      );
-      (
-        parent_trace_id,
-        parent_span_id,
-        opentelemetry::Context::current()
-          .span()
-          .span_context()
-          .trace_id(),
-      )
-    });
-  let linked = spans.iter().find(|span| span.name == "linked").unwrap();
-
-  assert_eq!(linked.links.len(), 1);
-  assert_eq!(linked.links[0].span_context.trace_id(), parent_trace_id);
-  assert_eq!(linked.links[0].span_context.span_id(), parent_span_id);
-  assert_eq!(linked.span_context.trace_id(), linked_trace_id);
-  assert_ne!(linked.span_context.trace_id(), parent_trace_id);
-  assert_ne!(linked.parent_span_id, parent_span_id);
-
-  let invalid = spans.iter().find(|span| span.name == "invalid").unwrap();
-  assert!(invalid.links.is_empty());
+fn trace_context_headers_invalid_remote_parent_preserves_local_parent() {
+  let (spans, ()) = crate::test::with_two_phase_test_otel("bd-log-test", async {
+    let parent = crate::otel_info_span!("parent");
+    let _entered = parent.enter();
+    let child = crate::otel_info_span!("child");
+    assert!(!crate::set_remote_parent(
+      &child,
+      &crate::TraceContextHeaders::default()
+    ));
+  });
+  assert_eq!(spans.len(), 2);
+  let parent = spans.iter().find(|span| span.name == "parent").unwrap();
+  let child = spans.iter().find(|span| span.name == "child").unwrap();
+  assert_eq!(child.parent_span_id, parent.span_context.span_id());
+  assert_eq!(
+    child.span_context.trace_id(),
+    parent.span_context.trace_id()
+  );
+  for span in &spans {
+    assert_eq!(span.links.len(), 0);
+  }
 }
