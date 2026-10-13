@@ -18,7 +18,7 @@ use crate::uploader::{
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentResponse, UploadResponse};
-use bd_client_common::file::read_compressed_protobuf;
+use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
@@ -34,6 +34,7 @@ use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
 use flate2::Compression;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
+use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -79,6 +80,7 @@ impl Setup {
       Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
       &runtime,
       &Collector::default(),
+      [("app_version".to_string(), "upgraded".to_string())].into(),
       shutdown.make_shutdown(),
     );
 
@@ -129,6 +131,7 @@ impl Setup {
       Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
       &config_loader,
       &Collector::default(),
+      command_metadata(),
       shutdown.make_shutdown(),
     );
 
@@ -164,6 +167,31 @@ impl Setup {
 
     file
   }
+}
+
+fn command_metadata() -> HashMap<String, String> {
+  [
+    ("platform".to_string(), "android".to_string()),
+    ("app_id".to_string(), "io.bitdrift.test".to_string()),
+    ("app_version".to_string(), "01.2".to_string()),
+    ("_app_version_code".to_string(), "4294967296".to_string()),
+  ]
+  .into()
+}
+
+fn command_state_metadata() -> HashMap<String, Data> {
+  command_metadata()
+    .into_iter()
+    .map(|(key, value)| {
+      (
+        key,
+        Data {
+          data_type: Some(Data_type::StringData(value)),
+          ..Default::default()
+        },
+      )
+    })
+    .collect()
 }
 
 #[tokio::test]
@@ -681,7 +709,6 @@ async fn command_upload_persistence_reports_original_size() {
       .enqueue_command_upload(
         source,
         "attachment".to_string(),
-        [].into(),
         None,
         "session_id".to_string(),
         vec![],
@@ -699,6 +726,7 @@ async fn command_upload_persistence_reports_original_size() {
     let upload = setup.data_upload_rx.recv().await.unwrap();
     assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
       assert_eq!(intent.payload.artifact_id, artifact_id.to_string());
+      assert_eq!(intent.payload.metadata, command_state_metadata());
       intent.response_tx.send(IntentResponse {
         uuid: intent.uuid,
         decision: bd_api::upload::IntentDecision::UploadImmediately,
@@ -707,6 +735,7 @@ async fn command_upload_persistence_reports_original_size() {
     let upload = setup.data_upload_rx.recv().await.unwrap();
     assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
       assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
+      assert_eq!(upload.payload.state_metadata, command_state_metadata());
       assert_eq!(
         upload.payload.payload_encoding.enum_value_or_default(),
         ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
@@ -729,14 +758,13 @@ async fn command_upload_persistence_reports_original_size() {
 }
 
 #[tokio::test]
-async fn command_upload_preserves_content_type_after_restart() {
+async fn command_upload_preserves_identity_and_content_type_after_restart() {
   let mut setup = Setup::new(1).await;
   let artifact_id = setup
     .client
     .enqueue_command_upload(
       UploadSource::Bytes(b"attachment".to_vec()),
       "custom_attachment".to_string(),
-      [].into(),
       None,
       "session_id".to_string(),
       vec![],
@@ -759,6 +787,7 @@ async fn command_upload_preserves_content_type_after_restart() {
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
     assert_eq!(intent.payload.artifact_id, artifact_id.to_string());
+    assert_eq!(intent.payload.metadata, command_state_metadata());
     intent.response_tx.send(IntentResponse {
       uuid: intent.uuid,
       decision: bd_api::upload::IntentDecision::UploadImmediately,
@@ -767,8 +796,78 @@ async fn command_upload_preserves_content_type_after_restart() {
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
     assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
+    assert_eq!(upload.payload.state_metadata, command_state_metadata());
     assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
     assert_eq!(upload.payload.content_type.as_deref(), Some("application/vnd.example.capture"));
+  });
+}
+
+#[tokio::test]
+async fn command_upload_preserves_legacy_state_after_restart() {
+  let mut setup = Setup::new(1).await;
+  let artifact_id = setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::Bytes(b"legacy attachment".to_vec()),
+      "custom_attachment".to_string(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      "command_id".to_string(),
+      None,
+      None,
+      None,
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    artifact_id.to_string()
+  );
+  let pending_intent = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(&pending_intent, DataUpload::ArtifactUploadIntent(_));
+
+  let legacy_metadata = HashMap::from([
+    (
+      "filename".to_string(),
+      Data {
+        data_type: Some(Data_type::StringData("old.perfetto-trace".to_string())),
+        ..Default::default()
+      },
+    ),
+    (
+      "caller_count".to_string(),
+      Data {
+        data_type: Some(Data_type::IntData(42)),
+        ..Default::default()
+      },
+    ),
+  ]);
+  let index_path = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
+  let mut index: ArtifactUploadIndex =
+    read_compressed_protobuf(&setup.filesystem.read_file(&index_path).await.unwrap()).unwrap();
+  index.artifact[0].metadata = legacy_metadata.clone();
+  setup
+    .filesystem
+    .write_file(&index_path, &write_compressed_protobuf(&index).unwrap())
+    .await
+    .unwrap();
+
+  let mut setup = setup.reinitialize().await;
+  drop(pending_intent);
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.artifact_id, artifact_id.to_string());
+    assert_eq!(intent.payload.metadata, legacy_metadata);
+    intent.response_tx.send(IntentResponse {
+      uuid: intent.uuid,
+      decision: bd_api::upload::IntentDecision::UploadImmediately,
+    }).unwrap();
+  });
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
+    assert_eq!(upload.payload.state_metadata, legacy_metadata);
+    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
   });
 }
 
@@ -1068,7 +1167,6 @@ async fn command_upload_intent_drop_completes_with_failure() {
     .enqueue_command_upload(
       UploadSource::File(setup.make_file(b"screenshot")),
       "screenshot".to_string(),
-      [].into(),
       None,
       "session_id".to_string(),
       vec![],
@@ -1112,7 +1210,6 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
     .enqueue_command_upload(
       UploadSource::File(setup.make_file(b"four")),
       "attachment".to_string(),
-      [].into(),
       None,
       "session_id".to_string(),
       vec![],
@@ -1144,7 +1241,6 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
     .enqueue_command_upload(
       UploadSource::Bytes(b"four".to_vec()),
       "attachment".to_string(),
-      [].into(),
       None,
       "session_id".to_string(),
       vec![],
@@ -1178,7 +1274,6 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
     .enqueue_command_upload(
       UploadSource::Path(path.into()),
       "attachment".to_string(),
-      [].into(),
       None,
       "session_id".to_string(),
       vec![],
@@ -1215,7 +1310,6 @@ async fn command_upload_rejection_completes_with_failure_without_stopping_upload
     .enqueue_command_upload(
       UploadSource::File(setup.make_file(b"screenshot")),
       "screenshot".to_string(),
-      [].into(),
       None,
       "session_id".to_string(),
       vec![],
@@ -1273,7 +1367,6 @@ async fn evicted_command_upload_completes_with_failure() {
     .enqueue_command_upload(
       UploadSource::File(setup.make_file(b"screenshot")),
       "screenshot".to_string(),
-      [].into(),
       None,
       "session_id".to_string(),
       vec![],
@@ -1321,7 +1414,6 @@ async fn corrupt_command_upload_completes_with_failure() {
     .enqueue_command_upload(
       UploadSource::File(setup.make_file(b"screenshot")),
       "screenshot".to_string(),
-      [].into(),
       None,
       "session_id".to_string(),
       vec![],
@@ -1372,7 +1464,6 @@ async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
     .enqueue_command_upload(
       UploadSource::File(setup.make_file(b"screenshot")),
       "screenshot".to_string(),
-      [].into(),
       None,
       "session_id".to_string(),
       vec![],
@@ -1482,7 +1573,6 @@ async fn normalize_type_id_on_load() {
   // Verify that an index entry with no type_id (as persisted by an older client) is normalized to
   // the default type_id when the index is loaded.
 
-  use bd_client_common::file::write_compressed_protobuf;
   use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 
   let mut setup = Setup::new(2).await;

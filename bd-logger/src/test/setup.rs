@@ -17,6 +17,7 @@ use crate::{
   ReportProcessingSession,
   TestHooks,
 };
+use bd_api::Metadata;
 use bd_client_stats::FlushTrigger;
 use bd_device::Store;
 use bd_noop_network::NoopNetwork;
@@ -138,6 +139,7 @@ pub enum InitialStreamSetup {
 pub struct SetupOptions {
   pub sdk_directory: Arc<TempDir>,
   pub metadata_provider: Arc<LogMetadata>,
+  pub static_metadata: Arc<dyn Metadata + Send + Sync>,
   pub disk_storage: bool,
   pub start_in_sleep_mode: bool,
   pub time_provider: Option<Arc<dyn TimeProvider>>,
@@ -155,6 +157,7 @@ impl Default for SetupOptions {
     Self {
       sdk_directory: Arc::new(TempDir::with_prefix("sdk").unwrap()),
       metadata_provider: Arc::default(),
+      static_metadata: Arc::new(EmptyMetadata),
       disk_storage: false,
       start_in_sleep_mode: false,
       time_provider: None,
@@ -288,7 +291,7 @@ impl Setup {
       device,
       store,
       network: Box::new(Self::run_network(server.port, shutdown.make_shutdown())),
-      static_metadata: Arc::new(EmptyMetadata),
+      static_metadata: options.static_metadata,
       start_in_sleep_mode: options.start_in_sleep_mode,
     })
     .with_client_stats_tickers_for_test(Box::new(flush_ticker), Box::new(upload_ticker))

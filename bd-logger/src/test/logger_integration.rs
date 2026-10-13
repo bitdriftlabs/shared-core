@@ -26,6 +26,7 @@ use crate::{
 use action_flush_buffers::Streaming as FlushStreaming;
 use action_flush_buffers::streaming::{TerminationCriterion, termination_criterion};
 use assert_matches::assert_matches;
+use bd_api::{Metadata, Platform};
 use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_log_matcher::builder::{and, feature_flag_equals, field_equals, message_equals};
@@ -3107,11 +3108,66 @@ fn screenshot_device_command_configuration(
   )
 }
 
+//
+// CommandMetadata
+//
+
+struct CommandMetadata;
+
+impl Metadata for CommandMetadata {
+  fn sdk_version(&self) -> &'static str {
+    EmptyMetadata.sdk_version()
+  }
+
+  fn platform(&self) -> &Platform {
+    EmptyMetadata.platform()
+  }
+
+  fn os(&self) -> String {
+    EmptyMetadata.os()
+  }
+
+  fn device_id(&self) -> String {
+    EmptyMetadata.device_id()
+  }
+
+  fn collect_inner(&self) -> HashMap<String, String> {
+    [("custom".to_string(), "not-command-metadata".to_string())].into()
+  }
+
+  fn command_artifact_metadata(&self) -> HashMap<String, String> {
+    [
+      ("platform".to_string(), "apple".to_string()),
+      ("app_id".to_string(), "io.bitdrift.test".to_string()),
+      ("app_version".to_string(), "01.2".to_string()),
+      ("_build_number".to_string(), "0007".to_string()),
+    ]
+    .into()
+  }
+}
+
+fn command_state_metadata() -> HashMap<String, Data> {
+  CommandMetadata
+    .command_artifact_metadata()
+    .into_iter()
+    .map(|(key, value)| {
+      (
+        key,
+        Data {
+          data_type: Some(Data_type::StringData(value)),
+          ..Default::default()
+        },
+      )
+    })
+    .collect()
+}
+
 #[test]
 fn screenshot_device_command_stages_correlated_attachment() {
   let command_id = "d4a6e1e7-4bf8-434e-b42b-fde1a3d9d0cb";
   let screenshot = vec![0xff, 0xd8, 1, 2, 3, 0xff, 0xd9];
   let mut setup = Setup::new_with_options(SetupOptions {
+    static_metadata: Arc::new(CommandMetadata),
     session_replay_target: Some(Box::new(TestScreenshotTarget {
       results: Mutex::new(VecDeque::from([Ok(screenshot.clone())])),
     })),
@@ -3139,6 +3195,7 @@ fn screenshot_device_command_stages_correlated_attachment() {
     Some(artifact) => {
       assert_eq!(artifact.command_id.as_deref(), Some(command_id));
       assert_eq!(artifact.type_id, "screenshot");
+      assert_eq!(artifact.state_metadata, command_state_metadata());
       assert_eq!(
         artifact.payload_encoding.enum_value_or_default(),
         ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
@@ -3660,12 +3717,12 @@ fn registered_custom_device_command_stages_correlated_attachment() {
       attachment: Some(CommandAttachment {
         source: bd_artifact_upload::UploadSource::Path(attachment_path.file_name().unwrap().into()),
         content_type: Some("application/vnd.example.capture".to_string()),
-        state: [("source".into(), "handler".into())].into(),
       }),
     })),
   });
   let mut setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
+    static_metadata: Arc::new(CommandMetadata),
     command_handlers: [(registered_command_id.to_string(), handler)].into(),
     ..Default::default()
   });
@@ -3690,6 +3747,7 @@ fn registered_custom_device_command_stages_correlated_attachment() {
     Some(artifact) => {
       assert_eq!(artifact.command_id.as_deref(), Some(command_id));
       assert_eq!(artifact.type_id, "device_command_attachment");
+      assert_eq!(artifact.state_metadata, command_state_metadata());
       assert_eq!(artifact.content_type.as_deref(), Some("application/vnd.example.capture"));
       assert_eq!(
         artifact.payload_encoding.enum_value_or_default(),
@@ -3810,7 +3868,6 @@ fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
       attachment: Some(CommandAttachment {
         source: bd_artifact_upload::UploadSource::Bytes(attachment.clone()),
         content_type: Some("application/vnd.example.capture".to_string()),
-        state: [].into(),
       }),
     })),
   });
