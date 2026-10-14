@@ -169,7 +169,6 @@ pub struct CommandInvocation {
 pub struct CommandAttachment {
   pub source: UploadSource,
   pub content_type: Option<String>,
-  pub state: LogFields,
 }
 
 /// The reason a command failed. Detailed messages retain their existing wire/log representation.
@@ -470,7 +469,6 @@ async fn workflow_builtin_command_outcome(
               attachment: Some(CommandAttachment {
                 source: UploadSource::Bytes(screenshot),
                 content_type: Some("image/jpeg".to_string()),
-                state: LogFields::default(),
               }),
             },
             attachment_store,
@@ -668,7 +666,6 @@ async fn execute_screenshot_device_command(
   let attachment = CommandAttachment {
     source: UploadSource::Bytes(screenshot),
     content_type: Some("image/jpeg".to_string()),
-    state: LogFields::default(),
   };
   let update = match stage_device_command_attachment(
     attachment,
@@ -931,7 +928,6 @@ async fn stage_device_command_attachment(
   let artifact_id = artifact_client.enqueue_command_upload(
     attachment.source,
     type_id.to_string(),
-    attachment.state,
     None,
     session_id.to_string(),
     Vec::new(),

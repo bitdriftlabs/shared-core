@@ -282,7 +282,6 @@ pub trait Client: Send + Sync {
     &self,
     source: UploadSource,
     type_id: String,
-    state: LogFields,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
@@ -296,6 +295,7 @@ pub trait Client: Send + Sync {
 pub struct UploadClient {
   upload_tx: bd_bounded_buffer::Sender<NewUpload>,
   counter_stats: SendCounters,
+  command_artifact_metadata: LogFields,
 }
 
 impl UploadClient {
@@ -359,7 +359,7 @@ impl Client for UploadClient {
       artifact_id,
       UploadSource::Retained(source_path),
       WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID.to_string(),
-      LogFields::default(),
+      self.command_artifact_metadata.clone(),
       None,
       session_id,
       Vec::new(),
@@ -401,7 +401,6 @@ impl Client for UploadClient {
     &self,
     source: UploadSource,
     type_id: String,
-    state: LogFields,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
@@ -414,7 +413,7 @@ impl Client for UploadClient {
       Uuid::new_v4(),
       source,
       type_id,
-      state,
+      self.command_artifact_metadata.clone(),
       timestamp,
       session_id,
       feature_flags,
@@ -488,6 +487,7 @@ impl Uploader {
     time_provider: Arc<dyn TimeProvider>,
     runtime: &ConfigLoader,
     collector: &Collector,
+    command_artifact_metadata: HashMap<String, String>,
     shutdown: ComponentShutdown,
   ) -> (Self, UploadClient) {
     runtime.expect_initialized();
@@ -525,6 +525,10 @@ impl Uploader {
     let client = UploadClient {
       upload_tx,
       counter_stats: SendCounters::new(&scope, "enqueue"),
+      command_artifact_metadata: command_artifact_metadata
+        .into_iter()
+        .map(|(key, value)| (key.into(), value.into()))
+        .collect(),
     };
 
     (uploader, client)

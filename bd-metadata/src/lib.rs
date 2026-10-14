@@ -14,6 +14,10 @@
   clippy::unwrap_used
 )]
 
+#[cfg(test)]
+#[path = "./lib_test.rs"]
+mod tests;
+
 use std::collections::HashMap;
 
 // The configuration version of the client is a version number maintained independently from the
@@ -73,6 +77,14 @@ pub trait Metadata: Send {
   fn device_id(&self) -> String;
 
   fn collect_inner(&self) -> HashMap<String, String>;
+
+  /// SDK-owned identity for new command artifacts. Platforms add their app build identifier.
+  fn command_artifact_metadata(&self) -> HashMap<String, String> {
+    let mut identity = self.collect_inner();
+    identity.retain(|key, _| matches!(key.as_str(), "app_id" | "app_version"));
+    identity.insert("platform".to_string(), self.platform().as_str().to_string());
+    identity
+  }
 
   fn collect(&self) -> HashMap<String, String> {
     let mut inner = self.collect_inner();

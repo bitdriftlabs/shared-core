@@ -557,6 +557,7 @@ impl LoggerBuilder {
         time_provider.clone(),
         &runtime_loader,
         &collector_clone,
+        self.params.static_metadata.command_artifact_metadata(),
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);

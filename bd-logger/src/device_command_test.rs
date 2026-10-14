@@ -399,7 +399,7 @@ async fn command_execution_timeout_excludes_attachment_upload() {
   artifacts
     .expect_enqueue_command_upload()
     .times(1)
-    .returning(move |_, _, _, _, _, _, _, _, persisted_tx, completion_tx| {
+    .returning(move |_, _, _, _, _, _, _, persisted_tx, completion_tx| {
       upload_started_tx
         .send((persisted_tx.unwrap(), completion_tx.unwrap()))
         .unwrap();
@@ -755,7 +755,6 @@ fn completed_attachment(source: UploadSource, content_type: Option<String>) -> C
     attachment: Some(CommandAttachment {
       source,
       content_type,
-      state: LogFields::default(),
     }),
   }
 }
