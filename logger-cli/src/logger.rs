@@ -90,8 +90,12 @@ impl LoggerHolder {
     }
   }
 
+  pub(crate) fn take_future(&self) -> Option<LoggerFuture> {
+    self.future.lock().take()
+  }
+
   pub fn start(&self) {
-    let Some(future) = self.future.lock().take() else {
+    let Some(future) = self.take_future() else {
       return;
     };
 
@@ -376,7 +380,13 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
       )]
       .into(),
     }),
-    initial_ootb_fields: [].into(),
+    // Handshake metadata is separate from log matching fields. Supply the same app identity
+    // to workflow predicates and metric grouping as out-of-the-box log fields.
+    initial_ootb_fields: [
+      ("app_id".into(), args.app_id.clone().into()),
+      ("app_version".into(), args.app_version.clone().into()),
+    ]
+    .into(),
     initial_custom_fields: [].into(),
     resource_utilization_target: Box::new(bd_test_helpers::resource_utilization::EmptyTarget),
     session_replay_target: Box::new(FakeScreenshotTarget),

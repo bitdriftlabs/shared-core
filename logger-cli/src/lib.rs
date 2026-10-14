@@ -7,6 +7,7 @@
 
 mod fake_screenshot;
 
+pub mod driver;
 pub mod logger;
 pub mod metadata;
 pub mod service;
