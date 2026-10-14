@@ -3872,6 +3872,7 @@ fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
     })),
   });
   let mut setup = Setup::new_with_options(SetupOptions {
+    static_metadata: Arc::new(CommandMetadata),
     command_handlers: [(registered_command_id.to_string(), handler)].into(),
     ..Default::default()
   });
@@ -3916,6 +3917,7 @@ fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
   let artifact = setup.server.blocking_next_artifact_upload().unwrap();
   let artifact_id = uuid::Uuid::parse_str(&artifact.artifact_id).unwrap();
   assert_eq!(artifact.type_id, "workflow_attachment");
+  assert_eq!(artifact.state_metadata, command_state_metadata());
   assert_eq!(artifact.session_id, session_id.as_ref());
   assert_eq!(artifact.command_id, None);
   assert_eq!(

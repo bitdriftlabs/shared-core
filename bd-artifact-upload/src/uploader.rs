@@ -359,7 +359,7 @@ impl Client for UploadClient {
       artifact_id,
       UploadSource::Retained(source_path),
       WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID.to_string(),
-      LogFields::default(),
+      self.command_artifact_metadata.clone(),
       None,
       session_id,
       Vec::new(),
