@@ -44,13 +44,16 @@ use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use mockall::automock;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 #[cfg(test)]
 use tests::TestHooks;
 use time::OffsetDateTime;
 use tokio::io::{AsyncRead, AsyncWriteExt};
-use tokio::sync::oneshot;
+use tokio::sync::{OwnedSemaphorePermit, oneshot, watch};
+use tokio::time::{MissedTickBehavior, interval};
 use uuid::Uuid;
 
 /// Root directory for all files used for storage and uploading.
@@ -60,6 +63,7 @@ pub static ARTIFACT_UPLOAD_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "repo
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
 
 pub const WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID: &str = "workflow_attachment";
+const INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Default, Clone, Copy)]
 pub enum ArtifactType {
@@ -136,6 +140,8 @@ struct NewUpload {
   persisted_tx: Option<PersistenceAck>,
   #[approximate_size(skip)]
   completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+  #[approximate_size(skip)]
+  source_lease: Option<OwnedSemaphorePermit>,
 }
 
 #[derive(Debug)]
@@ -150,7 +156,7 @@ pub enum UploadSource {
   // intended for use cases where the data format is already self-validating (e.g. crc checksum or
   // zlib compression).
   Path(PathBuf),
-  // A checksum-verified SDK payload shared with the upload queue using a hard link.
+  // A checksum-verified workflow payload borrowed in place through a durable upload-index lease.
   Retained(PathBuf),
 }
 
@@ -256,6 +262,11 @@ fn retained_persistence_error(error: anyhow::Error) -> EnqueueError {
 
 #[automock]
 pub trait Client: Send + Sync {
+  /// Revisions of the atomically published queue index, including commits awaiting durability.
+  fn upload_queue_revision(&self) -> watch::Receiver<u64>;
+
+  /// Borrows the canonical payload. A workflow store must supply its cleanup-exclusion permit;
+  /// the queue holds that permit until its durable index lease replaces it.
   fn enqueue_workflow_attachment(
     &self,
     artifact_id: Uuid,
@@ -264,6 +275,7 @@ pub trait Client: Send + Sync {
     content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+    source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<(), EnqueueError>;
 
   fn enqueue_upload(
@@ -294,6 +306,7 @@ pub trait Client: Send + Sync {
 
 pub struct UploadClient {
   upload_tx: bd_bounded_buffer::Sender<NewUpload>,
+  queue_revision: watch::Receiver<u64>,
   counter_stats: SendCounters,
   command_artifact_metadata: LogFields,
 }
@@ -312,6 +325,7 @@ impl UploadClient {
     content_type: Option<String>,
     persisted_tx: Option<PersistenceAck>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+    source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<Uuid, EnqueueError> {
     let result = self
       .upload_tx
@@ -327,6 +341,7 @@ impl UploadClient {
         content_type,
         persisted_tx,
         completion_tx,
+        source_lease,
       })
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
 
@@ -341,6 +356,10 @@ impl UploadClient {
 }
 
 impl Client for UploadClient {
+  fn upload_queue_revision(&self) -> watch::Receiver<u64> {
+    self.queue_revision.clone()
+  }
+
   fn enqueue_workflow_attachment(
     &self,
     artifact_id: Uuid,
@@ -349,6 +368,7 @@ impl Client for UploadClient {
     content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+    source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<(), EnqueueError> {
     if source_path != Path::new(&format!("workflow-attachments/{artifact_id}.payload")) {
       return Err(EnqueueError::Other(anyhow::anyhow!(
@@ -367,6 +387,7 @@ impl Client for UploadClient {
       content_type,
       persisted_tx.map(PersistenceAck::Upload),
       completion_tx,
+      source_lease,
     )?;
     Ok(())
   }
@@ -393,6 +414,7 @@ impl Client for UploadClient {
       None,
       None,
       persisted_tx.map(PersistenceAck::Upload),
+      None,
       None,
     )
   }
@@ -421,6 +443,7 @@ impl Client for UploadClient {
       content_type,
       persisted_tx.map(PersistenceAck::Command),
       completion_tx,
+      None,
     )
   }
 }
@@ -461,6 +484,9 @@ pub struct Uploader {
   file_system: Arc<dyn FileSystem>,
 
   index: VecDeque<Artifact>,
+  queue_revision: watch::Sender<u64>,
+  index_dirty: bool,
+  index_sync_required: bool,
   upload_completions: HashMap<String, oneshot::Sender<std::result::Result<(), String>>>,
 
   max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
@@ -481,6 +507,38 @@ pub struct Uploader {
 }
 
 impl Uploader {
+  /// Reads durable workflow upload leases. Admission must exclude payload cleanup until its
+  /// persistence acknowledgement, including when the requesting task is cancelled.
+  pub async fn pending_workflow_attachments(sdk_directory: &Path) -> io::Result<HashSet<Uuid>> {
+    let path = sdk_directory
+      .join(&*ARTIFACT_UPLOAD_DIRECTORY)
+      .join(&*REPORT_INDEX_FILE);
+    let bytes = match tokio::fs::read(path).await {
+      Ok(bytes) => bytes,
+      Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(HashSet::new()),
+      Err(error) => return Err(error),
+    };
+    let index = read_compressed_protobuf::<ArtifactUploadIndex>(&bytes)
+      .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    index
+      .artifact
+      .into_iter()
+      .filter(|entry| entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID))
+      .map(|entry| {
+        Uuid::parse_str(&entry.name)
+          .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+      })
+      .collect()
+  }
+
+  fn payload_path(entry: &Artifact) -> anyhow::Result<PathBuf> {
+    if entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID) {
+      let id = Uuid::parse_str(&entry.name)?;
+      return Ok(PathBuf::from(format!("workflow-attachments/{id}.payload")));
+    }
+    Ok(ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name))
+  }
+
   pub fn new(
     file_system: Arc<dyn FileSystem>,
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
@@ -503,6 +561,7 @@ impl Uploader {
 
     let (upload_tx, upload_rx) =
       bd_bounded_buffer::channel(buffer_memory_capacity.try_into().unwrap_or_default());
+    let (queue_revision_tx, queue_revision_rx) = watch::channel(0);
 
     let uploader = Self {
       data_upload_tx,
@@ -511,6 +570,9 @@ impl Uploader {
       time_provider,
       file_system,
       index: VecDeque::default(),
+      queue_revision: queue_revision_tx,
+      index_dirty: false,
+      index_sync_required: false,
       upload_completions: HashMap::default(),
       max_entries: runtime.register_int_watch(),
       max_attachment_bytes: runtime.register_int_watch(),
@@ -524,6 +586,7 @@ impl Uploader {
 
     let client = UploadClient {
       upload_tx,
+      queue_revision: queue_revision_rx,
       counter_stats: SendCounters::new(&scope, "enqueue"),
       command_artifact_metadata: command_artifact_metadata
         .into_iter()
@@ -542,6 +605,12 @@ impl Uploader {
 
   async fn run_inner(mut self) -> Result<()> {
     self.initialize().await;
+    // Startup may reset an unreadable index without writing a replacement.
+    self
+      .queue_revision
+      .send_modify(|revision| *revision = revision.wrapping_add(1));
+    let mut index_retry = interval(INDEX_RETRY_INTERVAL);
+    index_retry.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     // The state machinery below relies on careful handling of the contents of the index list, as
     // we want to make sure that we don't lose entries due to process shutdown. The pending upload
@@ -569,11 +638,16 @@ impl Uploader {
           continue;
         }
 
-        let file_path = ARTIFACT_UPLOAD_DIRECTORY.join(&next.name);
-        let Ok(contents) = self.file_system.read_file(&file_path).await else {
-          log::debug!(
-            "failed to read file for artifact {}, deleting and removing from index",
-            next.name
+        let contents = async {
+          let file_path = Self::payload_path(&next)?;
+          self.file_system.read_file(&file_path).await
+        }
+        .await;
+        let Ok(contents) = contents else {
+          log::warn!(
+            "failed to read artifact {}: {:?}",
+            next.name,
+            contents.err()
           );
           let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
           self
@@ -621,6 +695,12 @@ impl Uploader {
       // At this point either wait for progress to be made to the current entry or wait for a new
       // entry to be submitted.
       tokio::select! {
+        // Failed commits must be reconciled even if no further uploads arrive.
+        _ = index_retry.tick(), if self.index_dirty => {
+          if let Err(error) = self.write_index().await {
+            log::warn!("failed to reconcile artifact index; will retry: {error}");
+          }
+        }
         () = self.shutdown.cancelled() => {
           log::debug!("shutting down uploader");
           self.stop_current_upload();
@@ -639,6 +719,7 @@ impl Uploader {
             content_type,
             persisted_tx,
             completion_tx,
+            source_lease,
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
           self
@@ -656,6 +737,7 @@ impl Uploader {
               completion_tx,
             )
             .await;
+          drop(source_lease);
         }
         intent_decision = maybe_await(&mut self.intent_task_handle) => {
             self.handle_intent_negotiation_decision(intent_decision??).await?;
@@ -722,29 +804,31 @@ impl Uploader {
     let mut modified = false;
     let mut new_index = VecDeque::default();
     let mut filenames = HashSet::new();
-    for mut entry in self.index.drain(..) {
-      let file_path = ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name);
-      if !self
-        .file_system
-        .exists(&file_path)
-        .await
-        .unwrap_or_default()
-      {
-        log::debug!(
-          "removing artifact {} from index, file does not exist",
-          entry.name
-        );
-        modified = true;
-        continue;
+    for entry in self.index.drain(..) {
+      let path_exists = async {
+        let path = Self::payload_path(&entry)?;
+        self.file_system.exists(&path).await
       }
-      // Handle inserting a default type_id for entries that are missing it. This can happen for
-      // older versions of the uploader that didn't persist the type_id to disk.
-      // TODO(snowp): Remove this at some point in the future after.
-      if entry.type_id.as_deref().unwrap_or_default().is_empty() {
-        entry.type_id = Some(ArtifactType::default().to_type_id().to_string());
-        modified = true;
+      .await;
+      match path_exists {
+        Ok(false) => {
+          log::debug!(
+            "removing artifact {} from index, file does not exist",
+            entry.name
+          );
+          modified = true;
+          self.index_sync_required |=
+            entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID);
+          continue;
+        },
+        Err(error) => {
+          log::warn!("failed to locate queued artifact {}: {error}", entry.name);
+        },
+        Ok(true) => {},
       }
-      filenames.insert(entry.name.clone());
+      if entry.type_id.as_deref() != Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID) {
+        filenames.insert(entry.name.clone());
+      }
       new_index.push_back(entry);
     }
 
@@ -809,6 +893,8 @@ impl Uploader {
     self.stats.uploaded.inc();
 
     let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
+    self.index_sync_required |=
+      entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID);
     let file_path = ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name);
 
     if let Err(e) = self.file_system.delete_file(&file_path).await {
@@ -823,6 +909,8 @@ impl Uploader {
   }
 
   async fn discard_upload(&mut self, entry: Artifact, error: String) {
+    self.index_sync_required |=
+      entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID);
     if let Err(delete_error) = self
       .file_system
       .delete_file(&ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name))
@@ -1061,23 +1149,7 @@ impl Uploader {
         (result, StorageFormat::RAW)
       },
       UploadSource::Retained(source_path) => (
-        async {
-          self
-            .file_system
-            .link_file(&source_path, &target_path)
-            .await?;
-          if let Err(error) = self.file_system.sync_file_and_parent(&target_path).await {
-            if let Err(cleanup_error) = self.file_system.delete_file(&target_path).await {
-              log::warn!(
-                "failed to remove unsynced retained artifact {}: {cleanup_error}",
-                target_path.display()
-              );
-            }
-            return Err(error);
-          }
-          Ok(())
-        }
-        .await,
+        self.file_system.sync_file_and_parent(&source_path).await,
         StorageFormat::RAW,
       ),
     };
@@ -1143,13 +1215,8 @@ impl Uploader {
       ..Default::default()
     });
 
-    let mut write_result = self.write_index().await;
-    if write_result.is_ok() && retained {
-      write_result = self
-        .file_system
-        .sync_file_and_parent(&ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE))
-        .await;
-    }
+    self.index_sync_required |= retained;
+    let write_result = self.write_index().await;
     if let Err(error) = write_result {
       self.index.pop_back();
       if let Some((source_path, true)) = path_source.as_ref() {
@@ -1163,7 +1230,9 @@ impl Uploader {
             source_path.display()
           );
         }
-      } else if let Err(delete_error) = self.file_system.delete_file(&target_path).await {
+      } else if !retained
+        && let Err(delete_error) = self.file_system.delete_file(&target_path).await
+      {
         log::warn!("failed to remove unindexed artifact {uuid}: {delete_error}");
       }
       if let Some(tx) = persisted_tx {
@@ -1197,8 +1266,9 @@ impl Uploader {
     }
   }
 
-  async fn write_index(&self) -> anyhow::Result<()> {
+  async fn write_index(&mut self) -> anyhow::Result<()> {
     log::debug!("writing index to disk");
+    self.index_dirty = true;
 
     let index = ArtifactUploadIndex {
       artifact: self.index.iter().cloned().collect(),
@@ -1216,6 +1286,15 @@ impl Uploader {
       .file_system
       .rename_file(&staging_path, &index_path)
       .await?;
+    // Readers can observe a rename even when the following durability check fails.
+    self
+      .queue_revision
+      .send_modify(|revision| *revision = revision.wrapping_add(1));
+    if self.index_sync_required {
+      self.file_system.sync_file_and_parent(&index_path).await?;
+    }
+    self.index_dirty = false;
+    self.index_sync_required = false;
     Ok(())
   }
 

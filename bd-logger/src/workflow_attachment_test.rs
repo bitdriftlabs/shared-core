@@ -7,22 +7,33 @@
 
 use super::{AttachmentStore, AttachmentStoreHandle, WorkflowAttachmentCleanupWorker};
 use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
-use bd_artifact_upload::{MockClient, UploadSource};
+use bd_api::DataUpload;
+use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
+use bd_artifact_upload::{Client as _, MockClient, UploadSource, Uploader};
 use bd_buffer::Buffer as RingBuffer;
 use bd_buffer::buffer::NonVolatileFileHeader;
-use bd_client_common::file::{read_checksummed_data, write_checksummed_data};
+use bd_client_common::file::{
+  read_checksummed_data,
+  write_checksummed_data,
+  write_compressed_protobuf,
+};
+use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::Collector;
 use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::RuntimeUpdate;
-use bd_proto::protos::client::artifact::WorkflowAttachmentState;
+use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
+use bd_proto::protos::client::artifact::{ArtifactUploadIndex, WorkflowAttachmentState};
 use bd_proto::protos::client::runtime::Runtime;
 use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::runtime::value::Type;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::workflow_attachment::{MaxOwnedBytes, MaxOwnedFiles};
-use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
+use bd_runtime::runtime::{ConfigLoader, FeatureFlag, IntWatch};
+use bd_runtime::test::TestConfigLoader;
+use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::{RetentionHandle, RetentionRegistry};
+use bd_time::TestTimeProvider;
 use flate2::read::ZlibDecoder;
 use protobuf::Message;
 use std::collections::HashMap;
@@ -32,9 +43,155 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use time::OffsetDateTime;
 use tokio::fs;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+use tokio::sync::{mpsc, oneshot, watch};
 use uuid::Uuid;
 
 const MIN_READ_LIMIT_BYTES: u64 = 32 * 1024 * 1024;
+
+#[tokio::test]
+async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_payloads() {
+  for store_first in [true, false] {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
+    let filesystem = Arc::new(RealFileSystem::new(directory.path().to_owned()));
+    let (id, payload) = {
+      let store_handle = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone());
+      let store = store_handle.get().await.unwrap();
+      let attachment = store
+        .admit(UploadSource::Bytes(b"attachment".to_vec()), None)
+        .await
+        .unwrap();
+      store
+        .record_timestamp(
+          attachment.id,
+          OffsetDateTime::from_unix_timestamp(10).unwrap(),
+        )
+        .await
+        .unwrap();
+      let (data_upload_tx, mut data_upload_rx) = mpsc::channel(1);
+      let shutdown = ComponentShutdownTrigger::default();
+      let (uploader, client) = Uploader::new(
+        filesystem.clone(),
+        data_upload_tx,
+        Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+        &runtime,
+        &Collector::default(),
+        HashMap::new(),
+        shutdown.make_shutdown(),
+      );
+      let uploader = tokio::spawn(uploader.run());
+      let (persisted_tx, persisted_rx) = oneshot::channel();
+      client
+        .enqueue_workflow_attachment(
+          attachment.id,
+          format!("workflow-attachments/{}.payload", attachment.id).into(),
+          "session".into(),
+          None,
+          Some(persisted_tx),
+          None,
+          Some(store.upload_lease().await.unwrap()),
+        )
+        .unwrap();
+      persisted_rx.await.unwrap().unwrap();
+      let Some(DataUpload::ArtifactUploadIntent(_intent)) = data_upload_rx.recv().await else {
+        panic!("expected initial workflow intent");
+      };
+      shutdown.shutdown().await;
+      uploader.await.unwrap();
+      (attachment.id, store.payload_path(attachment.id))
+    };
+
+    // No store instance or in-memory completion callback survives this restart.
+    let store_handle = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone());
+    let first_store = if store_first {
+      let store = store_handle.get().await.unwrap();
+      store.cleanup_all().await.unwrap();
+      assert!(fs::try_exists(&payload).await.unwrap());
+      Some(store)
+    } else {
+      None
+    };
+    let (data_upload_tx, mut data_upload_rx) = mpsc::channel(1);
+    let shutdown = ComponentShutdownTrigger::default();
+    let (uploader, client) = Uploader::new(
+      filesystem,
+      data_upload_tx,
+      Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+      &runtime,
+      &Collector::default(),
+      HashMap::new(),
+      shutdown.make_shutdown(),
+    );
+    let mut revision = client.upload_queue_revision();
+    let uploader = tokio::spawn(uploader.run());
+    let Some(DataUpload::ArtifactUploadIntent(intent)) = data_upload_rx.recv().await else {
+      panic!("expected recovered workflow intent");
+    };
+    let store = match first_store {
+      Some(store) => store,
+      None => store_handle.get().await.unwrap(),
+    };
+    let mut cleanup = WorkflowAttachmentCleanupWorker::new(
+      store_handle,
+      Arc::new(RetentionRegistry::new(IntWatch::new_for_testing(0))),
+      Arc::new(AtomicBool::new(true)),
+      client.upload_queue_revision(),
+    );
+    assert!(cleanup.cleanup_once().await);
+    assert!(!cleanup.cleanup_once().await);
+    assert!(fs::try_exists(&payload).await.unwrap());
+    assert!(store.metadata(id).await.unwrap().is_some());
+    assert!(
+      !fs::try_exists(directory.path().join(format!("report_uploads/{id}")))
+        .await
+        .unwrap()
+    );
+    intent
+      .response_tx
+      .send(IntentResponse {
+        uuid: intent.uuid,
+        decision: IntentDecision::UploadImmediately,
+      })
+      .unwrap();
+    let Some(DataUpload::ArtifactUpload(upload)) = data_upload_rx.recv().await else {
+      panic!("expected recovered workflow bytes");
+    };
+    let mut decoded = Vec::new();
+    ZlibDecoder::new(upload.payload.contents.as_slice())
+      .read_to_end(&mut decoded)
+      .unwrap();
+    assert_eq!(decoded, b"attachment");
+    assert!(cleanup.cleanup_once().await);
+    assert!(!cleanup.cleanup_once().await);
+    let previous = *revision.borrow();
+    upload
+      .response_tx
+      .send(UploadResponse {
+        uuid: upload.uuid,
+        success: true,
+      })
+      .unwrap();
+    let _ = revision
+      .wait_for(|revision| *revision > previous)
+      .await
+      .unwrap();
+
+    // The retention watermark stays unchanged; the actual uploader revision triggers collection.
+    assert!(cleanup.cleanup_once().await);
+    assert!(!cleanup.cleanup_once().await);
+    assert!(!fs::try_exists(&payload).await.unwrap());
+    assert!(store.metadata(id).await.unwrap().is_none());
+    assert_eq!(store.capacity.lock().files, 0);
+    assert!(
+      Uploader::pending_workflow_attachments(directory.path())
+        .await
+        .unwrap()
+        .is_empty()
+    );
+    shutdown.shutdown().await;
+    uploader.await.unwrap();
+  }
+}
 
 impl AttachmentStore {
   pub(crate) async fn content_type(&self, id: Uuid) -> io::Result<Option<String>> {
@@ -109,6 +266,244 @@ async fn new_store(directory: &tempfile::TempDir) -> AttachmentStore {
   AttachmentStore::new(directory.path(), &runtime)
     .await
     .unwrap()
+}
+
+async fn write_upload_leases(directory: &tempfile::TempDir, ids: &[Uuid]) {
+  let path = directory.path().join("report_uploads");
+  fs::create_dir_all(&path).await.unwrap();
+  let index = ArtifactUploadIndex {
+    artifact: ids
+      .iter()
+      .map(|id| Artifact {
+        name: id.to_string(),
+        type_id: Some("workflow_attachment".into()),
+        ..Default::default()
+      })
+      .collect(),
+    ..Default::default()
+  };
+  fs::write(
+    path.join("report_index.pb"),
+    write_compressed_protobuf(&index).unwrap(),
+  )
+  .await
+  .unwrap();
+}
+
+#[tokio::test]
+async fn uploaded_payload_is_released_after_the_queue_lease_ends_even_before_log_retirement() {
+  for (restart, timestamped) in [(false, false), (false, true), (true, false), (true, true)] {
+    let directory = tempfile::tempdir().unwrap();
+    let mut store = Arc::new(new_store(&directory).await);
+    let attachment = store
+      .admit(UploadSource::Bytes(b"uploaded".to_vec()), None)
+      .await
+      .unwrap();
+    if timestamped {
+      store
+        .record_timestamp(
+          attachment.id,
+          OffsetDateTime::from_unix_timestamp(20).unwrap(),
+        )
+        .await
+        .unwrap();
+    }
+    write_upload_leases(&directory, &[attachment.id]).await;
+    store.complete_upload(attachment.id).await.unwrap();
+    assert!(store.is_uploaded(attachment.id).await.unwrap());
+    assert!(
+      fs::try_exists(store.payload_path(attachment.id))
+        .await
+        .unwrap()
+    );
+    if restart {
+      store = Arc::new(new_store(&directory).await);
+    }
+    write_upload_leases(&directory, &[]).await;
+    store.cleanup_before(10_000_000).await.unwrap();
+    assert!(
+      !fs::try_exists(store.payload_path(attachment.id))
+        .await
+        .unwrap()
+    );
+    assert!(store.is_uploaded(attachment.id).await.unwrap());
+    assert_eq!(store.capacity.lock().files, 0);
+    assert_eq!(store.capacity.lock().bytes, 0);
+  }
+}
+
+#[tokio::test]
+async fn queued_payload_survives_retirement_and_restart_until_its_lease_is_removed() {
+  for restart in [false, true] {
+    let directory = tempfile::tempdir().unwrap();
+    let mut store = Arc::new(new_store(&directory).await);
+    let attachment = store
+      .admit(UploadSource::Bytes(b"queued".to_vec()), None)
+      .await
+      .unwrap();
+    store
+      .record_timestamp(
+        attachment.id,
+        OffsetDateTime::from_unix_timestamp(10).unwrap(),
+      )
+      .await
+      .unwrap();
+    write_upload_leases(&directory, &[attachment.id]).await;
+    if restart {
+      store = Arc::new(new_store(&directory).await);
+    }
+    store.cleanup_before(20_000_000).await.unwrap();
+    store.cleanup_all().await.unwrap();
+    assert_eq!(
+      read_checked(&store, attachment.id).await.unwrap(),
+      b"queued"
+    );
+    assert_eq!(store.capacity.lock().files, 1);
+    write_upload_leases(&directory, &[]).await;
+    store.cleanup_all().await.unwrap();
+    assert!(
+      !fs::try_exists(store.payload_path(attachment.id))
+        .await
+        .unwrap()
+    );
+    assert!(
+      !fs::try_exists(store.metadata_path(attachment.id))
+        .await
+        .unwrap()
+    );
+    assert_eq!(store.capacity.lock().files, 0);
+    assert_eq!(store.capacity.lock().bytes, 0);
+  }
+}
+
+#[tokio::test]
+async fn queue_only_payload_survives_release_and_restart() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  let attachment = store
+    .admit(UploadSource::Bytes(b"queued".to_vec()), None)
+    .await
+    .unwrap();
+  write_upload_leases(&directory, &[attachment.id]).await;
+  store.release(attachment.id).await.unwrap();
+  assert!(
+    !fs::try_exists(store.metadata_path(attachment.id))
+      .await
+      .unwrap()
+  );
+  let store = Arc::new(new_store(&directory).await);
+  store.cleanup_all().await.unwrap();
+  assert_eq!(
+    read_checked(&store, attachment.id).await.unwrap(),
+    b"queued"
+  );
+  write_upload_leases(&directory, &[]).await;
+  store.cleanup_all().await.unwrap();
+  assert!(
+    !fs::try_exists(store.payload_path(attachment.id))
+      .await
+      .unwrap()
+  );
+  assert_eq!(store.capacity.lock().files, 0);
+}
+
+#[tokio::test]
+async fn corrupt_metadata_cannot_delete_a_queue_owned_payload() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  let attachment = store
+    .admit(UploadSource::Bytes(b"queued".to_vec()), None)
+    .await
+    .unwrap();
+  write_upload_leases(&directory, &[attachment.id]).await;
+  fs::write(store.metadata_path(attachment.id), b"corrupt")
+    .await
+    .unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  store.cleanup_all().await.unwrap();
+  assert_eq!(
+    read_checked(&store, attachment.id).await.unwrap(),
+    b"queued"
+  );
+  write_upload_leases(&directory, &[]).await;
+  store.cleanup_all().await.unwrap();
+  assert!(
+    !fs::try_exists(store.payload_path(attachment.id))
+      .await
+      .unwrap()
+  );
+}
+
+#[tokio::test]
+async fn unreadable_queue_index_prevents_payload_cleanup() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  let attachment = store
+    .admit(UploadSource::Bytes(b"queued".to_vec()), None)
+    .await
+    .unwrap();
+  store
+    .record_timestamp(
+      attachment.id,
+      OffsetDateTime::from_unix_timestamp(10).unwrap(),
+    )
+    .await
+    .unwrap();
+  write_upload_leases(&directory, &[attachment.id]).await;
+  fs::write(
+    directory.path().join("report_uploads/report_index.pb"),
+    b"corrupt",
+  )
+  .await
+  .unwrap();
+  assert!(store.cleanup_all().await.is_err());
+  assert!(store.release(attachment.id).await.is_err());
+  assert_eq!(
+    read_checked(&store, attachment.id).await.unwrap(),
+    b"queued"
+  );
+  assert!(
+    AttachmentStore::new(directory.path(), &ConfigLoader::new(directory.path()))
+      .await
+      .is_err()
+  );
+}
+
+#[tokio::test]
+async fn cleanup_revisits_queue_leases_without_a_new_retention_watermark() {
+  let directory = tempfile::tempdir().unwrap();
+  let (store_handle, _retention, mut worker) = new_cleanup_worker(&directory, 20_000_000).await;
+  let (queue_revision_tx, queue_revision_rx) = watch::channel(0);
+  worker.queue_revision = queue_revision_rx;
+  let store = store_handle.get().await.unwrap();
+  let attachment = store
+    .admit(UploadSource::Bytes(b"queued".to_vec()), None)
+    .await
+    .unwrap();
+  store
+    .record_timestamp(
+      attachment.id,
+      OffsetDateTime::from_unix_timestamp(10).unwrap(),
+    )
+    .await
+    .unwrap();
+  write_upload_leases(&directory, &[attachment.id]).await;
+  assert!(worker.cleanup_once().await);
+  assert!(!worker.cleanup_once().await);
+  assert!(
+    fs::try_exists(store.payload_path(attachment.id))
+      .await
+      .unwrap()
+  );
+  write_upload_leases(&directory, &[]).await;
+  queue_revision_tx.send_modify(|revision| *revision += 1);
+  assert!(worker.cleanup_once().await);
+  assert!(
+    !fs::try_exists(store.payload_path(attachment.id))
+      .await
+      .unwrap()
+  );
+  assert!(!worker.cleanup_once().await);
 }
 
 #[tokio::test]
@@ -319,11 +714,11 @@ async fn workflow_attachment_staging_does_not_acquire_admission_permit() {
   let mut client = MockClient::new();
   client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, _, _, content_type, _, _| {
+    .withf(move |id, _, _, content_type, _, _, _| {
       *id == admitted.id && content_type.as_deref() == Some("image/jpeg")
     })
     .once()
-    .returning(|_, _, _, _, persisted, _| {
+    .returning(|_, _, _, _, persisted, _, _| {
       persisted.unwrap().send(Ok(())).unwrap();
       Ok(())
     });
@@ -686,6 +1081,7 @@ async fn new_cleanup_worker(
     store_handle.clone(),
     retention_registry,
     Arc::new(AtomicBool::new(true)),
+    watch::channel(0).1,
   );
   (store_handle, retention_handle, worker)
 }
@@ -1109,6 +1505,7 @@ async fn cleanup_worker_keeps_attachment_referenced_by_fresh_trigger_buffer() {
     store_handle,
     retention_registry,
     Arc::new(AtomicBool::new(true)),
+    watch::channel(0).1,
   );
 
   assert!(worker.cleanup_once().await);
@@ -1165,6 +1562,7 @@ async fn cleanup_worker_retires_attachment_after_trigger_disk_overwrite() {
     store_handle,
     retention_registry,
     Arc::new(AtomicBool::new(true)),
+    watch::channel(0).1,
   );
   let mut producer = buffer.new_thread_local_producer().unwrap();
   for log in &logs[.. 3] {
@@ -1206,6 +1604,7 @@ async fn cleanup_worker_waits_for_buffer_configuration() {
     store_handle.clone(),
     retention_registry,
     cleanup_ready.clone(),
+    watch::channel(0).1,
   );
   let store = store_handle.get().await.unwrap();
   let attachment = store
@@ -1242,6 +1641,7 @@ async fn cleanup_worker_retires_attachments_without_retention() {
     store_handle.clone(),
     retention_registry,
     Arc::new(AtomicBool::new(true)),
+    watch::channel(0).1,
   );
   let store = store_handle.get().await.unwrap();
   let attachment = store

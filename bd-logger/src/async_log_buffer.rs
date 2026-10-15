@@ -799,12 +799,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   pub(crate) fn set_retention_registry(
     &self,
     retention_registry: Arc<bd_state::RetentionRegistry>,
+    queue_revision: watch::Receiver<u64>,
   ) {
     let store_handle = self.workflow_attachment_store();
     let cleanup_worker = WorkflowAttachmentCleanupWorker::new(
       store_handle,
       retention_registry,
       self.workflow_attachment_cleanup_ready(),
+      queue_revision,
     );
     tokio::spawn(cleanup_worker.run(self.shutdown_trigger_handle.make_shutdown()));
   }

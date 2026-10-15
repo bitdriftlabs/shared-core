@@ -117,10 +117,6 @@ impl FileSystem for CountingFileSystem {
     self.inner.rename_file(from, to).await
   }
 
-  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
-    self.inner.link_file(from, to).await
-  }
-
   async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
     self.inner.sync_file_and_parent(path).await
   }

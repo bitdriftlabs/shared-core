@@ -154,7 +154,7 @@ impl WorkflowAttachmentUploadWorker {
   ) -> Vec<WorkflowAttachmentStagingFailure> {
     let mut failures = Vec::new();
     for (id, session_id) in ids {
-      let metadata = if let Some(store_handle) = &attachment_store {
+      let store = if let Some(store_handle) = &attachment_store {
         let store = match store_handle.get().await {
           Ok(store) => store,
           Err(error) => {
@@ -165,6 +165,25 @@ impl WorkflowAttachmentUploadWorker {
             continue;
           },
         };
+        Some(store)
+      } else {
+        None
+      };
+      let source_lease = if let Some(store) = &store {
+        match store.upload_lease().await {
+          Ok(lease) => Some(lease),
+          Err(error) => {
+            failures.push(WorkflowAttachmentStagingFailure {
+              artifact_id: id,
+              error: error.to_string(),
+            });
+            continue;
+          },
+        }
+      } else {
+        None
+      };
+      let metadata = if let Some(store) = &store {
         match store.metadata(id).await {
           Ok(Some(metadata)) => Some(metadata),
           Ok(None) => {
@@ -205,6 +224,7 @@ impl WorkflowAttachmentUploadWorker {
           content_type,
           Some(persisted_tx),
           completion_tx,
+          source_lease,
         )
       })
       .await

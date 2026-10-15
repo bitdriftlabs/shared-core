@@ -11,6 +11,7 @@ use std::sync::Arc;
 pub struct Metadata {
   pub app_id: Option<String>,
   pub app_version: Option<String>,
+  pub app_version_code: String,
   pub platform: bd_api::Platform,
   pub device: Arc<bd_logger::Device>,
   pub os_version: Option<String>,
@@ -63,5 +64,17 @@ impl bd_api::Metadata for Metadata {
     metadata_map.insert("model".to_string(), self.model.clone());
 
     metadata_map
+  }
+
+  fn command_artifact_metadata(&self) -> HashMap<String, String> {
+    let mut identity = self.collect_inner();
+    identity.retain(|key, _| matches!(key.as_str(), "app_id" | "app_version"));
+    identity.insert("platform".to_string(), self.platform.as_str().to_string());
+    let build_key = match self.platform {
+      bd_api::Platform::Android => "_app_version_code",
+      bd_api::Platform::Apple => "_build_number",
+    };
+    identity.insert(build_key.to_string(), self.app_version_code.clone());
+    identity
   }
 }

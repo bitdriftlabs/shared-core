@@ -9,7 +9,7 @@
 #[path = "./workflow_attachment_test.rs"]
 mod tests;
 
-use bd_artifact_upload::UploadSource;
+use bd_artifact_upload::{UploadSource, Uploader};
 use bd_client_common::file::{
   read_and_compress_limited_with_size,
   read_checksummed_data,
@@ -32,7 +32,7 @@ use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::fs::{self, File};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{OnceCell, Semaphore};
+use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore, watch};
 use tokio::time::sleep;
 use uuid::Uuid;
 
@@ -92,7 +92,8 @@ pub struct WorkflowAttachmentCleanupWorker {
   store_handle: AttachmentStoreHandle,
   retention_registry: Arc<bd_state::RetentionRegistry>,
   cleanup_ready: Arc<AtomicBool>,
-  previous_cleanup_key: Option<(Option<u64>, u64)>,
+  queue_revision: watch::Receiver<u64>,
+  previous_cleanup_key: Option<(Option<u64>, u64, u64)>,
 }
 
 impl WorkflowAttachmentCleanupWorker {
@@ -100,11 +101,13 @@ impl WorkflowAttachmentCleanupWorker {
     store_handle: AttachmentStoreHandle,
     retention_registry: Arc<bd_state::RetentionRegistry>,
     cleanup_ready: Arc<AtomicBool>,
+    queue_revision: watch::Receiver<u64>,
   ) -> Self {
     Self {
       store_handle,
       retention_registry,
       cleanup_ready,
+      queue_revision,
       previous_cleanup_key: None,
     }
   }
@@ -131,7 +134,11 @@ impl WorkflowAttachmentCleanupWorker {
     if !self.cleanup_ready.load(Ordering::Acquire) {
       return false;
     }
-    let cleanup_key = (retention, store.cleanup_generation());
+    let cleanup_key = (
+      retention,
+      store.cleanup_generation(),
+      *self.queue_revision.borrow(),
+    );
     if self.previous_cleanup_key == Some(cleanup_key) {
       return false;
     }
@@ -159,6 +166,7 @@ pub struct AttachmentStore {
   oldest_timestamp: Mutex<Option<u64>>,
   cleanup_generation: AtomicU64,
   admissions: Semaphore,
+  upload_ownership: Arc<Semaphore>,
   max_attachment_bytes: IntWatch<attachment::MaxBytes>,
   max_owned_bytes: IntWatch<workflow_attachment::MaxOwnedBytes>,
   max_owned_files: IntWatch<workflow_attachment::MaxOwnedFiles>,
@@ -175,6 +183,7 @@ pub struct AdmittedAttachment {
 
 impl AttachmentStore {
   pub async fn new(sdk_directory: &Path, runtime: &ConfigLoader) -> io::Result<Self> {
+    let pending_uploads = Uploader::pending_workflow_attachments(sdk_directory).await?;
     let directory = sdk_directory.join("workflow-attachments");
     fs::create_dir_all(&directory).await?;
     let mut capacity = Capacity::default();
@@ -260,6 +269,7 @@ impl AttachmentStore {
       oldest_timestamp: Mutex::new(None),
       cleanup_generation: AtomicU64::new(0),
       admissions: Semaphore::new(1),
+      upload_ownership: Arc::new(Semaphore::new(1)),
       max_attachment_bytes: runtime.register_int_watch(),
       max_owned_bytes: runtime.register_int_watch(),
       max_owned_files: runtime.register_int_watch(),
@@ -271,7 +281,12 @@ impl AttachmentStore {
       let mut metadata = match read_metadata(&metadata_path).await {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::InvalidData => {
-          store.discard_corrupt_attachment(id, &error).await?;
+          if pending_uploads.contains(&id) {
+            oldest_timestamp = Some(0);
+            log::warn!("preserving queued workflow attachment {id} with corrupt metadata: {error}");
+          } else {
+            store.discard_corrupt_attachment(id, &error).await?;
+          }
           continue;
         },
         Err(error) => return Err(error),
@@ -281,7 +296,7 @@ impl AttachmentStore {
         recovered_sidecar = true;
         continue;
       }
-      if metadata.uploaded && has_payload {
+      if metadata.uploaded && has_payload && !pending_uploads.contains(&id) {
         store.remove_payload_async(id, true).await?;
         recovered_sidecar = true;
         log::debug!("released workflow attachment payload {id} after interrupted upload cleanup");
@@ -298,9 +313,19 @@ impl AttachmentStore {
         recovered_sidecar = true;
         log::warn!("recovered workflow attachment {id} with its admission timestamp");
       }
-      oldest_timestamp = Some(oldest_timestamp.map_or(timestamp, |oldest| oldest.min(timestamp)));
+      let oldest = if pending_uploads.contains(&id) {
+        0
+      } else {
+        timestamp
+      };
+      oldest_timestamp = Some(oldest_timestamp.map_or(oldest, |previous| previous.min(oldest)));
     }
     for id in payload_ids {
+      if pending_uploads.contains(&id) {
+        oldest_timestamp = Some(0);
+        log::debug!("recovered queue-owned workflow attachment payload {id}");
+        continue;
+      }
       store.remove_payload_async(id, true).await?;
       recovered_sidecar = true;
       log::warn!("discarded orphan workflow attachment payload {id}");
@@ -335,11 +360,31 @@ impl AttachmentStore {
   }
 
   async fn release_async(&self, id: Uuid) -> io::Result<()> {
-    self.remove_payload_async(id, false).await?;
+    let _ownership = self.upload_lease().await?;
+    if Uploader::pending_workflow_attachments(&self.sdk_directory)
+      .await?
+      .contains(&id)
+    {
+      // The queue can outlive the workflow owner, including an explicit release.
+      *self.oldest_timestamp.lock() = Some(0);
+      self.cleanup_generation.fetch_add(1, Ordering::Release);
+      log::debug!("preserving queue-owned workflow attachment payload {id}");
+    } else {
+      self.remove_payload_async(id, false).await?;
+    }
     self.remove_metadata(id).await?;
     File::open(&self.directory).await?.sync_all().await?;
     log::debug!("released workflow attachment {id}");
     Ok(())
+  }
+
+  pub(crate) async fn upload_lease(&self) -> io::Result<OwnedSemaphorePermit> {
+    self
+      .upload_ownership
+      .clone()
+      .acquire_owned()
+      .await
+      .map_err(io::Error::other)
   }
 
   /// Records the event timestamp used by the first-version, best-effort retirement policy.
@@ -365,15 +410,22 @@ impl AttachmentStore {
   /// Marks an artifact uploaded and drops the retained payload while preserving timestamp metadata.
   pub async fn complete_upload(self: &Arc<Self>, id: Uuid) -> io::Result<()> {
     let _permit = self.admissions.acquire().await.map_err(io::Error::other)?;
-    let Some(mut metadata) = self.metadata(id).await? else {
-      log::debug!("ignoring upload completion for retired workflow attachment {id}");
-      return Ok(());
-    };
-    if !metadata.uploaded {
+    let _ownership = self.upload_lease().await?;
+    if let Some(mut metadata) = self.metadata(id).await?
+      && !metadata.uploaded
+    {
       metadata.uploaded = true;
       write_metadata(&self.metadata_path(id), &metadata).await?;
     }
-    self.remove_payload_async(id, true).await?;
+    if Uploader::pending_workflow_attachments(&self.sdk_directory)
+      .await?
+      .contains(&id)
+    {
+      *self.oldest_timestamp.lock() = Some(0);
+    } else {
+      self.remove_payload_async(id, true).await?;
+    }
+    self.cleanup_generation.fetch_add(1, Ordering::Release);
     log::debug!("released uploaded workflow attachment payload {id}");
     Ok(())
   }
@@ -408,10 +460,26 @@ impl AttachmentStore {
 
   async fn cleanup(&self, cutoff_micros: Option<u64>) -> io::Result<()> {
     let _permit = self.admissions.acquire().await.map_err(io::Error::other)?;
+    let _ownership = self.upload_lease().await?;
+    let pending_uploads = Uploader::pending_workflow_attachments(&self.sdk_directory).await?;
     let mut entries = fs::read_dir(&self.directory).await?;
     let mut oldest_timestamp: Option<u64> = None;
+    let mut metadata_removed = false;
     while let Some(entry) = entries.next_entry().await? {
       let path = entry.path();
+      if path
+        .extension()
+        .is_some_and(|extension| extension == "payload")
+        && let Some(id) = owned_attachment_id(&path)
+      {
+        if pending_uploads.contains(&id) {
+          oldest_timestamp = Some(0);
+        } else if !fs::try_exists(self.metadata_path(id)).await? {
+          self.remove_payload_async(id, true).await?;
+          log::debug!("retired queue-only workflow attachment payload {id}");
+        }
+        continue;
+      }
       if path
         .extension()
         .is_none_or(|extension| extension != "metadata")
@@ -429,6 +497,10 @@ impl AttachmentStore {
         );
         continue;
       };
+      if pending_uploads.contains(&id) {
+        oldest_timestamp = Some(0);
+        continue;
+      }
       let metadata = match read_metadata(&path).await {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::InvalidData => {
@@ -437,6 +509,9 @@ impl AttachmentStore {
         },
         Err(error) => return Err(error),
       };
+      if metadata.uploaded {
+        self.remove_payload_async(id, true).await?;
+      }
       let Some(timestamp) = metadata.occurred_at_micros else {
         continue;
       };
@@ -446,13 +521,16 @@ impl AttachmentStore {
       }
       self.remove_payload_async(id, true).await?;
       self.remove_metadata(id).await?;
+      metadata_removed = true;
       if let Some(cutoff_micros) = cutoff_micros {
         log::debug!("retired workflow attachment {id} before timestamp {cutoff_micros}");
       } else {
         log::debug!("retired workflow attachment {id} with no retention requirement");
       }
     }
-    File::open(&self.directory).await?.sync_all().await?;
+    if metadata_removed {
+      File::open(&self.directory).await?.sync_all().await?;
+    }
     *self.oldest_timestamp.lock() = oldest_timestamp;
     Ok(())
   }

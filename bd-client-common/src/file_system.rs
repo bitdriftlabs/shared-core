@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 
 /// A filesystem scoped to the SDK directory. This allows for mocking and abstracting away the
 /// relative root of the data directory used by the SDK.
+///
+/// Hard links are not supported for Android SDK storage, so this trait must not rely on them.
 #[async_trait]
 pub trait FileSystem: Send + Sync {
   async fn exists(&self, path: &Path) -> anyhow::Result<bool>;
@@ -33,9 +35,6 @@ pub trait FileSystem: Send + Sync {
 
   /// Renames/moves a file relative to the SDK root.
   async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()>;
-
-  /// Shares a file within the SDK root without transferring ownership of the original path.
-  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()>;
 
   /// Ensures a file and its directory entry survive a crash before acknowledging a lease.
   async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()>;
@@ -149,14 +148,6 @@ impl FileSystem for RealFileSystem {
 
   async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
     Ok(tokio::fs::rename(self.directory.join(from), self.directory.join(to)).await?)
-  }
-
-  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
-    let source = self.directory.join(from);
-    if !tokio::fs::symlink_metadata(&source).await?.is_file() {
-      anyhow::bail!("artifact source must be a regular file");
-    }
-    Ok(tokio::fs::hard_link(source, self.directory.join(to)).await?)
   }
 
   async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
