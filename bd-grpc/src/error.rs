@@ -8,6 +8,8 @@ use crate::status::{RequestTransport, Status};
 use axum::BoxError;
 use axum::response::Response;
 use bd_grpc_codec::code::Code;
+use std::error::Error as StdError;
+use std::io::{Error as IoError, ErrorKind};
 
 //
 // Error
@@ -17,6 +19,8 @@ use bd_grpc_codec::code::Code;
 pub enum Error {
   #[error("Body stream error ocurred: {0}")]
   BodyStream(BoxError),
+  #[error("Client disconnected while reading the request body: {0}")]
+  ClientDisconnected(BoxError),
   #[error("Stream has closed")]
   Closed,
   #[error("A codec error occurred: {0}")]
@@ -37,10 +41,28 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+//
+// ClientDisconnect
+//
+
+#[derive(Clone, Copy, Debug)]
+struct ClientDisconnect;
+
 impl Error {
+  pub(super) fn classify_unary_request_error(self) -> Self {
+    match self {
+      Self::BodyStream(error) if is_peer_disconnect(error.as_ref()) => {
+        log::debug!("client disconnected while reading unary request body: {error}");
+        Self::ClientDisconnected(error)
+      },
+      error => error,
+    }
+  }
+
   #[must_use]
   pub fn grpc_code(&self) -> Code {
     match self {
+      Self::ClientDisconnected(_) => Code::Cancelled,
       Self::Grpc(status) => status.code(),
       Self::Codec(bd_grpc_codec::Error::MessageTooLarge { .. }) => Code::ResourceExhausted,
       Self::Codec(_) | Self::ProtoValidation(_) | Self::Snap(_) => Code::InvalidArgument,
@@ -54,6 +76,7 @@ impl Error {
 
   fn into_status(self) -> Status {
     match self {
+      Self::ClientDisconnected(_) => Status::new(Code::Cancelled, "Client disconnected", None),
       Self::Grpc(status) => status,
       Self::Codec(bd_grpc_codec::Error::MessageTooLarge {
         message_bytes,
@@ -99,14 +122,68 @@ impl Error {
           None
         }
       },
-      Self::Codec(_) | Self::ProtoValidation(_) | Self::Snap(_) | Self::Closed => None,
+      Self::ClientDisconnected(_)
+      | Self::Codec(_)
+      | Self::ProtoValidation(_)
+      | Self::Snap(_)
+      | Self::Closed => None,
       Self::BodyStream(e) => Some(format!("body stream error: {e}")),
       Self::HyperClient(e) => Some(format!("hyper client error: {e}")),
     }
   }
 
   #[must_use]
+  pub fn is_client_disconnected_response<ResponseBody>(response: &Response<ResponseBody>) -> bool {
+    response.extensions().get::<ClientDisconnect>().is_some()
+  }
+
+  #[must_use]
   pub fn to_response(self, transport: RequestTransport) -> Response {
-    self.into_status().into_response_for_transport(transport)
+    let client_disconnected = matches!(&self, Self::ClientDisconnected(_));
+    let mut response = self.into_status().into_response_for_transport(transport);
+    if client_disconnected {
+      response.extensions_mut().insert(ClientDisconnect);
+    }
+    response
+  }
+}
+
+fn is_peer_disconnect(mut error: &(dyn StdError + 'static)) -> bool {
+  loop {
+    if let Some(error) = error.downcast_ref::<hyper::Error>()
+      && (error.is_canceled() || error.is_closed() || error.is_incomplete_message())
+    {
+      return true;
+    }
+    if let Some(error) = error.downcast_ref::<h2::Error>()
+      && matches!(
+        error.reason(),
+        Some(h2::Reason::CANCEL | h2::Reason::NO_ERROR)
+      )
+    {
+      return true;
+    }
+    let next = if let Some(error) = error.downcast_ref::<IoError>() {
+      if matches!(
+        error.kind(),
+        ErrorKind::ConnectionReset
+          | ErrorKind::ConnectionAborted
+          | ErrorKind::BrokenPipe
+          | ErrorKind::UnexpectedEof
+          | ErrorKind::NotConnected
+      ) {
+        return true;
+      }
+      error
+        .get_ref()
+        .map(|inner| inner as &(dyn StdError + 'static))
+        .or_else(|| error.source())
+    } else {
+      error.source()
+    };
+    let Some(next) = next else {
+      return false;
+    };
+    error = next;
   }
 }

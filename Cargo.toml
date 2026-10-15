@@ -72,7 +72,7 @@ resolver = "2"
 [workspace.dependencies]
 android_logger    = "0.15.1"
 anyhow            = "1.0.104"
-arbitrary         = { version = "1.4.2", features = ["derive"] }
+arbitrary         = { version = "1.5.0", features = ["derive"] }
 arc-swap          = "1.9.2"
 assert_matches    = "1.5.0"
 assert_no_alloc   = "1.1.2"
@@ -92,7 +92,7 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.73.2"
 bytes           = "1.12.1"
 cbindgen        = "0.29.4"
-cc              = "1.5.1"
+cc              = "1.8.0"
 clap            = { version = "4.6.7", features = ["derive", "env"] }
 cmake           = "0.1.58"
 color-backtrace = "0.7.4"
@@ -111,17 +111,18 @@ fs2                   = "0.4.3"
 futures               = "0.3.34"
 futures-core          = "0.3.34"
 futures-util          = "0.3.34"
+h2                    = "0.4.20"
 http                  = "1.5.0"
 http-body             = "1.1.0"
 http-body-util        = "0.1.5"
-hyper                 = "1.11.1"
+hyper                 = "1.12.0"
 hyper-rustls          = { version = "0.27.10", default-features = false }
 hyper-util            = { version = "0.1.21", features = ["client", "client-legacy"] }
-insta                 = "1.48.0"
+insta                 = "1.49.0"
 intrusive-collections = "0.10.3"
 itertools             = "0.15.0"
 jni                   = "0.22.4"
-libc                  = "0.2.189"
+libc                  = "0.2.190"
 libfuzzer-sys         = "0.4.13"
 log                   = "0.4.34"
 matches               = "0.1.10"
@@ -130,16 +131,16 @@ mockall               = "0.15.0"
 nom                   = "8.0.0"
 nom-language          = "0.1.0"
 notify                = "8.2.0"
-opentelemetry         = "0.33.0"
+opentelemetry         = "0.33.1"
 
-opentelemetry-otlp = { version = "0.33.0", default-features = false, features = [
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = [
   "trace",
   "http-proto",
   "reqwest-client",
   "grpc-tonic",
 ] }
 
-opentelemetry_sdk = { version = "0.33.0", features = [
+opentelemetry_sdk = { version = "0.33.1", features = [
   "trace",
   "rt-tokio",
   "rt-tokio-current-thread",
@@ -151,8 +152,8 @@ parameterized      = "2.1.0"
 parking_lot        = "0.12.5"
 pretty_assertions  = "1.4.1"
 prometheus         = "0.14.0"
-proptest           = "1.11.0"
-rmcp               = { version = "3.5.0", features = ["transport-io"] }
+proptest           = "1.12.0"
+rmcp               = { version = "3.5.1", features = ["transport-io"] }
 thread_local       = "1.1.10"
 tracing            = "0.1.44"
 tracing-log        = "0.2.0"
@@ -174,9 +175,9 @@ ripsaw       = { git = "https://github.com/bitdriftlabs/ripsaw.git" }
 rstest       = "0.27.0"
 rstest_reuse = "0.7.0"
 serde        = { version = "1.0.229", features = ["derive", "rc"] }
-serde_json   = "1.0.151"
+serde_json   = "1.0.154"
 serde_yaml   = "0.9.34"
-sha2         = "0.11.0"
+sha2         = "0.11.1"
 
 sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", branch = "patch-stack3" }
 
@@ -190,7 +191,7 @@ termcolor             = "1.4.1"
 thiserror             = "2.0.21"
 tikv-jemalloc-ctl     = "0.7.0"
 time                  = { version = "0.3.55", features = ["serde-well-known", "macros", "parsing"] }
-tokio                 = { version = "1.53.1", features = ["full", "test-util"] }
+tokio                 = { version = "1.53.3", features = ["full", "test-util"] }
 tokio-rustls          = { version = "0.26.6", default-features = false }
 tokio-stream          = "0.1.19"
 tokio-test            = "0.4.6"
@@ -199,8 +200,8 @@ tower-http            = { version = "0.7.1", features = ["compression-deflate"] 
 tracing-opentelemetry = "0.34.0"
 unwrap-infallible     = "1.0.0"
 urlencoding           = "2.1.3"
-uuid                  = { version = "1.26.1", features = ["v4"] }
-zstd                  = "0.14.0"
+uuid                  = { version = "1.28.0", features = ["v4"] }
+zstd                  = "0.14.2"
 
 [profile.bench]
 debug = true

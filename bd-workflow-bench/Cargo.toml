@@ -33,7 +33,7 @@ criterion          = "0.8.2"
 tempfile.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
-gungraun = { version = "0.19.4", features = ["client_requests"] }
+gungraun = { version = "0.20.0", features = ["valgrind-requests"] }
 
 [[bench]]
 harness = false
