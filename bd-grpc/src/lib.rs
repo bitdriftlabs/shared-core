@@ -951,7 +951,8 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
     request_config,
     request_trace.as_ref(),
   )
-  .await?;
+  .await
+  .map_err(Error::classify_unary_request_error)?;
 
   if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
     return unary_connect_handler(headers, extensions, message, handler, response_mutator).await;

@@ -24,6 +24,7 @@ bd-time.path                    = "../bd-time"
 bd-workspace-hack.workspace     = true
 bytes.workspace                 = true
 futures.workspace               = true
+h2.workspace                    = true
 http.workspace                  = true
 http-body.workspace             = true
 http-body-util.workspace        = true

@@ -57,12 +57,14 @@ use http_body_util::{BodyExt, StreamBody};
 use parking_lot::Mutex;
 use prometheus::labels;
 use protobuf::{Message, MessageFull};
+use std::io::{Error as IoError, ErrorKind};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use time::ext::NumericalDuration;
-use tokio::net::TcpListener;
-use tokio::sync::{mpsc, watch};
+use tokio::io::AsyncWriteExt;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio_stream::wrappers::ReceiverStream;
 use tower::ServiceExt;
 
@@ -712,6 +714,166 @@ async fn unary_error_handler() {
       "result" => "server_error"
     },
   );
+}
+
+#[tokio::test]
+async fn unary_body_disconnects_are_cancelled() {
+  for (content_type, expected_status) in [
+    (CONTENT_TYPE_PROTO, 499),
+    (CONTENT_TYPE_JSON, 499),
+    (crate::CONTENT_TYPE_GRPC, 200),
+  ] {
+    let stats = Helper::new();
+    let endpoint_stats = EndpointStats::new(stats.collector().scope("test"));
+    let method = service_method();
+    let router = UnaryRouterBuilder::new(&method, Arc::new(ErrorHandler {}))
+      .endpoint_stats(&endpoint_stats)
+      .error_handler(|error| {
+        assert_matches!(error, Error::ClientDisconnected(_));
+        assert_eq!(error.grpc_code(), Code::Cancelled);
+        assert_eq!(error.warn_every_message(), None);
+      })
+      .build()
+      .unwrap();
+    let body = Body::from_stream(futures::stream::once(async {
+      Err::<Bytes, _>(IoError::other(IoError::new(
+        ErrorKind::ConnectionReset,
+        "peer reset",
+      )))
+    }));
+    let response = router
+      .oneshot(
+        Request::builder()
+          .method("POST")
+          .uri(method.full_path())
+          .header(CONTENT_TYPE, content_type)
+          .header(CONNECT_PROTOCOL_VERSION, "1")
+          .body(body)
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(response.status().as_u16(), expected_status);
+    if expected_status == 200 {
+      assert_eq!(response.headers().get("grpc-status").unwrap(), "1");
+    }
+    for (result, count) in [("client_error", 1), ("server_error", 0), ("success", 0)] {
+      stats.assert_counter_eq(
+        count,
+        "test:rpc",
+        &labels! { "service" => "test_Test", "endpoint" => "Echo", "result" => result },
+      );
+    }
+  }
+}
+
+#[test]
+fn unary_disconnect_classification_preserves_other_failures() {
+  for reason in [h2::Reason::CANCEL, h2::Reason::NO_ERROR] {
+    let error = Error::BodyStream(Box::new(h2::Error::from(reason))).classify_unary_request_error();
+    assert_eq!(error.grpc_code(), Code::Cancelled);
+  }
+  for reason in [h2::Reason::INTERNAL_ERROR, h2::Reason::PROTOCOL_ERROR] {
+    let error = Error::BodyStream(Box::new(h2::Error::from(reason))).classify_unary_request_error();
+    assert_eq!(error.grpc_code(), Code::Internal);
+  }
+  for kind in [
+    ErrorKind::Other,
+    ErrorKind::TimedOut,
+    ErrorKind::InvalidData,
+  ] {
+    let error = Error::BodyStream(Box::new(IoError::new(kind, "body failure")))
+      .classify_unary_request_error();
+    assert_matches!(error, Error::BodyStream(_));
+    assert_eq!(error.grpc_code(), Code::Internal);
+  }
+  let upstream = Error::BodyStream(Box::new(IoError::new(
+    ErrorKind::ConnectionReset,
+    "upstream reset",
+  )));
+  assert_eq!(upstream.grpc_code(), Code::Internal);
+}
+
+#[tokio::test]
+async fn unary_transport_disconnects_are_cancelled() {
+  for http2 in [false, true] {
+    let stats = Helper::new();
+    let endpoint_stats = EndpointStats::new(stats.collector().scope("test"));
+    let (received_tx, received_rx) = oneshot::channel();
+    let received_tx = Arc::new(Mutex::new(Some(received_tx)));
+    let (completed_tx, completed_rx) = oneshot::channel();
+    let completed_tx = Arc::new(Mutex::new(Some(completed_tx)));
+    let method = service_method();
+    let router = UnaryRouterBuilder::new(&method, Arc::new(ErrorHandler {}))
+      .endpoint_stats(&endpoint_stats)
+      .build()
+      .unwrap()
+      .layer(from_fn(move |request: Request, next: Next| {
+        let received_tx = received_tx.clone();
+        let completed_tx = completed_tx.clone();
+        async move {
+          received_tx.lock().take().unwrap().send(()).unwrap();
+          let response = next.run(request).await;
+          completed_tx
+            .lock()
+            .take()
+            .unwrap()
+            .send((
+              response.status().as_u16(),
+              Error::is_client_disconnected_response(&response),
+            ))
+            .unwrap();
+          response
+        }
+      }));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let mut socket = TcpStream::connect(address).await.unwrap();
+    if http2 {
+      let (mut client, connection) = h2::client::handshake(socket).await.unwrap();
+      let connection = tokio::spawn(connection);
+      let request = http::Request::builder()
+        .method("POST")
+        .uri(format!("http://{address}{}", method.full_path()))
+        .header(CONTENT_TYPE, CONTENT_TYPE_PROTO)
+        .header(CONNECT_PROTOCOL_VERSION, "1")
+        .body(())
+        .unwrap();
+      let (_response, mut stream) = client.send_request(request, false).unwrap();
+      stream.send_data(Bytes::from_static(b"x"), false).unwrap();
+      received_rx.await.unwrap();
+      stream.send_reset(h2::Reason::CANCEL);
+      assert_eq!(completed_rx.await.unwrap(), (499, true));
+      connection.abort();
+    } else {
+      socket
+        .write_all(
+          format!(
+            "POST {} HTTP/1.1\r\nHost: {address}\r\nContent-Type: \
+             application/proto\r\nConnect-Protocol-Version: 1\r\nContent-Length: 100\r\n\r\nx",
+            method.full_path()
+          )
+          .as_bytes(),
+        )
+        .await
+        .unwrap();
+      received_rx.await.unwrap();
+      socket.shutdown().await.unwrap();
+      assert_eq!(completed_rx.await.unwrap(), (499, true));
+    }
+    stats.assert_counter_eq(
+      0,
+      "test:rpc",
+      &labels! { "service" => "test_Test", "endpoint" => "Echo", "result" => "server_error" },
+    );
+    stats.assert_counter_eq(
+      1,
+      "test:rpc",
+      &labels! { "service" => "test_Test", "endpoint" => "Echo", "result" => "client_error" },
+    );
+    server.abort();
+  }
 }
 
 #[tokio::test]
