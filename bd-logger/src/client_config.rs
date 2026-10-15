@@ -18,6 +18,7 @@ use crate::device_command::{
 use crate::logging_state::{BufferProducers, ConfigUpdate};
 use crate::write_log_to_buffer;
 use anyhow::anyhow;
+use bd_api::upload::DeviceCommandState;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::RingBuffer as _;
 use bd_client_common::HANDSHAKE_FLAG_CONFIG_UP_TO_DATE;
@@ -279,6 +280,7 @@ impl LoggerUpdate {
     command_dispatcher: RegisteredCommandDispatcher,
     command_execution_policy: CommandExecutionPolicy,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+    command_state: Arc<DeviceCommandState>,
     scope: &Scope,
   ) -> Self {
     Self {
@@ -294,6 +296,7 @@ impl LoggerUpdate {
         command_dispatcher,
         command_execution_policy,
         remote_screenshot_capture_handler,
+        command_state,
       ),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),
       filter_config_parse_failure: scope.counter("filter_config_parse_failure"),

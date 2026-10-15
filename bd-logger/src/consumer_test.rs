@@ -7,8 +7,11 @@
 
 use super::{
   BufferUploadManager,
+  CompleteBufferUpload,
   ContinuousBufferUploader,
   Flags,
+  TriggerBatchUploadCanceled,
+  TriggerUploadIdentity,
   append_command_stream_id,
   command_stream_id_field_size,
   service,
@@ -23,7 +26,8 @@ use crate::flush_registry::{
   PersistedTriggerUploadSource,
   PersistedTriggerUploadStreaming,
 };
-use crate::trigger_upload_artifact::TriggerUploadArtifactStore;
+use crate::trigger_upload_artifact::{TriggerUploadArtifactStore, WorkflowAttachmentReference};
+use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use assert_matches::assert_matches;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::{
@@ -33,6 +37,7 @@ use bd_api::{
   TriggerUploadSource,
   TriggerUploadStreaming,
 };
+use bd_artifact_upload::MockClient;
 use bd_buffer::{
   AbslCode,
   Buffer,
@@ -73,6 +78,7 @@ use tokio::sync::mpsc::{
   channel,
   unbounded_channel,
 };
+use uuid::Uuid;
 
 fn make_flags(runtime_loader: &ConfigLoader) -> Flags {
   Flags {
@@ -769,6 +775,100 @@ fn direct_command_artifacts_are_not_workflow_attachments() {
       .unwrap()
       .is_empty()
   );
+}
+
+#[tokio::test]
+async fn trigger_attachment_staging_shutdown_is_expected_cancellation() {
+  for recovered in [false, true] {
+    let directory = TempDir::with_prefix("consumertest").unwrap();
+    let runtime = ConfigLoader::new(directory.path());
+    let collector = Collector::default();
+    let scope = collector.scope("consumer");
+    let artifact_id = Uuid::new_v4();
+    let mut log = EncodableLog::new(
+      Log {
+        log_level: log_level::INFO,
+        log_type: LogType::NORMAL,
+        message: "workflow outcome".into(),
+        fields: [].into(),
+        matching_fields: [].into(),
+        session_id: "session".into(),
+        occurred_at: time::OffsetDateTime::now_utc(),
+        command_attachment: Some(Box::new(LogAttachment {
+          artifact_id: artifact_id.to_string(),
+          content_type: "image/jpeg".to_string(),
+          size_bytes: 0,
+          source: AttachmentSource::WORKFLOW,
+        })),
+        capture_session: None,
+      },
+      u64::MAX,
+    );
+    let mut encoded = Vec::new();
+    log.compute_size(&[], &[]).unwrap();
+    log
+      .serialize_to_stream(&[], &[], &mut CodedOutputStream::vec(&mut encoded))
+      .unwrap();
+    let (buffer, mut producer) = create_trigger_buffer(&directory.path().join("buffer")).await;
+    producer.write(&encoded).unwrap();
+    let artifact_store = TriggerUploadArtifactStore::new(directory.path(), "flush", "buffer");
+    if recovered {
+      artifact_store
+        .stage_batch_with_attachments(
+          vec![encoded.clone()],
+          vec![WorkflowAttachmentReference {
+            artifact_id: artifact_id.to_string(),
+            session_id: "session".to_string(),
+          }],
+        )
+        .await
+        .unwrap();
+      artifact_store
+        .promote_queued_batch_to_inflight()
+        .await
+        .unwrap();
+    }
+    let (attachments, _worker) = WorkflowAttachmentUploadHandle::new(Arc::new(MockClient::new()));
+    let shutdown = ComponentShutdownTrigger::default();
+    let (upload_tx, mut upload_rx) = channel(1);
+    let consumer = CompleteBufferUpload::new(
+      buffer.new_consumer().unwrap(),
+      make_flags(&runtime),
+      service::new(upload_tx, shutdown.make_shutdown(), &runtime, &scope),
+      "buffer".to_string(),
+      scope.counter("old_logs_dropped"),
+      None,
+      Some(Arc::new(attachments)),
+      shutdown.make_shutdown(),
+      PendingTriggerUploadsStore::new(directory.path()),
+      TriggerUploadIdentity::new(
+        &TriggerUploadSource::WorkflowAction("flush".to_string()),
+        None,
+      ),
+      None,
+      artifact_store,
+      buffer.clone(),
+    );
+    let mut upload = Box::pin(consumer.run());
+    assert!(poll!(&mut upload).is_pending());
+    let ((), result) = tokio::join!(shutdown.shutdown(), upload);
+    let error = result.unwrap_err();
+    assert!(error.is::<TriggerBatchUploadCanceled>(), "{error:?}");
+    assert_eq!(
+      upload_rx.try_recv().unwrap_err(),
+      tokio::sync::mpsc::error::TryRecvError::Disconnected
+    );
+    let artifact_store = TriggerUploadArtifactStore::new(directory.path(), "flush", "buffer");
+    if recovered {
+      assert_eq!(
+        artifact_store.inflight_batch().await.unwrap().unwrap().logs,
+        vec![encoded]
+      );
+    } else {
+      assert_eq!(buffer.peek_oldest_record().unwrap(), Some(encoded));
+      assert!(artifact_store.queued_batch().await.unwrap().is_none());
+    }
+  }
 }
 
 struct PendingFlushStateTestEvents {

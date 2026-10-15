@@ -790,15 +790,16 @@ fn api_bandwidth_counters() {
       let upload = StatsRequestHelper::new(upload);
 
       // The handshake carries a started-session state update with a real-time start timestamp and
-      // connection analytics. The protobuf timestamp's varint encoding can vary across runs, so
-      // the uncompressed transmit counter legitimately falls between 181 and 183.
+      // connection analytics, plus the 38-byte encoded SDK instance identity. The protobuf
+      // timestamp's varint encoding can vary across runs, so the uncompressed transmit counter
+      // legitimately falls between 219 and 221.
       let bandwidth_tx = upload.get_counter("api:bandwidth_tx", labels! {}).unwrap();
       let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
       let bandwidth_tx_uncompressed = upload
         .get_counter("api:bandwidth_tx_uncompressed", labels! {})
         .unwrap();
       assert!(
-        (181..=183).contains(&bandwidth_tx_uncompressed),
+        (219..=221).contains(&bandwidth_tx_uncompressed),
         "bandwidth_tx_uncompressed = {bandwidth_tx_uncompressed}"
       );
       assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
@@ -3612,7 +3613,7 @@ fn registered_custom_device_command_delivers_arguments() {
 }
 
 #[test]
-fn removed_device_command_id_can_be_reused() {
+fn removed_device_command_id_remains_a_live_instance_tombstone() {
   let command_id = "f4b6d461-4bfe-4bc6-a8b9-3bf16d83c62e";
   let registered_command_id = "com.example.reused";
   let handler = Arc::new(CountingDeviceCommandHandler {
@@ -3638,7 +3639,7 @@ fn removed_device_command_id_can_be_reused() {
     assert!(setup.send_configuration_update(configuration).is_none());
   }
 
-  for _ in 0 .. 2 {
+  for _ in 0 .. 1 {
     assert_matches!(
       setup.server.blocking_next_device_command_update(),
       Some(DeviceCommandUpdate {
@@ -3656,7 +3657,16 @@ fn removed_device_command_id_can_be_reused() {
       })
     );
   }
-  assert_eq!(handler.calls.load(Ordering::SeqCst), 2);
+  assert_eq!(handler.calls.load(Ordering::SeqCst), 1);
+  let (_, original_handshake) = setup.server.blocking_next_handshake_request().unwrap();
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::CloseStream);
+  let (_, reconnected_handshake) = setup.server.blocking_next_handshake_request().unwrap();
+  assert_eq!(
+    reconnected_handshake.sdk_instance_id,
+    original_handshake.sdk_instance_id
+  );
 }
 
 #[test]

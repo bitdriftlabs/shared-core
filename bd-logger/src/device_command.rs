@@ -12,7 +12,7 @@ mod tests;
 use crate::async_log_buffer::Sender as LogSender;
 use crate::workflow_attachment::AttachmentStoreHandle;
 use anyhow::anyhow;
-use bd_api::upload::TrackedDeviceCommandUpdate;
+use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadCompletion};
 use bd_artifact_upload::UploadSource;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
@@ -43,13 +43,16 @@ use bd_workflows::workflow::{
   WorkflowCommandRequest,
 };
 use futures_util::FutureExt;
+use futures_util::future::BoxFuture;
 use parking_lot::{Mutex, RwLock};
-use std::collections::{HashMap, HashSet};
+use protobuf::Message;
+use std::collections::HashMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 const MAX_SCREENSHOT_BYTES: usize = 2 * 1024 * 1024;
@@ -57,8 +60,16 @@ const REGISTERED_COMMAND_ARTIFACT_TYPE_ID: &str = "device_command_attachment";
 
 // A device command is executed only from a freshly delivered configuration. Cached tail
 // configuration can preserve log streaming, but must never replay a prior command after restart.
-// TODO: Replace this with durable invocation recovery and server-owned redelivery once
-// command execution and terminal updates survive SDK restart and mux reconnect.
+
+//
+// TestHooks
+//
+
+trait TestHooks: Send + Sync {
+  fn admission_sleep_started(&self) {}
+
+  fn admission_sleep_finished(&self) {}
+}
 
 //
 // DeviceCommandDispatcher
@@ -72,13 +83,37 @@ pub struct DeviceCommandDispatcher {
   command_dispatcher: RegisteredCommandDispatcher,
   execution_policy: CommandExecutionPolicy,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
-  active_command_ids: Mutex<HashSet<String>>,
+  command_state: Arc<DeviceCommandState>,
+  // At most one waiter for capacity, replaced by the next fresh configuration.
+  admission_task: Arc<Mutex<Option<JoinHandle<()>>>>,
+  test_hooks: Option<Arc<dyn TestHooks>>,
+  // Execution belongs to the SDK, not to a configuration or mux stream. None fences a racing
+  // admission task after Drop has begun; dropping a JoinHandle alone would detach execution.
+  execution_tasks: Arc<Mutex<Option<Vec<JoinHandle<()>>>>>,
 }
+
+impl Drop for DeviceCommandDispatcher {
+  fn drop(&mut self) {
+    if let Some(task) = self.admission_task.lock().take() {
+      task.abort();
+    }
+    if let Some(tasks) = self.execution_tasks.lock().take() {
+      for task in tasks {
+        task.abort();
+      }
+    }
+  }
+}
+
+//
+// DeviceCommandSenders
+//
 
 #[derive(Clone)]
 struct DeviceCommandSenders {
   data_upload_tx: Sender<DataUpload>,
   log_sender: LogSender,
+  command_state: Arc<DeviceCommandState>,
 }
 
 impl DeviceCommandDispatcher {
@@ -91,11 +126,13 @@ impl DeviceCommandDispatcher {
     command_dispatcher: RegisteredCommandDispatcher,
     execution_policy: CommandExecutionPolicy,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+    command_state: Arc<DeviceCommandState>,
   ) -> Self {
     Self {
       senders: DeviceCommandSenders {
         data_upload_tx,
         log_sender,
+        command_state: command_state.clone(),
       },
       trigger_upload_tx,
       session_strategy,
@@ -103,30 +140,102 @@ impl DeviceCommandDispatcher {
       command_dispatcher,
       execution_policy,
       remote_screenshot_capture_handler,
-      active_command_ids: Mutex::default(),
+      command_state,
+      admission_task: Arc::default(),
+      test_hooks: None,
+      execution_tasks: Arc::new(Mutex::new(Some(vec![]))),
     }
   }
 
+  /// Applies only a fresh server dispatch, never a cached configuration. Replacing the deferred
+  /// candidates does not cancel admitted execution or release its deduplication tombstone.
   pub fn dispatch_configuration(&self, commands: Vec<DeviceCommandRequest>) {
-    let configured_command_ids = commands
-      .iter()
-      .map(|command| command.command_id.to_string())
-      .collect::<HashSet<_>>();
-    let new_commands = {
-      let mut active_command_ids = self.active_command_ids.lock();
-      active_command_ids.retain(|command_id| configured_command_ids.contains(command_id));
-      commands
-        .into_iter()
-        .filter(|command| active_command_ids.insert(command.command_id.to_string()))
-        .collect::<Vec<_>>()
-    };
+    let mut admission_task = self.admission_task.lock();
+    if let Some(task) = admission_task.take() {
+      task.abort();
+    }
+    let mut deferred = vec![];
+    let mut deferred_bytes = 0;
+    for command in commands {
+      if self.command_state.admit(&command) {
+        // Claim the ID before spawning, so reconnects and repeated configurations cannot start
+        // a second handler while this execution is awaiting its Accepted ACK or doing work.
+        Self::spawn_execution(&self.execution_tasks, self.execution(command));
+      } else if self.command_state.admission_retry_delay(&command).is_some()
+        && deferred.len() < 64
+        && deferred_bytes + command.compute_size() <= 4 * 1024 * 1024
+      {
+        // Only capacity rejection is retryable. Bound both retained candidates and payload bytes;
+        // the handler future stays unpolled until the registry grants admission.
+        deferred_bytes += command.compute_size();
+        let execution = self.execution(command.clone());
+        deferred.push((command, execution));
+      }
+    }
+    if deferred.is_empty() {
+      return;
+    }
+    let command_state = self.command_state.clone();
+    let execution_tasks = self.execution_tasks.clone();
+    let test_hooks = self.test_hooks.clone();
+    let current_admission = self.admission_task.clone();
+    // Configuration processing must return without waiting for tombstone expiry. One owned task
+    // waits for all deferred candidates, rather than spawning a timer per rejected command.
+    *admission_task = Some(tokio::spawn(async move {
+      while let Some(delay) = deferred
+        .iter()
+        .filter_map(|(command, _)| command_state.admission_retry_delay(command))
+        .min()
+      {
+        log::debug!(
+          "device command admission deferred for {delay:?}; pending={}",
+          deferred.len()
+        );
+        let sleep = tokio::time::sleep(delay);
+        if let Some(hooks) = &test_hooks {
+          hooks.admission_sleep_started();
+        }
+        sleep.await;
+        if let Some(hooks) = &test_hooks {
+          hooks.admission_sleep_finished();
+        }
+        // Abort is cooperative. Serialize the whole admission pass with replacement/teardown,
+        // and reject an old task that was already running when its handle was replaced.
+        let current_admission = current_admission.lock();
+        if current_admission
+          .as_ref()
+          .is_none_or(|task| task.id() != tokio::task::id())
+        {
+          return;
+        }
+        let pending = std::mem::take(&mut deferred);
+        for (command, execution) in pending {
+          if command_state.admit(&command) {
+            Self::spawn_execution(&execution_tasks, execution);
+          } else if command_state.admission_retry_delay(&command).is_some() {
+            deferred.push((command, execution));
+          }
+        }
+      }
+    }));
+  }
 
-    for command in new_commands {
-      self.dispatch(command);
+  fn spawn_execution(
+    tasks: &Mutex<Option<Vec<JoinHandle<()>>>>,
+    execution: BoxFuture<'static, ()>,
+  ) {
+    let mut tasks = tasks.lock();
+    // Serialize starting execution with SDK teardown. An aborted admission task may already be
+    // running on another worker; it must not detach a new handler after Drop drains this list.
+    if let Some(tasks) = tasks.as_mut() {
+      tasks.retain(|task| !task.is_finished());
+      tasks.push(tokio::spawn(execution));
     }
   }
 
-  fn dispatch(&self, command: DeviceCommandRequest) {
+  fn execution(&self, command: DeviceCommandRequest) -> BoxFuture<'static, ()> {
+    // Capture dependencies, not the dispatcher itself: SDK destruction must be able to reach
+    // Drop and abort these tasks, including handlers waiting for an ACK on a disconnected mux.
     let command_id = command.command_id.to_string();
     let senders = self.senders.clone();
     let trigger_upload_tx = self.trigger_upload_tx.clone();
@@ -135,7 +244,7 @@ impl DeviceCommandDispatcher {
     let command_dispatcher = self.command_dispatcher.clone();
     let execution_policy = self.execution_policy.clone();
     let remote_screenshot_capture_handler = self.remote_screenshot_capture_handler.clone();
-    tokio::task::spawn(async move {
+    Box::pin(async move {
       if let Err(error) = execute_device_command(
         command,
         senders,
@@ -150,7 +259,7 @@ impl DeviceCommandDispatcher {
       {
         log::debug!("device command {command_id} execution stopped: {error}");
       }
-    });
+    })
   }
 }
 
@@ -1119,18 +1228,34 @@ async fn send_device_command_update_with_artifact(
   update: DeviceCommandUpdate,
   artifact_metadata: Option<CommandArtifactMetadata>,
 ) -> anyhow::Result<()> {
-  if let Some(log) = device_command_outcome_log(&update, artifact_metadata)
+  let (update, response_rx) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
+  if let Some(log) = device_command_outcome_log(&update.payload, artifact_metadata)
     && let Err(error) = senders.log_sender.try_send_log(log)
   {
     log::debug!("failed to admit device command outcome log: {error}");
   }
-  let (update, response_rx) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
-  senders
-    .data_upload_tx
-    .send(DataUpload::DeviceCommandUpdate(update))
-    .await
-    .map_err(|_| anyhow!("device command update channel closed"))?;
-  response_rx
-    .await
-    .map_err(|_| anyhow!("device command update was not acknowledged"))
+  let remaining = senders
+    .command_state
+    .remaining_time(&update.payload.command_id)
+    .ok_or_else(|| anyhow::anyhow!("command expired before update submission"))?;
+  if remaining.is_zero() {
+    anyhow::bail!("command expired before update submission");
+  }
+  let update = update.with_remaining_time(remaining);
+  // Include channel backpressure in the original expiry budget, not just the ACK wait. Otherwise
+  // a full API queue can retain the execution forever even after its waiter has expired.
+  tokio::time::timeout(remaining, async {
+    let permit = senders
+      .data_upload_tx
+      .reserve()
+      .await
+      .map_err(|_| anyhow!("device command update channel closed"))?;
+    let update = update.with_byte_budget(&senders.command_state).await?;
+    permit.send(DataUpload::DeviceCommandUpdate(update));
+    response_rx
+      .await
+      .map_err(|_| anyhow!("device command update was not acknowledged"))
+  })
+  .await
+  .map_err(|_| anyhow!("command expired while submitting update"))?
 }

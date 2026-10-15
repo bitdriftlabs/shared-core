@@ -1829,7 +1829,8 @@ impl CompleteBufferUpload {
     )
     .await?
     {
-      anyhow::bail!("workflow attachment staging interrupted by shutdown");
+      log::debug!("trigger upload canceled during workflow attachment staging");
+      return Err(TriggerBatchUploadCanceled.into());
     }
     self
       .artifact_store
@@ -1903,7 +1904,8 @@ impl CompleteBufferUpload {
     )
     .await?
     {
-      anyhow::bail!("workflow attachment staging interrupted by shutdown");
+      log::debug!("trigger upload canceled during workflow attachment staging");
+      return Err(TriggerBatchUploadCanceled.into());
     }
     let uploaded_logs = batch.logs.clone();
     let timestamp_range = timestamp_range_for_logs(&batch.logs);

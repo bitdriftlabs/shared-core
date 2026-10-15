@@ -48,7 +48,9 @@ use std::collections::HashMap;
 // Version 46: Added support for typed workflow command arguments.
 // Version 47: Added support for named command arguments.
 // Version 48: Added JSON path extraction for workflow fields.
-const CONFIGURATION_VERSION: &str = "48";
+// Version 49: Added SDK-instance-scoped device commands with reconnect-safe update replay and
+//             explicit acknowledgement dispositions.
+const CONFIGURATION_VERSION: &str = "49";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

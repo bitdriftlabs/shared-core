@@ -10,7 +10,13 @@
 mod api_test;
 
 use crate::network_quality::DISCONNECTED_OFFLINE_GRACE_PERIOD;
-use crate::upload::{self, StateTracker, TrackedStatsUploadRequest};
+use crate::upload::{
+  self,
+  DeviceCommandState,
+  DeviceCommandUpdateTracker,
+  StateTracker,
+  TrackedStatsUploadRequest,
+};
 use crate::{
   DataUpload,
   PlatformNetworkManager,
@@ -304,7 +310,11 @@ impl StreamState {
     }
   }
 
-  async fn handle_data_upload(&mut self, data_upload: DataUpload) -> anyhow::Result<()> {
+  async fn handle_data_upload(
+    &mut self,
+    data_upload: DataUpload,
+    command_updates: &mut DeviceCommandUpdateTracker,
+  ) -> anyhow::Result<()> {
     match data_upload {
       DataUpload::LogsUploadIntent(intent) => {
         let req = self.upload_state_tracker.track_intent(intent);
@@ -346,9 +356,7 @@ impl StreamState {
       },
       DataUpload::DebugData(request) => self.send_request(request).await,
       DataUpload::DeviceCommandUpdate(update) => {
-        let request = self
-          .upload_state_tracker
-          .track_device_command_update(update)?;
+        let request = command_updates.track_device_command_update(update)?;
         self
           .send_request(ApiRequest {
             request_type: Some(api_request::Request_type::DeviceCommandUpdate(request)),
@@ -477,6 +485,8 @@ pub struct Api {
 
   stats_handshake_extension: Option<Arc<dyn StatsHandshakeExtension>>,
   connection_count_since_process_start: u64,
+  device_command_updates: DeviceCommandUpdateTracker,
+  device_command_state: Arc<DeviceCommandState>,
 
   pub(crate) test_hooks: Option<Arc<dyn TestHooks>>,
 }
@@ -516,6 +526,7 @@ impl Api {
 
     let reconnect_state = crate::reconnect::ReconnectState::new(store, time_provider.clone());
     let session_updates = session_strategy.subscribe_updates();
+    let device_command_state = Arc::new(DeviceCommandState::new(time_provider.clone()));
     Self {
       sdk_directory,
       api_key,
@@ -551,8 +562,16 @@ impl Api {
       sdk_status_tracker,
       stats_handshake_extension,
       connection_count_since_process_start: 1,
+      device_command_updates: DeviceCommandUpdateTracker::default(),
+      device_command_state,
       test_hooks: None,
     }
+  }
+
+  #[must_use]
+  pub fn with_device_command_state(mut self, state: Arc<DeviceCommandState>) -> Self {
+    self.device_command_state = state;
+    self
   }
 
   pub async fn start(mut self) {
@@ -840,7 +859,11 @@ impl Api {
       // until there are either new uploads or the delay has elapsed. We need to make sure that any
       // uploads we receive while waiting for the delay are processed, so we have to carry
       // with us the upload we receive while waiting.
-      let min_reconnect_interval = self.get_min_reconnect_interval();
+      let min_reconnect_interval = if self.device_command_updates.has_pending_updates() {
+        Duration::ZERO
+      } else {
+        self.get_min_reconnect_interval()
+      };
       let upload_during_idle_timeout = if let Some(reconnect_delay) = self
         .reconnect_state
         .next_reconnect_delay(min_reconnect_interval)
@@ -927,6 +950,15 @@ impl Api {
     app_id: &str,
     handshake_metadata: &HashMap<String, ProtoData>,
   ) -> Result<(), ApiError> {
+    let upload_during_idle_timeout = match upload_during_idle_timeout {
+      Some(DataUpload::DeviceCommandUpdate(update)) => {
+        self
+          .device_command_updates
+          .track_device_command_update(update)?;
+        None
+      },
+      upload => upload,
+    };
     self.stats.stream_total.inc();
 
     log::debug!("starting new stream");
@@ -1067,7 +1099,9 @@ impl Api {
     if let Some(spurious_upload) = upload_during_idle_timeout {
       log::trace!("processing spurious upload received during idle timeout wait");
       // If we received a spurious upload while waiting to reconnect, process it now.
-      stream_state.handle_data_upload(spurious_upload).await?;
+      stream_state
+        .handle_data_upload(spurious_upload, &mut self.device_command_updates)
+        .await?;
       self.reconnect_state.record_connectivity_event();
     }
 
@@ -1075,6 +1109,11 @@ impl Api {
     // time we received data at the start. This is refreshed below whenever we upload data.
     let mut last_data_received_at = Instant::now();
     let mut in_flight_state_update = None;
+    let mut command_retry = tokio::time::interval(std::time::Duration::from_secs(1));
+    command_retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    if !self.device_command_updates.has_pending_updates() {
+      command_retry.tick().await;
+    }
 
     // At this point we have established the stream, so we should start the general
     // request/response handling.
@@ -1093,6 +1132,18 @@ impl Api {
       };
 
       let upstream_event = tokio::select! {
+        _ = command_retry.tick(), if self.device_command_updates.has_pending_updates() => {
+          // The live SDK retains the exact payload and waiter; a new mux validates normal updates.
+          for update in self.device_command_updates.pending_updates() {
+            stream_state.send_request(ApiRequest {
+              request_type: Some(api_request::Request_type::DeviceCommandUpdate(update)),
+              ..Default::default()
+            }).await?;
+          }
+          last_data_received_at = Instant::now();
+          self.reconnect_state.record_connectivity_event();
+          continue;
+        }
         // Fire a ping timer if the ping timer elapses.
         () = maybe_await(&mut stream_state.ping_sleep) => {
           stream_state.send_ping().await?;
@@ -1130,7 +1181,12 @@ impl Api {
         Some(data_upload) = self.data_upload_rx.recv() => {
             log::trace!("received data upload");
           last_data_received_at = Instant::now();
-          stream_state.handle_data_upload(data_upload).await?;
+          let start_command_retry = matches!(&data_upload, DataUpload::DeviceCommandUpdate(_))
+            && !self.device_command_updates.has_pending_updates();
+          stream_state.handle_data_upload(data_upload, &mut self.device_command_updates).await?;
+          if start_command_retry {
+            command_retry.reset();
+          }
           self.reconnect_state.record_connectivity_event();
           continue;
         },
@@ -1212,7 +1268,7 @@ impl Api {
   /// Handles any number of non-handshake responses. Receiving a handshake response at this point
   /// is considered a protocol error.
   async fn handle_responses(
-    &self,
+    &mut self,
     responses: Vec<ApiResponse>,
     stream_state: &mut StreamState,
     in_flight_state_update: &mut Option<InFlightStateUpdate>,
@@ -1368,22 +1424,9 @@ impl Api {
             acknowledgement.error,
           );
 
-          if let Some(update) = stream_state
-            .upload_state_tracker
-            .resolve_device_command_update(&acknowledgement)?
-          {
-            log::debug!(
-              "retrying device command update for {} sequence {} after acknowledgement error",
-              update.command_id,
-              update.update_sequence_number,
-            );
-            stream_state
-              .send_request(ApiRequest {
-                request_type: Some(api_request::Request_type::DeviceCommandUpdate(update)),
-                ..Default::default()
-              })
-              .await?;
-          }
+          self
+            .device_command_updates
+            .resolve_device_command_update(&acknowledgement);
         },
         None => {
           debug_assert!(false, "not handled");
@@ -1423,6 +1466,7 @@ impl Api {
     };
 
     self.config_updater.fill_handshake(&mut handshake);
+    handshake.sdk_instance_id = self.device_command_state.sdk_instance_id.clone();
     self.runtime_loader.fill_handshake(&mut handshake);
     let startup_stats_upload = if let Some(extension) = &self.stats_handshake_extension {
       match extension.prepare_stats_handshake(&mut handshake).await {
