@@ -950,6 +950,15 @@ impl Api {
     app_id: &str,
     handshake_metadata: &HashMap<String, ProtoData>,
   ) -> Result<(), ApiError> {
+    let upload_during_idle_timeout = match upload_during_idle_timeout {
+      Some(DataUpload::DeviceCommandUpdate(update)) => {
+        self
+          .device_command_updates
+          .track_device_command_update(update)?;
+        None
+      },
+      upload => upload,
+    };
     self.stats.stream_total.inc();
 
     log::debug!("starting new stream");
@@ -1087,10 +1096,6 @@ impl Api {
 
     self.disconnected_at = None;
 
-    let sent_command_update = matches!(
-      &upload_during_idle_timeout,
-      Some(DataUpload::DeviceCommandUpdate(_))
-    );
     if let Some(spurious_upload) = upload_during_idle_timeout {
       log::trace!("processing spurious upload received during idle timeout wait");
       // If we received a spurious upload while waiting to reconnect, process it now.
@@ -1106,7 +1111,7 @@ impl Api {
     let mut in_flight_state_update = None;
     let mut command_retry = tokio::time::interval(std::time::Duration::from_secs(1));
     command_retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    if sent_command_update || !self.device_command_updates.has_pending_updates() {
+    if !self.device_command_updates.has_pending_updates() {
       command_retry.tick().await;
     }
 

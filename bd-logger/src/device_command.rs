@@ -1228,12 +1228,12 @@ async fn send_device_command_update_with_artifact(
   update: DeviceCommandUpdate,
   artifact_metadata: Option<CommandArtifactMetadata>,
 ) -> anyhow::Result<()> {
-  if let Some(log) = device_command_outcome_log(&update, artifact_metadata)
+  let (update, response_rx) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
+  if let Some(log) = device_command_outcome_log(&update.payload, artifact_metadata)
     && let Err(error) = senders.log_sender.try_send_log(log)
   {
     log::debug!("failed to admit device command outcome log: {error}");
   }
-  let (update, response_rx) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
   let remaining = senders
     .command_state
     .remaining_time(&update.payload.command_id)
@@ -1245,11 +1245,13 @@ async fn send_device_command_update_with_artifact(
   // Include channel backpressure in the original expiry budget, not just the ACK wait. Otherwise
   // a full API queue can retain the execution forever even after its waiter has expired.
   tokio::time::timeout(remaining, async {
-    senders
+    let permit = senders
       .data_upload_tx
-      .send(DataUpload::DeviceCommandUpdate(update))
+      .reserve()
       .await
       .map_err(|_| anyhow!("device command update channel closed"))?;
+    let update = update.with_byte_budget(&senders.command_state).await?;
+    permit.send(DataUpload::DeviceCommandUpdate(update));
     response_rx
       .await
       .map_err(|_| anyhow!("device command update was not acknowledged"))

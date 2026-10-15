@@ -16,6 +16,7 @@ pub use bd_proto::protos::client::api::log_upload_intent_request::{
 pub use bd_proto::protos::client::api::log_upload_intent_response::Decision as LogsUploadDecision;
 use bd_proto::protos::client::api::sankey_intent_response::Decision as SankeyPathUploadDecision;
 use bd_proto::protos::client::api::{
+  DeviceCommandResultContext,
   DeviceCommandUpdate,
   DeviceCommandUpdateAck,
   LogUploadRequest,
@@ -24,13 +25,17 @@ use bd_proto::protos::client::api::{
   StatsUploadRequest,
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
+  device_command_update,
   upload_artifact_intent_response,
 };
+use bd_proto::protos::logging::payload::Data;
+use bd_proto::protos::logging::payload::data::Data_type;
 use bd_time::TimeProvider;
 use parking_lot::Mutex;
 use protobuf::Message;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinHandle;
 use upload_artifact_intent_response::Decision as ArtifactIntentDecision;
 use uuid::Uuid;
@@ -172,7 +177,7 @@ impl StateTracker {
 //
 
 pub const MAX_KNOWN_COMMANDS: usize = 64;
-const MAX_PENDING_COMMAND_UPDATE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_PENDING_COMMAND_UPDATE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Admission and deduplication state for one live SDK, shared with every replacement API stream.
 /// Nothing here is persisted: a recreated SDK must not inherit execution authority.
@@ -180,6 +185,7 @@ pub struct DeviceCommandState {
   /// Fresh per SDK, not per connection. Dispatches must name this owner before being admitted.
   pub sdk_instance_id: String,
   time_provider: Arc<dyn TimeProvider>,
+  pending_update_bytes: Arc<Semaphore>,
   // Keep IDs through their original expiry, including after completion, so configuration
   // omission/reappearance cannot execute a command twice. Values contain no result payloads.
   commands: Mutex<BTreeMap<String, protobuf::well_known_types::timestamp::Timestamp>>,
@@ -190,6 +196,7 @@ impl DeviceCommandState {
     Self {
       sdk_instance_id: Uuid::new_v4().to_string(),
       time_provider,
+      pending_update_bytes: Arc::new(Semaphore::new(MAX_PENDING_COMMAND_UPDATE_BYTES)),
       commands: Mutex::default(),
     }
   }
@@ -346,7 +353,7 @@ impl DeviceCommandUpdateTracker {
       .map(|pending| pending.update.compute_size())
       .sum::<u64>();
     if pending_updates.len() >= MAX_KNOWN_COMMANDS
-      || pending_bytes + payload.compute_size() > MAX_PENDING_COMMAND_UPDATE_BYTES
+      || pending_bytes + payload.compute_size() > MAX_PENDING_COMMAND_UPDATE_BYTES as u64
     {
       anyhow::bail!("pending device command update capacity exceeded");
     }
@@ -500,6 +507,7 @@ pub struct CommandUpdateSender {
   channel: Option<tokio::sync::oneshot::Sender<()>>,
   expires_at: Option<tokio::time::Instant>,
   expiry_task: Option<JoinHandle<()>>,
+  byte_permit: Option<OwnedSemaphorePermit>,
 }
 
 impl Drop for CommandUpdateSender {
@@ -544,8 +552,35 @@ pub struct TrackedDeviceCommandUpdate {
 impl TrackedDeviceCommandUpdate {
   pub fn new(
     uuid: String,
-    payload: DeviceCommandUpdate,
+    mut payload: DeviceCommandUpdate,
   ) -> (Self, tokio::sync::oneshot::Receiver<()>) {
+    if payload.compute_size() > MAX_PENDING_COMMAND_UPDATE_BYTES as u64 {
+      log::warn!("device command result exceeds update byte limit; reporting bounded failure");
+      payload = DeviceCommandUpdate {
+        command_id: payload.command_id,
+        update_sequence_number: payload.update_sequence_number,
+        update_type: Some(device_command_update::Update_type::Failed(
+          device_command_update::Failed {
+            context: Some(DeviceCommandResultContext {
+              fields: [(
+                "error".to_string(),
+                Data {
+                  data_type: Some(Data_type::StringData(
+                    "device command result exceeds the 4 MiB update limit".to_string(),
+                  )),
+                  ..Default::default()
+                },
+              )]
+              .into(),
+              ..Default::default()
+            })
+            .into(),
+            ..Default::default()
+          },
+        )),
+        ..Default::default()
+      };
+    }
     let (sender, receiver) = tokio::sync::oneshot::channel();
     (
       Self {
@@ -555,10 +590,29 @@ impl TrackedDeviceCommandUpdate {
           channel: Some(sender),
           expires_at: None,
           expiry_task: None,
+          byte_permit: None,
         },
       },
       receiver,
     )
+  }
+
+  /// Reserves bytes across queued and tracked updates. The caller bounds this wait by command
+  /// expiry.
+  pub async fn with_byte_budget(mut self, state: &DeviceCommandState) -> anyhow::Result<Self> {
+    let bytes = self.payload.compute_size();
+    if bytes > MAX_PENDING_COMMAND_UPDATE_BYTES as u64 {
+      anyhow::bail!("device command update identity exceeds byte limit");
+    }
+    log::debug!("reserving {bytes} bytes for a device command update");
+    self.response_tx.byte_permit = Some(
+      state
+        .pending_update_bytes
+        .clone()
+        .acquire_many_owned(u32::try_from(bytes)?)
+        .await?,
+    );
+    Ok(self)
   }
 
   #[must_use]

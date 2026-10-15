@@ -18,6 +18,7 @@ use super::{
   WorkflowCommandDispatcher,
   artifact_attachment,
   completed_device_command_update,
+  device_command_context,
   device_command_outcome_log,
   failed_device_command_update_with_fields,
   no_attachment,
@@ -28,7 +29,7 @@ use super::{
 use crate::async_log_buffer::Sender as LogSender;
 use crate::workflow_attachment::AttachmentStoreHandle;
 use bd_api::DataUpload;
-use bd_api::upload::DeviceCommandState;
+use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
 use bd_artifact_upload::{Client, MockClient, UploadSource};
 use bd_event_buffer::{EventBuffer, EventBufferLimits};
 use bd_log_primitives::command_attachment::AttachmentSource;
@@ -56,10 +57,11 @@ use bd_workflows::workflow::{CommandArtifactMetadata, WorkflowCommandOutcome};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
-use std::future::pending;
+use std::future::{Future, pending, poll_fn};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
+use std::task::Poll;
 use tempfile::TempDir;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::{Notify, mpsc, oneshot};
@@ -304,7 +306,7 @@ async fn direct_registered_command_timeout_reports_one_terminal_failure() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn direct_command_update_expiry_bounds_channel_backpressure_and_ack_wait() {
+async fn direct_command_update_expiry_bounds_channel_byte_budget_and_ack_wait() {
   let (directory, _runtime, policy) = command_runtime();
   let (mut dispatcher, _updates) = direct_dispatcher(
     directory.path(),
@@ -324,19 +326,22 @@ async fn direct_command_update_expiry_bounds_channel_backpressure_and_ack_wait()
     ..Default::default()
   };
   assert!(state.admit(&command));
-  for queued in [false, true] {
+  for blocked in ["ack", "channel", "bytes"] {
     let (upload_tx, mut upload_rx) = mpsc::channel(1);
     dispatcher.senders.data_upload_tx = upload_tx;
-    let reservation = if queued {
+    let reservation = if blocked == "channel" {
       Some(dispatcher.senders.data_upload_tx.reserve().await.unwrap())
     } else {
       None
     };
-    let update = DeviceCommandUpdate {
-      command_id: command.command_id.to_string(),
-      update_sequence_number: 1,
-      ..Default::default()
+    let occupied = if blocked == "bytes" {
+      let update = large_command_update(&Uuid::new_v4().to_string());
+      let (tracked, response) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
+      Some((tracked.with_byte_budget(&state).await.unwrap(), response))
+    } else {
+      None
     };
+    let update = large_command_update(command.command_id.as_str());
     let started_at = tokio::time::Instant::now();
     let error = send_device_command_update(&dispatcher.senders, update)
       .await
@@ -344,18 +349,84 @@ async fn direct_command_update_expiry_bounds_channel_backpressure_and_ack_wait()
     assert_eq!(error.to_string(), "command expired while submitting update");
     assert_eq!(started_at.elapsed(), std::time::Duration::from_secs(2));
     drop(reservation);
-    if queued {
-      assert_eq!(
-        upload_rx.try_recv().unwrap_err(),
-        mpsc::error::TryRecvError::Empty
-      );
-    } else {
+    if blocked == "ack" {
       let DataUpload::DeviceCommandUpdate(update) = upload_rx.try_recv().unwrap() else {
         panic!("expected a command update");
       };
       assert_matches::assert_matches!(update.response_tx.send(()), Err(_));
+    } else {
+      assert_eq!(
+        upload_rx.try_recv().unwrap_err(),
+        mpsc::error::TryRecvError::Empty
+      );
     }
+    drop(occupied);
   }
+}
+
+fn large_command_update(command_id: &str) -> DeviceCommandUpdate {
+  completed_device_command_update(
+    command_id,
+    false,
+    Some(device_command_context(
+      [("result".into(), "x".repeat(3 * 1024 * 1024).into())].into(),
+    )),
+    no_attachment(),
+  )
+}
+
+#[tokio::test(start_paused = true)]
+async fn direct_command_updates_backpressure_without_losing_large_results() {
+  let (directory, _runtime, policy) = command_runtime();
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    RegisteredCommandDispatcher::default(),
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(MockClient::new()),
+  );
+  let first_id = Uuid::new_v4().to_string();
+  let second_id = Uuid::new_v4().to_string();
+  for command_id in [&first_id, &second_id] {
+    assert!(dispatcher.command_state.admit(&DeviceCommandRequest {
+      command_id: command_id.clone().into(),
+      sdk_instance_id: dispatcher.command_state.sdk_instance_id.clone().into(),
+      expires_at: (OffsetDateTime::now_utc() + Duration::days(1)).into_proto(),
+      ..Default::default()
+    }));
+  }
+  let first = large_command_update(&first_id);
+  let second = large_command_update(&second_id);
+  let mut first_submission = Box::pin(send_device_command_update(
+    &dispatcher.senders,
+    first.clone(),
+  ));
+  let pending = poll_fn(|context| Poll::Ready(first_submission.as_mut().poll(context))).await;
+  assert_matches::assert_matches!(pending, Poll::Pending);
+  let Some(DataUpload::DeviceCommandUpdate(first_tracked)) = updates.recv().await else {
+    panic!("expected first command result");
+  };
+  assert_eq!(first_tracked.payload, first);
+  let mut second_submission = Box::pin(send_device_command_update(
+    &dispatcher.senders,
+    second.clone(),
+  ));
+  let pending = poll_fn(|context| Poll::Ready(second_submission.as_mut().poll(context))).await;
+  assert_matches::assert_matches!(pending, Poll::Pending);
+  assert_eq!(
+    updates.try_recv().unwrap_err(),
+    mpsc::error::TryRecvError::Empty
+  );
+  first_tracked.response_tx.send(()).unwrap();
+  first_submission.await.unwrap();
+  let pending = poll_fn(|context| Poll::Ready(second_submission.as_mut().poll(context))).await;
+  assert_matches::assert_matches!(pending, Poll::Pending);
+  let Some(DataUpload::DeviceCommandUpdate(second_tracked)) = updates.recv().await else {
+    panic!("expected second command result");
+  };
+  assert_eq!(second_tracked.payload, second);
+  second_tracked.response_tx.send(()).unwrap();
+  second_submission.await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
