@@ -2357,6 +2357,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cty"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b365fabc795046672053e29c954733ec3b05e4be654ab130fe8f1f94d7051f35"
+
+[[package]]
 name = "darling"
 version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2947,6 +2953,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c041375e48b8ef7cd2d0e70715598154af627c1a551e41c35fdb4a2b3910831a"
 dependencies = [
  "bincode-next",
+ "cty",
  "derive_more",
  "gungraun-common",
  "gungraun-macros",
@@ -6723,6 +6730,16 @@ name = "valgrind-requests"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "def0bceca49604595157f0604b14e8cf1658ef6af16ef0dbaf78596d1fae777f"
+dependencies = [
+ "bindgen",
+ "cc",
+ "cfg-if",
+ "cty",
+ "gungraun-common",
+ "regex",
+ "rustc_version",
+ "strum 0.28.0",
+]
 
 [[package]]
 name = "valuable"

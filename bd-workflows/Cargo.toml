@@ -61,7 +61,7 @@ tempfile.workspace          = true
 tokio-test.workspace        = true
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-gungraun  = { version = "0.20.0", features = ["valgrind-requests"] }
+gungraun  = { version = "0.20.0", features = ["act"] }
 simplelog = "0.12.2"
 
 [[bench]]
