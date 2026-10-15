@@ -528,7 +528,6 @@ impl LoggerBuilder {
         result.previous_state,
         result.retention_registry,
       );
-      async_log_buffer.set_retention_registry(retention_registry.clone());
 
       let pending_entity_id = pending_entity_id.lock().take();
       initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
@@ -561,6 +560,10 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
+      async_log_buffer.set_retention_registry(
+        retention_registry.clone(),
+        artifact_client.upload_queue_revision(),
+      );
       let (workflow_upload_handle, workflow_upload_worker) =
         WorkflowAttachmentUploadHandle::new_with_attachment_store_and_test_hooks(
           artifact_client.clone(),

@@ -10,11 +10,13 @@
 
 use crate::file_system::FileSystem;
 use async_trait::async_trait;
+use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::AsyncWriteExt as _;
+use tokio::sync::oneshot;
 
 //
 // TestFileSystem
@@ -26,6 +28,8 @@ pub struct TestFileSystem {
   directory: tempfile::TempDir,
   pub disk_full: AtomicBool,
   pub fail_next_sync: AtomicBool,
+  fail_sync_path: Mutex<Option<PathBuf>>,
+  sync_gate: Mutex<Option<(PathBuf, oneshot::Sender<oneshot::Sender<()>>)>>,
 }
 
 #[async_trait]
@@ -110,18 +114,32 @@ impl FileSystem for TestFileSystem {
     Ok(())
   }
 
-  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
-    Ok(
-      tokio::fs::hard_link(
-        self.directory.path().join(from),
-        self.directory.path().join(to),
-      )
-      .await?,
-    )
-  }
-
   async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
-    if self.fail_next_sync.swap(false, Ordering::Relaxed) {
+    let gate = {
+      let mut gate = self.sync_gate.lock();
+      if gate.as_ref().is_some_and(|(target, _)| target == path) {
+        gate.take().map(|(_, gate)| gate)
+      } else {
+        None
+      }
+    };
+    if let Some(gate) = gate {
+      let (resume_tx, resume_rx) = oneshot::channel();
+      gate
+        .send(resume_tx)
+        .map_err(|_| anyhow::anyhow!("sync gate observer was dropped"))?;
+      resume_rx.await?;
+    }
+    let fail_at_path = {
+      let mut target = self.fail_sync_path.lock();
+      if target.as_deref() == Some(path) {
+        target.take();
+        true
+      } else {
+        false
+      }
+    };
+    if self.fail_next_sync.swap(false, Ordering::Relaxed) || fail_at_path {
       anyhow::bail!("injected sync failure");
     }
     crate::file_system::sync_file_and_parent(&self.directory.path().join(path)).await
@@ -198,10 +216,6 @@ impl FileSystem for Arc<TestFileSystem> {
     self.as_ref().rename_file(from, to).await
   }
 
-  async fn link_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
-    self.as_ref().link_file(from, to).await
-  }
-
   async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
     self.as_ref().sync_file_and_parent(path).await
   }
@@ -228,7 +242,23 @@ impl TestFileSystem {
       directory: tempfile::tempdir().expect("failed to create temp dir"),
       disk_full: AtomicBool::new(false),
       fail_next_sync: AtomicBool::new(false),
+      fail_sync_path: Mutex::new(None),
+      sync_gate: Mutex::new(None),
     }
+  }
+
+  pub fn directory(&self) -> &Path {
+    self.directory.path()
+  }
+
+  pub fn fail_next_sync_at(&self, path: PathBuf) {
+    assert!(self.fail_sync_path.lock().replace(path).is_none());
+  }
+
+  pub fn gate_next_sync(&self, path: PathBuf) -> oneshot::Receiver<oneshot::Sender<()>> {
+    let (gate_tx, gate_rx) = oneshot::channel();
+    assert!(self.sync_gate.lock().replace((path, gate_tx)).is_none());
+    gate_rx
   }
 
   pub fn files(&self) -> HashMap<String, Vec<u8>> {

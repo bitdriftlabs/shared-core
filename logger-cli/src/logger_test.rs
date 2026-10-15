@@ -12,7 +12,13 @@ use super::{
   make_session_strategy,
   make_session_strategy_with_time_provider,
 };
+use crate::metadata::Metadata;
+use crate::storage::SQLiteStorage;
+use bd_api::{Metadata as ApiMetadata, Platform};
+use bd_device::Device;
+use bd_key_value::Store;
 use bd_time::TestTimeProvider;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -40,6 +46,41 @@ impl TestSdkDirectory {
 
   fn path(&self) -> &Path {
     self.temp_dir.path()
+  }
+}
+
+#[test]
+fn command_artifact_metadata_includes_platform_build_number() {
+  let sdk_directory = TestSdkDirectory::new();
+  let storage = SQLiteStorage::new(&sdk_directory.path().join("defaults.db"));
+  let device = Arc::new(Device::new(Arc::new(Store::new(Box::new(storage)))));
+  for (platform, build_key) in [
+    (Platform::Android, "_app_version_code"),
+    (Platform::Apple, "_build_number"),
+  ] {
+    let metadata = Metadata {
+      app_id: Some("io.bitdrift.cli.workflowperfetto".to_string()),
+      app_version: Some("1.0.0".to_string()),
+      app_version_code: "42".to_string(),
+      platform,
+      device: device.clone(),
+      os_version: None,
+      manufacturer: None,
+      model: "test".to_string(),
+    };
+
+    assert_eq!(
+      metadata.command_artifact_metadata(),
+      HashMap::from([
+        ("platform".to_string(), platform.as_str().to_string()),
+        (
+          "app_id".to_string(),
+          "io.bitdrift.cli.workflowperfetto".to_string()
+        ),
+        ("app_version".to_string(), "1.0.0".to_string()),
+        (build_key.to_string(), "42".to_string()),
+      ]),
+    );
   }
 }
 

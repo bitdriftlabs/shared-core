@@ -63,6 +63,41 @@ makes it suitable as the simulated device for end-to-end screenshot testing: aft
 reaches `Succeeded`, its attachment is available through the device-command attachment endpoint
 as `image/jpeg`.
 
+### Fake Perfetto command
+
+Logger CLI always registers the application command `fake_perfetto`. It takes no arguments and
+returns a deterministic 103-byte Perfetto protobuf trace as
+`application/vnd.bitdrift.perfetto-trace`. The trace contains a `logger-cli` track and one
+`fake-perfetto` instant event, plus one supported `PerfSample` referencing an interned,
+already-symbolized `fake_perfetto` frame. This exercises profile processing and bundle publication
+without requiring debug files. It is not a real CPU profile or a symbolication/name-recovery fixture;
+the resulting bundle has empty symbolication sidecars.
+The configured `--app-version-code` is included in artifact metadata as well as log fields.
+
+Register the same key in the backend command catalog for the chosen app/platform, then select it
+in a workflow command step. A workflow invocation has no direct command ID. Attach a session-flush
+action to successful command completion so the uploaded `Command completed` log references the
+attachment and drives its upload. Calling `upload-artifacts`, `--capture-session`, or a direct
+command invocation does not verify that workflow path.
+
+Use a fresh `--sdk-directory` and an unused `--port` for an isolated run. For Rust diagnostics:
+
+```bash
+RUST_LOG=info,bd_logger=debug,bd_workflows=trace,bd_api=debug \
+  API_KEY=<key> API_URL=<url> logger-cli --sdk-directory .tmp/workflow-sdk --port 5502 \
+  start --platform android --app-id io.bitdrift.cli.workflow
+```
+
+Deploy the workflow and confirm configuration receipt before sending a finite trigger sequence.
+Send the trigger followed by one ordinary follow-up log: the command step is evaluated on the next
+SDK event after the preceding match. Then wait for completion rather than repeatedly sending logs.
+Verify both the uploaded completion log's typed attachment metadata and the exact raw attachment
+bytes at ingestion; a handler log alone does not establish either upload.
+
+Use exclusive execution for a single-run command test. Parallel execution with `maxActiveRuns: 1`
+can evict the in-flight run when the SDK creates its next initial waiting run; its eventual command
+completion is then discarded. For parallel tests, allow capacity for that initial run as well.
+
 ## MCP Server
 
 An alternative way to interact with the logger CLI is via a small MCP server that allows an LLM agent to understand how to interact with the CLI.
@@ -86,4 +121,3 @@ And add the MCP server to the configuration for your agent of choice. For exampl
 At the moment logger-cli must be manually started via the `logger-cli` start above in order to work as the MCP server requires a running logger to interact with.
 
 Currently only a handful of operations are supported but can be extended as the tool sees more use.
-

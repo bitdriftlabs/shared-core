@@ -9,6 +9,7 @@
 #[path = "./logger_test.rs"]
 mod tests;
 
+use crate::fake_perfetto::{COMMAND_NAME, FakePerfettoCommand};
 use crate::fake_screenshot::FakeScreenshotTarget;
 use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
@@ -357,6 +358,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
   let static_metadata = Arc::new(Metadata {
     app_id: Some(args.app_id.clone()),
     app_version: Some(args.app_version.clone()),
+    app_version_code: args.app_version_code.clone(),
     platform: args.platform.into(),
     device: device.clone(),
     os_version: None,
@@ -387,6 +389,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     static_metadata,
     start_in_sleep_mode: false,
   })
+  .with_command_handler(COMMAND_NAME.to_string(), Arc::new(FakePerfettoCommand))
   .build()?;
 
   let logger = LoggerHolder::new(logger, session_strategy, future, shutdown_trigger);
