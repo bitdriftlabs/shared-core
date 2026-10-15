@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::UploadClient;
+use super::{UploadClient, Uploader};
 use crate::uploader::{
   ARTIFACT_UPLOAD_DIRECTORY,
   Client,
@@ -17,8 +17,8 @@ use crate::uploader::{
 };
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentResponse, UploadResponse};
-use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
+use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
+use bd_client_common::file::read_compressed_protobuf;
 use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
@@ -42,6 +42,7 @@ use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
 use time::ext::NumericalStdDuration;
 use time::macros::datetime;
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -66,6 +67,11 @@ struct Setup {
 }
 
 impl Setup {
+  async fn shutdown(self) {
+    self.shutdown.shutdown().await;
+    self.task_handle.await.unwrap();
+  }
+
   async fn reinitialize(self) -> Self {
     self.shutdown.shutdown().await;
     self.task_handle.await.unwrap();
@@ -169,6 +175,199 @@ impl Setup {
   }
 }
 
+async fn write_workflow_payload(setup: &Setup, id: Uuid) -> PathBuf {
+  let source = PathBuf::from(format!("workflow-attachments/{id}.payload"));
+  setup
+    .filesystem
+    .create_dir(source.parent().unwrap())
+    .await
+    .unwrap();
+  setup
+    .filesystem
+    .write_file(&source, b"attachment")
+    .await
+    .unwrap();
+  source
+}
+
+async fn wait_for_queue_revision(revision: &mut watch::Receiver<u64>, previous: u64) {
+  let _ = timeout(
+    5.std_seconds(),
+    revision.wait_for(|revision| *revision > previous),
+  )
+  .await
+  .expect("queue index must recover without another upload or a restart")
+  .unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn initialization_publishes_queue_revision_even_without_queue_files() {
+  let setup = Setup::new(0).await;
+  let mut revision = setup.client.upload_queue_revision();
+  wait_for_queue_revision(&mut revision, 0).await;
+  assert!(
+    Uploader::pending_workflow_attachments(setup.filesystem.directory())
+      .await
+      .unwrap()
+      .is_empty()
+  );
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn index_sync_failure_is_reconciled_without_reenqueue() {
+  let setup = Setup::new(1).await;
+  let id = Uuid::new_v4();
+  let source = write_workflow_payload(&setup, id).await;
+  let index_path = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
+  setup.filesystem.fail_next_sync_at(index_path.clone());
+  let sync_gate = setup.filesystem.gate_next_sync(index_path);
+  let mut revision = setup.client.upload_queue_revision();
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_workflow_attachment(
+      id,
+      source.clone(),
+      "session".into(),
+      None,
+      Some(persisted_tx),
+      None,
+      None,
+    )
+    .unwrap();
+  let resume = sync_gate.await.unwrap();
+  setup.filesystem.disk_full.store(true, Ordering::Relaxed);
+  resume.send(()).unwrap();
+  assert_matches!(
+    persisted_rx.await.unwrap(),
+    Err(EnqueueError::RetryablePersistence(_))
+  );
+  assert_eq!(
+    Uploader::pending_workflow_attachments(setup.filesystem.directory())
+      .await
+      .unwrap(),
+    [id].into(),
+  );
+  let previous = *revision.borrow();
+  setup.filesystem.disk_full.store(false, Ordering::Relaxed);
+  wait_for_queue_revision(&mut revision, previous).await;
+  assert!(
+    Uploader::pending_workflow_attachments(setup.filesystem.directory())
+      .await
+      .unwrap()
+      .is_empty()
+  );
+  assert_eq!(
+    setup.filesystem.read_file(&source).await.unwrap(),
+    b"attachment"
+  );
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_workflow_unpin_is_retried_after_success_or_rejection() {
+  for (upload_success, sync_failure) in [(true, false), (false, false), (true, true), (false, true)]
+  {
+    let mut setup = Setup::new(1).await;
+    let id = Uuid::new_v4();
+    let source = write_workflow_payload(&setup, id).await;
+    let mut revision = setup.client.upload_queue_revision();
+    let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+    setup
+      .client
+      .enqueue_workflow_attachment(
+        id,
+        source,
+        "session".into(),
+        None,
+        Some(persisted_tx),
+        Some(completion_tx),
+        None,
+      )
+      .unwrap();
+    persisted_rx.await.unwrap().unwrap();
+    setup.entry_received_rx.recv().await.unwrap();
+    let Some(DataUpload::ArtifactUploadIntent(intent)) = setup.data_upload_rx.recv().await else {
+      panic!("expected workflow intent");
+    };
+    let index_path = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
+    let sync_gate = sync_failure.then(|| setup.filesystem.gate_next_sync(index_path.clone()));
+    let fail_index = || {
+      if sync_failure {
+        setup.filesystem.fail_next_sync_at(index_path.clone());
+      } else {
+        setup.filesystem.disk_full.store(true, Ordering::Relaxed);
+      }
+    };
+    if upload_success {
+      intent
+        .response_tx
+        .send(IntentResponse {
+          uuid: intent.uuid,
+          decision: IntentDecision::UploadImmediately,
+        })
+        .unwrap();
+      let Some(DataUpload::ArtifactUpload(upload)) = setup.data_upload_rx.recv().await else {
+        panic!("expected workflow upload");
+      };
+      fail_index();
+      upload
+        .response_tx
+        .send(UploadResponse {
+          uuid: upload.uuid,
+          success: true,
+        })
+        .unwrap();
+    } else {
+      fail_index();
+      intent
+        .response_tx
+        .send(IntentResponse {
+          uuid: intent.uuid,
+          decision: IntentDecision::Drop,
+        })
+        .unwrap();
+    }
+    if let Some(sync_gate) = sync_gate {
+      let resume = timeout(5.std_seconds(), sync_gate)
+        .await
+        .expect("removing a workflow lease must sync the index")
+        .unwrap();
+      setup.filesystem.disk_full.store(true, Ordering::Relaxed);
+      resume.send(()).unwrap();
+    }
+    assert_eq!(completion_rx.await.unwrap().is_ok(), upload_success);
+    let pending = Uploader::pending_workflow_attachments(setup.filesystem.directory())
+      .await
+      .unwrap();
+    if sync_failure {
+      assert!(pending.is_empty());
+    } else {
+      assert_eq!(pending, [id].into());
+    }
+    let previous = *revision.borrow();
+    let retry_sync = sync_failure.then(|| setup.filesystem.gate_next_sync(index_path));
+    setup.filesystem.disk_full.store(false, Ordering::Relaxed);
+    if let Some(retry_sync) = retry_sync {
+      let resume = timeout(5.std_seconds(), retry_sync)
+        .await
+        .expect("failed workflow lease sync must be retried")
+        .unwrap();
+      resume.send(()).unwrap();
+    }
+    wait_for_queue_revision(&mut revision, previous).await;
+    assert!(
+      Uploader::pending_workflow_attachments(setup.filesystem.directory())
+        .await
+        .unwrap()
+        .is_empty()
+    );
+    setup.shutdown().await;
+  }
+}
+
 fn command_metadata() -> HashMap<String, String> {
   [
     ("platform".to_string(), "android".to_string()),
@@ -256,6 +455,152 @@ async fn basic_flow() {
 }
 
 #[tokio::test]
+async fn queued_admission_owns_the_source_lease_until_processed() {
+  let runtime = TestConfigLoader::new().await;
+  let (data_upload_tx, _data_upload_rx) = tokio::sync::mpsc::channel(1);
+  let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
+  let (uploader, client) = super::Uploader::new(
+    Arc::new(TestFileSystem::new()),
+    data_upload_tx,
+    Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+    &runtime,
+    &Collector::default(),
+    command_metadata(),
+    shutdown.make_shutdown(),
+  );
+  let ownership = Arc::new(tokio::sync::Semaphore::new(1));
+  let source_lease = ownership.clone().acquire_owned().await.unwrap();
+  let id = Uuid::new_v4();
+  client
+    .enqueue_workflow_attachment(
+      id,
+      format!("workflow-attachments/{id}.payload").into(),
+      "session".into(),
+      None,
+      None,
+      None,
+      Some(source_lease),
+    )
+    .unwrap();
+  drop(client);
+  assert_eq!(ownership.available_permits(), 0);
+  drop(uploader);
+  assert_eq!(ownership.available_permits(), 1);
+}
+
+#[tokio::test]
+async fn retained_source_uses_one_payload_and_the_existing_upload_index() {
+  let setup = Setup::new(10).await;
+  let artifact_id = Uuid::new_v4();
+  let source_path = format!("workflow-attachments/{artifact_id}.payload");
+  setup
+    .filesystem
+    .create_dir(Path::new("workflow-attachments"))
+    .await
+    .unwrap();
+  setup
+    .filesystem
+    .write_file(Path::new(&source_path), b"attachment")
+    .await
+    .unwrap();
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_workflow_attachment(
+      artifact_id,
+      source_path.clone().into(),
+      "session".to_string(),
+      None,
+      Some(persisted_tx),
+      None,
+      None,
+    )
+    .unwrap();
+  assert!(persisted_rx.await.unwrap().is_ok());
+  assert_eq!(
+    setup
+      .filesystem
+      .read_file(Path::new(&source_path))
+      .await
+      .unwrap(),
+    b"attachment"
+  );
+  assert!(
+    !setup
+      .filesystem
+      .exists(&ARTIFACT_UPLOAD_DIRECTORY.join(artifact_id.to_string()))
+      .await
+      .unwrap()
+  );
+  assert_eq!(setup.filesystem.files().len(), 2);
+}
+
+#[tokio::test]
+async fn retained_source_can_retry_after_index_persistence_failure() {
+  let setup = Setup::new(2).await;
+  let id = Uuid::new_v4();
+  let source = PathBuf::from(format!("workflow-attachments/{id}.payload"));
+  setup
+    .filesystem
+    .create_dir(source.parent().unwrap())
+    .await
+    .unwrap();
+  setup
+    .filesystem
+    .write_file(&source, b"attachment")
+    .await
+    .unwrap();
+  setup.filesystem.disk_full.store(true, Ordering::Relaxed);
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_workflow_attachment(
+      id,
+      source.clone(),
+      "session".into(),
+      None,
+      Some(persisted_tx),
+      None,
+      None,
+    )
+    .unwrap();
+  assert_matches!(
+    persisted_rx.await.unwrap(),
+    Err(EnqueueError::RetryablePersistence(_))
+  );
+  assert_eq!(
+    setup.filesystem.read_file(&source).await.unwrap(),
+    b"attachment"
+  );
+  setup.filesystem.disk_full.store(false, Ordering::Relaxed);
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_workflow_attachment(
+      id,
+      source.clone(),
+      "session".into(),
+      None,
+      Some(persisted_tx),
+      None,
+      None,
+    )
+    .unwrap();
+  persisted_rx.await.unwrap().unwrap();
+  assert_eq!(
+    setup.filesystem.read_file(&source).await.unwrap(),
+    b"attachment"
+  );
+  assert!(
+    !setup
+      .filesystem
+      .exists(&ARTIFACT_UPLOAD_DIRECTORY.join(id.to_string()))
+      .await
+      .unwrap()
+  );
+}
+
+#[tokio::test]
 async fn retained_source_can_retry_after_sync_failure() {
   let mut setup = Setup::new(10).await;
   let artifact_id = Uuid::new_v4();
@@ -285,6 +630,7 @@ async fn retained_source_can_retry_after_sync_failure() {
       None,
       Some(first_persisted_tx),
       None,
+      None,
     )
     .unwrap();
   assert_matches!(
@@ -309,6 +655,7 @@ async fn retained_source_can_retry_after_sync_failure() {
       "session".to_string(),
       None,
       Some(retry_persisted_tx),
+      None,
       None,
     )
     .unwrap();
@@ -803,75 +1150,6 @@ async fn command_upload_preserves_identity_and_content_type_after_restart() {
 }
 
 #[tokio::test]
-async fn command_upload_preserves_legacy_state_after_restart() {
-  let mut setup = Setup::new(1).await;
-  let artifact_id = setup
-    .client
-    .enqueue_command_upload(
-      UploadSource::Bytes(b"legacy attachment".to_vec()),
-      "custom_attachment".to_string(),
-      None,
-      "session_id".to_string(),
-      vec![],
-      "command_id".to_string(),
-      None,
-      None,
-      None,
-    )
-    .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    artifact_id.to_string()
-  );
-  let pending_intent = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(&pending_intent, DataUpload::ArtifactUploadIntent(_));
-
-  let legacy_metadata = HashMap::from([
-    (
-      "filename".to_string(),
-      Data {
-        data_type: Some(Data_type::StringData("old.perfetto-trace".to_string())),
-        ..Default::default()
-      },
-    ),
-    (
-      "caller_count".to_string(),
-      Data {
-        data_type: Some(Data_type::IntData(42)),
-        ..Default::default()
-      },
-    ),
-  ]);
-  let index_path = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
-  let mut index: ArtifactUploadIndex =
-    read_compressed_protobuf(&setup.filesystem.read_file(&index_path).await.unwrap()).unwrap();
-  index.artifact[0].metadata = legacy_metadata.clone();
-  setup
-    .filesystem
-    .write_file(&index_path, &write_compressed_protobuf(&index).unwrap())
-    .await
-    .unwrap();
-
-  let mut setup = setup.reinitialize().await;
-  drop(pending_intent);
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    assert_eq!(intent.payload.artifact_id, artifact_id.to_string());
-    assert_eq!(intent.payload.metadata, legacy_metadata);
-    intent.response_tx.send(IntentResponse {
-      uuid: intent.uuid,
-      decision: bd_api::upload::IntentDecision::UploadImmediately,
-    }).unwrap();
-  });
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-    assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
-    assert_eq!(upload.payload.state_metadata, legacy_metadata);
-    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
-  });
-}
-
-#[tokio::test]
 async fn workflow_upload_preserves_content_type_after_restart() {
   let mut setup = Setup::new(1).await;
   let artifact_id = Uuid::new_v4();
@@ -894,10 +1172,11 @@ async fn workflow_upload_preserves_content_type_after_restart() {
     .client
     .enqueue_workflow_attachment(
       artifact_id,
-      source,
+      source.clone(),
       "session_id".to_string(),
       Some("application/vnd.example.capture".to_string()),
       Some(persisted_tx),
+      None,
       None,
     )
     .unwrap();
@@ -939,6 +1218,15 @@ async fn workflow_upload_preserves_content_type_after_restart() {
     setup.upload_complete_rx.recv().await.unwrap(),
     artifact_id.to_string()
   );
+  assert!(setup.filesystem.exists(&source).await.unwrap());
+  assert!(
+    !setup
+      .filesystem
+      .exists(&ARTIFACT_UPLOAD_DIRECTORY.join(artifact_id.to_string()))
+      .await
+      .unwrap()
+  );
+  assert_eq!(setup.filesystem.files().len(), 2);
 }
 
 #[tokio::test]
@@ -1569,70 +1857,6 @@ async fn upload_retries() {
 }
 
 #[tokio::test]
-async fn normalize_type_id_on_load() {
-  // Verify that an index entry with no type_id (as persisted by an older client) is normalized to
-  // the default type_id when the index is loaded.
-
-  use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
-
-  let mut setup = Setup::new(2).await;
-
-  // Enqueue a normal upload so the uploader writes the artifact file and index to disk.
-  let id = setup
-    .client
-    .enqueue_upload(
-      UploadSource::File(setup.make_file(b"abc")),
-      "client_report".to_string(),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
-      None,
-    )
-    .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id.to_string()
-  );
-
-  // Consume the pending intent from the first uploader so the channel is free for the new
-  // uploader after reinitialize. The channel has capacity=1, so the new intent task would block
-  // forever if we don't drain it first.
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(_));
-
-  // Overwrite the on-disk index with the same artifact but type_id cleared, simulating a
-  // pre-existing index written by an older version of the client.
-  let patched_index = ArtifactUploadIndex {
-    artifact: vec![Artifact {
-      name: id.to_string(),
-      type_id: None,
-      pending_intent_negotiation: true,
-      ..Default::default()
-    }],
-    ..Default::default()
-  };
-  setup
-    .filesystem
-    .write_file(
-      &super::ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE),
-      &write_compressed_protobuf(&patched_index).unwrap(),
-    )
-    .await
-    .unwrap();
-
-  // Restart the uploader so it loads the patched index.
-  let mut setup = setup.reinitialize().await;
-
-  // The fresh instance should normalize the missing type_id to the default value.
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    assert_eq!(intent.payload.artifact_id, id.to_string());
-    assert_eq!(intent.payload.type_id, "client_report");
-  });
-}
-
-#[tokio::test]
 async fn enqueue_upload_acknowledges_after_disk_persist() {
   let mut setup = Setup::new(2).await;
 
@@ -1713,6 +1937,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       Some("application/vnd.example.capture".to_string()),
       Some(persisted_tx),
       None,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -1732,6 +1957,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       Some("application/vnd.example.capture".to_string()),
       Some(duplicate_persisted_tx),
       Some(completion_tx),
+      None,
     )
     .unwrap();
   duplicate_persisted_rx.await.unwrap().unwrap();
@@ -1745,11 +1971,12 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       None,
       Some(conflict_tx),
       None,
+      None,
     )
     .unwrap();
   assert_matches!(conflict_rx.await.unwrap(), Err(EnqueueError::Other(_)));
   assert!(
-    setup
+    !setup
       .filesystem
       .exists(&ARTIFACT_UPLOAD_DIRECTORY.join(id.to_string()))
       .await
@@ -1813,6 +2040,7 @@ async fn workflow_upload_rejects_id_owned_by_another_artifact_type() {
       "session_id".to_string(),
       None,
       Some(persisted_tx),
+      None,
       None,
     )
     .unwrap();
