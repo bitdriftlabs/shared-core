@@ -854,6 +854,8 @@ impl Logger {
       log::debug!("logger shutdown waiting for runtime components");
       shutdown_trigger.shutdown_blocking();
       log::debug!("logger shutdown completed");
+    } else {
+      shutdown_trigger.initiate_shutdown();
     }
   }
 

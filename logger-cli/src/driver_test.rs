@@ -7,7 +7,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use super::{Driver, wait_for_configuration};
+use super::{Driver, stop_worker, wait_for_configuration};
 use crate::logger::{LoggerArgs, SessionStrategyConfig};
 use crate::types::Platform;
 use bd_logger::{AdmissionError, FlushError, SdkStatusTracker};
@@ -34,6 +34,9 @@ async fn readiness_waits_for_config_and_rejects_disabled_sdk() {
   // Poll through the first status check, registering the monitor's timer.
   assert!(futures::poll!(&mut waiting).is_pending());
   tracker.record_config_delivery(OffsetDateTime::UNIX_EPOCH);
+  tokio::time::advance(Duration::from_millis(100)).await;
+  assert!(futures::poll!(&mut waiting).is_pending());
+  tracker.record_running();
   waiting.await.unwrap();
   tracker.record_disabled();
   assert_eq!(
@@ -55,21 +58,12 @@ async fn readiness_times_out_without_config() {
 }
 
 #[tokio::test]
-async fn driver_preserves_sessions_timestamps_and_reports_closed_flush() {
+async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
   let mut server = start_server(false, None);
   let directory = TempDir::new().unwrap();
-  let args = LoggerArgs {
-    api_url: format!("http://127.0.0.1:{}", server.port),
-    api_key: "test-key".into(),
-    app_id: "driver-test".into(),
-    platform: Platform::Apple,
-    app_version: "1.2.3".into(),
-    app_version_code: "123".into(),
-    model: "test-device".into(),
-    entity_id: None,
-    session_strategy: SessionStrategyConfig::Fixed,
-  };
-  let driver = Driver::start(directory.path(), &args).await.unwrap();
+  let driver = Driver::start(directory.path(), &args(server.port))
+    .await
+    .unwrap();
   let stream = server.next_initialized_stream(false).await.unwrap();
   stream
     .stream_action(StreamAction::SendConfiguration(configuration_update(
@@ -145,6 +139,19 @@ async fn driver_preserves_sessions_timestamps_and_reports_closed_flush() {
   assert_eq!(field(first_log, "cause"), "timeout");
   assert_eq!(field(first_log, "app_id"), "driver-test");
   assert_eq!(field(first_log, "app_version"), "1.2.3");
+  // Exercise healthy stop directly, without pre-shutting down the SDK.
+  let worker = driver.worker.abort_handle();
+  driver.stop().await.unwrap();
+  assert!(worker.is_finished());
+}
+
+#[tokio::test]
+async fn stopped_driver_reports_flush_error_and_joins_worker() {
+  let server = start_server(false, None);
+  let directory = TempDir::new().unwrap();
+  let driver = Driver::start(directory.path(), &args(server.port))
+    .await
+    .unwrap();
   let logger = driver.holder.logger.clone();
   tokio::task::spawn_blocking(move || logger.lock().shutdown(true))
     .await
@@ -174,4 +181,38 @@ fn field<'a>(log: &'a Log, key: &str) -> &'a str {
     .unwrap()
     .value
     .string_data()
+}
+
+fn args(port: u16) -> LoggerArgs {
+  LoggerArgs {
+    api_url: format!("http://127.0.0.1:{port}"),
+    api_key: "test-key".into(),
+    app_id: "driver-test".into(),
+    platform: Platform::Apple,
+    app_version: "1.2.3".into(),
+    app_version_code: "123".into(),
+    model: "test-device".into(),
+    entity_id: None,
+    session_strategy: SessionStrategyConfig::Fixed,
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn shutdown_deadline_aborts_and_joins_worker() {
+  let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+  let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel::<()>();
+  let worker = tokio::spawn(async move {
+    let _dropped = dropped_tx;
+    entered_tx.send(()).unwrap();
+    std::future::pending::<()>().await;
+    Ok(())
+  });
+  entered_rx.await.unwrap();
+  let handle = worker.abort_handle();
+  let error = stop_worker(worker, Duration::from_secs(1))
+    .await
+    .unwrap_err();
+  assert_eq!(error.to_string(), "logger worker shutdown timed out");
+  assert!(handle.is_finished());
+  assert!(dropped_rx.await.is_err());
 }

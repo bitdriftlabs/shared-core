@@ -46,7 +46,7 @@ impl Driver {
     })
   }
 
-  /// Await backend configuration before emitting the fixture. Real timers remain real.
+  /// Wait for backend configuration and log processing to start before emitting the fixture.
   pub async fn ready(&self, deadline: Duration) -> anyhow::Result<()> {
     wait_for_configuration(deadline, || self.holder.logger.lock().get_sdk_status()).await
   }
@@ -100,9 +100,9 @@ impl Driver {
     let flushed = self.flush().await;
     self.holder.logger.lock().shutdown(false);
     drop(self.holder);
-    let stopped = tokio::time::timeout(Duration::from_secs(30), self.worker).await;
+    let stopped = stop_worker(self.worker, Duration::from_secs(30)).await;
     flushed?;
-    stopped???;
+    stopped?;
     Ok(())
   }
 }
@@ -118,11 +118,28 @@ async fn wait_for_configuration(
         status.initialization_state != InitializationState::Disabled,
         "SDK disabled"
       );
-      if status.last_config_delivery_time.is_some() {
+      if status.last_config_delivery_time.is_some()
+        && status.initialization_state == InitializationState::Running
+      {
         return Ok(());
       }
       tokio::time::sleep(Duration::from_millis(100)).await;
     }
   })
   .await?
+}
+
+async fn stop_worker(
+  mut worker: JoinHandle<anyhow::Result<()>>,
+  deadline: Duration,
+) -> anyhow::Result<()> {
+  if let Ok(result) = tokio::time::timeout(deadline, &mut worker).await {
+    result??;
+    return Ok(());
+  }
+  log::warn!("logger worker shutdown timed out; aborting worker");
+  worker.abort();
+  // Join the cancelled task so shutdown never detaches a live worker.
+  let _cancelled = worker.await;
+  anyhow::bail!("logger worker shutdown timed out")
 }
