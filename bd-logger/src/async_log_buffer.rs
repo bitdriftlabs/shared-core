@@ -33,6 +33,7 @@ use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
 use bd_client_stats_store::{Counter, Scope as StatsScope};
+use bd_completion::RecvWithTimeoutError;
 use bd_crash_handler::global_state;
 use bd_device::Store;
 pub use bd_event_buffer::LoggerControl;
@@ -136,7 +137,7 @@ impl ReportProcessor for () {
 //
 
 /// A logger event could not be admitted to the asynchronous processing pipeline.
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum AdmissionError {
   #[error("event buffer size overflow")]
   FullSizeOverflow,
@@ -144,6 +145,19 @@ pub enum AdmissionError {
   Closed,
   #[error("event context capture failed")]
   ContextCaptureFailed,
+}
+
+//
+// FlushError
+//
+
+/// A flush could not enter the pipeline or did not finish within the requested deadline.
+#[derive(Debug, thiserror::Error)]
+pub enum FlushError {
+  #[error(transparent)]
+  Admission(#[from] AdmissionError),
+  #[error("flush completion failed: {0}")]
+  Completion(#[from] RecvWithTimeoutError),
 }
 
 //
@@ -395,6 +409,14 @@ impl Sender {
   }
 
   pub fn flush_state(&self, block: Block) -> Result<(), AdmissionError> {
+    match self.flush_state_with_result(block) {
+      Err(FlushError::Admission(error)) => Err(error),
+      // Preserve the legacy fire-and-forget API's admission-only outcome.
+      Ok(()) | Err(FlushError::Completion(_)) => Ok(()),
+    }
+  }
+
+  pub fn flush_state_with_result(&self, block: Block) -> Result<(), FlushError> {
     let (completion_tx, completion_rx) = if matches!(block, Block::Yes { .. }) {
       let (tx, rx) = bd_completion::Sender::new();
       (Some(tx), Some(rx))
@@ -436,6 +458,7 @@ impl Sender {
           log::debug!("flush state: received an error when waiting for completion: {e}");
         },
       }
+      result?;
     }
     Ok(())
   }

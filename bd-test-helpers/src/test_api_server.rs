@@ -39,6 +39,7 @@ use bd_proto::protos::client::api::{
   LogUploadResponse,
   PongResponse,
   RuntimeUpdate,
+  StateUpdateResponse,
   StatsUploadRequest,
   StatsUploadResponse,
   UploadArtifactIntentRequest,
@@ -602,6 +603,10 @@ impl RequestProcessor {
           ..Default::default()
         })
       },
+      Some(Request_type::StateUpdate(_)) => Some(ApiResponse {
+        response_type: Some(Response_type::StateUpdate(StateUpdateResponse::default())),
+        ..Default::default()
+      }),
       r => panic!("received unknown reqest type: {r:?}"),
     }
   }

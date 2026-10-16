@@ -106,19 +106,22 @@ impl ComponentShutdownTrigger {
     }
   }
 
-  // Shutdown and wait for all components to have dropped. Used in async context.
-  pub async fn shutdown(self) {
+  /// Request shutdown without waiting for components to finish.
+  pub fn initiate_shutdown(&self) {
     self
       .status_tx
       .send_replace(ComponentStatus::PendingShutdown);
+  }
+
+  // Shutdown and wait for all components to have dropped. Used in async context.
+  pub async fn shutdown(self) {
+    self.initiate_shutdown();
     self.status_tx.closed().await;
   }
 
   // Shutdown and wait for all components to have been dropped. Used in sync context.
   pub fn shutdown_blocking(self) {
-    self
-      .status_tx
-      .send_replace(ComponentStatus::PendingShutdown);
+    self.initiate_shutdown();
     // For the blocking case, this spin loop is unfortunate, but it allows us to just use a watch
     // for the entire mechanism, since we can use closed() to know when all receivers have dropped.
     // If this becomes an issue we can figure out a way to improve this later.
