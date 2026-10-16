@@ -8,7 +8,36 @@
 #![allow(clippy::cast_possible_truncation)]
 
 use crate::command_attachment::{AttachmentSource, LogAttachment};
-use crate::{DataValue, EncodableLog, Log, LogFieldValue, LogType, TypedLogLevel, log_level};
+use crate::{
+  COMMAND_CANCELLATION_REASON_SDK_RESTART,
+  COMMAND_CANCELLATION_REASON_SESSION_CHANGED,
+  COMMAND_CANCELLATION_REASON_WORKFLOW_RESET,
+  COMMAND_OUTCOME_MESSAGE,
+  COMMAND_START_MESSAGE,
+  COMMAND_STATUS_FAILURE,
+  COMMAND_STATUS_SUCCESS,
+  DataValue,
+  EncodableLog,
+  LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
+  LOG_FIELD_NAME_COMMAND_MESSAGE,
+  LOG_FIELD_NAME_COMMAND_STATUS,
+  LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_SPAN_ID,
+  LOG_FIELD_NAME_SPAN_NAME,
+  LOG_FIELD_NAME_SPAN_TYPE,
+  LOG_FIELD_PREFIX_COMMAND,
+  LOG_FIELD_PREFIX_SPAN,
+  LOG_FIELD_PREFIX_WORKFLOW_COMMAND,
+  Log,
+  LogFieldValue,
+  LogType,
+  SPAN_NAME_DEVICE_COMMAND,
+  SPAN_NAME_GRAPHQL,
+  SPAN_TYPE_END,
+  SPAN_TYPE_START,
+  TypedLogLevel,
+  log_level,
+};
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::Field;
@@ -17,6 +46,58 @@ use ordered_float::NotNan;
 use protobuf::{Message, MessageFull};
 use std::borrow::Cow;
 use time::OffsetDateTime;
+
+#[test]
+fn span_and_command_log_wire_contract() {
+  assert_eq!(
+    [
+      LOG_FIELD_NAME_SPAN_ID,
+      LOG_FIELD_NAME_SPAN_NAME,
+      LOG_FIELD_NAME_SPAN_TYPE,
+      LOG_FIELD_NAME_DURATION_MS,
+      LOG_FIELD_NAME_COMMAND_MESSAGE,
+      LOG_FIELD_NAME_COMMAND_STATUS,
+      LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
+      LOG_FIELD_PREFIX_SPAN,
+      LOG_FIELD_PREFIX_COMMAND,
+      LOG_FIELD_PREFIX_WORKFLOW_COMMAND,
+      SPAN_TYPE_START,
+      SPAN_TYPE_END,
+      SPAN_NAME_DEVICE_COMMAND,
+      SPAN_NAME_GRAPHQL,
+      COMMAND_STATUS_SUCCESS,
+      COMMAND_STATUS_FAILURE,
+      COMMAND_CANCELLATION_REASON_SESSION_CHANGED,
+      COMMAND_CANCELLATION_REASON_WORKFLOW_RESET,
+      COMMAND_CANCELLATION_REASON_SDK_RESTART,
+      COMMAND_START_MESSAGE,
+      COMMAND_OUTCOME_MESSAGE,
+    ],
+    [
+      "_span_id",
+      "_span_name",
+      "_span_type",
+      "_duration_ms",
+      "_command_message",
+      "_command_status",
+      "_command_cancellation_reason",
+      "_span_",
+      "_command_",
+      "_workflow_command_",
+      "start",
+      "end",
+      "_device_command",
+      "_graphql",
+      "success",
+      "failure",
+      "session_changed",
+      "workflow_reset",
+      "sdk_restart",
+      "Command started",
+      "Command completed",
+    ]
+  );
+}
 
 #[test]
 fn custom_proto_encoder() {

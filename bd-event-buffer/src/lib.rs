@@ -85,6 +85,12 @@ pub struct AdmissionContext {
 #[derive(ApproximateSize, Debug, Clone)]
 pub enum EventContext {
   CurrentProcess(AdmissionContext),
+  /// Command-owned telemetry must not change the active workflow or system session on replay.
+  Command {
+    session_id: Arc<str>,
+    provider: Option<ProviderSnapshot>,
+    cancelled: bool,
+  },
   /// Previous-process logs retain their admission-time `_logged_at` value, but are finalized
   /// against prior global state on the consumer.
   PreviousProcess {
