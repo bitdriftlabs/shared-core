@@ -120,7 +120,7 @@ use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
 
-fn workflow_command_rule() -> Rule {
+pub(super) fn workflow_command_rule() -> Rule {
   Rule {
     rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
       command_selector: Some(WorkflowCommandSelector {
@@ -165,7 +165,7 @@ fn workflow_command_rule_requires_a_selector_variant() {
   );
 }
 
-fn timed_command_log(message: &str, now: OffsetDateTime) -> TestLog {
+pub(super) fn timed_command_log(message: &str, now: OffsetDateTime) -> TestLog {
   TestLog::new(message).with_now(now).with_occurred_at(now)
 }
 
@@ -916,6 +916,12 @@ async fn workflow_command_index_tracks_parallel_run_shift() {
     original_run_index,
     engine.engine.pending_workflow_command_index[&token.0].run_index
   );
+  assert!(
+    engine
+      .engine
+      .take_cancelled_workflow_commands(started_at)
+      .is_empty()
+  );
   engine
     .complete_workflow_command(
       &token,
@@ -1302,7 +1308,7 @@ async fn workflow_removal_does_not_clear_slash_prefixed_workflow_cooldown() {
 }
 
 #[tokio::test]
-async fn recovered_workflow_command_is_failed_and_replayed() {
+async fn recovered_workflow_command_is_cancelled_and_observed() {
   let terminal = state("terminal");
   let command = state("command").declare_transition(&terminal, workflow_command_rule());
   let start = state("start").declare_transition(&command, rule!(message_equals("start")));
@@ -1354,15 +1360,25 @@ async fn recovered_workflow_command_is_failed_and_replayed() {
 
   let empty_buffer_ids = TinySet::default();
   engine.engine.process_event(
-    WorkflowEvent::CommandCompletion {
-      log: &recovered_logs[0].log,
-      token: &recovered_logs[0].token,
-    },
+    WorkflowEvent::CommandCancelled(&recovered_logs[0].log),
     &empty_buffer_ids,
     &bd_state::InMemoryStateReader::default(),
     now,
   );
   engine_assert_active_runs!(engine; 0; "start");
+  assert!(engine.engine.pending_workflow_command_index.is_empty());
+  assert!(
+    engine
+      .engine
+      .fail_recovered_workflow_commands(now)
+      .is_empty()
+  );
+  assert!(
+    engine
+      .engine
+      .take_cancelled_workflow_commands(now)
+      .is_empty()
+  );
 }
 
 fn nested_json_string_matcher() -> LogMatcher {

@@ -57,6 +57,60 @@ impl AttachmentStore {
 }
 
 #[tokio::test]
+async fn cancelled_admission_never_leaks_files_or_capacity() {
+  for phase in ["waiting", "writing", "delivered"] {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
+    let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
+      .get()
+      .await
+      .unwrap();
+    let permit = if phase == "waiting" {
+      Some(store.block_admissions_for_test().await)
+    } else {
+      None
+    };
+    let (started_tx, started_rx) = oneshot::channel();
+    let (completed_tx, completed_rx) = oneshot::channel();
+    *store.admission_started.lock() = Some(started_tx);
+    *store.admission_completed.lock() = Some(completed_tx);
+    let mut admission = Box::pin(store.admit(UploadSource::Bytes(b"cancelled".to_vec()), None));
+    assert!(futures_util::poll!(&mut admission).is_pending());
+    if phase != "waiting" {
+      started_rx.await.unwrap();
+    }
+    if phase == "delivered" {
+      completed_rx.await.unwrap();
+    }
+    drop(admission);
+    drop(permit);
+
+    // The live worker holds this permit until publication and abandoned-result cleanup finish.
+    let permit = store.block_admissions_for_test().await;
+    assert_eq!(store.capacity.lock().files, 0);
+    assert_eq!(store.capacity.lock().bytes, 0);
+    assert!(
+      fs::read_dir(&store.directory)
+        .await
+        .unwrap()
+        .next_entry()
+        .await
+        .unwrap()
+        .is_none()
+    );
+    drop(permit);
+    let attachment = store
+      .admit(UploadSource::Bytes(b"next".to_vec()), None)
+      .await
+      .unwrap();
+    assert_eq!(store.capacity.lock().files, 1);
+    store.release(attachment.id).await.unwrap();
+    assert_eq!(store.capacity.lock().files, 0);
+    assert_eq!(store.capacity.lock().bytes, 0);
+  }
+}
+
+#[tokio::test]
 async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_payloads() {
   for store_first in [true, false] {
     let directory = tempfile::tempdir().unwrap();

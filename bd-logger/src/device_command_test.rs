@@ -45,6 +45,7 @@ use bd_log_primitives::{
   COMMAND_STATUS_FAILURE,
   COMMAND_STATUS_SUCCESS,
   DataValue,
+  LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
   LOG_FIELD_NAME_COMMAND_STATUS,
   LOG_FIELD_NAME_DURATION_MS,
@@ -83,7 +84,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::future::{Future, pending, poll_fn};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::Poll;
 use tempfile::TempDir;
@@ -266,6 +267,9 @@ fn direct_execution(
     session_id: dispatcher.session_strategy.session_id(),
     time_provider: dispatcher.time_provider.clone(),
     ended: AtomicBool::new(false),
+    cancelled: AtomicBool::new(false),
+    session_lifetime: Some(dispatcher.session_strategy.session_lifetime().unwrap()),
+    last_update_sequence: AtomicU64::new(0),
   }
 }
 
@@ -284,12 +288,110 @@ async fn command_event_buffer(dispatcher: &mut DeviceCommandDispatcher) -> Event
 }
 
 #[tokio::test]
+async fn direct_session_reset_cancels_accepted_wait_and_running_handler() {
+  for during_handler in [false, true] {
+    let (directory, _runtime, policy) = command_runtime();
+    let (handler, mut started_rx, dropped_rx) = pending_handler();
+    let registry = RegisteredCommandDispatcher::default();
+    registry.register("pending".into(), handler);
+    let (mut dispatcher, mut updates) = direct_dispatcher(
+      directory.path(),
+      policy,
+      registry,
+      RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+      Arc::new(MockClient::new()),
+    );
+    let clock = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+    dispatcher.time_provider = clock.clone();
+    let logs = command_event_buffer(&mut dispatcher).await;
+    let session_id = dispatcher.session_strategy.session_id().unwrap();
+    let command = DeviceCommandRequest {
+      command_id: Uuid::new_v4().to_string().into(),
+      command_selector: Some(registered_selector()).into(),
+      sdk_instance_id: dispatcher.command_state.sdk_instance_id.clone().into(),
+      expires_at: (OffsetDateTime::now_utc() + Duration::days(1)).into_proto(),
+      ..Default::default()
+    };
+    dispatcher.dispatch_configuration(vec![command.clone()]);
+    let Some(DataUpload::DeviceCommandUpdate(accepted)) = updates.recv().await else {
+      panic!("expected accepted command");
+    };
+    let accepted_waiter = if during_handler {
+      accepted.response_tx.send(()).unwrap();
+      started_rx.recv().await.unwrap();
+      None
+    } else {
+      Some(accepted.response_tx)
+    };
+    clock.advance(Duration::milliseconds(125));
+    dispatcher.session_strategy.start_new_session(None).unwrap();
+    let terminal = acknowledge_update(&mut updates).await;
+    assert_eq!(terminal.update_sequence_number, 2);
+    assert!(matches!(
+      terminal.update_type,
+      Some(device_command_update::Update_type::Failed(_))
+    ));
+    if during_handler {
+      dropped_rx.await.unwrap();
+    }
+    drop(accepted_waiter);
+    let task = dispatcher
+      .execution_tasks
+      .lock()
+      .as_mut()
+      .unwrap()
+      .pop()
+      .unwrap();
+    task.await.unwrap();
+    dispatcher.dispatch_configuration(vec![command]);
+    assert!(
+      dispatcher
+        .execution_tasks
+        .lock()
+        .as_ref()
+        .unwrap()
+        .is_empty()
+    );
+    let entries = logs.next_batch(64).await.entries;
+    assert_eq!(entries.len(), 2);
+    let EventBufferEntry::Ingress(event) = &entries[1] else {
+      panic!("expected cancellation span end");
+    };
+    assert!(matches!(&event.context, EventContext::Command {
+      session_id: owner, cancelled: true, ..
+    } if owner == &session_id));
+    let LoggerIngressPayload::Log(log) = &event.payload else {
+      panic!("expected cancellation span end");
+    };
+    assert_eq!(log.log_level, log_level::ERROR);
+    for (field, expected) in [
+      (LOG_FIELD_NAME_COMMAND_STATUS, COMMAND_STATUS_FAILURE),
+      (
+        LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
+        "session_changed",
+      ),
+      (
+        LOG_FIELD_NAME_COMMAND_MESSAGE,
+        "Command cancelled: session changed",
+      ),
+      (LOG_FIELD_NAME_DURATION_MS, "125"),
+    ] {
+      assert_eq!(
+        log.fields.get(field).unwrap().value.as_str(),
+        Some(expected)
+      );
+    }
+  }
+}
+
+#[tokio::test]
 async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or_dispatch() {
   for scenario in [
     "success",
     "unknown",
     "accepted_ack_failure",
     "terminal_ack_failure",
+    "terminal_ack_session_reset",
   ] {
     let (directory, _runtime, policy) = command_runtime();
     let registry = RegisteredCommandDispatcher::new(
@@ -310,6 +412,7 @@ async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or
     let clock = Arc::new(TestTimeProvider::new(started_at));
     dispatcher.time_provider = clock.clone();
     let logs = command_event_buffer(&mut dispatcher).await;
+    let session_id = dispatcher.session_strategy.session_id().unwrap();
     let command = DeviceCommandRequest {
       command_id: Uuid::new_v4().to_string().into(),
       command_selector: (scenario != "unknown").then(registered_selector).into(),
@@ -346,6 +449,9 @@ async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or
           Some(device_command_update::Update_type::Completed(_))
         ));
         clock.advance(Duration::seconds(10));
+        if scenario == "terminal_ack_session_reset" {
+          dispatcher.session_strategy.start_new_session(None).unwrap();
+        }
         if scenario == "terminal_ack_failure" {
           drop(terminal.response_tx);
         } else {
@@ -378,13 +484,14 @@ async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or
       let EventBufferEntry::Ingress(event) = entry else {
         panic!("expected span log");
       };
-      let EventContext::CurrentProcess(context) = event.context else {
-        panic!("expected current-process span context");
+      let EventContext::Command {
+        session_id: actual_session_id,
+        ..
+      } = event.context
+      else {
+        panic!("expected command span context");
       };
-      assert_eq!(
-        context.session_id,
-        dispatcher.session_strategy.session_id().unwrap()
-      );
+      assert_eq!(actual_session_id, session_id);
       let LoggerIngressPayload::Log(log) = event.payload else {
         panic!("expected span log");
       };
@@ -475,6 +582,16 @@ fn workflow_dispatcher(
     AttachmentStoreHandle::new(directory.to_owned(), runtime),
     screenshot_handler,
   )
+}
+
+impl WorkflowCommandDispatcher {
+  async fn execute(
+    &self,
+    selector: WorkflowCommandSelector,
+    session_id: String,
+  ) -> WorkflowCommandOutcome {
+    self.executor.execute(selector, session_id).await
+  }
 }
 
 async fn acknowledge_update(updates: &mut mpsc::Receiver<DataUpload>) -> DeviceCommandUpdate {

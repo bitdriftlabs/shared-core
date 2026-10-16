@@ -144,6 +144,8 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
     match event {
       WorkflowEvent::Log(log)
       | WorkflowEvent::CommandStart(log)
+      | WorkflowEvent::CommandCancelled(log)
+      | WorkflowEvent::CommandLog(log)
       | WorkflowEvent::CommandCompletion { log, .. }
       | WorkflowEvent::SessionStart(log) => FieldsRef::new(&log.fields, &log.matching_fields),
       WorkflowEvent::StateChange(_, fields, _) => fields,
@@ -154,6 +156,8 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
     match event {
       WorkflowEvent::Log(log)
       | WorkflowEvent::CommandStart(log)
+      | WorkflowEvent::CommandCancelled(log)
+      | WorkflowEvent::CommandLog(log)
       | WorkflowEvent::CommandCompletion { log, .. }
       | WorkflowEvent::SessionStart(log) => match key {
         "log_level" => Some(log.log_level.to_string().into()),
@@ -192,6 +196,8 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
         crate::config::TagValue::LogBodyExtract => match event {
           WorkflowEvent::Log(log)
           | WorkflowEvent::CommandStart(log)
+          | WorkflowEvent::CommandCancelled(log)
+          | WorkflowEvent::CommandLog(log)
           | WorkflowEvent::CommandCompletion { log, .. }
           | WorkflowEvent::SessionStart(log) => log.message.as_str().map(Cow::Borrowed),
           WorkflowEvent::StateChange(..) => None,

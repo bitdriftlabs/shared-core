@@ -60,6 +60,8 @@ use bd_log_primitives::{
   COMMAND_OUTCOME_MESSAGE,
   COMMAND_START_MESSAGE,
   DataValue,
+  LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
+  LOG_FIELD_NAME_COMMAND_STATUS,
   LOG_FIELD_NAME_DURATION_MS,
   LOG_FIELD_NAME_SPAN_ID,
   Log,
@@ -1118,6 +1120,8 @@ struct TestReplay {
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
   timestamps: Vec<OffsetDateTime>,
+  session_ids: Vec<String>,
+  log_levels: Vec<bd_log_primitives::LogLevel>,
   completion_tokens: Arc<parking_lot::Mutex<Vec<Option<WorkflowCommandCompletionToken>>>>,
   results: Arc<parking_lot::Mutex<VecDeque<anyhow::Result<LogReplayResult>>>>,
   forward_logs_to_pipeline: bool,
@@ -1218,6 +1222,40 @@ fn normal_log(message: &str) -> LogLine {
   }
 }
 
+fn command_workflows() -> WorkflowsConfiguration {
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    Rule {
+      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+        command_selector: Some(WorkflowCommandSelector {
+          command_selector: Some(
+            workflow_command_selector::Command_selector::RegisteredCommand(
+              workflow_command_selector::RegisteredCommand {
+                registered_command_id: "handler".to_string(),
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        })
+        .into(),
+        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+          seconds: 60,
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    },
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+  ])
+}
+
 async fn wait_for_startup_gate_ready(setup: &Setup) {
   setup.startup_gate_ready.wait().await;
 }
@@ -1246,6 +1284,8 @@ impl TestReplay {
       logs: Arc::new(parking_lot::Mutex::new(vec![])),
       fields: Arc::new(parking_lot::Mutex::new(vec![])),
       timestamps: Vec::new(),
+      session_ids: Vec::new(),
+      log_levels: Vec::new(),
       completion_tokens: Arc::new(parking_lot::Mutex::new(vec![])),
       results: Arc::new(parking_lot::Mutex::new(VecDeque::new())),
       forward_logs_to_pipeline: false,
@@ -1269,9 +1309,16 @@ impl LogReplay for TestReplay {
 
     self.fields.lock().push(log.fields.clone());
     self.timestamps.push(log.occurred_at);
+    self.session_ids.push(log.session_id.to_string());
+    self.log_levels.push(log.log_level);
     self.completion_tokens.lock().push(match &command_event {
       Some(WorkflowCommandEvent::Completion(token)) => Some(token.clone()),
-      Some(WorkflowCommandEvent::Start) | None => None,
+      Some(
+        WorkflowCommandEvent::Start
+        | WorkflowCommandEvent::Cancelled
+        | WorkflowCommandEvent::Direct,
+      )
+      | None => None,
     });
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     self.logs_notify.notify_waiters();
@@ -1489,6 +1536,7 @@ fn workflow_generated_logs_keep_the_parent_context_and_overrides() {
     Some(LogAttributesOverrides::PreviousRunSessionID(
       report_timestamp,
     )),
+    false,
   );
 
   assert_eq!(Some("generated"), log.message.as_str());
@@ -1985,6 +2033,323 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 }
 
 #[tokio::test]
+async fn workflow_command_cancellation_fences_and_session_attribution() {
+  for scenario in [
+    "session",
+    "workflow_reset",
+    "queued_completion",
+    "queued_attachment",
+    "late_direct",
+  ] {
+    let mut setup = Setup::new();
+    let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+    let (buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+    let state_store = TestStore::new().await;
+    let state_store = (*state_store).clone();
+    let mut buffer = buffer
+      .update(setup.make_config_update(command_workflows()), &state_store)
+      .await;
+    let clock = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+    buffer.time_provider = clock.clone();
+    buffer.replayer.forward_logs_to_pipeline = true;
+    let owner = setup.session_strategy.session_id().unwrap();
+    let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+    let (result_tx, result_rx) = oneshot::channel();
+    let (returned_tx, returned_rx) = oneshot::channel();
+    let registry = RegisteredCommandDispatcher::default();
+    registry.register(
+      "handler".into(),
+      Arc::new(GatedAttachmentHandler {
+        started_tx,
+        result_rx: Mutex::new(Some(result_rx)),
+        returned_tx: Mutex::new(Some(returned_tx)),
+      }),
+    );
+    let (completion_tx, completion_rx) = mpsc::channel(1);
+    buffer.workflow_command_dispatcher = WorkflowCommandDispatcher::new(
+      registry,
+      CommandExecutionPolicy::new(&setup.runtime),
+      completion_tx,
+      buffer.workflow_attachment_store(),
+      RemoteScreenshotCaptureHandler::new(Arc::new(NoOpTarget)),
+    );
+    buffer.workflow_command_completion_rx = completion_rx;
+    buffer
+      .process_all_logs(normal_log("start"), &state_store, None)
+      .await
+      .unwrap();
+    buffer
+      .process_all_logs(normal_log("execute"), &state_store, None)
+      .await
+      .unwrap();
+    tokio::time::timeout(5.std_seconds(), started_rx.recv())
+      .await
+      .expect("command handler did not start")
+      .unwrap();
+    clock.advance(125.milliseconds());
+
+    let completion = if matches!(
+      scenario,
+      "queued_completion" | "queued_attachment" | "late_direct"
+    ) {
+      if scenario == "late_direct" {
+        let mut log = normal_log("old direct span end");
+        log.log_type = LogType::SPAN;
+        buffer
+          .process_all_logs_with_completion(
+            log,
+            &state_store,
+            Some(EventContext::Command {
+              session_id: "previous-session".into(),
+              provider: None,
+              cancelled: false,
+            }),
+            Some(WorkflowCommandEvent::Direct),
+          )
+          .await
+          .map_err(|error| error.error)
+          .unwrap();
+        assert_eq!(
+          state_store
+            .read()
+            .await
+            .get(Scope::System, SYSTEM_SESSION_ID_KEY)
+            .unwrap()
+            .string_value(),
+          owner.as_ref(),
+        );
+      }
+      result_tx
+        .send(CommandResult::Completed {
+          fields: LogFields::default(),
+          attachment: (scenario == "queued_attachment").then(|| CommandAttachment {
+            source: UploadSource::Bytes(b"cancelled attachment".to_vec()),
+            content_type: None,
+          }),
+        })
+        .unwrap();
+      returned_rx.await.unwrap();
+      let completion = tokio::time::timeout(
+        5.std_seconds(),
+        buffer.workflow_command_completion_rx.recv(),
+      )
+      .await
+      .expect("completed handler did not produce a completion")
+      .unwrap();
+      if matches!(scenario, "queued_completion" | "queued_attachment") {
+        setup.session_strategy.start_new_session(None).unwrap();
+      }
+      completion
+    } else {
+      if scenario == "session" {
+        setup.session_strategy.start_new_session(None).unwrap();
+      } else {
+        buffer = buffer
+          .update(
+            setup.make_config_update(WorkflowsConfiguration::default()),
+            &state_store,
+          )
+          .await;
+      }
+      // No new log ingress is needed to stop an active handler.
+      let completion = tokio::time::timeout(
+        5.std_seconds(),
+        buffer.workflow_command_completion_rx.recv(),
+      )
+      .await
+      .expect("cancelled handler did not produce a completion")
+      .unwrap();
+      assert!(
+        result_tx
+          .send(CommandResult::Completed {
+            fields: LogFields::default(),
+            attachment: None,
+          })
+          .is_err()
+      );
+      drop(returned_rx);
+      completion
+    };
+    let duplicate = WorkflowCommandCompletion {
+      token: completion.token.clone(),
+      outcome: completion.outcome.clone(),
+    };
+    let artifact_id = match &completion.outcome {
+      WorkflowCommandOutcome::SucceededWithAttachment { artifact_id, .. } => Some(*artifact_id),
+      _ => None,
+    };
+    buffer
+      .process_workflow_command_completion(completion, &state_store)
+      .await;
+    buffer
+      .process_workflow_command_completion(duplicate, &state_store)
+      .await;
+    if scenario == "queued_attachment" {
+      let id = artifact_id.expect("expected an admitted attachment before cancellation");
+      let store = buffer.workflow_attachment_store().get().await.unwrap();
+      assert!(store.metadata(id).await.unwrap().is_none());
+      assert!(
+        !tokio::fs::try_exists(
+          setup
+            .tmp_dir
+            .path()
+            .join("workflow-attachments")
+            .join(format!("{id}.payload"))
+        )
+        .await
+        .unwrap()
+      );
+    }
+
+    let logs = buffer.replayer.logs.lock();
+    let starts = logs
+      .iter()
+      .enumerate()
+      .filter_map(|(index, message)| (message == COMMAND_START_MESSAGE).then_some(index))
+      .collect::<Vec<_>>();
+    let ends = logs
+      .iter()
+      .enumerate()
+      .filter_map(|(index, message)| (message == COMMAND_OUTCOME_MESSAGE).then_some(index))
+      .collect::<Vec<_>>();
+    assert_eq!(starts.len(), 1, "{scenario}");
+    assert_eq!(ends.len(), 1, "{scenario}");
+    let start = starts[0];
+    let end = ends[0];
+    assert_eq!(buffer.replayer.session_ids[start], owner.as_ref());
+    assert_eq!(buffer.replayer.session_ids[end], owner.as_ref());
+    let fields = buffer.replayer.fields.lock();
+    assert_eq!(
+      fields[start].get(LOG_FIELD_NAME_SPAN_ID),
+      fields[end].get(LOG_FIELD_NAME_SPAN_ID)
+    );
+    assert!(!fields[start].contains_key(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON));
+    assert_eq!(
+      fields[end]
+        .get(LOG_FIELD_NAME_DURATION_MS)
+        .unwrap()
+        .as_str(),
+      Some("125")
+    );
+    if scenario == "late_direct" {
+      assert!(!fields[end].contains_key(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON));
+      assert_eq!(
+        fields[end]
+          .get(LOG_FIELD_NAME_COMMAND_STATUS)
+          .unwrap()
+          .as_str(),
+        Some("success")
+      );
+    } else {
+      assert_eq!(buffer.replayer.log_levels[end], log_level::ERROR);
+      assert_eq!(
+        fields[end]
+          .get(LOG_FIELD_NAME_COMMAND_STATUS)
+          .unwrap()
+          .as_str(),
+        Some("failure")
+      );
+      assert_eq!(
+        fields[end]
+          .get(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON)
+          .unwrap()
+          .as_str(),
+        Some(
+          if scenario == "workflow_reset" {
+            "workflow_reset"
+          } else {
+            "session_changed"
+          }
+        ),
+      );
+      assert_eq!(buffer.replayer.completion_tokens.lock()[end], None);
+    }
+  }
+}
+
+#[tokio::test]
+async fn recovered_workflow_cancellation_keeps_original_session_after_normalization() {
+  let mut setup = Setup::new();
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let (_config_tx, config_rx) = mpsc::channel(1);
+  let (buffer, _) = setup.make_test_async_log_buffer(config_rx);
+  let mut buffer = buffer
+    .update(setup.make_config_update(command_workflows()), &state_store)
+    .await;
+  let clock = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  buffer.time_provider = clock.clone();
+  buffer.replayer.forward_logs_to_pipeline = true;
+  let owner = setup.session_strategy.session_id().unwrap();
+  buffer
+    .process_log(normal_log("start"), &state_store, None, None)
+    .await
+    .unwrap();
+  let request = buffer
+    .process_log(normal_log("execute"), &state_store, None, None)
+    .await
+    .unwrap()
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  buffer
+    .logging_state
+    .workflows_engine()
+    .unwrap()
+    .maybe_persist(true)
+    .await;
+  drop(buffer);
+
+  setup.session_strategy.start_new_session(None).unwrap();
+  let current = setup.session_strategy.session_id().unwrap();
+  assert_ne!(owner, current);
+  clock.advance(125.milliseconds());
+  let (_config_tx, config_rx) = mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_rx);
+  buffer.time_provider = clock;
+  buffer.replayer.forward_logs_to_pipeline = true;
+  let mut config = setup.make_config_update(command_workflows());
+  config.from_cache = true;
+  let mut buffer = buffer.update(config, &state_store).await;
+  assert_eq!(*buffer.replayer.logs.lock(), [COMMAND_OUTCOME_MESSAGE]);
+  assert_eq!(buffer.replayer.session_ids, [owner.to_string()]);
+  assert_eq!(setup.session_strategy.session_id().unwrap(), current);
+  assert_eq!(buffer.replayer.log_levels, [log_level::ERROR]);
+  let end = buffer.replayer.fields.lock()[0].clone();
+  assert_eq!(
+    end
+      .get(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON)
+      .unwrap()
+      .as_str(),
+    Some("sdk_restart")
+  );
+  assert_eq!(
+    end.get(LOG_FIELD_NAME_DURATION_MS).unwrap().as_str(),
+    Some("125")
+  );
+  assert_eq!(
+    end.get(LOG_FIELD_NAME_SPAN_ID),
+    request.start_log().fields.get(LOG_FIELD_NAME_SPAN_ID)
+  );
+  assert_eq!(*buffer.replayer.completion_tokens.lock(), [None]);
+
+  buffer.recover_workflow_commands(&state_store).await;
+  buffer
+    .process_workflow_command_completion(
+      WorkflowCommandCompletion {
+        token: request.completion_token(),
+        outcome: WorkflowCommandOutcome::Succeeded {
+          message: None,
+          fields: LogFields::default(),
+        },
+      },
+      &state_store,
+    )
+    .await;
+  assert_eq!(*buffer.replayer.logs.lock(), [COMMAND_OUTCOME_MESSAGE]);
+}
+
+#[tokio::test]
 async fn workflow_command_span_includes_handler_and_admission_but_not_background_upload() {
   let mut setup = Setup::new();
   setup.drain_buffer_events();
@@ -2005,37 +2370,7 @@ async fn workflow_command_span_includes_handler_and_admission_but_not_background
     .unwrap();
   let (_config_update_tx, config_update_rx) = mpsc::channel(1);
   let (buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
-  let terminal = state("terminal");
-  let command = state("command").declare_transition(
-    &terminal,
-    Rule {
-      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
-        command_selector: Some(WorkflowCommandSelector {
-          command_selector: Some(
-            workflow_command_selector::Command_selector::RegisteredCommand(
-              workflow_command_selector::RegisteredCommand {
-                registered_command_id: "handler".to_string(),
-                ..Default::default()
-              },
-            ),
-          ),
-          ..Default::default()
-        })
-        .into(),
-        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
-          seconds: 60,
-          ..Default::default()
-        })
-        .into(),
-        ..Default::default()
-      })),
-      ..Default::default()
-    },
-  );
-  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
-  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
-    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
-  ]);
+  let workflows = command_workflows();
   let state_store = TestStore::new().await;
   let state_store = (*state_store).clone();
   let mut config = setup.make_config_update(workflows);
@@ -2470,7 +2805,6 @@ async fn workflow_command_lifecycle_retains_metadata_after_start_replay_failure(
     .workflow_commands_to_start
     .pop()
     .unwrap();
-  let token = request.completion_token();
   let mut start_logs = buffer.handle_log_replay_result(LogReplayResult {
     workflow_commands_to_start: vec![request.clone()],
     ..Default::default()
@@ -2487,6 +2821,7 @@ async fn workflow_command_lifecycle_retains_metadata_after_start_replay_failure(
     start_log,
     None,
     Some(LogAttributesOverrides::OccurredAt(request.started_at)),
+    true,
   );
   buffer
     .process_all_logs_with_completion(start_log, &state_store, context, command_event)
@@ -2524,26 +2859,23 @@ async fn workflow_command_lifecycle_retains_metadata_after_start_replay_failure(
 
   buffer
     .process_workflow_command_outcome_logs(
-      [(
-        Log {
-          log_level: log_level::INFO,
-          log_type: LogType::SPAN,
-          message: COMMAND_OUTCOME_MESSAGE.into(),
-          fields: LogFields::default(),
-          matching_fields: LogFields::default(),
-          occurred_at: OffsetDateTime::UNIX_EPOCH,
-          session_id: "session".into(),
-          command_attachment: None,
-          capture_session: None,
-        },
-        Some(token.clone()),
-      )],
+      [Log {
+        log_level: log_level::INFO,
+        log_type: LogType::SPAN,
+        message: COMMAND_OUTCOME_MESSAGE.into(),
+        fields: LogFields::default(),
+        matching_fields: LogFields::default(),
+        occurred_at: OffsetDateTime::UNIX_EPOCH,
+        session_id: "session".into(),
+        command_attachment: None,
+        capture_session: None,
+      }],
       &state_store,
     )
     .await;
 
   assert_eq!(
-    Some(token),
+    None,
     buffer
       .replayer
       .completion_tokens
@@ -2585,25 +2917,22 @@ async fn failed_workflow_outcome_replay_releases_attachment() {
 
   buffer
     .process_workflow_command_outcome_logs(
-      [(
-        Log {
-          log_level: log_level::ERROR,
-          log_type: LogType::SPAN,
-          message: COMMAND_OUTCOME_MESSAGE.into(),
-          session_id: "session".into(),
-          occurred_at: OffsetDateTime::now_utc(),
-          fields: LogFields::default(),
-          matching_fields: LogFields::default(),
-          command_attachment: Some(Box::new(LogAttachment {
-            artifact_id: attachment.id.to_string(),
-            content_type: "application/octet-stream".to_string(),
-            size_bytes: 9,
-            source: AttachmentSource::WORKFLOW,
-          })),
-          capture_session: None,
-        },
-        None,
-      )],
+      [Log {
+        log_level: log_level::ERROR,
+        log_type: LogType::SPAN,
+        message: COMMAND_OUTCOME_MESSAGE.into(),
+        session_id: "session".into(),
+        occurred_at: OffsetDateTime::now_utc(),
+        fields: LogFields::default(),
+        matching_fields: LogFields::default(),
+        command_attachment: Some(Box::new(LogAttachment {
+          artifact_id: attachment.id.to_string(),
+          content_type: "application/octet-stream".to_string(),
+          size_bytes: 9,
+          source: AttachmentSource::WORKFLOW,
+        })),
+        capture_session: None,
+      }],
       &state_store,
     )
     .await;
@@ -2662,25 +2991,22 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
 
   buffer
     .process_workflow_command_outcome_logs(
-      [(
-        Log {
-          log_level: log_level::ERROR,
-          log_type: LogType::SPAN,
-          message: COMMAND_OUTCOME_MESSAGE.into(),
-          session_id: "session".into(),
-          occurred_at,
-          fields: LogFields::default(),
-          matching_fields: LogFields::default(),
-          command_attachment: Some(Box::new(LogAttachment {
-            artifact_id: attachment.id.to_string(),
-            content_type: "application/octet-stream".to_string(),
-            size_bytes: 9,
-            source: AttachmentSource::WORKFLOW,
-          })),
-          capture_session: None,
-        },
-        None,
-      )],
+      [Log {
+        log_level: log_level::ERROR,
+        log_type: LogType::SPAN,
+        message: COMMAND_OUTCOME_MESSAGE.into(),
+        session_id: "session".into(),
+        occurred_at,
+        fields: LogFields::default(),
+        matching_fields: LogFields::default(),
+        command_attachment: Some(Box::new(LogAttachment {
+          artifact_id: attachment.id.to_string(),
+          content_type: "application/octet-stream".to_string(),
+          size_bytes: 9,
+          source: AttachmentSource::WORKFLOW,
+        })),
+        capture_session: None,
+      }],
       &state_store,
     )
     .await;
@@ -2739,25 +3065,22 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
 
   buffer
     .process_workflow_command_outcome_logs(
-      [(
-        Log {
-          log_level: log_level::ERROR,
-          log_type: LogType::SPAN,
-          message: COMMAND_OUTCOME_MESSAGE.into(),
-          session_id: "session".into(),
-          occurred_at,
-          fields: LogFields::default(),
-          matching_fields: LogFields::default(),
-          command_attachment: Some(Box::new(LogAttachment {
-            artifact_id: attachment.id.to_string(),
-            content_type: "application/octet-stream".to_string(),
-            size_bytes: 9,
-            source: AttachmentSource::WORKFLOW,
-          })),
-          capture_session: None,
-        },
-        None,
-      )],
+      [Log {
+        log_level: log_level::ERROR,
+        log_type: LogType::SPAN,
+        message: COMMAND_OUTCOME_MESSAGE.into(),
+        session_id: "session".into(),
+        occurred_at,
+        fields: LogFields::default(),
+        matching_fields: LogFields::default(),
+        command_attachment: Some(Box::new(LogAttachment {
+          artifact_id: attachment.id.to_string(),
+          content_type: "application/octet-stream".to_string(),
+          size_bytes: 9,
+          source: AttachmentSource::WORKFLOW,
+        })),
+        capture_session: None,
+      }],
       &state_store,
     )
     .await;

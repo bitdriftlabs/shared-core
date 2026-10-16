@@ -32,7 +32,7 @@ use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::fs::{self, File};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore, watch};
+use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::time::sleep;
 use uuid::Uuid;
 
@@ -166,6 +166,10 @@ pub struct AttachmentStore {
   oldest_timestamp: Mutex<Option<u64>>,
   cleanup_generation: AtomicU64,
   admissions: Semaphore,
+  #[cfg(test)]
+  admission_started: Mutex<Option<oneshot::Sender<()>>>,
+  #[cfg(test)]
+  admission_completed: Mutex<Option<oneshot::Sender<()>>>,
   upload_ownership: Arc<Semaphore>,
   max_attachment_bytes: IntWatch<attachment::MaxBytes>,
   max_owned_bytes: IntWatch<workflow_attachment::MaxOwnedBytes>,
@@ -269,6 +273,10 @@ impl AttachmentStore {
       oldest_timestamp: Mutex::new(None),
       cleanup_generation: AtomicU64::new(0),
       admissions: Semaphore::new(1),
+      #[cfg(test)]
+      admission_started: Mutex::default(),
+      #[cfg(test)]
+      admission_completed: Mutex::default(),
       upload_ownership: Arc::new(Semaphore::new(1)),
       max_attachment_bytes: runtime.register_int_watch(),
       max_owned_bytes: runtime.register_int_watch(),
@@ -350,8 +358,49 @@ impl AttachmentStore {
         "attachment content type exceeds 255 bytes or contains control characters",
       ));
     }
-    let _permit = self.admissions.acquire().await.map_err(io::Error::other)?;
-    self.admit_async(source, content_type).await
+    // A cancelled caller must not interrupt a filesystem transaction between publication and
+    // accounting. At most one worker enters the transaction; abandoned waiters never enter it.
+    let store = self.clone();
+    let (mut result_tx, result_rx) = oneshot::channel();
+    let (claim_tx, claim_rx) = oneshot::channel();
+    tokio::spawn(async move {
+      let permit = tokio::select! {
+        biased;
+        () = result_tx.closed() => return,
+        permit = store.admissions.acquire() => permit,
+      };
+      let _permit = match permit {
+        Ok(permit) => permit,
+        Err(error) => {
+          let _ = result_tx.send(Err(io::Error::other(error)));
+          return;
+        },
+      };
+      if result_tx.is_closed() {
+        return;
+      }
+      #[cfg(test)]
+      if let Some(started) = store.admission_started.lock().take() {
+        let _ = started.send(());
+      }
+      let result = store.admit_async(source, content_type).await;
+      let artifact_id = result.as_ref().ok().map(|attachment| attachment.id);
+      let sent = result_tx.send(result).is_ok();
+      #[cfg(test)]
+      if let Some(completed) = store.admission_completed.lock().take() {
+        let _ = completed.send(());
+      }
+      // Sending is not enough: cancellation can drop an unpolled, successfully delivered result.
+      if (!sent || claim_rx.await.is_err())
+        && let Some(id) = artifact_id
+        && let Err(error) = store.release_async(id).await
+      {
+        log::warn!("failed to release cancelled workflow attachment {id}: {error}");
+      }
+    });
+    let result = result_rx.await.map_err(io::Error::other)?;
+    let _ = claim_tx.send(());
+    result
   }
 
   pub async fn release(self: &Arc<Self>, id: Uuid) -> io::Result<()> {

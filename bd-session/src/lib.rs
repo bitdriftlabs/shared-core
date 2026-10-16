@@ -134,8 +134,44 @@ pub struct Strategy {
   state: PlatformMutex<Option<LoadedState>>,
   persistence_tx: mpsc::Sender<PersistenceRequest>,
   update_tx: watch::Sender<u64>,
+  session_epoch: watch::Sender<u64>,
   max_pending_started_sessions: AtomicU32,
   callback_in_progress: Box<ThreadLocal<Cell<bool>>>,
+}
+
+//
+// SessionLifetime
+//
+
+/// An atomic session identity and cancellation fence for work owned by that session.
+#[derive(Clone, Debug)]
+pub struct SessionLifetime {
+  pub session_id: Arc<str>,
+  epoch: u64,
+  changes: watch::Receiver<u64>,
+}
+
+impl SessionLifetime {
+  #[must_use]
+  pub fn is_current(&self) -> bool {
+    *self.changes.borrow() == self.epoch
+  }
+
+  /// Serializes a short terminal-state decision with session invalidation. The closure must not
+  /// call session APIs, invoke platform callbacks, or perform I/O.
+  pub fn with_current<T>(&self, decide: impl FnOnce() -> T) -> Option<T> {
+    let epoch = self.changes.borrow();
+    (*epoch == self.epoch).then(decide)
+  }
+
+  pub async fn cancelled(&mut self) {
+    while self.is_current() {
+      if self.changes.changed().await.is_err() {
+        log::debug!("session lifetime owner stopped");
+        return;
+      }
+    }
+  }
 }
 
 /// Owns the single persistence receiver for a [`Strategy`].
@@ -197,6 +233,7 @@ impl Strategy {
     sdk_directory: impl AsRef<Path>,
   ) -> StrategyWithWorker {
     let (update_tx, _) = watch::channel(0);
+    let (session_epoch, _) = watch::channel(0);
     let (persistence_tx, persistence_rx) = mpsc::channel(1);
     let strategy = Arc::new(Self {
       configuration,
@@ -205,6 +242,7 @@ impl Strategy {
       state: PlatformMutex::new(None),
       persistence_tx,
       update_tx,
+      session_epoch,
       max_pending_started_sessions: AtomicU32::new(100),
       callback_in_progress: Box::new(ThreadLocal::new()),
     });
@@ -239,11 +277,27 @@ impl Strategy {
   /// This is synchronous so caller-thread APIs do not depend on the logger task making progress.
   /// Persistence is coalesced by the background flusher after this method returns.
   pub fn session_id(&self) -> anyhow::Result<Arc<str>> {
+    self.with_session_id(|session_id| session_id)
+  }
+
+  pub fn session_lifetime(&self) -> anyhow::Result<SessionLifetime> {
+    self.with_session_id(|session_id| {
+      let changes = self.session_epoch.subscribe();
+      let epoch = *changes.borrow();
+      SessionLifetime {
+        session_id,
+        epoch,
+        changes,
+      }
+    })
+  }
+
+  fn with_session_id<T>(&self, snapshot: impl FnOnce(Arc<str>) -> T) -> anyhow::Result<T> {
     self.ensure_not_in_callback("session_id")?;
 
-    let (current_session_id, effects) = {
+    let (result, effects) = {
       let mut guard = self.state.lock();
-      if let Some(state) = guard.as_mut() {
+      let (current_session_id, effects) = if let Some(state) = guard.as_mut() {
         let mut effects = self.configuration.on_session_id(state);
         if self.apply_pending_started_sessions_limit(state) > 0 {
           effects.persist = true;
@@ -271,11 +325,22 @@ impl Strategy {
         );
 
         (current_session_id, initialization.effects)
+      };
+      if effects.callback.is_some() {
+        self.invalidate_session_lifetime();
       }
+      (snapshot(current_session_id), effects)
     };
 
     self.apply_effects(effects);
-    Ok(current_session_id)
+    Ok(result)
+  }
+
+  fn invalidate_session_lifetime(&self) {
+    self
+      .session_epoch
+      .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
+    log::debug!("invalidated previous session lifetime");
   }
 
   /// Creates a new session and schedules persistence without waiting for disk I/O.
@@ -580,6 +645,9 @@ impl Strategy {
       // then drop the lock before invoking any deferred callback.
       let initialization = self.initialize_state();
       *guard = Some(initialization.state.clone());
+      if initialization.effects.callback.is_some() {
+        self.invalidate_session_lifetime();
+      }
       log::debug!(
         "initialized session state for update flow: configuration={}, current_session_id={}, \
          persist={}, notify_update={}, callback={}, pending_started_sessions={}",
@@ -647,6 +715,7 @@ impl Strategy {
     );
 
     *state = Some(initialization.state);
+    self.invalidate_session_lifetime();
     initialization.effects
   }
 

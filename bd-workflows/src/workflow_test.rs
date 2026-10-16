@@ -15,6 +15,7 @@ use crate::config::{
 };
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{
+  CommandCancellationReason,
   CommandOutcome,
   CommandSpan,
   PendingCommand,
@@ -32,6 +33,7 @@ use bd_log_primitives::{
   COMMAND_START_MESSAGE,
   COMMAND_STATUS_FAILURE,
   DataValue,
+  LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
   LOG_FIELD_NAME_COMMAND_STATUS,
   LOG_FIELD_NAME_DURATION_MS,
@@ -102,6 +104,11 @@ fn command_span_preserves_outcome_and_owns_reserved_fields() {
   );
   assert!(!start.fields.contains_key(LOG_FIELD_NAME_DURATION_MS));
   assert!(!start.fields.contains_key(LOG_FIELD_NAME_COMMAND_STATUS));
+  assert!(
+    !start
+      .fields
+      .contains_key(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON)
+  );
   assert!(start.command_attachment.is_none());
 
   let end = CommandOutcome {
@@ -115,6 +122,10 @@ fn command_span_preserves_outcome_and_owns_reserved_fields() {
       ("_span_extra".into(), "spoofed".into()),
       (LOG_FIELD_NAME_DURATION_MS.into(), "999".into()),
       (LOG_FIELD_NAME_COMMAND_STATUS.into(), "spoofed".into()),
+      (
+        LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON.into(),
+        "spoofed".into(),
+      ),
     ]
     .into(),
     attachment: None,
@@ -153,6 +164,83 @@ fn command_span_preserves_outcome_and_owns_reserved_fields() {
   );
   assert_eq!(end.fields.get("count"), Some(&DataValue::U64(7)));
   assert!(!end.fields.contains_key("_span_extra"));
+  assert!(
+    !end
+      .fields
+      .contains_key(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON)
+  );
+}
+
+#[test]
+fn command_cancellation_reasons_preserve_span_identity_and_terminal_failure_contract() {
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  for (reason, value, message) in [
+    (
+      CommandCancellationReason::SessionChanged,
+      "session_changed",
+      "Command cancelled: session changed",
+    ),
+    (
+      CommandCancellationReason::WorkflowReset,
+      "workflow_reset",
+      "Command cancelled: workflow reset",
+    ),
+    (
+      CommandCancellationReason::SdkRestart,
+      "sdk_restart",
+      "Command cancelled: SDK restart",
+    ),
+  ] {
+    let span = CommandSpan {
+      id: "original-invocation".into(),
+      started_at: Some(started_at),
+    };
+    let log = reason.into_log("original-session".into(), started_at + 1.seconds(), &span);
+    assert_eq!(reason.as_str(), value);
+    assert_eq!(reason.message(), message);
+    assert_eq!(log.log_type, LogType::SPAN);
+    assert_eq!(log.log_level, log_level::ERROR);
+    assert_eq!(log.message.as_str(), Some(COMMAND_OUTCOME_MESSAGE));
+    assert_eq!(log.session_id.as_ref(), "original-session");
+    for (field, expected) in [
+      (LOG_FIELD_NAME_SPAN_ID, "original-invocation"),
+      (LOG_FIELD_NAME_SPAN_TYPE, SPAN_TYPE_END),
+      (LOG_FIELD_NAME_DURATION_MS, "1000"),
+      (LOG_FIELD_NAME_COMMAND_STATUS, COMMAND_STATUS_FAILURE),
+      (LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON, value),
+      (LOG_FIELD_NAME_COMMAND_MESSAGE, message),
+    ] {
+      assert_eq!(log.fields.get(field).unwrap().as_str(), Some(expected));
+    }
+    assert!(log.command_attachment.is_none());
+  }
+}
+
+#[test]
+fn ordinary_command_outcomes_cannot_spoof_cancellation() {
+  let now = datetime!(2026-01-01 00:00 UTC);
+  let span = CommandSpan {
+    id: "invocation".into(),
+    started_at: Some(now),
+  };
+  for succeeded in [false, true] {
+    let log = CommandOutcome {
+      succeeded,
+      message: None,
+      fields: [(
+        LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON.into(),
+        "session_changed".into(),
+      )]
+      .into(),
+      attachment: None,
+    }
+    .into_log("session".into(), now, &span);
+    assert!(
+      !log
+        .fields
+        .contains_key(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON)
+    );
+  }
 }
 
 #[test]

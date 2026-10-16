@@ -49,6 +49,7 @@ pub const LOG_FIELD_NAME_SPAN_TYPE: &str = "_span_type";
 pub const LOG_FIELD_NAME_DURATION_MS: &str = "_duration_ms";
 pub const LOG_FIELD_NAME_COMMAND_MESSAGE: &str = "_command_message";
 pub const LOG_FIELD_NAME_COMMAND_STATUS: &str = "_command_status";
+pub const LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON: &str = "_command_cancellation_reason";
 pub const LOG_FIELD_PREFIX_SPAN: &str = "_span_";
 pub const LOG_FIELD_PREFIX_COMMAND: &str = "_command_";
 pub const LOG_FIELD_PREFIX_WORKFLOW_COMMAND: &str = "_workflow_command_";
@@ -58,6 +59,9 @@ pub const SPAN_NAME_DEVICE_COMMAND: &str = "_device_command";
 pub const SPAN_NAME_GRAPHQL: &str = "_graphql";
 pub const COMMAND_STATUS_SUCCESS: &str = "success";
 pub const COMMAND_STATUS_FAILURE: &str = "failure";
+pub const COMMAND_CANCELLATION_REASON_SESSION_CHANGED: &str = "session_changed";
+pub const COMMAND_CANCELLATION_REASON_WORKFLOW_RESET: &str = "workflow_reset";
+pub const COMMAND_CANCELLATION_REASON_SDK_RESTART: &str = "sdk_restart";
 pub const COMMAND_START_MESSAGE: &str = "Command started";
 pub const COMMAND_OUTCOME_MESSAGE: &str = "Command completed";
 
