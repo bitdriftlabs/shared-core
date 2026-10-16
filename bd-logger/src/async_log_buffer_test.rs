@@ -9,6 +9,7 @@ use crate::async_log_buffer::{
   AdmissionError,
   AsyncLogBuffer,
   EventBufferLimitWatches,
+  FlushError,
   LogAttributesOverrides,
   LogLine,
   LogReplay,
@@ -37,6 +38,7 @@ use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_completion::RecvWithTimeoutError;
 use bd_event_buffer::{
   EventBuffer,
   EventBufferEntry,
@@ -89,7 +91,7 @@ use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use bd_workflows::workflow::{WorkflowCommandCompletionToken, WorkflowCommandOutcome};
-use futures_util::poll;
+use futures_util::{FutureExt, poll};
 use protobuf::Message;
 use std::collections::VecDeque;
 use std::future;
@@ -782,6 +784,51 @@ async fn before_startup_gate_ready_blocking_flush_completes_without_event_buffer
       payload: LoggerIngressPayload::Log(log),
       ..
     })] if log.message.as_str() == Some("after early flush")
+  ));
+}
+
+#[tokio::test]
+async fn checked_flush_reports_timeout_and_closed_admission() {
+  let mut setup = Setup::new();
+  let (_tx, rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(rx);
+  // Early flush is an intentional successful no-op, including for checked callers.
+  assert_ok!(sender.flush_state_with_result(Block::Yes {
+    timeout: 1.std_seconds(),
+    poll_callback: None,
+  }));
+  buffer.event_buffer.mark_startup_gate_ready();
+  // No consumer runs, so the admitted barrier cannot complete.
+  assert!(matches!(
+    sender.flush_state_with_result(Block::Yes {
+      timeout: 0.std_seconds(),
+      poll_callback: None,
+    }),
+    Err(FlushError::Completion(RecvWithTimeoutError::Timeout))
+  ));
+  buffer.event_buffer.close();
+  assert!(matches!(
+    sender.flush_state_with_result(Block::No),
+    Err(FlushError::Admission(AdmissionError::Closed))
+  ));
+}
+
+#[tokio::test]
+async fn checked_flush_reports_lost_completion() {
+  let mut setup = Setup::new();
+  let (_tx, rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(rx);
+  buffer.event_buffer.mark_startup_gate_ready();
+  let event_buffer = buffer.event_buffer;
+  assert!(matches!(
+    sender.flush_state_with_result(Block::Yes {
+      timeout: 1.std_seconds(),
+      // Admission precedes this callback: drop the queued barrier without completing it.
+      poll_callback: Some(Box::new(move || {
+        drop(event_buffer.next_batch(1).now_or_never().unwrap());
+      })),
+    }),
+    Err(FlushError::Completion(RecvWithTimeoutError::ChannelClosed))
   ));
 }
 

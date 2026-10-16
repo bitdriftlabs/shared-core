@@ -3698,6 +3698,7 @@ dependencies = [
  "libc",
  "log",
  "parking_lot",
+ "protobuf 4.0.0-alpha.0",
  "reqwest",
  "rmcp",
  "serde",

@@ -1,12 +1,18 @@
 //! Per-instance async driver for local data generators, using the same SDK as logger-cli.
 
+#[cfg(test)]
+#[path = "driver_test.rs"]
+mod tests;
+
 use crate::logger::{LoggerArgs, LoggerHolder, make_logger};
 use bd_logger::{
   AnnotatedLogField,
   Block,
   CaptureSession,
+  InitializationState,
   LogAttributesOverrides,
   LogFieldKind,
+  SdkStatus,
   log_level,
 };
 use bd_proto::protos::logging::payload::LogType;
@@ -35,20 +41,7 @@ impl Driver {
 
   /// Await backend configuration before emitting the fixture. Real timers remain real.
   pub async fn ready(&self, deadline: Duration) -> anyhow::Result<()> {
-    tokio::time::timeout(deadline, async {
-      loop {
-        let status = self.holder.logger.lock().get_sdk_status();
-        anyhow::ensure!(
-          status.initialization_state != bd_logger::InitializationState::Disabled,
-          "SDK disabled"
-        );
-        if status.last_config_delivery_time.is_some() {
-          return Ok(());
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-      }
-    })
-    .await?
+    wait_for_configuration(deadline, || self.holder.logger.lock().get_sdk_status()).await
   }
 
   pub fn begin_session(&self, entity: &str) -> anyhow::Result<String> {
@@ -86,20 +79,43 @@ impl Driver {
   pub async fn flush(&self) -> anyhow::Result<()> {
     let handle = self.holder.logger.lock().new_logger_handle();
     tokio::task::spawn_blocking(move || {
-      handle.flush_state(Block::Yes {
+      handle.flush_state_with_result(Block::Yes {
         timeout: Duration::from_secs(30),
         poll_callback: None,
-      });
+      })
     })
-    .await?;
+    .await??;
     Ok(())
   }
 
   pub async fn stop(self) -> anyhow::Result<()> {
-    self.flush().await?;
+    // Always shut down the worker, including when the flush failed.
+    let flushed = self.flush().await;
     self.holder.logger.lock().shutdown(false);
     drop(self.holder);
-    tokio::time::timeout(Duration::from_secs(30), self.worker).await???;
+    let stopped = tokio::time::timeout(Duration::from_secs(30), self.worker).await;
+    flushed?;
+    stopped???;
     Ok(())
   }
+}
+
+async fn wait_for_configuration(
+  deadline: Duration,
+  status: impl Fn() -> SdkStatus,
+) -> anyhow::Result<()> {
+  tokio::time::timeout(deadline, async {
+    loop {
+      let status = status();
+      anyhow::ensure!(
+        status.initialization_state != InitializationState::Disabled,
+        "SDK disabled"
+      );
+      if status.last_config_delivery_time.is_some() {
+        return Ok(());
+      }
+      tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+  })
+  .await?
 }

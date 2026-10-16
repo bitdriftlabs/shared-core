@@ -41,6 +41,7 @@ tracing.workspace            = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+protobuf.workspace = true
 tempfile.workspace = true
 
 [[bin]]

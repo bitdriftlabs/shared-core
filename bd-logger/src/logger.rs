@@ -10,7 +10,13 @@
 mod logger_test;
 
 use crate::app_version::{AppVersion, Repository};
-use crate::async_log_buffer::{self, AdmissionCounters, AsyncLogBuffer, LogAttributesOverrides};
+use crate::async_log_buffer::{
+  self,
+  AdmissionCounters,
+  AsyncLogBuffer,
+  FlushError,
+  LogAttributesOverrides,
+};
 use crate::device_command::{RegisteredCommandDispatcher, RegisteredCommandHandler};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
@@ -572,6 +578,19 @@ impl LoggerHandle {
     log::debug!("state flushing initiated");
     let result = self.tx.flush_state(block);
     self.stats.state_flushing_counters.record(&result);
+  }
+
+  /// Flush local SDK state, reporting admission failures and blocking completion errors.
+  /// This does not wait for backend ingestion or indexing.
+  pub fn flush_state_with_result(&self, block: Block) -> Result<(), FlushError> {
+    log::debug!("state flushing initiated");
+    let result = self.tx.flush_state_with_result(block);
+    let admission = match &result {
+      Err(FlushError::Admission(error)) => Err(error.clone()),
+      _ => Ok(()),
+    };
+    self.stats.state_flushing_counters.record(&admission);
+    result
   }
 
   pub fn session_id(&self) -> anyhow::Result<Arc<str>> {
