@@ -143,6 +143,7 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
   fn event_fields(event: WorkflowEvent<'_>) -> FieldsRef<'_> {
     match event {
       WorkflowEvent::Log(log)
+      | WorkflowEvent::CommandStart(log)
       | WorkflowEvent::CommandCompletion { log, .. }
       | WorkflowEvent::SessionStart(log) => FieldsRef::new(&log.fields, &log.matching_fields),
       WorkflowEvent::StateChange(_, fields, _) => fields,
@@ -152,6 +153,7 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
   fn resolve_field_name<'a>(key: &str, event: WorkflowEvent<'a>) -> Option<Cow<'a, str>> {
     match event {
       WorkflowEvent::Log(log)
+      | WorkflowEvent::CommandStart(log)
       | WorkflowEvent::CommandCompletion { log, .. }
       | WorkflowEvent::SessionStart(log) => match key {
         "log_level" => Some(log.log_level.to_string().into()),
@@ -189,6 +191,7 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
         crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
         crate::config::TagValue::LogBodyExtract => match event {
           WorkflowEvent::Log(log)
+          | WorkflowEvent::CommandStart(log)
           | WorkflowEvent::CommandCompletion { log, .. }
           | WorkflowEvent::SessionStart(log) => log.message.as_str().map(Cow::Borrowed),
           WorkflowEvent::StateChange(..) => None,

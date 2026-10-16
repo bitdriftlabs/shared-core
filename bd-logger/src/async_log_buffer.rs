@@ -81,12 +81,7 @@ use bd_state::{
 use bd_stats_common::{Counter as _, Histogram as _, labels};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
-use bd_workflows::workflow::{
-  WorkflowCommandCompletionToken,
-  WorkflowCommandOutcome,
-  WorkflowCommandRequest,
-  WorkflowDebugStateMap,
-};
+use bd_workflows::workflow::{WorkflowCommandEvent, WorkflowCommandOutcome, WorkflowDebugStateMap};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use std::collections::{HashMap, VecDeque};
 use std::future::{Future, ready};
@@ -258,6 +253,47 @@ impl Sender {
         )),
       ),
     }
+  }
+
+  pub(crate) fn try_send_command_log(
+    &self,
+    log: LogLine,
+    session_id: Arc<str>,
+  ) -> Result<(), AdmissionError> {
+    // TODO: Separate span ownership from the active workflow session. A direct command's late
+    // end retains its old session but replays as an ordinary log, switching the engine backwards
+    // after rollover and clearing current workflow progress and pending-command indexes.
+    let (event_buffer, provider) = match &self.inner {
+      SenderInner::EventBuffer {
+        event_buffer,
+        metadata_provider,
+        ..
+      } => {
+        let provider = provider_snapshot(metadata_provider).map_err(|error| {
+          log::debug!("failed to capture command span metadata: {error}");
+          AdmissionError::ContextCaptureFailed
+        })?;
+        (event_buffer, provider)
+      },
+      #[cfg(test)]
+      SenderInner::TestEventBuffer { event_buffer } => (
+        event_buffer,
+        ProviderSnapshot {
+          timestamp: OffsetDateTime::UNIX_EPOCH,
+          ootb_fields: LogFields::default(),
+          custom_fields: LogFields::default(),
+        },
+      ),
+    };
+    let context = EventContext::CurrentProcess(AdmissionContext {
+      session_id,
+      admitted_at: provider.timestamp,
+      provider,
+    });
+    admit(
+      event_buffer,
+      EventBufferEntry::ingress(LoggerIngressEvent::log(log, context, None)),
+    )
   }
 
   pub fn try_send_log_with_provider_snapshot(
@@ -481,6 +517,9 @@ fn admission_outcome(outcome: AdmissionOutcome) -> Result<(), AdmissionError> {
 ///
 /// Generated logs do not re-enter `EventBuffer`, but must retain their source's immutable admission
 /// context and metadata overrides so they cannot be attributed to a later session or process.
+// TODO: Preserve a workflow span's recorded session when no source context is supplied. This
+// conversion discards log.session_id, so outcome normalization uses the current SDK session and
+// can split start/end pairs across sessions on rollover or restart recovery.
 fn workflow_generated_log(
   log: Log,
   context: Option<EventContext>,
@@ -891,20 +930,24 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     log: LogLine,
     state_store: &bd_state::Store,
     context: Option<EventContext>,
-    completion_token: Option<WorkflowCommandCompletionToken>,
+    command_event: Option<WorkflowCommandEvent>,
   ) -> Result<bool, WorkflowAttachmentReplayError> {
     let mut committed_workflow_attachment = false;
     let mut logs = VecDeque::new();
-    logs.push_back((log, context, completion_token));
-    while let Some((log, context, completion_token)) = logs.pop_front() {
+    logs.push_back((log, context, command_event));
+    while let Some((log, context, command_event)) = logs.pop_front() {
       let source_context = context.clone();
       let source_attributes_overrides = log.attributes_overrides.clone();
       let log_replay_result = match self
-        .process_log(log, state_store, context, completion_token.as_ref())
+        .process_log(log, state_store, context, command_event.as_ref())
         .await
       {
         Ok(log_replay_result) => log_replay_result,
         Err(error) => {
+          if matches!(command_event, Some(WorkflowCommandEvent::Start)) {
+            log::warn!("failed to replay workflow command start; dropping it: {error}");
+            continue;
+          }
           return Err(WorkflowAttachmentReplayError {
             committed_workflow_attachment: committed_workflow_attachment
               || error
@@ -916,20 +959,29 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       };
       committed_workflow_attachment |= log_replay_result.committed_workflow_attachment;
       let logs_to_inject = self.handle_log_replay_result(log_replay_result);
-      logs.extend(logs_to_inject.into_iter().map(|log| {
-        let (log, context) = workflow_generated_log(
-          log,
-          source_context.clone(),
-          source_attributes_overrides.clone(),
-        );
-        (log, context, None)
+      logs.extend(logs_to_inject.into_iter().map(|(log, command_event)| {
+        let attributes_overrides = if matches!(command_event, Some(WorkflowCommandEvent::Start)) {
+          Some(LogAttributesOverrides::OccurredAt(log.occurred_at))
+        } else {
+          source_attributes_overrides.clone()
+        };
+        let (log, context) =
+          workflow_generated_log(log, source_context.clone(), attributes_overrides);
+        (log, context, command_event)
       }));
     }
     Ok(committed_workflow_attachment)
   }
 
-  fn handle_log_replay_result(&mut self, result: LogReplayResult) -> Vec<Log> {
-    self.dispatch_workflow_commands(result.workflow_commands_to_start);
+  fn handle_log_replay_result(
+    &mut self,
+    result: LogReplayResult,
+  ) -> Vec<(Log, Option<WorkflowCommandEvent>)> {
+    let mut logs = Vec::new();
+    for request in result.workflow_commands_to_start {
+      logs.push((request.start_log(), Some(WorkflowCommandEvent::Start)));
+      self.workflow_command_dispatcher.dispatch(&request);
+    }
     self
       .pending_workflow_debug_state
       .extend(result.workflow_debug_state);
@@ -941,7 +993,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       self.send_workflow_debug_state_delay = Some(Box::pin(1.seconds().sleep()));
     }
 
-    result.logs_to_inject
+    logs.extend(result.logs_to_inject.into_iter().map(|log| (log, None)));
+    logs
   }
 
   async fn process_state_change_replay_result(
@@ -949,17 +1002,22 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     result: LogReplayResult,
     state_store: &bd_state::Store,
   ) {
-    for log in self.handle_log_replay_result(result) {
+    for (log, command_event) in self.handle_log_replay_result(result) {
+      let occurred_at = log.occurred_at;
       let (log, context) = workflow_generated_log(log, None, None);
-      if let Err(error) = self.process_all_logs(log, state_store, context).await {
-        log::warn!("failed to replay workflow state-change log; dropping it: {error}");
+      let log = LogLine {
+        attributes_overrides: Some(LogAttributesOverrides::OccurredAt(occurred_at)),
+        ..log
+      };
+      if let Err(error) = self
+        .process_all_logs_with_completion(log, state_store, context, command_event)
+        .await
+      {
+        log::warn!(
+          "failed to replay workflow state-change log; dropping it: {}",
+          error.error
+        );
       }
-    }
-  }
-
-  fn dispatch_workflow_commands(&self, requests: Vec<WorkflowCommandRequest>) {
-    for request in requests {
-      self.workflow_command_dispatcher.dispatch(&request);
     }
   }
 
@@ -977,13 +1035,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let outcome_log = match &self.logging_state {
       LoggingState::Initialized(context) => context
         .processing_pipeline
-        .workflow_command_outcome_log(outcome.clone(), now),
+        .workflow_command_outcome_log(&token, outcome.clone(), now),
       LoggingState::Uninitialized(_) => {
         if let Some(id) = artifact_id {
           Self::release_workflow_attachment(self.workflow_attachment_store(), id).await;
         }
         return;
       },
+    };
+    let Ok(outcome_log) = outcome_log else {
+      log::debug!("discarding duplicate or unknown workflow command completion");
+      if let Some(id) = artifact_id {
+        Self::release_workflow_attachment(self.workflow_attachment_store(), id).await;
+      }
+      return;
     };
 
     let occurred_at = outcome_log.occurred_at;
@@ -998,14 +1063,23 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         let fallback_log = match &self.logging_state {
           LoggingState::Initialized(context) => context
             .processing_pipeline
-            .workflow_command_outcome_log(outcome, now),
+            .workflow_command_outcome_log(&token, outcome, now),
           LoggingState::Uninitialized(_) => return,
         };
         log::warn!(
           "failed to normalize workflow command outcome; replaying without provider metadata: \
            {error}"
         );
-        fallback_log
+        match fallback_log {
+          Ok(log) => log,
+          Err(error) => {
+            log::warn!("workflow command disappeared during normalization: {error:?}");
+            if let Some(id) = artifact_id {
+              Self::release_workflow_attachment(self.workflow_attachment_store(), id).await;
+            }
+            return;
+          },
+        }
       },
     };
 
@@ -1030,7 +1104,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     // The workflow engine may consume the completion while replaying this log. A later replay
     // error therefore cannot be retried safely without transactional workflow processing.
-    let result = self.write_log(log, Some(token), state_store).await;
+    let result = self
+      .write_log(
+        log,
+        Some(WorkflowCommandEvent::Completion(token)),
+        state_store,
+      )
+      .await;
     match result {
       Ok(result) => {
         if let Some(id) = artifact_id {
@@ -1045,14 +1125,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             Self::release_workflow_attachment(self.workflow_attachment_store(), id).await;
           }
         }
-        for log in self.handle_log_replay_result(result) {
+        for (log, command_event) in self.handle_log_replay_result(result) {
+          let occurred_at = log.occurred_at;
           let (log, context) = workflow_generated_log(
             log,
             context.clone(),
             Some(LogAttributesOverrides::OccurredAt(occurred_at)),
           );
-          if let Err(error) = self.process_all_logs(log, state_store, context).await {
-            log::warn!("failed to replay injected workflow command log; dropping it: {error}");
+          if let Err(error) = self
+            .process_all_logs_with_completion(log, state_store, context, command_event)
+            .await
+          {
+            log::warn!(
+              "failed to replay injected workflow command log; dropping it: {}",
+              error.error
+            );
           }
         }
       },
@@ -1125,7 +1212,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(LogAttributesOverrides::OccurredAt(occurred_at)),
       );
       match self
-        .process_all_logs_with_completion(log, state_store, context, completion_token)
+        .process_all_logs_with_completion(
+          log,
+          state_store,
+          context,
+          completion_token.map(WorkflowCommandEvent::Completion),
+        )
         .await
       {
         Ok(committed_workflow_attachment) => {
@@ -1184,11 +1276,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     log: LogLine,
     state_store: &bd_state::Store,
     context: Option<EventContext>,
-    completion_token: Option<&WorkflowCommandCompletionToken>,
+    command_event: Option<&WorkflowCommandEvent>,
   ) -> anyhow::Result<LogReplayResult> {
     let normalized_log = self.normalize_log(log, state_store, context).await?;
     self
-      .write_log(normalized_log, completion_token.cloned(), state_store)
+      .write_log(normalized_log, command_event.cloned(), state_store)
       .await
   }
 
@@ -1330,7 +1422,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn write_log(
     &mut self,
     log: Log,
-    completion_token: Option<bd_workflows::workflow::WorkflowCommandCompletionToken>,
+    command_event: Option<WorkflowCommandEvent>,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<LogReplayResult> {
     let log_replay_result = match &mut self.logging_state {
@@ -1342,7 +1434,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           .replayer
           .replay_log(
             log,
-            completion_token,
+            command_event,
             &mut initialized_logging_context.processing_pipeline,
             state_store,
             self.time_provider.now(),

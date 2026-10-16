@@ -22,9 +22,14 @@ use crate::async_log_buffer::{
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::device_command::{
+  CommandAttachment,
   CommandExecutionPolicy,
+  CommandInvocation,
+  CommandResult,
   RegisteredCommandDispatcher,
+  RegisteredCommandHandler,
   WorkflowCommandCompletion,
+  WorkflowCommandDispatcher,
 };
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
@@ -52,9 +57,15 @@ use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  COMMAND_OUTCOME_MESSAGE,
+  COMMAND_START_MESSAGE,
   DataValue,
+  LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_SPAN_ID,
   Log,
   LogFields,
+  SPAN_TYPE_END,
+  SPAN_TYPE_START,
   log_level,
 };
 use bd_macros::ApproximateSize;
@@ -72,6 +83,7 @@ use bd_proto::protos::workflow::workflow_command::{
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
 use bd_session::test::no_timeout;
+use bd_session_replay::RemoteScreenshotCaptureHandler;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
@@ -83,12 +95,23 @@ use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::rule;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::session::in_memory_store;
+use bd_test_helpers::session_replay::NoOpTarget;
 use bd_test_helpers::workflow::{WorkflowBuilder, make_flush_buffers_action, state};
-use bd_time::{OffsetDateTimeExt, SystemTimeProvider, TimeDurationExt};
+use bd_time::{
+  OffsetDateTimeExt,
+  SystemTimeProvider,
+  TestTimeProvider,
+  TimeDurationExt,
+  TimeProvider,
+};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
-use bd_workflows::workflow::{WorkflowCommandCompletionToken, WorkflowCommandOutcome};
+use bd_workflows::workflow::{
+  WorkflowCommandCompletionToken,
+  WorkflowCommandEvent,
+  WorkflowCommandOutcome,
+};
 use futures_util::poll;
 use protobuf::Message;
 use std::collections::VecDeque;
@@ -97,7 +120,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, mpsc, oneshot};
 use tokio_test::assert_ok;
 
 //
@@ -1094,8 +1117,41 @@ struct TestReplay {
   logs_notify: Arc<Notify>,
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+  timestamps: Vec<OffsetDateTime>,
   completion_tokens: Arc<parking_lot::Mutex<Vec<Option<WorkflowCommandCompletionToken>>>>,
   results: Arc<parking_lot::Mutex<VecDeque<anyhow::Result<LogReplayResult>>>>,
+  forward_logs_to_pipeline: bool,
+}
+
+//
+// GatedAttachmentHandler
+//
+
+struct GatedAttachmentHandler {
+  started_tx: mpsc::UnboundedSender<()>,
+  result_rx: Mutex<Option<oneshot::Receiver<CommandResult>>>,
+  returned_tx: Mutex<Option<oneshot::Sender<()>>>,
+}
+
+#[async_trait::async_trait]
+impl RegisteredCommandHandler for GatedAttachmentHandler {
+  async fn execute(&self, invocation: CommandInvocation) -> CommandResult {
+    assert_eq!(invocation.command_id, None);
+    let result_rx = self.result_rx.lock().unwrap().take().unwrap();
+    log::debug!("workflow span timing handler started");
+    self.started_tx.send(()).unwrap();
+    let result = result_rx.await.unwrap();
+    log::debug!("workflow span timing handler returning its attachment");
+    self
+      .returned_tx
+      .lock()
+      .unwrap()
+      .take()
+      .unwrap()
+      .send(())
+      .unwrap();
+    result
+  }
 }
 
 struct StaticReportProcessor(parking_lot::Mutex<Vec<bd_crash_handler::CrashLog>>);
@@ -1189,8 +1245,10 @@ impl TestReplay {
       logs_notify: Arc::new(Notify::new()),
       logs: Arc::new(parking_lot::Mutex::new(vec![])),
       fields: Arc::new(parking_lot::Mutex::new(vec![])),
+      timestamps: Vec::new(),
       completion_tokens: Arc::new(parking_lot::Mutex::new(vec![])),
       results: Arc::new(parking_lot::Mutex::new(VecDeque::new())),
+      forward_logs_to_pipeline: false,
     }
   }
 }
@@ -1200,19 +1258,29 @@ impl LogReplay for TestReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    completion_token: Option<WorkflowCommandCompletionToken>,
-    _processing_pipeline: &mut ProcessingPipeline,
-    _state: &bd_state::Store,
-    _now: OffsetDateTime,
+    command_event: Option<WorkflowCommandEvent>,
+    processing_pipeline: &mut ProcessingPipeline,
+    state: &bd_state::Store,
+    now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     if let Some(message) = log.message.as_str() {
       self.logs.lock().push(message.to_string());
     }
 
-    self.fields.lock().push(log.fields);
-    self.completion_tokens.lock().push(completion_token);
+    self.fields.lock().push(log.fields.clone());
+    self.timestamps.push(log.occurred_at);
+    self.completion_tokens.lock().push(match &command_event {
+      Some(WorkflowCommandEvent::Completion(token)) => Some(token.clone()),
+      Some(WorkflowCommandEvent::Start) | None => None,
+    });
     self.logs_count.fetch_add(1, Ordering::SeqCst);
     self.logs_notify.notify_waiters();
+
+    if self.forward_logs_to_pipeline {
+      return LoggerReplay {}
+        .replay_log(log, command_event, processing_pipeline, state, now)
+        .await;
+    }
 
     self
       .results
@@ -1467,6 +1535,43 @@ async fn feature_flag_exposure_captures_its_admission_session() {
     LoggerIngressPayload::FeatureFlagExposure { flag, variant }
       if flag == "flag" && variant.as_deref() == Some("variant")
   ));
+}
+
+#[tokio::test]
+async fn command_span_admission_retains_its_invocation_session_after_rollover() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  let session_id = setup.session_strategy.session_id().unwrap();
+  let occurred_at = OffsetDateTime::UNIX_EPOCH;
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  for phase in [SPAN_TYPE_START, SPAN_TYPE_END] {
+    let mut log = normal_log(phase);
+    log.log_type = LogType::SPAN;
+    log.attributes_overrides = Some(LogAttributesOverrides::OccurredAt(occurred_at));
+    sender
+      .try_send_command_log(log, session_id.clone())
+      .unwrap();
+    setup.session_strategy.start_new_session(None).unwrap();
+  }
+  buffer.event_buffer.mark_startup_gate_ready();
+  let batch = buffer.event_buffer.next_batch(2).await;
+  assert_eq!(batch.entries.len(), 2);
+  for entry in batch.entries {
+    let EventBufferEntry::Ingress(event) = entry else {
+      panic!("expected command span ingress");
+    };
+    let LoggerIngressPayload::Log(log) = event.payload else {
+      panic!("expected command span log");
+    };
+    let normalized = buffer
+      .normalize_log(log, &state_store, Some(event.context))
+      .await
+      .unwrap();
+    assert_eq!(normalized.session_id, session_id);
+    assert_eq!(normalized.occurred_at, occurred_at);
+  }
 }
 
 #[test]
@@ -1880,6 +1985,176 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 }
 
 #[tokio::test]
+async fn workflow_command_span_includes_handler_and_admission_but_not_background_upload() {
+  let mut setup = Setup::new();
+  setup.drain_buffer_events();
+  tokio::fs::create_dir_all(setup.tmp_dir.path().join("buffer"))
+    .await
+    .unwrap();
+  let buffers = BufferConfigList {
+    buffer_config: vec![default_buffer_config(
+      BufferType::TRIGGER,
+      Some(match_message(COMMAND_OUTCOME_MESSAGE)),
+    )],
+    ..Default::default()
+  };
+  setup
+    .buffer_manager
+    .update_from_config(&buffers, false)
+    .await
+    .unwrap();
+  let (_config_update_tx, config_update_rx) = mpsc::channel(1);
+  let (buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    Rule {
+      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+        command_selector: Some(WorkflowCommandSelector {
+          command_selector: Some(
+            workflow_command_selector::Command_selector::RegisteredCommand(
+              workflow_command_selector::RegisteredCommand {
+                registered_command_id: "handler".to_string(),
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        })
+        .into(),
+        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+          seconds: 60,
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    },
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+  ]);
+  let state_store = TestStore::new().await;
+  let state_store = (*state_store).clone();
+  let mut config = setup.make_config_update(workflows);
+  config.buffer_selector = BufferSelector::new(&buffers).unwrap();
+  let mut buffer = buffer.update(config, &state_store).await;
+  let started_at = OffsetDateTime::UNIX_EPOCH;
+  let clock = Arc::new(TestTimeProvider::new(started_at));
+  buffer.time_provider = clock.clone();
+  buffer.replayer.forward_logs_to_pipeline = true;
+
+  let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+  let (result_tx, result_rx) = oneshot::channel();
+  let (returned_tx, returned_rx) = oneshot::channel();
+  let registry = RegisteredCommandDispatcher::default();
+  registry.register(
+    "handler".into(),
+    Arc::new(GatedAttachmentHandler {
+      started_tx,
+      result_rx: Mutex::new(Some(result_rx)),
+      returned_tx: Mutex::new(Some(returned_tx)),
+    }),
+  );
+  let (completion_tx, completion_rx) = mpsc::channel(1);
+  let attachment_store = buffer.workflow_attachment_store();
+  let store = attachment_store.get().await.unwrap();
+  let admission_permit = store.block_admissions_for_test().await;
+  buffer.workflow_command_dispatcher = WorkflowCommandDispatcher::new(
+    registry,
+    CommandExecutionPolicy::new(&setup.runtime),
+    completion_tx,
+    attachment_store,
+    RemoteScreenshotCaptureHandler::new(Arc::new(NoOpTarget)),
+  );
+  buffer.workflow_command_completion_rx = completion_rx;
+
+  buffer
+    .process_all_logs(normal_log("start"), &state_store, None)
+    .await
+    .unwrap();
+  buffer
+    .process_all_logs(normal_log("execute"), &state_store, None)
+    .await
+    .unwrap();
+  started_rx.recv().await.unwrap();
+  let start_fields = buffer.replayer.fields.lock().last().unwrap().clone();
+  assert!(!start_fields.contains_key(LOG_FIELD_NAME_DURATION_MS));
+  assert_eq!(buffer.replayer.timestamps.last(), Some(&started_at));
+  clock.advance(125.milliseconds());
+  result_tx
+    .send(CommandResult::Completed {
+      fields: LogFields::default(),
+      attachment: Some(CommandAttachment {
+        source: UploadSource::Bytes(b"attachment".to_vec()),
+        content_type: Some("application/octet-stream".into()),
+      }),
+    })
+    .unwrap();
+  returned_rx.await.unwrap();
+  // The handler has returned, but durable attachment admission is still blocked.
+  clock.advance(75.milliseconds());
+  assert!(matches!(
+    buffer.workflow_command_completion_rx.try_recv(),
+    Err(mpsc::error::TryRecvError::Empty)
+  ));
+  drop(admission_permit);
+  let completion = buffer.workflow_command_completion_rx.recv().await.unwrap();
+  let WorkflowCommandOutcome::SucceededWithAttachment { artifact_id, .. } = &completion.outcome
+  else {
+    panic!("expected a durably admitted attachment");
+  };
+  let artifact_id = *artifact_id;
+  assert!(!store.metadata(artifact_id).await.unwrap().unwrap().uploaded);
+  buffer
+    .process_workflow_command_completion(completion, &state_store)
+    .await;
+  assert_eq!(
+    buffer.replayer.logs.lock().as_slice(),
+    [
+      "start",
+      "execute",
+      COMMAND_START_MESSAGE,
+      COMMAND_OUTCOME_MESSAGE
+    ]
+  );
+  let end_fields = buffer.replayer.fields.lock().last().unwrap().clone();
+  assert_eq!(
+    end_fields.get(LOG_FIELD_NAME_SPAN_ID),
+    start_fields.get(LOG_FIELD_NAME_SPAN_ID)
+  );
+  assert_eq!(
+    end_fields.get(LOG_FIELD_NAME_DURATION_MS).unwrap().as_str(),
+    Some("200")
+  );
+  assert_eq!(clock.now(), started_at + 200.milliseconds());
+  assert_eq!(
+    buffer.replayer.timestamps.last(),
+    Some(&(started_at + 200.milliseconds()))
+  );
+
+  // The end is already emitted while the attachment is still awaiting background upload.
+  assert!(!store.metadata(artifact_id).await.unwrap().unwrap().uploaded);
+  clock.advance(5.seconds());
+  store.complete_upload(artifact_id).await.unwrap();
+  assert!(store.metadata(artifact_id).await.unwrap().unwrap().uploaded);
+  assert_eq!(
+    buffer
+      .replayer
+      .fields
+      .lock()
+      .last()
+      .unwrap()
+      .get(LOG_FIELD_NAME_DURATION_MS)
+      .unwrap()
+      .as_str(),
+    Some("200")
+  );
+}
+
+#[tokio::test]
 async fn workflow_command_completion_survives_metadata_failure() {
   let setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
@@ -2129,7 +2404,7 @@ async fn partially_written_log_does_not_add_synthetic_log_for_workflow_flush() {
 }
 
 #[tokio::test]
-async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads() {
+async fn workflow_command_lifecycle_retains_metadata_after_start_replay_failure() {
   let mut setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
   let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
@@ -2196,6 +2471,48 @@ async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads()
     .pop()
     .unwrap();
   let token = request.completion_token();
+  let mut start_logs = buffer.handle_log_replay_result(LogReplayResult {
+    workflow_commands_to_start: vec![request.clone()],
+    ..Default::default()
+  });
+  let (start_log, command_event) = start_logs.pop().unwrap();
+  assert_eq!(start_logs, [] as [(Log, Option<WorkflowCommandEvent>); 0]);
+  assert_eq!(command_event, Some(WorkflowCommandEvent::Start));
+  buffer
+    .replayer
+    .results
+    .lock()
+    .push_back(Err(anyhow::anyhow!("start replay failed")));
+  let (start_log, context) = workflow_generated_log(
+    start_log,
+    None,
+    Some(LogAttributesOverrides::OccurredAt(request.started_at)),
+  );
+  buffer
+    .process_all_logs_with_completion(start_log, &state_store, context, command_event)
+    .await
+    .map_err(|error| error.error)
+    .unwrap();
+  assert_eq!(
+    buffer.replayer.logs.lock().last().unwrap(),
+    COMMAND_START_MESSAGE
+  );
+  assert_eq!(
+    buffer.replayer.completion_tokens.lock().last().unwrap(),
+    &None
+  );
+  assert_eq!(
+    buffer
+      .replayer
+      .fields
+      .lock()
+      .last()
+      .unwrap()
+      .get("outcome_metadata")
+      .unwrap()
+      .as_str(),
+    Some("metadata_value"),
+  );
   buffer
     .replayer
     .results
@@ -2210,8 +2527,8 @@ async fn workflow_command_outcomes_include_metadata_and_schedule_debug_uploads()
       [(
         Log {
           log_level: log_level::INFO,
-          log_type: LogType::NORMAL,
-          message: "Command completed".into(),
+          log_type: LogType::SPAN,
+          message: COMMAND_OUTCOME_MESSAGE.into(),
           fields: LogFields::default(),
           matching_fields: LogFields::default(),
           occurred_at: OffsetDateTime::UNIX_EPOCH,
@@ -2271,8 +2588,8 @@ async fn failed_workflow_outcome_replay_releases_attachment() {
       [(
         Log {
           log_level: log_level::ERROR,
-          log_type: LogType::NORMAL,
-          message: "Command completed".into(),
+          log_type: LogType::SPAN,
+          message: COMMAND_OUTCOME_MESSAGE.into(),
           session_id: "session".into(),
           occurred_at: OffsetDateTime::now_utc(),
           fields: LogFields::default(),
@@ -2327,14 +2644,14 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
   let mut config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let mut missing_buffer = default_buffer_config(
     BufferType::CONTINUOUS,
-    Some(match_message("Command completed")),
+    Some(match_message(COMMAND_OUTCOME_MESSAGE)),
   );
   missing_buffer.id = "missing".to_string();
   config_update.buffer_selector = BufferSelector::new(&BufferConfigList {
     buffer_config: vec![
       default_buffer_config(
         BufferType::CONTINUOUS,
-        Some(match_message("Command completed")),
+        Some(match_message(COMMAND_OUTCOME_MESSAGE)),
       ),
       missing_buffer,
     ],
@@ -2348,8 +2665,8 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
       [(
         Log {
           log_level: log_level::ERROR,
-          log_type: LogType::NORMAL,
-          message: "Command completed".into(),
+          log_type: LogType::SPAN,
+          message: COMMAND_OUTCOME_MESSAGE.into(),
           session_id: "session".into(),
           occurred_at,
           fields: LogFields::default(),
@@ -2425,8 +2742,8 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
       [(
         Log {
           log_level: log_level::ERROR,
-          log_type: LogType::NORMAL,
-          message: "Command completed".into(),
+          log_type: LogType::SPAN,
+          message: COMMAND_OUTCOME_MESSAGE.into(),
           session_id: "session".into(),
           occurred_at,
           fields: LogFields::default(),

@@ -39,6 +39,7 @@ use bd_workflows::engine::{
 use bd_workflows::workflow::{
   WorkflowCommandCompletionError,
   WorkflowCommandCompletionToken,
+  WorkflowCommandEvent,
   WorkflowCommandOutcome,
   WorkflowCommandRequest,
   WorkflowDebugStateMap,
@@ -104,7 +105,7 @@ pub trait LogReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    completion_token: Option<WorkflowCommandCompletionToken>,
+    command_event: Option<WorkflowCommandEvent>,
     pipeline: &mut ProcessingPipeline,
     state: &bd_state::Store,
     now: OffsetDateTime,
@@ -134,13 +135,13 @@ impl LogReplay for LoggerReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    completion_token: Option<WorkflowCommandCompletionToken>,
+    command_event: Option<WorkflowCommandEvent>,
     pipeline: &mut ProcessingPipeline,
     state_store: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     pipeline
-      .process_log(log, completion_token.as_ref(), state_store, now)
+      .process_log(log, command_event.as_ref(), state_store, now)
       .await
   }
 
@@ -293,12 +294,13 @@ impl ProcessingPipeline {
 
   pub(crate) fn workflow_command_outcome_log(
     &self,
+    token: &WorkflowCommandCompletionToken,
     outcome: WorkflowCommandOutcome,
     now: OffsetDateTime,
-  ) -> Log {
+  ) -> Result<Log, WorkflowCommandCompletionError> {
     self
       .workflows_engine
-      .workflow_command_outcome_log(outcome, now)
+      .workflow_command_outcome_log(token, outcome, now)
   }
 
   pub(crate) fn accept_workflow_command_completion(
@@ -320,7 +322,7 @@ impl ProcessingPipeline {
   async fn process_log(
     &mut self,
     mut log: Log,
-    completion_token: Option<&WorkflowCommandCompletionToken>,
+    command_event: Option<&WorkflowCommandEvent>,
     state: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
@@ -357,8 +359,9 @@ impl ProcessingPipeline {
       &state_reader,
     );
 
-    let event = match completion_token {
-      Some(token) => WorkflowEvent::CommandCompletion {
+    let event = match command_event {
+      Some(WorkflowCommandEvent::Start) => WorkflowEvent::CommandStart(&log.log),
+      Some(WorkflowCommandEvent::Completion(token)) => WorkflowEvent::CommandCompletion {
         log: &log.log,
         token,
       },

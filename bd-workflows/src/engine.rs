@@ -38,6 +38,7 @@ use crate::config::{
 use crate::metrics::MetricsCollector;
 use crate::sankey_diagram::{self, PendingSankeyPathUpload};
 use crate::workflow::{
+  CommandSpan,
   SankeyPath,
   TriggeredAction,
   TriggeredActionEmitSankey,
@@ -688,7 +689,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     outcome: WorkflowCommandOutcome,
     now: OffsetDateTime,
   ) -> Result<WorkflowCommandLog, WorkflowCommandCompletionError> {
-    let log = self.workflow_command_outcome_log(outcome, now);
+    let log = self.workflow_command_outcome_log(token, outcome, now)?;
     self.accept_workflow_command_completion(token)?;
     Ok(WorkflowCommandLog {
       log,
@@ -696,13 +697,39 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     })
   }
 
-  #[must_use]
   pub fn workflow_command_outcome_log(
     &self,
+    token: &WorkflowCommandCompletionToken,
     outcome: WorkflowCommandOutcome,
     now: OffsetDateTime,
-  ) -> Log {
-    outcome.into_log(self.state.session_id.clone(), now)
+  ) -> Result<Log, WorkflowCommandCompletionError> {
+    let pending_command = self
+      .pending_workflow_command_index
+      .get(&token.0)
+      .and_then(|location| {
+        self
+          .state
+          .workflows
+          .get(location.workflow_index)?
+          .runs
+          .get(location.run_index)?
+          .traversals
+          .get(location.traversal_index)?
+          .pending_command
+          .as_ref()
+      })
+      .ok_or(WorkflowCommandCompletionError::UnknownToken)?;
+    if pending_command.completion_received {
+      return Err(WorkflowCommandCompletionError::AlreadyCompleted);
+    }
+    Ok(outcome.into_log(
+      self.state.session_id.clone(),
+      now,
+      &CommandSpan {
+        id: token.0.clone(),
+        started_at: pending_command.started_at.map(|timestamp| timestamp.0),
+      },
+    ))
   }
 
   pub fn accept_workflow_command_completion(
@@ -743,7 +770,10 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         for traversal in &mut run.traversals {
           if let Some(pending_command) = traversal.pending_command.as_mut() {
             pending_command.completion_received = true;
-            completion_tokens.push(pending_command.completion_token.clone());
+            completion_tokens.push((
+              pending_command.completion_token.clone(),
+              pending_command.started_at.map(|timestamp| timestamp.0),
+            ));
           }
         }
       }
@@ -754,13 +784,20 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
 
     completion_tokens
       .into_iter()
-      .map(|token| WorkflowCommandLog {
-        token: WorkflowCommandCompletionToken(token),
+      .map(|(token, started_at)| WorkflowCommandLog {
+        token: WorkflowCommandCompletionToken(token.clone()),
         log: WorkflowCommandOutcome::Failed {
           message: Some("workflow command interrupted by SDK restart".to_string()),
           fields: bd_log_primitives::LogFields::default(),
         }
-        .into_log(self.state.session_id.clone(), now),
+        .into_log(
+          self.state.session_id.clone(),
+          now,
+          &CommandSpan {
+            id: token,
+            started_at,
+          },
+        ),
       })
       .collect()
   }
@@ -941,7 +978,9 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         self.pending_session_start |= self.maybe_update_session(session_id);
         None
       },
-      WorkflowEvent::CommandCompletion { .. } | WorkflowEvent::SessionStart(_) => None,
+      WorkflowEvent::CommandStart(_)
+      | WorkflowEvent::CommandCompletion { .. }
+      | WorkflowEvent::SessionStart(_) => None,
     };
 
     let result = self.process_event_inner(event, log_destination_buffer_ids, state_reader, now);
@@ -1248,6 +1287,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
             action.command_selector,
             self.state.session_id.clone(),
             action.completion_token,
+            action.started_at,
           )
         })
         .collect(),

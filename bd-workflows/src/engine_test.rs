@@ -32,9 +32,25 @@ use bd_api::upload::IntentDecision;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
-use bd_log_matcher::builder::{field_equals, message_equals, or};
+use bd_log_matcher::builder::{and, field_equals, log_type_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{DataValue, FieldsRef, Log, LogFields, LogMessage, log_level};
+use bd_log_primitives::{
+  COMMAND_OUTCOME_MESSAGE,
+  COMMAND_START_MESSAGE,
+  DataValue,
+  FieldsRef,
+  LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_SPAN_ID,
+  LOG_FIELD_NAME_SPAN_NAME,
+  LOG_FIELD_NAME_SPAN_TYPE,
+  Log,
+  LogFields,
+  LogMessage,
+  SPAN_NAME_DEVICE_COMMAND,
+  SPAN_TYPE_END,
+  SPAN_TYPE_START,
+  log_level,
+};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{
   SankeyIntentRequest,
@@ -75,6 +91,7 @@ use bd_test_helpers::workflow::{
   TestFieldRef,
   TestFieldType,
   WorkflowBuilder,
+  extract_log_body_tag,
   extract_metric_tag,
   extract_metric_value,
   make_emit_counter_action,
@@ -182,7 +199,7 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
   let observed =
     state("observed").declare_transition(&observer_terminal, rule!(message_equals("never")));
   let observer =
-    state("observer").declare_transition(&observed, rule!(message_equals("Command completed")));
+    state("observer").declare_transition(&observed, rule!(message_equals(COMMAND_OUTCOME_MESSAGE)));
   let observer_start =
     state("observer_start").declare_transition(&observer, rule!(message_equals("start")));
 
@@ -204,6 +221,27 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
   let result = engine.process_log(TestLog::new("execute"));
   assert_eq!(1, result.workflow_commands_to_start.len());
   let token = result.workflow_commands_to_start[0].completion_token();
+  let start_log = result.workflow_commands_to_start[0].start_log();
+  assert_eq!(start_log.log_type, LogType::SPAN);
+  assert_eq!(
+    start_log
+      .fields
+      .get(LOG_FIELD_NAME_SPAN_ID)
+      .unwrap()
+      .as_str(),
+    Some(token.0.as_str())
+  );
+  let buffer_ids = TinySet::default();
+  let result = engine.engine.process_event(
+    WorkflowEvent::CommandStart(&start_log),
+    &buffer_ids,
+    &bd_state::InMemoryStateReader::default(),
+    start_log.occurred_at,
+  );
+  assert_eq!(
+    result.workflow_commands_to_start,
+    [] as [WorkflowCommandRequest; 0]
+  );
   assert!(
     engine
       .engine
@@ -257,6 +295,20 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
     )
     .unwrap();
   let attachment = outcome_log.log.command_attachment.as_ref().unwrap();
+  assert_eq!(outcome_log.log.log_type, LogType::SPAN);
+  assert_eq!(
+    outcome_log.log.fields.get(LOG_FIELD_NAME_SPAN_ID),
+    start_log.fields.get(LOG_FIELD_NAME_SPAN_ID)
+  );
+  assert_eq!(
+    outcome_log
+      .log
+      .fields
+      .get(LOG_FIELD_NAME_SPAN_TYPE)
+      .unwrap()
+      .as_str(),
+    Some(SPAN_TYPE_END)
+  );
   assert_eq!(attachment.artifact_id, artifact_id.to_string());
   assert_eq!(attachment.content_type, "image/jpeg");
   assert_eq!(attachment.size_bytes, 123);
@@ -312,6 +364,95 @@ async fn workflow_command_waits_for_its_terminal_outcome() {
       .contains_key(&token.0)
   );
   engine_assert_active_runs!(engine; 0; "start");
+}
+
+#[tokio::test]
+async fn workflow_command_start_matches_logs_and_metrics_without_dispatching_commands() {
+  let a_terminal = state("a_terminal");
+  let a_command = state("a_command").declare_transition(&a_terminal, workflow_command_rule());
+  let a_start = state("a_start").declare_transition(&a_command, rule!(message_equals("start a")));
+  let b_terminal = state("b_terminal");
+  let b_command = state("b_command").declare_transition(&b_terminal, workflow_command_rule());
+  let b_start = state("b_start").declare_transition(&b_command, rule!(message_equals("start b")));
+  let observer_terminal = state("observer_terminal");
+  let observed =
+    state("observed").declare_transition(&observer_terminal, rule!(message_equals("never")));
+  let observer_start = state("observer_start").declare_transition_with_actions(
+    &observed,
+    rule!(and(vec![
+      log_type_equals(LogType::SPAN),
+      message_equals(COMMAND_START_MESSAGE),
+      field_equals(LOG_FIELD_NAME_SPAN_NAME, SPAN_NAME_DEVICE_COMMAND),
+      field_equals(LOG_FIELD_NAME_SPAN_TYPE, SPAN_TYPE_START),
+    ])),
+    &[make_emit_counter_action(
+      "command_start_observed",
+      metric_value(1),
+      vec![
+        extract_metric_tag(LOG_FIELD_NAME_SPAN_ID, "span_id"),
+        extract_metric_tag(LOG_FIELD_NAME_SPAN_NAME, "span_name"),
+        extract_metric_tag(LOG_FIELD_NAME_SPAN_TYPE, "span_type"),
+        extract_metric_tag("log_level", "level"),
+        extract_metric_tag("log_type", "type"),
+        extract_log_body_tag(),
+      ],
+    )],
+  );
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![
+        WorkflowBuilder::new("a", &[&a_start, &a_command, &a_terminal]).make_config(),
+        WorkflowBuilder::new("b", &[&b_start, &b_command, &b_terminal]).make_config(),
+        WorkflowBuilder::new(
+          "observer",
+          &[&observer_start, &observed, &observer_terminal],
+        )
+        .make_config(),
+      ],
+    ))
+    .await;
+  engine.process_log(TestLog::new("start a"));
+  let request = engine
+    .process_log(TestLog::new("execute a"))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
+  engine.process_log(TestLog::new("start b"));
+  let start_log = request.start_log();
+  let token = request.completion_token();
+  let buffer_ids = TinySet::default();
+  let result = engine.engine.process_event(
+    WorkflowEvent::CommandStart(&start_log),
+    &buffer_ids,
+    &bd_state::InMemoryStateReader::default(),
+    start_log.occurred_at,
+  );
+  assert_eq!(
+    result.workflow_commands_to_start,
+    [] as [WorkflowCommandRequest; 0]
+  );
+  assert!(engine.pending_workflow_command_index.contains_key(&token.0));
+  engine_assert_active_runs!(engine; 2; "observed");
+  setup.collector.assert_workflow_counter_eq(
+    1,
+    "command_start_observed",
+    labels! {
+      "span_id" => token.0.as_str(),
+      "span_name" => SPAN_NAME_DEVICE_COMMAND,
+      "span_type" => SPAN_TYPE_START,
+      "level" => log_level::INFO.to_string().as_str(),
+      "type" => (LogType::SPAN as u32).to_string().as_str(),
+      "__log_body__" => COMMAND_START_MESSAGE,
+    },
+  );
+  assert_eq!(
+    engine
+      .process_log(TestLog::new("execute b"))
+      .workflow_commands_to_start
+      .len(),
+    1
+  );
 }
 
 #[tokio::test]
@@ -445,7 +586,7 @@ async fn workflow_command_blocks_other_transitions_until_completion() {
   let command = state("command")
     .declare_transition(&terminal, workflow_command_rule())
     .declare_transition(&bypass, rule!(message_equals("another event")))
-    .declare_transition(&bypass, rule!(message_equals("Command completed")));
+    .declare_transition(&bypass, rule!(message_equals(COMMAND_OUTCOME_MESSAGE)));
   let start = state("start").declare_transition(&command, rule!(message_equals("start")));
   let setup = Setup::new();
   let mut engine = setup
@@ -1175,14 +1316,13 @@ async fn recovered_workflow_command_is_failed_and_replayed() {
     ))
     .await;
 
-  engine.process_log(TestLog::new("start"));
-  assert_eq!(
-    1,
-    engine
-      .process_log(TestLog::new("execute"))
-      .workflow_commands_to_start
-      .len()
-  );
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  engine.process_log(timed_command_log("start", started_at));
+  let request = engine
+    .process_log(timed_command_log("execute", started_at))
+    .workflow_commands_to_start
+    .pop()
+    .unwrap();
   engine.maybe_persist(true).await;
 
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
@@ -1191,11 +1331,25 @@ async fn recovered_workflow_command_is_failed_and_replayed() {
       workflows,
     ))
     .await;
-  let now = OffsetDateTime::now_utc();
+  let now = started_at + 2.seconds();
   let recovered_logs = engine.engine.fail_recovered_workflow_commands(now);
   assert_eq!(1, recovered_logs.len());
-  assert_eq!(LogType::NORMAL, recovered_logs[0].log.log_type);
+  assert_eq!(LogType::SPAN, recovered_logs[0].log.log_type);
   assert_eq!(log_level::ERROR, recovered_logs[0].log.log_level);
+  assert_eq!(recovered_logs[0].token, request.completion_token());
+  assert_eq!(
+    recovered_logs[0].log.fields.get(LOG_FIELD_NAME_SPAN_ID),
+    request.start_log().fields.get(LOG_FIELD_NAME_SPAN_ID)
+  );
+  assert_eq!(
+    recovered_logs[0]
+      .log
+      .fields
+      .get(LOG_FIELD_NAME_DURATION_MS)
+      .unwrap()
+      .as_str(),
+    Some("2000")
+  );
   engine.maybe_persist(true).await;
 
   let empty_buffer_ids = TinySet::default();

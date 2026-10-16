@@ -43,10 +43,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use time::OffsetDateTime;
 use tokio::fs;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{SemaphorePermit, mpsc, oneshot, watch};
 use uuid::Uuid;
 
 const MIN_READ_LIMIT_BYTES: u64 = 32 * 1024 * 1024;
+
+impl AttachmentStore {
+  pub(crate) async fn block_admissions_for_test(&self) -> SemaphorePermit<'_> {
+    let permit = self.admissions.acquire().await.unwrap();
+    log::debug!("workflow attachment admissions blocked for test");
+    permit
+  }
+}
 
 #[tokio::test]
 async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_payloads() {
@@ -709,7 +717,7 @@ async fn workflow_attachment_staging_does_not_acquire_admission_permit() {
     )
     .await
     .unwrap();
-  let permit = store.admissions.acquire().await.unwrap();
+  let permit = store.block_admissions_for_test().await;
   store.admissions.close();
   let mut client = MockClient::new();
   client

@@ -20,6 +20,7 @@ use bd_event_buffer::ProviderSnapshot;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  LOG_FIELD_NAME_DURATION_MS,
   LogFieldValue,
   LogFields,
   LogLevel,
@@ -289,7 +290,7 @@ impl LoggerHandle {
 
   pub fn log_resource_utilization(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
     fields.insert(
-      "_duration_ms".into(),
+      LOG_FIELD_NAME_DURATION_MS.into(),
       AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
 
@@ -361,7 +362,7 @@ impl LoggerHandle {
     duration: time::Duration,
   ) {
     fields.insert(
-      "_duration_ms".into(),
+      LOG_FIELD_NAME_DURATION_MS.into(),
       AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
 
@@ -384,7 +385,7 @@ impl LoggerHandle {
   pub fn log_sdk_start(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
     fields.extend([
       (
-        "_duration_ms".into(),
+        LOG_FIELD_NAME_DURATION_MS.into(),
         AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
       ),
       (
@@ -436,7 +437,7 @@ impl LoggerHandle {
     log::debug!("emitting app update event: {version:?}");
 
     fields.insert(
-      "_duration_ms".into(),
+      LOG_FIELD_NAME_DURATION_MS.into(),
       AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
     if let Some(app_install_size_bytes) = app_install_size_bytes {

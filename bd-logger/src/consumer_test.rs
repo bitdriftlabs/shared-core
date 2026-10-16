@@ -50,7 +50,7 @@ use bd_buffer::{
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
-use bd_log_primitives::{EncodableLog, Log, log_level};
+use bd_log_primitives::{COMMAND_OUTCOME_MESSAGE, EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::ApiRequest;
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::logging::payload::{Log as ProtoLog, LogType};
@@ -750,7 +750,7 @@ fn direct_command_artifacts_are_not_workflow_attachments() {
     Log {
       log_level: log_level::INFO,
       log_type: LogType::NORMAL,
-      message: "Command completed".into(),
+      message: COMMAND_OUTCOME_MESSAGE.into(),
       fields: [].into(),
       matching_fields: [].into(),
       session_id: "session".into(),

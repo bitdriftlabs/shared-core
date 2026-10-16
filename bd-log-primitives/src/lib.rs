@@ -42,6 +42,25 @@ pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
 pub const LOG_FIELD_NAME_LEVEL: &str = "log_level";
 pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
 
+// Shared wire names and values for SDK span logs and backend workflow matchers.
+pub const LOG_FIELD_NAME_SPAN_ID: &str = "_span_id";
+pub const LOG_FIELD_NAME_SPAN_NAME: &str = "_span_name";
+pub const LOG_FIELD_NAME_SPAN_TYPE: &str = "_span_type";
+pub const LOG_FIELD_NAME_DURATION_MS: &str = "_duration_ms";
+pub const LOG_FIELD_NAME_COMMAND_MESSAGE: &str = "_command_message";
+pub const LOG_FIELD_NAME_COMMAND_STATUS: &str = "_command_status";
+pub const LOG_FIELD_PREFIX_SPAN: &str = "_span_";
+pub const LOG_FIELD_PREFIX_COMMAND: &str = "_command_";
+pub const LOG_FIELD_PREFIX_WORKFLOW_COMMAND: &str = "_workflow_command_";
+pub const SPAN_TYPE_START: &str = "start";
+pub const SPAN_TYPE_END: &str = "end";
+pub const SPAN_NAME_DEVICE_COMMAND: &str = "_device_command";
+pub const SPAN_NAME_GRAPHQL: &str = "_graphql";
+pub const COMMAND_STATUS_SUCCESS: &str = "success";
+pub const COMMAND_STATUS_FAILURE: &str = "failure";
+pub const COMMAND_START_MESSAGE: &str = "Command started";
+pub const COMMAND_OUTCOME_MESSAGE: &str = "Command completed";
+
 //
 // LogIngress
 //

@@ -12,6 +12,7 @@ use super::{
   CommandInvocation,
   CommandResult,
   DeviceCommandDispatcher,
+  DeviceCommandExecution,
   RegisteredCommandDispatcher,
   RegisteredCommandHandler,
   TestHooks,
@@ -31,9 +32,32 @@ use crate::workflow_attachment::AttachmentStoreHandle;
 use bd_api::DataUpload;
 use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
 use bd_artifact_upload::{Client, MockClient, UploadSource};
-use bd_event_buffer::{EventBuffer, EventBufferLimits};
+use bd_event_buffer::{
+  EventBuffer,
+  EventBufferEntry,
+  EventBufferLimits,
+  EventContext,
+  LoggerIngressPayload,
+};
 use bd_log_primitives::command_attachment::AttachmentSource;
-use bd_log_primitives::{DataValue, LogFields, log_level};
+use bd_log_primitives::{
+  COMMAND_OUTCOME_MESSAGE,
+  COMMAND_STATUS_FAILURE,
+  COMMAND_STATUS_SUCCESS,
+  DataValue,
+  LOG_FIELD_NAME_COMMAND_MESSAGE,
+  LOG_FIELD_NAME_COMMAND_STATUS,
+  LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_SPAN_ID,
+  LOG_FIELD_NAME_SPAN_NAME,
+  LOG_FIELD_NAME_SPAN_TYPE,
+  LogAttributesOverrides,
+  LogFields,
+  SPAN_NAME_DEVICE_COMMAND,
+  SPAN_TYPE_END,
+  SPAN_TYPE_START,
+  log_level,
+};
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
 use bd_proto::protos::client::api::{DeviceCommandUpdate, device_command_update};
 use bd_proto::protos::logging::payload::LogType;
@@ -52,14 +76,14 @@ use bd_session_replay::{
   Target,
 };
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
-use bd_time::{OffsetDateTimeExt, SystemTimeProvider};
-use bd_workflows::workflow::{CommandArtifactMetadata, WorkflowCommandOutcome};
+use bd_time::{OffsetDateTimeExt, SystemTimeProvider, TestTimeProvider};
+use bd_workflows::workflow::{CommandArtifactMetadata, CommandSpan, WorkflowCommandOutcome};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::future::{Future, pending, poll_fn};
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::Poll;
 use tempfile::TempDir;
@@ -223,9 +247,217 @@ fn direct_dispatcher(
       policy,
       screenshot_handler,
       Arc::new(DeviceCommandState::new(Arc::new(SystemTimeProvider))),
+      Arc::new(SystemTimeProvider),
     ),
     upload_rx,
   )
+}
+
+fn direct_execution(
+  dispatcher: &DeviceCommandDispatcher,
+  command_id: &str,
+) -> DeviceCommandExecution {
+  DeviceCommandExecution {
+    senders: dispatcher.senders.clone(),
+    span: CommandSpan {
+      id: command_id.to_owned(),
+      started_at: Some(dispatcher.time_provider.now()),
+    },
+    session_id: dispatcher.session_strategy.session_id(),
+    time_provider: dispatcher.time_provider.clone(),
+    ended: AtomicBool::new(false),
+  }
+}
+
+async fn command_event_buffer(dispatcher: &mut DeviceCommandDispatcher) -> EventBuffer {
+  let logs = EventBuffer::new(EventBufferLimits {
+    log_limit_bytes: 100_000,
+    total_limit_bytes: 100_000,
+  });
+  logs.mark_startup_gate_ready();
+  logs.start_startup_gate(None);
+  let opening = logs.next_batch(64).await;
+  assert!(opening.startup_gate_opened.is_some());
+  assert!(opening.entries.is_empty());
+  dispatcher.senders.log_sender = LogSender::from_event_buffer(logs.clone());
+  logs
+}
+
+#[tokio::test]
+async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or_dispatch() {
+  for scenario in [
+    "success",
+    "unknown",
+    "accepted_ack_failure",
+    "terminal_ack_failure",
+  ] {
+    let (directory, _runtime, policy) = command_runtime();
+    let registry = RegisteredCommandDispatcher::new(
+      [(
+        "pending".into(),
+        Arc::new(Handler) as Arc<dyn RegisteredCommandHandler>,
+      )]
+      .into(),
+    );
+    let (mut dispatcher, mut updates) = direct_dispatcher(
+      directory.path(),
+      policy,
+      registry,
+      RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+      Arc::new(MockClient::new()),
+    );
+    let started_at = OffsetDateTime::UNIX_EPOCH;
+    let clock = Arc::new(TestTimeProvider::new(started_at));
+    dispatcher.time_provider = clock.clone();
+    let logs = command_event_buffer(&mut dispatcher).await;
+    let command = DeviceCommandRequest {
+      command_id: Uuid::new_v4().to_string().into(),
+      command_selector: (scenario != "unknown").then(registered_selector).into(),
+      sdk_instance_id: dispatcher.command_state.sdk_instance_id.clone().into(),
+      expires_at: (OffsetDateTime::now_utc() + Duration::days(1)).into_proto(),
+      ..Default::default()
+    };
+    dispatcher.dispatch_configuration(vec![command.clone()]);
+    dispatcher.dispatch_configuration(vec![command.clone()]);
+    let Some(DataUpload::DeviceCommandUpdate(first)) = updates.recv().await else {
+      panic!("expected command update");
+    };
+    if scenario == "unknown" {
+      assert!(matches!(
+        first.payload.update_type,
+        Some(device_command_update::Update_type::Failed(_))
+      ));
+      first.response_tx.send(()).unwrap();
+    } else {
+      assert!(matches!(
+        first.payload.update_type,
+        Some(device_command_update::Update_type::Accepted(_))
+      ));
+      clock.advance(Duration::milliseconds(125));
+      if scenario == "accepted_ack_failure" {
+        drop(first.response_tx);
+      } else {
+        first.response_tx.send(()).unwrap();
+        let Some(DataUpload::DeviceCommandUpdate(terminal)) = updates.recv().await else {
+          panic!("expected terminal command update");
+        };
+        assert!(matches!(
+          terminal.payload.update_type,
+          Some(device_command_update::Update_type::Completed(_))
+        ));
+        clock.advance(Duration::seconds(10));
+        if scenario == "terminal_ack_failure" {
+          drop(terminal.response_tx);
+        } else {
+          terminal.response_tx.send(()).unwrap();
+        }
+      }
+    }
+    let task = dispatcher
+      .execution_tasks
+      .lock()
+      .as_mut()
+      .unwrap()
+      .pop()
+      .unwrap();
+    task.await.unwrap();
+    dispatcher.dispatch_configuration(vec![command.clone()]);
+    assert!(
+      dispatcher
+        .execution_tasks
+        .lock()
+        .as_ref()
+        .unwrap()
+        .is_empty()
+    );
+    let entries = logs.next_batch(64).await.entries;
+    logs.close();
+    assert!(logs.next_batch(64).await.entries.is_empty());
+    assert_eq!(entries.len(), 2, "{scenario}");
+    for (index, entry) in entries.into_iter().enumerate() {
+      let EventBufferEntry::Ingress(event) = entry else {
+        panic!("expected span log");
+      };
+      let EventContext::CurrentProcess(context) = event.context else {
+        panic!("expected current-process span context");
+      };
+      assert_eq!(
+        context.session_id,
+        dispatcher.session_strategy.session_id().unwrap()
+      );
+      let LoggerIngressPayload::Log(log) = event.payload else {
+        panic!("expected span log");
+      };
+      assert_eq!(log.log_type, LogType::SPAN);
+      assert_eq!(
+        log
+          .fields
+          .get(LOG_FIELD_NAME_SPAN_ID)
+          .unwrap()
+          .value
+          .as_str(),
+        Some(command.command_id.as_str())
+      );
+      assert_eq!(
+        log
+          .fields
+          .get(LOG_FIELD_NAME_SPAN_NAME)
+          .unwrap()
+          .value
+          .as_str(),
+        Some(SPAN_NAME_DEVICE_COMMAND)
+      );
+      assert_eq!(
+        log
+          .fields
+          .get(LOG_FIELD_NAME_SPAN_TYPE)
+          .unwrap()
+          .value
+          .as_str(),
+        Some(
+          if index == 0 {
+            SPAN_TYPE_START
+          } else {
+            SPAN_TYPE_END
+          }
+        )
+      );
+      let duration_ms = if scenario == "unknown" { "0" } else { "125" };
+      if index == 0 {
+        assert!(!log.fields.contains_key(LOG_FIELD_NAME_DURATION_MS));
+        assert!(!log.fields.contains_key(LOG_FIELD_NAME_COMMAND_STATUS));
+        let Some(LogAttributesOverrides::OccurredAt(time)) = log.attributes_overrides else {
+          panic!("expected the original start timestamp");
+        };
+        assert_eq!(time, started_at);
+      } else {
+        assert_eq!(
+          log
+            .fields
+            .get(LOG_FIELD_NAME_DURATION_MS)
+            .unwrap()
+            .value
+            .as_str(),
+          Some(duration_ms)
+        );
+        assert_eq!(
+          log
+            .fields
+            .get(LOG_FIELD_NAME_COMMAND_STATUS)
+            .unwrap()
+            .value
+            .as_str(),
+          Some(
+            if matches!(scenario, "unknown" | "accepted_ack_failure") {
+              COMMAND_STATUS_FAILURE
+            } else {
+              COMMAND_STATUS_SUCCESS
+            }
+          ),
+        );
+      }
+    }
+  }
 }
 
 fn workflow_dispatcher(
@@ -272,13 +504,16 @@ async fn direct_registered_command_timeout_reports_one_terminal_failure() {
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
   registry.register("pending".into(), handler);
-  let (dispatcher, mut updates) = direct_dispatcher(
+  let (mut dispatcher, mut updates) = direct_dispatcher(
     directory.path(),
     policy,
     registry,
     RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
     Arc::new(MockClient::new()),
   );
+  let clock = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  dispatcher.time_provider = clock.clone();
+  let logs = command_event_buffer(&mut dispatcher).await;
   let command = DeviceCommandRequest {
     command_id: Uuid::new_v4().to_string().into(),
     command_selector: Some(registered_selector()).into(),
@@ -296,12 +531,40 @@ async fn direct_registered_command_timeout_reports_one_terminal_failure() {
   started_rx.recv().await.unwrap();
   dispatcher.dispatch_configuration(vec![]);
   dispatcher.dispatch_configuration(vec![command]);
+  clock.advance(Duration::seconds(5));
   tokio::time::advance(Duration::seconds(5).unsigned_abs()).await;
   assert_timeout_update(acknowledge_update(&mut updates).await);
   dropped_rx.await.unwrap();
   assert_eq!(
     updates.try_recv().unwrap_err(),
     mpsc::error::TryRecvError::Empty
+  );
+  let entries = logs.next_batch(64).await.entries;
+  assert_eq!(entries.len(), 2);
+  let EventBufferEntry::Ingress(event) = &entries[1] else {
+    panic!("expected timeout span end");
+  };
+  let LoggerIngressPayload::Log(log) = &event.payload else {
+    panic!("expected timeout span end");
+  };
+  assert_eq!(log.log_type, LogType::SPAN);
+  assert_eq!(
+    log
+      .fields
+      .get(LOG_FIELD_NAME_DURATION_MS)
+      .unwrap()
+      .value
+      .as_str(),
+    Some("5000")
+  );
+  assert_eq!(
+    log
+      .fields
+      .get(LOG_FIELD_NAME_COMMAND_MESSAGE)
+      .unwrap()
+      .value
+      .as_str(),
+    Some("command timed out")
   );
 }
 
@@ -343,7 +606,8 @@ async fn direct_command_update_expiry_bounds_channel_byte_budget_and_ack_wait() 
     };
     let update = large_command_update(command.command_id.as_str());
     let started_at = tokio::time::Instant::now();
-    let error = send_device_command_update(&dispatcher.senders, update)
+    let execution = direct_execution(&dispatcher, &command.command_id);
+    let error = send_device_command_update(&execution, update)
       .await
       .unwrap_err();
     assert_eq!(error.to_string(), "command expired while submitting update");
@@ -397,10 +661,9 @@ async fn direct_command_updates_backpressure_without_losing_large_results() {
   }
   let first = large_command_update(&first_id);
   let second = large_command_update(&second_id);
-  let mut first_submission = Box::pin(send_device_command_update(
-    &dispatcher.senders,
-    first.clone(),
-  ));
+  let first_execution = direct_execution(&dispatcher, &first_id);
+  let second_execution = direct_execution(&dispatcher, &second_id);
+  let mut first_submission = Box::pin(send_device_command_update(&first_execution, first.clone()));
   let pending = poll_fn(|context| Poll::Ready(first_submission.as_mut().poll(context))).await;
   assert_matches::assert_matches!(pending, Poll::Pending);
   let Some(DataUpload::DeviceCommandUpdate(first_tracked)) = updates.recv().await else {
@@ -408,7 +671,7 @@ async fn direct_command_updates_backpressure_without_losing_large_results() {
   };
   assert_eq!(first_tracked.payload, first);
   let mut second_submission = Box::pin(send_device_command_update(
-    &dispatcher.senders,
+    &second_execution,
     second.clone(),
   ));
   let pending = poll_fn(|context| Poll::Ready(second_submission.as_mut().poll(context))).await;
@@ -443,6 +706,7 @@ async fn direct_command_admission_resumes_only_after_original_capacity_expiry() 
     Arc::new(MockClient::new()),
   );
   let clock = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let logs = command_event_buffer(&mut dispatcher).await;
   let state = Arc::new(DeviceCommandState::new(clock.clone()));
   dispatcher.command_state = state.clone();
   dispatcher.senders.command_state = state.clone();
@@ -465,6 +729,9 @@ async fn direct_command_admission_resumes_only_after_original_capacity_expiry() 
   replaced.command_id = Uuid::new_v4().to_string().into();
   dispatcher.dispatch_configuration(vec![replaced]);
   hooks.sleep_started.notified().await;
+  let pending =
+    poll_fn(|context| Poll::Ready(Box::pin(logs.next_batch(64)).as_mut().poll(context))).await;
+  assert!(pending.is_pending());
   dispatcher.dispatch_configuration(vec![command.clone()]);
   hooks.sleep_started.notified().await;
   assert_eq!(
@@ -480,6 +747,7 @@ async fn direct_command_admission_resumes_only_after_original_capacity_expiry() 
   let accepted = acknowledge_update(&mut updates).await;
   assert_eq!(accepted.command_id, command.command_id.to_string());
   started_rx.recv().await.unwrap();
+  assert_eq!(logs.next_batch(64).await.entries.len(), 1);
   dispatcher.dispatch_configuration(vec![command]);
   assert_eq!(
     updates.try_recv().unwrap_err(),
@@ -1072,10 +1340,16 @@ fn completed_attachment(source: UploadSource, content_type: Option<String>) -> C
 fn terminal_device_command_updates_produce_outcome_logs() {
   let command_id = Uuid::new_v4().to_string();
   let artifact_id = Uuid::new_v4();
+  let started_at = OffsetDateTime::UNIX_EPOCH;
+  let span = CommandSpan {
+    id: command_id.clone(),
+    started_at: Some(started_at),
+  };
+  let now = started_at + Duration::milliseconds(125);
   let context = super::device_command_context(
     [
       ("count".into(), DataValue::U64(7)),
-      ("_command_status".into(), "spoofed".into()),
+      (LOG_FIELD_NAME_COMMAND_STATUS.into(), "spoofed".into()),
     ]
     .into(),
   );
@@ -1088,20 +1362,27 @@ fn terminal_device_command_updates_produce_outcome_logs() {
   let log = device_command_outcome_log(
     &completed,
     Some(CommandArtifactMetadata::new(Some("image/jpeg".into()), 123)),
+    &span,
+    now,
   )
   .unwrap();
   assert_eq!(log.log_level, log_level::INFO);
-  assert_eq!(log.log_type, LogType::NORMAL);
-  assert_eq!(log.message.as_str(), Some("Command completed"));
+  assert_eq!(log.log_type, LogType::SPAN);
+  assert_eq!(log.message.as_str(), Some(COMMAND_OUTCOME_MESSAGE));
   assert_eq!(
-    log.fields.get("_command_status").unwrap().value.as_str(),
-    Some("success")
+    log
+      .fields
+      .get(LOG_FIELD_NAME_COMMAND_STATUS)
+      .unwrap()
+      .value
+      .as_str(),
+    Some(COMMAND_STATUS_SUCCESS)
   );
   assert_eq!(log.fields.get("count").unwrap().value, DataValue::U64(7));
   let attachment = log.command_attachment.as_ref().unwrap();
   assert_eq!(attachment.source, AttachmentSource::DIRECT_COMMAND);
   assert_eq!(attachment.artifact_id, artifact_id.to_string());
-  assert!(!log.fields.contains_key("_command_message"));
+  assert!(!log.fields.contains_key(LOG_FIELD_NAME_COMMAND_MESSAGE));
   assert_eq!(attachment.content_type, "image/jpeg");
   assert_eq!(attachment.size_bytes, 123);
 
@@ -1114,14 +1395,24 @@ fn terminal_device_command_updates_produce_outcome_logs() {
     ]
     .into(),
   );
-  let log = device_command_outcome_log(&failed, None).unwrap();
+  let log = device_command_outcome_log(&failed, None, &span, now).unwrap();
   assert_eq!(log.log_level, log_level::ERROR);
   assert_eq!(
-    log.fields.get("_command_status").unwrap().value.as_str(),
-    Some("failure")
+    log
+      .fields
+      .get(LOG_FIELD_NAME_COMMAND_STATUS)
+      .unwrap()
+      .value
+      .as_str(),
+    Some(COMMAND_STATUS_FAILURE)
   );
   assert_eq!(
-    log.fields.get("_command_message").unwrap().value.as_str(),
+    log
+      .fields
+      .get(LOG_FIELD_NAME_COMMAND_MESSAGE)
+      .unwrap()
+      .value
+      .as_str(),
     Some("not registered")
   );
   assert_eq!(
@@ -1135,7 +1426,7 @@ fn terminal_device_command_updates_produce_outcome_logs() {
 
   let completed_without_attachment =
     completed_device_command_update(&command_id, false, None, no_attachment());
-  let log = device_command_outcome_log(&completed_without_attachment, None).unwrap();
+  let log = device_command_outcome_log(&completed_without_attachment, None, &span, now).unwrap();
   assert!(!log.fields.contains_key("_command_artifact_id"));
   assert!(!log.fields.contains_key("_command_artifact_content_type"));
   assert!(!log.fields.contains_key("_command_artifact_size_bytes"));
@@ -1147,7 +1438,9 @@ fn terminal_device_command_updates_produce_outcome_logs() {
         )),
         ..Default::default()
       },
-      None
+      None,
+      &span,
+      now
     )
     .is_none()
   );

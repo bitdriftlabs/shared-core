@@ -31,8 +31,23 @@ use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_log_matcher::builder::{and, feature_flag_equals, field_equals, message_equals};
 use bd_log_metadata::LogFields;
-use bd_log_primitives::AnnotatedLogFields;
 use bd_log_primitives::command_attachment::AttachmentSource;
+use bd_log_primitives::{
+  AnnotatedLogFields,
+  COMMAND_OUTCOME_MESSAGE,
+  COMMAND_START_MESSAGE,
+  COMMAND_STATUS_FAILURE,
+  COMMAND_STATUS_SUCCESS,
+  LOG_FIELD_NAME_COMMAND_MESSAGE,
+  LOG_FIELD_NAME_COMMAND_STATUS,
+  LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_SPAN_ID,
+  LOG_FIELD_NAME_SPAN_NAME,
+  LOG_FIELD_NAME_SPAN_TYPE,
+  SPAN_NAME_DEVICE_COMMAND,
+  SPAN_TYPE_END,
+  SPAN_TYPE_START,
+};
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{
   BdTailConfigurations,
@@ -51,8 +66,13 @@ use bd_proto::protos::client::api::{
   debug_data_request,
   device_command_update,
 };
-use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
+use bd_proto::protos::config::v1::config::log_matcher::{
+  BaseLogMatcher,
+  Match_type,
+  base_log_matcher,
+};
+use bd_proto::protos::config::v1::config::{BufferConfigList, LogMatcher as BufferLogMatcher};
 use bd_proto::protos::filter::filter::Filter;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::CompressedContents;
@@ -92,6 +112,7 @@ use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_test_helpers::test_api_server::StreamAction;
+use bd_test_helpers::test_api_server::log_upload::WrappedLog;
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   TestFieldRef,
@@ -1868,7 +1889,7 @@ fn workflow_generate_log_to_histogram() {
         "message",
         &[
           (
-            "_duration_ms",
+            LOG_FIELD_NAME_DURATION_MS,
             TestFieldType::Subtract(
               TestFieldRef::SavedTimestampId("timestamp2"),
               TestFieldRef::SavedTimestampId("timestamp1"),
@@ -1891,7 +1912,7 @@ fn workflow_generate_log_to_histogram() {
     rule!(field_equals("_generate_log_id", "id")),
     &[make_emit_histogram_action(
       "foo_id",
-      extract_metric_value("_duration_ms"),
+      extract_metric_value(LOG_FIELD_NAME_DURATION_MS),
       vec![metric_tag("fixed_key", "fixed_value")],
     )],
   );
@@ -1948,7 +1969,7 @@ fn workflow_generate_log_to_histogram() {
     assert_eq!(log_upload.logs().len(), 3);
     assert_eq!(log_upload.logs()[2].message(), "message");
     assert_eq!(log_upload.logs()[2].log_type(), LogType::SPAN);
-    assert_eq!(log_upload.logs()[2].field("_duration_ms"), "1003");
+    assert_eq!(log_upload.logs()[2].field(LOG_FIELD_NAME_DURATION_MS), "1003");
     assert_ne!(log_upload.logs()[2].session_id(), "");
     assert_ne!(log_upload.logs()[2].timestamp(), OffsetDateTime::UNIX_EPOCH);
   });
@@ -2780,13 +2801,22 @@ fn buffer_dump_device_command_uploads_and_reports_terminal_context() {
       .expect("buffer dump accepted total"),
     update => panic!("unexpected device command accepted update: {update:?}"),
   };
-  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.logs().len(), 1);
-    assert_eq!(log_upload.logs()[0].message(), "buffered before command");
-    assert_eq!(log_upload.logs()[0].stream_ids(), &[command_id]);
-    assert_eq!(log_upload.proto_log_payload_bytes(), accepted_total_result_bytes);
-    assert_eq!(log_upload.command_id(), Some(command_id));
-  });
+  let dump = setup.server.blocking_next_log_upload().unwrap();
+  let dump_logs = dump.logs();
+  let dumped_count = u64::try_from(dump_logs.len()).unwrap();
+  assert!(
+    dump_logs
+      .iter()
+      .any(|log| log.message() == "buffered before command")
+  );
+  assert!(dump_logs.iter().all(|log| {
+    matches!(
+      log.message(),
+      "buffered before command" | COMMAND_START_MESSAGE
+    ) && log.stream_ids() == &[command_id]
+  }));
+  assert_eq!(dump.proto_log_payload_bytes(), accepted_total_result_bytes);
+  assert_eq!(dump.command_id(), Some(command_id));
   assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
     command_id: received_command_id,
     update_sequence_number: 2,
@@ -2797,7 +2827,7 @@ fn buffer_dump_device_command_uploads_and_reports_terminal_context() {
     assert!(!completed.output_truncated);
     assert_matches!(
       completed.context.as_ref().and_then(|context| context.fields.get("uploaded_log_count")),
-      Some(value) if value.data_type == Some(Data_type::IntData(1))
+      Some(value) if value.data_type == Some(Data_type::IntData(dumped_count))
     );
     assert_matches!(
       completed.attachment.as_ref().and_then(|attachment| attachment.attachment_type.as_ref()),
@@ -2813,17 +2843,21 @@ fn buffer_dump_device_command_uploads_and_reports_terminal_context() {
     .current_api_stream()
     .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.logs().len(), 1);
-    assert_eq!(log_upload.logs()[0].message(), "Command completed");
-    assert_eq!(log_upload.logs()[0].field("_command_status"), "success");
+    let mut lifecycle_logs: Vec<_> = dump_logs.into_iter()
+      .filter(|log| log.message() == COMMAND_START_MESSAGE).collect();
+    let remaining = log_upload.logs();
+    let end = remaining.iter().find(|log| log.message() == COMMAND_OUTCOME_MESSAGE).unwrap();
+    assert_eq!(end.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_SUCCESS);
     assert_eq!(
-      log_upload.logs()[0]
+      end
         .typed_fields()
         .into_iter()
         .find(|(key, _)| key == "uploaded_log_count")
         .map(|(_, value)| value),
-      Some(DataValue::U64(1))
+      Some(DataValue::U64(dumped_count))
     );
+    lifecycle_logs.extend(remaining);
+    assert_command_span_pair(&lifecycle_logs, Some(command_id));
   });
 }
 
@@ -2921,12 +2955,21 @@ fn buffer_dump_device_command_bypasses_generic_lookback() {
       ..
     })
   );
-  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.logs().len(), 1);
-    assert_eq!(log_upload.logs()[0].message(), "expired before command");
-    assert_eq!(log_upload.logs()[0].stream_ids(), &[command_id]);
-    assert_eq!(log_upload.command_id(), Some(command_id));
-  });
+  let dump = setup.server.blocking_next_log_upload().unwrap();
+  let logs = dump.logs();
+  let dumped_count = u64::try_from(logs.len()).unwrap();
+  assert!(
+    logs
+      .iter()
+      .any(|log| log.message() == "expired before command")
+  );
+  assert!(logs.iter().all(|log| {
+    matches!(
+      log.message(),
+      "expired before command" | COMMAND_START_MESSAGE
+    ) && log.stream_ids() == &[command_id]
+  }));
+  assert_eq!(dump.command_id(), Some(command_id));
   assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
     update_sequence_number: 2,
     update_type: Some(device_command_update::Update_type::Completed(completed)),
@@ -2935,7 +2978,7 @@ fn buffer_dump_device_command_bypasses_generic_lookback() {
     assert!(!completed.output_truncated);
     assert_matches!(
       completed.context.as_ref().and_then(|context| context.fields.get("uploaded_log_count")),
-      Some(value) if value.data_type == Some(Data_type::IntData(1))
+      Some(value) if value.data_type == Some(Data_type::IntData(dumped_count))
     );
     assert_matches!(
       completed.attachment.as_ref().and_then(|attachment| attachment.attachment_type.as_ref()),
@@ -2964,12 +3007,59 @@ fn with_command_outcome_buffer(
   sow.buffer_config_list = Some(BufferConfigList {
     buffer_config: vec![default_buffer_config(
       Type::TRIGGER,
-      Some(match_message("Command completed")),
+      Some(BufferLogMatcher {
+        match_type: Some(Match_type::BaseMatcher(BaseLogMatcher {
+          match_type: Some(base_log_matcher::Match_type::TypeMatch(
+            base_log_matcher::TypeMatch {
+              type_: LogType::SPAN as u32,
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        })),
+        ..Default::default()
+      }),
     )],
     ..Default::default()
   })
   .into();
   configuration
+}
+
+fn assert_command_span_pair(logs: &[WrappedLog], expected_id: Option<&str>) {
+  assert_eq!(logs.len(), 2);
+  let start = &logs[0];
+  let end = &logs[1];
+  assert_eq!(start.message(), COMMAND_START_MESSAGE);
+  assert_eq!(end.message(), COMMAND_OUTCOME_MESSAGE);
+  assert_eq!(start.field(LOG_FIELD_NAME_SPAN_TYPE), SPAN_TYPE_START);
+  assert_eq!(end.field(LOG_FIELD_NAME_SPAN_TYPE), SPAN_TYPE_END);
+  assert_eq!(
+    start.field(LOG_FIELD_NAME_SPAN_ID),
+    end.field(LOG_FIELD_NAME_SPAN_ID)
+  );
+  assert_ne!(start.field(LOG_FIELD_NAME_SPAN_ID), "");
+  if let Some(expected_id) = expected_id {
+    assert_eq!(start.field(LOG_FIELD_NAME_SPAN_ID), expected_id);
+  }
+  assert_eq!(start.session_id(), end.session_id());
+  for log in logs {
+    assert_eq!(log.log_type(), LogType::SPAN);
+    assert_eq!(
+      log.field(LOG_FIELD_NAME_SPAN_NAME),
+      SPAN_NAME_DEVICE_COMMAND
+    );
+  }
+  assert!(!start.has_field(LOG_FIELD_NAME_DURATION_MS));
+  assert!(!start.has_field(LOG_FIELD_NAME_COMMAND_STATUS));
+  assert!(start.command_attachment().is_none());
+  assert!(
+    end
+      .field(LOG_FIELD_NAME_DURATION_MS)
+      .parse::<f64>()
+      .unwrap()
+      >= 0.0
+  );
 }
 
 fn builtin_command_selector(
@@ -3230,10 +3320,11 @@ fn screenshot_device_command_stages_correlated_attachment() {
     .current_api_stream()
     .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.logs().len(), 1);
-    let log = &log_upload.logs()[0];
-    assert_eq!(log.message(), "Command completed");
-    assert_eq!(log.field("_command_status"), "success");
+    let logs = log_upload.logs();
+    assert_command_span_pair(&logs, Some(command_id));
+    let log = &logs[1];
+    assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
+    assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_SUCCESS);
     let attachment = log.command_attachment().unwrap();
     assert_eq!(attachment.artifact_id, artifact_id);
     assert_eq!(attachment.content_type, "image/jpeg");
@@ -3298,11 +3389,12 @@ fn screenshot_device_command_reports_capture_and_validation_failures() {
       .current_api_stream()
       .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
     assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-      assert_eq!(log_upload.logs().len(), 1);
-      let log = &log_upload.logs()[0];
-      assert_eq!(log.message(), "Command completed");
-      assert_eq!(log.field("_command_status"), "failure");
-      assert_eq!(log.field("_command_message"), expected_error);
+      let logs = log_upload.logs();
+      assert_command_span_pair(&logs, Some(command_id));
+      let log = &logs[1];
+      assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
+      assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_FAILURE);
+      assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_MESSAGE), expected_error);
     });
   }
 }
@@ -3359,10 +3451,11 @@ fn registered_custom_device_command_completes_without_attachment() {
     .current_api_stream()
     .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.logs().len(), 1);
-    let log = &log_upload.logs()[0];
-    assert_eq!(log.message(), "Command completed");
-    assert_eq!(log.field("_command_status"), "success");
+    let logs = log_upload.logs();
+    assert_command_span_pair(&logs, Some(command_id));
+    let log = &logs[1];
+    assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
+    assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_SUCCESS);
     assert_eq!(log.field("result"), "completed");
   });
 }
@@ -3789,10 +3882,13 @@ fn registered_custom_device_command_stages_correlated_attachment() {
     .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
   let upload = setup.server.blocking_next_log_upload().unwrap();
   let logs = upload.logs();
-  assert_eq!(logs.len(), 1);
-  let log = &logs[0];
-  assert_eq!(log.message(), "Command completed");
-  assert_eq!(log.field("_command_status"), "success");
+  assert_command_span_pair(&logs, Some(command_id));
+  let log = &logs[1];
+  assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
+  assert_eq!(
+    log.field(LOG_FIELD_NAME_COMMAND_STATUS),
+    COMMAND_STATUS_SUCCESS
+  );
   let attachment = log.command_attachment().unwrap();
   assert_eq!(attachment.artifact_id, artifact_id);
   assert_eq!(attachment.content_type, "application/vnd.example.capture");
@@ -3952,14 +4048,23 @@ fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
     artifact_id
   );
   assert!(!payload_path.exists());
-  for message in ["start", "run command", "Command completed"] {
+  let mut lifecycle_logs = Vec::new();
+  for message in [
+    "start",
+    "run command",
+    COMMAND_START_MESSAGE,
+    COMMAND_OUTCOME_MESSAGE,
+  ] {
     let upload = setup.server.blocking_next_log_upload().unwrap();
     let logs = upload.logs();
     assert_eq!(logs.len(), 1);
     let log = &logs[0];
     assert_eq!(log.message(), message);
-    if message == "Command completed" {
-      assert_eq!(log.field("_command_status"), "success");
+    if message == COMMAND_OUTCOME_MESSAGE {
+      assert_eq!(
+        log.field(LOG_FIELD_NAME_COMMAND_STATUS),
+        COMMAND_STATUS_SUCCESS
+      );
       assert_eq!(log.field("result"), "attached");
       let metadata = log.command_attachment().unwrap();
       assert_eq!(metadata.artifact_id, artifact_id.to_string());
@@ -3976,7 +4081,11 @@ fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
         u64::try_from(attachment.len()).unwrap()
       );
     }
+    if message.starts_with("Command ") {
+      lifecycle_logs.extend(logs);
+    }
   }
+  assert_command_span_pair(&lifecycle_logs, None);
 }
 
 #[test]
@@ -4126,14 +4235,23 @@ fn workflow_screenshot_command_uploads_attachment() {
     artifact_id
   );
   assert!(!payload_path.exists());
-  for message in ["start", "run command", "Command completed"] {
+  let mut lifecycle_logs = Vec::new();
+  for message in [
+    "start",
+    "run command",
+    COMMAND_START_MESSAGE,
+    COMMAND_OUTCOME_MESSAGE,
+  ] {
     let upload = setup.server.blocking_next_log_upload().unwrap();
     let logs = upload.logs();
     assert_eq!(logs.len(), 1);
     let log = &logs[0];
     assert_eq!(log.message(), message);
-    if message == "Command completed" {
-      assert_eq!(log.field("_command_status"), "success");
+    if message == COMMAND_OUTCOME_MESSAGE {
+      assert_eq!(
+        log.field(LOG_FIELD_NAME_COMMAND_STATUS),
+        COMMAND_STATUS_SUCCESS
+      );
       let metadata = log.command_attachment().unwrap();
       assert_eq!(metadata.artifact_id, artifact_id.to_string());
       assert_eq!(metadata.content_type, "image/jpeg");
@@ -4149,7 +4267,11 @@ fn workflow_screenshot_command_uploads_attachment() {
         u64::try_from(screenshot.len()).unwrap()
       );
     }
+    if message.starts_with("Command ") {
+      lifecycle_logs.extend(logs);
+    }
   }
+  assert_command_span_pair(&lifecycle_logs, None);
 }
 
 #[test]
@@ -4183,11 +4305,12 @@ fn unregistered_custom_device_command_fails_without_acceptance() {
     .current_api_stream()
     .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.logs().len(), 1);
-    let log = &log_upload.logs()[0];
-    assert_eq!(log.message(), "Command completed");
-    assert_eq!(log.field("_command_status"), "failure");
-    assert_eq!(log.field("_command_message"), "command unknown");
+    let logs = log_upload.logs();
+    assert_command_span_pair(&logs, Some(command_id));
+    let log = &logs[1];
+    assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
+    assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_FAILURE);
+    assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_MESSAGE), "command unknown");
   });
 }
 

@@ -16,7 +16,17 @@ use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadCompletion};
 use bd_artifact_upload::UploadSource;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
-use bd_log_primitives::{AnnotatedLogField, AnnotatedLogFields, DataValue, LogFields, LogLine};
+use bd_log_primitives::{
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  DataValue,
+  LogAttributesOverrides,
+  LogFields,
+  LogLine,
+  SPAN_TYPE_END,
+  SPAN_TYPE_START,
+  log_level,
+};
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
 use bd_proto::protos::client::api::device_command_update::completed::{Attachment, attachment};
 use bd_proto::protos::client::api::{
@@ -33,11 +43,13 @@ use bd_proto::protos::workflow::workflow_command::{
 };
 use bd_runtime::runtime::device_command::ExecutionTimeoutFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch};
-use bd_time::TimeDurationExt;
+use bd_time::{TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::{
   COMMAND_OUTCOME_MESSAGE,
+  COMMAND_START_MESSAGE,
   CommandArtifactMetadata,
   CommandOutcome,
+  CommandSpan,
   WorkflowCommandCompletionToken,
   WorkflowCommandOutcome,
   WorkflowCommandRequest,
@@ -50,6 +62,8 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use time::OffsetDateTime;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -90,6 +104,7 @@ pub struct DeviceCommandDispatcher {
   // Execution belongs to the SDK, not to a configuration or mux stream. None fences a racing
   // admission task after Drop has begun; dropping a JoinHandle alone would detach execution.
   execution_tasks: Arc<Mutex<Option<Vec<JoinHandle<()>>>>>,
+  time_provider: Arc<dyn TimeProvider>,
 }
 
 impl Drop for DeviceCommandDispatcher {
@@ -116,6 +131,70 @@ struct DeviceCommandSenders {
   command_state: Arc<DeviceCommandState>,
 }
 
+//
+// DeviceCommandExecution
+//
+
+struct DeviceCommandExecution {
+  senders: DeviceCommandSenders,
+  span: CommandSpan,
+  session_id: anyhow::Result<Arc<str>>,
+  time_provider: Arc<dyn TimeProvider>,
+  ended: AtomicBool,
+}
+
+impl DeviceCommandExecution {
+  fn emit(&self, log: LogLine) {
+    let result = match &self.session_id {
+      Ok(session_id) => self
+        .senders
+        .log_sender
+        .try_send_command_log(log, session_id.clone()),
+      Err(error) => {
+        log::debug!("failed to capture device command span session: {error}");
+        return;
+      },
+    };
+    if let Err(error) = result {
+      log::debug!("failed to admit device command span log: {error}");
+    }
+  }
+
+  fn start(&self, now: OffsetDateTime) {
+    self.emit(LogLine {
+      log_level: log_level::INFO,
+      log_type: LogType::SPAN,
+      message: COMMAND_START_MESSAGE.into(),
+      fields: self
+        .span
+        .fields(SPAN_TYPE_START, now)
+        .into_iter()
+        .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+        .collect(),
+      matching_fields: AnnotatedLogFields::default(),
+      command_attachment: None,
+      attributes_overrides: Some(LogAttributesOverrides::OccurredAt(now)),
+      capture_session: None,
+    });
+  }
+
+  fn finish(
+    &self,
+    update: &DeviceCommandUpdate,
+    artifact_metadata: Option<CommandArtifactMetadata>,
+  ) {
+    if let Some(log) = device_command_outcome_log(
+      update,
+      artifact_metadata,
+      &self.span,
+      self.time_provider.now(),
+    ) && !self.ended.swap(true, Ordering::Relaxed)
+    {
+      self.emit(log);
+    }
+  }
+}
+
 impl DeviceCommandDispatcher {
   pub fn new(
     data_upload_tx: Sender<DataUpload>,
@@ -127,6 +206,7 @@ impl DeviceCommandDispatcher {
     execution_policy: CommandExecutionPolicy,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
     command_state: Arc<DeviceCommandState>,
+    time_provider: Arc<dyn TimeProvider>,
   ) -> Self {
     Self {
       senders: DeviceCommandSenders {
@@ -144,6 +224,7 @@ impl DeviceCommandDispatcher {
       admission_task: Arc::default(),
       test_hooks: None,
       execution_tasks: Arc::new(Mutex::new(Some(vec![]))),
+      time_provider,
     }
   }
 
@@ -244,10 +325,23 @@ impl DeviceCommandDispatcher {
     let command_dispatcher = self.command_dispatcher.clone();
     let execution_policy = self.execution_policy.clone();
     let remote_screenshot_capture_handler = self.remote_screenshot_capture_handler.clone();
+    let time_provider = self.time_provider.clone();
     Box::pin(async move {
+      let started_at = time_provider.now();
+      let execution = Arc::new(DeviceCommandExecution {
+        senders,
+        span: CommandSpan {
+          id: command_id.clone(),
+          started_at: Some(started_at),
+        },
+        session_id: session_strategy.session_id(),
+        time_provider,
+        ended: AtomicBool::new(false),
+      });
+      execution.start(started_at);
       if let Err(error) = execute_device_command(
         command,
-        senders,
+        execution.clone(),
         trigger_upload_tx,
         session_strategy,
         artifact_client,
@@ -257,6 +351,10 @@ impl DeviceCommandDispatcher {
       )
       .await
       {
+        execution.finish(
+          &failed_device_command_update(&command_id, 1, CommandError::Other(error.to_string())),
+          None,
+        );
         log::debug!("device command {command_id} execution stopped: {error}");
       }
     })
@@ -651,7 +749,7 @@ async fn workflow_command_outcome(
 
 async fn execute_device_command(
   command: DeviceCommandRequest,
-  senders: DeviceCommandSenders,
+  senders: Arc<DeviceCommandExecution>,
   trigger_upload_tx: Sender<TriggerUpload>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -719,7 +817,7 @@ async fn execute_device_command(
 
 async fn execute_screenshot_device_command(
   command_id: String,
-  senders: DeviceCommandSenders,
+  senders: Arc<DeviceCommandExecution>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   execution_policy: CommandExecutionPolicy,
@@ -814,7 +912,7 @@ fn validate_screenshot(bytes: &[u8]) -> Result<(), &'static str> {
 
 async fn execute_buffer_dump_device_command(
   command_id: String,
-  senders: DeviceCommandSenders,
+  senders: Arc<DeviceCommandExecution>,
   trigger_upload_tx: Sender<TriggerUpload>,
   session_strategy: Arc<bd_session::Strategy>,
 ) -> anyhow::Result<()> {
@@ -913,7 +1011,7 @@ async fn execute_custom_device_command(
   command_id: String,
   registered_command_id: String,
   arguments: HashMap<String, Data>,
-  senders: DeviceCommandSenders,
+  senders: Arc<DeviceCommandExecution>,
   session_strategy: Arc<bd_session::Strategy>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   command_dispatcher: RegisteredCommandDispatcher,
@@ -1155,6 +1253,8 @@ fn failed_device_command_update_with_fields(
 fn device_command_outcome_log(
   update: &DeviceCommandUpdate,
   artifact_metadata: Option<CommandArtifactMetadata>,
+  span: &CommandSpan,
+  now: OffsetDateTime,
 ) -> Option<LogLine> {
   let (succeeded, context, artifact_id) = match update.update_type.as_ref()? {
     device_command_update::Update_type::Completed(completed) => {
@@ -1187,7 +1287,7 @@ fn device_command_outcome_log(
       .remove("error")
       .and_then(|value| value.as_str().map(str::to_owned))
   };
-  let (log_level, fields, command_attachment) = CommandOutcome {
+  let (log_level, mut fields, command_attachment) = CommandOutcome {
     succeeded,
     message,
     fields,
@@ -1201,9 +1301,10 @@ fn device_command_outcome_log(
       }),
   }
   .into_log_parts();
+  fields.extend(span.fields(SPAN_TYPE_END, now));
   Some(LogLine {
     log_level,
-    log_type: LogType::NORMAL,
+    log_type: LogType::SPAN,
     message: COMMAND_OUTCOME_MESSAGE.into(),
     fields: fields
       .into_iter()
@@ -1211,29 +1312,26 @@ fn device_command_outcome_log(
       .collect(),
     matching_fields: AnnotatedLogFields::default(),
     command_attachment: command_attachment.map(Box::new),
-    attributes_overrides: None,
+    attributes_overrides: Some(LogAttributesOverrides::OccurredAt(now)),
     capture_session: None,
   })
 }
 
 async fn send_device_command_update(
-  senders: &DeviceCommandSenders,
+  execution: &DeviceCommandExecution,
   update: DeviceCommandUpdate,
 ) -> anyhow::Result<()> {
-  send_device_command_update_with_artifact(senders, update, None).await
+  send_device_command_update_with_artifact(execution, update, None).await
 }
 
 async fn send_device_command_update_with_artifact(
-  senders: &DeviceCommandSenders,
+  execution: &DeviceCommandExecution,
   update: DeviceCommandUpdate,
   artifact_metadata: Option<CommandArtifactMetadata>,
 ) -> anyhow::Result<()> {
+  execution.finish(&update, artifact_metadata);
+  let senders = &execution.senders;
   let (update, response_rx) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
-  if let Some(log) = device_command_outcome_log(&update.payload, artifact_metadata)
-    && let Err(error) = senders.log_sender.try_send_log(log)
-  {
-    log::debug!("failed to admit device command outcome log: {error}");
-  }
   let remaining = senders
     .command_state
     .remaining_time(&update.payload.command_id)

@@ -15,6 +15,9 @@ use crate::config::{
 };
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{
+  CommandOutcome,
+  CommandSpan,
+  PendingCommand,
   Run,
   TriggeredAction,
   Workflow,
@@ -24,7 +27,23 @@ use crate::workflow::{
 };
 use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{LogFields, LogMessage, log_level};
+use bd_log_primitives::{
+  COMMAND_OUTCOME_MESSAGE,
+  COMMAND_START_MESSAGE,
+  COMMAND_STATUS_FAILURE,
+  DataValue,
+  LOG_FIELD_NAME_COMMAND_MESSAGE,
+  LOG_FIELD_NAME_COMMAND_STATUS,
+  LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_SPAN_ID,
+  LOG_FIELD_NAME_SPAN_NAME,
+  LOG_FIELD_NAME_SPAN_TYPE,
+  LogFields,
+  LogMessage,
+  SPAN_TYPE_END,
+  SPAN_TYPE_START,
+  log_level,
+};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow as workflow_proto;
 use bd_proto::protos::workflow::workflow::workflow::action::Action_type;
@@ -32,7 +51,11 @@ use bd_proto::protos::workflow::workflow_command::{
   WorkflowCommandSelector,
   workflow_command_selector,
 };
-use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
+use bd_proto_util::serialization::{
+  ProtoMessageDeserialize,
+  ProtoMessageSerialize,
+  TimestampMicros,
+};
 use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
@@ -61,6 +84,119 @@ use time::macros::datetime;
 #[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers_core::test_global_init();
+}
+
+#[test]
+fn command_span_preserves_outcome_and_owns_reserved_fields() {
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let span = CommandSpan {
+    id: "invocation".into(),
+    started_at: Some(started_at),
+  };
+  let start = span.start_log("session".into(), started_at);
+  assert_eq!(start.log_type, LogType::SPAN);
+  assert_eq!(start.message.as_str(), Some(COMMAND_START_MESSAGE));
+  assert_eq!(
+    start.fields.get(LOG_FIELD_NAME_SPAN_TYPE).unwrap().as_str(),
+    Some(SPAN_TYPE_START)
+  );
+  assert!(!start.fields.contains_key(LOG_FIELD_NAME_DURATION_MS));
+  assert!(!start.fields.contains_key(LOG_FIELD_NAME_COMMAND_STATUS));
+  assert!(start.command_attachment.is_none());
+
+  let end = CommandOutcome {
+    succeeded: false,
+    message: Some("handler failed".into()),
+    fields: [
+      ("count".into(), DataValue::U64(7)),
+      (LOG_FIELD_NAME_SPAN_ID.into(), "spoofed".into()),
+      (LOG_FIELD_NAME_SPAN_NAME.into(), "spoofed".into()),
+      (LOG_FIELD_NAME_SPAN_TYPE.into(), SPAN_TYPE_START.into()),
+      ("_span_extra".into(), "spoofed".into()),
+      (LOG_FIELD_NAME_DURATION_MS.into(), "999".into()),
+      (LOG_FIELD_NAME_COMMAND_STATUS.into(), "spoofed".into()),
+    ]
+    .into(),
+    attachment: None,
+  }
+  .into_log("session".into(), started_at + 125.milliseconds(), &span);
+  assert_eq!(end.log_type, LogType::SPAN);
+  assert_eq!(end.log_level, log_level::ERROR);
+  assert_eq!(end.message.as_str(), Some(COMMAND_OUTCOME_MESSAGE));
+  assert_eq!(end.session_id, start.session_id);
+  for key in [LOG_FIELD_NAME_SPAN_ID, LOG_FIELD_NAME_SPAN_NAME] {
+    assert_eq!(end.fields.get(key), start.fields.get(key));
+  }
+  assert_eq!(
+    end.fields.get(LOG_FIELD_NAME_SPAN_TYPE).unwrap().as_str(),
+    Some(SPAN_TYPE_END)
+  );
+  assert_eq!(
+    end.fields.get(LOG_FIELD_NAME_DURATION_MS).unwrap().as_str(),
+    Some("125")
+  );
+  assert_eq!(
+    end
+      .fields
+      .get(LOG_FIELD_NAME_COMMAND_STATUS)
+      .unwrap()
+      .as_str(),
+    Some(COMMAND_STATUS_FAILURE)
+  );
+  assert_eq!(
+    end
+      .fields
+      .get(LOG_FIELD_NAME_COMMAND_MESSAGE)
+      .unwrap()
+      .as_str(),
+    Some("handler failed")
+  );
+  assert_eq!(end.fields.get("count"), Some(&DataValue::U64(7)));
+  assert!(!end.fields.contains_key("_span_extra"));
+}
+
+#[test]
+fn command_span_handles_backward_clock_and_legacy_pending_state() {
+  let started_at = datetime!(2026-01-01 00:00 UTC);
+  let span = CommandSpan {
+    id: "invocation".into(),
+    started_at: Some(started_at),
+  };
+  assert_eq!(
+    span
+      .fields(SPAN_TYPE_END, started_at - 1.seconds())
+      .get(LOG_FIELD_NAME_DURATION_MS)
+      .unwrap()
+      .as_str(),
+    Some("0"),
+  );
+  let old_pending = PendingCommand {
+    completion_token: "old-invocation".into(),
+    transition_index: 1,
+    completion_received: false,
+    started_at: None,
+  };
+  let bytes = old_pending.serialize_message_to_bytes().unwrap();
+  let recovered = PendingCommand::deserialize_message_from_bytes(&bytes).unwrap();
+  assert_eq!(recovered, old_pending);
+  assert!(
+    !CommandSpan {
+      id: recovered.completion_token,
+      started_at: recovered.started_at.map(|timestamp| timestamp.0),
+    }
+    .fields(SPAN_TYPE_END, started_at)
+    .contains_key(LOG_FIELD_NAME_DURATION_MS)
+  );
+
+  let pending = PendingCommand {
+    started_at: Some(TimestampMicros(started_at)),
+    ..old_pending
+  };
+  let bytes = pending.serialize_message_to_bytes().unwrap();
+  assert_eq!(
+    PendingCommand::deserialize_message_from_bytes(&bytes).unwrap(),
+    pending
+  );
 }
 
 #[test]

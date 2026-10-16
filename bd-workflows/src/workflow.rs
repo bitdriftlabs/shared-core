@@ -25,7 +25,28 @@ use crate::generate_log::generate_log_action;
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{FieldsRef, Log, LogFields, LogLevel, log_level};
+pub use bd_log_primitives::{COMMAND_OUTCOME_MESSAGE, COMMAND_START_MESSAGE};
+use bd_log_primitives::{
+  COMMAND_STATUS_FAILURE,
+  COMMAND_STATUS_SUCCESS,
+  FieldsRef,
+  LOG_FIELD_NAME_COMMAND_MESSAGE,
+  LOG_FIELD_NAME_COMMAND_STATUS,
+  LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_SPAN_ID,
+  LOG_FIELD_NAME_SPAN_NAME,
+  LOG_FIELD_NAME_SPAN_TYPE,
+  LOG_FIELD_PREFIX_COMMAND,
+  LOG_FIELD_PREFIX_SPAN,
+  LOG_FIELD_PREFIX_WORKFLOW_COMMAND,
+  Log,
+  LogFields,
+  LogLevel,
+  SPAN_NAME_DEVICE_COMMAND,
+  SPAN_TYPE_END,
+  SPAN_TYPE_START,
+  log_level,
+};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow_command::WorkflowCommandSelector;
 use bd_proto_util::serialization::TimestampMicros;
@@ -38,9 +59,65 @@ use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-pub const COMMAND_OUTCOME_MESSAGE: &str = "Command completed";
-const COMMAND_MESSAGE_FIELD: &str = "_command_message";
-const COMMAND_STATUS_FIELD: &str = "_command_status";
+//
+// CommandSpan
+//
+
+/// Correlation and timing shared by direct and workflow command lifecycle logs.
+pub struct CommandSpan {
+  pub id: String,
+  pub started_at: Option<OffsetDateTime>,
+}
+
+impl CommandSpan {
+  #[must_use]
+  pub fn fields(&self, phase: &'static str, now: OffsetDateTime) -> LogFields {
+    let mut fields: LogFields = [
+      (LOG_FIELD_NAME_SPAN_ID.into(), self.id.clone().into()),
+      (
+        LOG_FIELD_NAME_SPAN_NAME.into(),
+        SPAN_NAME_DEVICE_COMMAND.into(),
+      ),
+      (LOG_FIELD_NAME_SPAN_TYPE.into(), phase.into()),
+    ]
+    .into();
+    if phase == SPAN_TYPE_END {
+      if let Some(started_at) = self.started_at {
+        let duration = now - started_at;
+        if duration.is_negative() {
+          log::debug!("command {} clock moved backwards during execution", self.id);
+        }
+        fields.insert(
+          LOG_FIELD_NAME_DURATION_MS.into(),
+          (duration.as_seconds_f64().max(0.0) * 1_000.0)
+            .to_string()
+            .into(),
+        );
+      } else {
+        log::debug!(
+          "recovered command {} has no recorded span start time",
+          self.id
+        );
+      }
+    }
+    fields
+  }
+
+  #[must_use]
+  pub fn start_log(&self, session_id: String, now: OffsetDateTime) -> Log {
+    Log {
+      log_type: LogType::SPAN,
+      log_level: log_level::INFO,
+      message: COMMAND_START_MESSAGE.into(),
+      session_id: session_id.into(),
+      occurred_at: now,
+      fields: self.fields(SPAN_TYPE_START, now),
+      matching_fields: LogFields::default(),
+      command_attachment: None,
+      capture_session: None,
+    }
+  }
+}
 
 pub(crate) fn workflow_command_cooldown_key_prefix(workflow_id: &str) -> String {
   format!("{}:{workflow_id}:", workflow_id.len())
@@ -50,11 +127,23 @@ pub(crate) fn workflow_command_cooldown_key_prefix(workflow_id: &str) -> String 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkflowCommandCompletionToken(pub(crate) String);
 
+//
+// WorkflowCommandEvent
+//
+
+/// Private replay routing, independent of public command span fields.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorkflowCommandEvent {
+  Start,
+  Completion(WorkflowCommandCompletionToken),
+}
+
 /// A command start requested by the workflow runtime.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorkflowCommandRequest {
   pub command_selector: WorkflowCommandSelector,
   pub session_id: String,
+  pub started_at: OffsetDateTime,
   completion_token: WorkflowCommandCompletionToken,
 }
 
@@ -63,10 +152,12 @@ impl WorkflowCommandRequest {
     command_selector: WorkflowCommandSelector,
     session_id: String,
     completion_token: WorkflowCommandCompletionToken,
+    started_at: OffsetDateTime,
   ) -> Self {
     Self {
       command_selector,
       session_id,
+      started_at,
       completion_token,
     }
   }
@@ -74,6 +165,15 @@ impl WorkflowCommandRequest {
   #[must_use]
   pub fn completion_token(&self) -> WorkflowCommandCompletionToken {
     self.completion_token.clone()
+  }
+
+  #[must_use]
+  pub fn start_log(&self) -> Log {
+    CommandSpan {
+      id: self.completion_token.0.clone(),
+      started_at: Some(self.started_at),
+    }
+    .start_log(self.session_id.clone(), self.started_at)
   }
 }
 
@@ -113,13 +213,23 @@ impl CommandOutcome {
       mut fields,
       attachment,
     } = self;
-    fields.retain(|key, _| !key.starts_with("_command_") && !key.starts_with("_workflow_command_"));
+    fields.retain(|key, _| {
+      !key.starts_with(LOG_FIELD_PREFIX_COMMAND)
+        && !key.starts_with(LOG_FIELD_PREFIX_WORKFLOW_COMMAND)
+        && !key.starts_with(LOG_FIELD_PREFIX_SPAN)
+        && key != LOG_FIELD_NAME_DURATION_MS
+    });
     fields.insert(
-      COMMAND_STATUS_FIELD.into(),
-      if succeeded { "success" } else { "failure" }.into(),
+      LOG_FIELD_NAME_COMMAND_STATUS.into(),
+      if succeeded {
+        COMMAND_STATUS_SUCCESS
+      } else {
+        COMMAND_STATUS_FAILURE
+      }
+      .into(),
     );
     if let Some(message) = message {
-      fields.insert(COMMAND_MESSAGE_FIELD.into(), message.into());
+      fields.insert(LOG_FIELD_NAME_COMMAND_MESSAGE.into(), message.into());
     }
 
     (
@@ -134,10 +244,11 @@ impl CommandOutcome {
   }
 
   #[must_use]
-  pub fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
-    let (log_level, fields, command_attachment) = self.into_log_parts();
+  pub fn into_log(self, session_id: String, now: OffsetDateTime, span: &CommandSpan) -> Log {
+    let (log_level, mut fields, command_attachment) = self.into_log_parts();
+    fields.extend(span.fields(SPAN_TYPE_END, now));
     Log {
-      log_type: LogType::NORMAL,
+      log_type: LogType::SPAN,
       log_level,
       message: COMMAND_OUTCOME_MESSAGE.into(),
       session_id: session_id.into(),
@@ -170,7 +281,7 @@ pub enum WorkflowCommandOutcome {
 }
 
 impl WorkflowCommandOutcome {
-  pub(crate) fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
+  pub(crate) fn into_log(self, session_id: String, now: OffsetDateTime, span: &CommandSpan) -> Log {
     let (succeeded, message, fields, artifact_id, artifact_metadata) = match self {
       Self::Succeeded { message, fields } => (true, message, fields, None, None),
       Self::SucceededWithAttachment {
@@ -201,7 +312,7 @@ impl WorkflowCommandOutcome {
           source: AttachmentSource::WORKFLOW,
         }),
     }
-    .into_log(session_id, now)
+    .into_log(session_id, now, span)
   }
 }
 
@@ -398,7 +509,9 @@ mod fuzzing {
 pub enum WorkflowEvent<'a> {
   /// A log message was received
   Log(&'a Log),
-  /// A normal log produced by a completed command, with private traversal routing metadata.
+  /// A span start produced by a workflow command, without completion authority.
+  CommandStart(&'a Log),
+  /// A span end produced by a completed command, with private traversal routing metadata.
   CommandCompletion {
     log: &'a Log,
     token: &'a WorkflowCommandCompletionToken,
@@ -416,7 +529,8 @@ impl WorkflowEvent<'_> {
   pub(crate) fn capture_session(&self) -> Option<&'static str> {
     match self {
       WorkflowEvent::Log(log) => log.capture_session,
-      WorkflowEvent::CommandCompletion { .. }
+      WorkflowEvent::CommandStart(_)
+      | WorkflowEvent::CommandCompletion { .. }
       | WorkflowEvent::SessionStart(_)
       | WorkflowEvent::StateChange(..) => None,
     }
@@ -425,6 +539,7 @@ impl WorkflowEvent<'_> {
   pub(crate) fn occurred_at(&self) -> OffsetDateTime {
     match self {
       WorkflowEvent::Log(log)
+      | WorkflowEvent::CommandStart(log)
       | WorkflowEvent::CommandCompletion { log, .. }
       | WorkflowEvent::SessionStart(log) => log.occurred_at,
       WorkflowEvent::StateChange(state_change, ..) => state_change.timestamp,
@@ -1521,6 +1636,8 @@ pub(crate) struct PendingCommand {
   pub(crate) transition_index: usize,
   #[field(id = 3)]
   pub(crate) completion_received: bool,
+  #[field(id = 4)]
+  pub(crate) started_at: Option<TimestampMicros>,
 }
 
 impl Traversal {
@@ -1627,7 +1744,9 @@ impl Traversal {
             matcher,
             required_matches,
           },
-          WorkflowEvent::Log(log) | WorkflowEvent::CommandCompletion { log, .. },
+          WorkflowEvent::Log(log)
+          | WorkflowEvent::CommandStart(log)
+          | WorkflowEvent::CommandCompletion { log, .. },
         ) => {
           self.process_log_match(
             config,
@@ -1721,6 +1840,7 @@ impl Traversal {
       // provided by the installed field providers.
       let fields = match event {
         WorkflowEvent::Log(log)
+        | WorkflowEvent::CommandStart(log)
         | WorkflowEvent::CommandCompletion { log, .. }
         | WorkflowEvent::SessionStart(log) => FieldsRef::new(&log.fields, &log.matching_fields),
         WorkflowEvent::StateChange(_, fields, _) => fields,
@@ -1814,9 +1934,12 @@ impl Traversal {
       return;
     }
 
-    // Outcome logs only resume their matching pending traversal; they must not recursively start
-    // a command in another traversal.
-    if matches!(event, WorkflowEvent::CommandCompletion { .. }) {
+    // Lifecycle logs must not recursively start commands. Only a terminal completion can resume
+    // its matching pending traversal.
+    if matches!(
+      event,
+      WorkflowEvent::CommandStart(_) | WorkflowEvent::CommandCompletion { .. }
+    ) {
       return;
     }
 
@@ -1846,6 +1969,7 @@ impl Traversal {
       completion_token: completion_token.0.clone(),
       transition_index: index,
       completion_received: false,
+      started_at: Some(TimestampMicros(now)),
     });
     command_last_started_at_ns.insert(matcher_id, now_ns);
     result
@@ -1853,6 +1977,7 @@ impl Traversal {
       .push(TriggeredAction::RunCommand(TriggeredActionRunCommand {
         command_selector: command_selector.clone(),
         completion_token,
+        started_at: now,
       }));
   }
 
@@ -2268,6 +2393,7 @@ pub(crate) enum TriggeredAction<'a> {
 pub(crate) struct TriggeredActionRunCommand {
   pub(crate) command_selector: WorkflowCommandSelector,
   pub(crate) completion_token: WorkflowCommandCompletionToken,
+  pub(crate) started_at: OffsetDateTime,
 }
 
 //
