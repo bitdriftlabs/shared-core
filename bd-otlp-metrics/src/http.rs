@@ -5,10 +5,12 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::protos::metrics_service::ExportMetricsServiceResponse;
 use async_trait::async_trait;
 use bytes::Bytes;
 use http::{HeaderMap, StatusCode};
 use httpdate::parse_http_date;
+use protobuf::Message;
 use std::time::{Duration, SystemTime};
 
 //
@@ -84,6 +86,28 @@ impl HttpRetryPolicy {
     let date = parse_http_date(value).ok()?;
     Some(date.duration_since(now).unwrap_or_default())
   }
+}
+
+/// Collector diagnostics are untrusted and may echo authentication credentials.
+pub fn decode_otlp_response(body: &[u8]) -> Result<(), HttpRemoteWriteError> {
+  let response = ExportMetricsServiceResponse::parse_from_bytes(body)
+    .map_err(|_| HttpRemoteWriteError::Permanent("malformed OTLP success response".to_string()))?;
+  if let Some(partial) = response.partial_success.into_option() {
+    let rejected_data_points = u64::try_from(partial.rejected_data_points).map_err(|_| {
+      HttpRemoteWriteError::Permanent("invalid OTLP rejected-point count".to_string())
+    })?;
+    if rejected_data_points > 0 || !partial.error_message.is_empty() {
+      return Err(HttpRemoteWriteError::PartialSuccess {
+        rejected_data_points,
+        error_message: if partial.error_message.is_empty() {
+          String::new()
+        } else {
+          "collector diagnostic redacted".to_string()
+        },
+      });
+    }
+  }
+  Ok(())
 }
 
 #[allow(clippy::ref_option_ref)]
