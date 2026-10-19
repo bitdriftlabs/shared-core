@@ -25,7 +25,32 @@ use crate::generate_log::generate_log_action;
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{FieldsRef, Log, LogFields, LogLevel, log_level};
+use bd_log_primitives::{
+  COMMAND_CANCELLATION_REASON_SDK_RESTART,
+  COMMAND_CANCELLATION_REASON_SESSION_CHANGED,
+  COMMAND_CANCELLATION_REASON_WORKFLOW_RESET,
+  COMMAND_STATUS_FAILURE,
+  COMMAND_STATUS_SUCCESS,
+  FieldsRef,
+  LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
+  LOG_FIELD_NAME_COMMAND_MESSAGE,
+  LOG_FIELD_NAME_COMMAND_STATUS,
+  LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_SPAN_ID,
+  LOG_FIELD_NAME_SPAN_NAME,
+  LOG_FIELD_NAME_SPAN_TYPE,
+  LOG_FIELD_PREFIX_COMMAND,
+  LOG_FIELD_PREFIX_SPAN,
+  LOG_FIELD_PREFIX_WORKFLOW_COMMAND,
+  Log,
+  LogFields,
+  LogLevel,
+  SPAN_NAME_DEVICE_COMMAND,
+  SPAN_TYPE_END,
+  SPAN_TYPE_START,
+  log_level,
+};
+pub use bd_log_primitives::{COMMAND_OUTCOME_MESSAGE, COMMAND_START_MESSAGE};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow_command::WorkflowCommandSelector;
 use bd_proto_util::serialization::TimestampMicros;
@@ -38,23 +63,151 @@ use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-pub const COMMAND_OUTCOME_MESSAGE: &str = "Command completed";
-const COMMAND_MESSAGE_FIELD: &str = "_command_message";
-const COMMAND_STATUS_FIELD: &str = "_command_status";
+//
+// CommandSpan
+//
+
+/// Correlation and timing shared by direct and workflow command lifecycle logs.
+pub struct CommandSpan {
+  /// The direct command ID or opaque workflow completion token, unchanged across cancellation.
+  pub id: String,
+  /// Legacy recovered pending state may lack a start time; omit duration rather than invent one.
+  pub started_at: Option<OffsetDateTime>,
+}
+
+impl CommandSpan {
+  #[must_use]
+  pub fn fields(&self, phase: &'static str, now: OffsetDateTime) -> LogFields {
+    let mut fields: LogFields = [
+      (LOG_FIELD_NAME_SPAN_ID.into(), self.id.clone().into()),
+      (
+        LOG_FIELD_NAME_SPAN_NAME.into(),
+        SPAN_NAME_DEVICE_COMMAND.into(),
+      ),
+      (LOG_FIELD_NAME_SPAN_TYPE.into(), phase.into()),
+    ]
+    .into();
+    if phase == SPAN_TYPE_END {
+      if let Some(started_at) = self.started_at {
+        let duration = now - started_at;
+        if duration.is_negative() {
+          log::debug!("command {} clock moved backwards during execution", self.id);
+        }
+        fields.insert(
+          LOG_FIELD_NAME_DURATION_MS.into(),
+          (duration.as_seconds_f64().max(0.0) * 1_000.0)
+            .to_string()
+            .into(),
+        );
+      } else {
+        log::debug!(
+          "recovered command {} has no recorded span start time",
+          self.id
+        );
+      }
+    }
+    fields
+  }
+
+  #[must_use]
+  pub fn start_log(&self, session_id: String, now: OffsetDateTime) -> Log {
+    Log {
+      log_type: LogType::SPAN,
+      log_level: log_level::INFO,
+      message: COMMAND_START_MESSAGE.into(),
+      session_id: session_id.into(),
+      occurred_at: now,
+      fields: self.fields(SPAN_TYPE_START, now),
+      matching_fields: LogFields::default(),
+      command_attachment: None,
+      capture_session: None,
+    }
+  }
+}
 
 pub(crate) fn workflow_command_cooldown_key_prefix(workflow_id: &str) -> String {
   format!("{}:{workflow_id}:", workflow_id.len())
 }
 
 /// An opaque capability used to complete exactly one pending workflow command.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Possession alone does not advance a traversal: the engine must first accept the completion.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WorkflowCommandCompletionToken(pub(crate) String);
 
-/// A command start requested by the workflow runtime.
+//
+// WorkflowCommandEvent
+//
+
+/// Private replay routing, independent of public command span fields. Observers can match command
+/// logs, but only an accepted Completion can resume its matching pending command transition.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorkflowCommandEvent {
+  /// Workflow span start; observation only, without permission to initiate another command.
+  Start,
+  /// Terminal candidate accepted by the engine before replay.
+  Completion(WorkflowCommandCompletionToken),
+  /// Failed end for an invalidated command; not a matchable completion of its old transition.
+  Cancelled,
+  /// Direct command telemetry or generated descendants of command logs: normal matcher behavior,
+  /// without completion authority or permission to replace an established session.
+  Log,
+}
+
+//
+// CommandCancellationReason
+//
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CommandCancellationReason {
+  SessionChanged,
+  WorkflowReset,
+  SdkRestart,
+}
+
+impl CommandCancellationReason {
+  #[must_use]
+  pub const fn message(self) -> &'static str {
+    match self {
+      Self::SessionChanged => "Command cancelled: session changed",
+      Self::WorkflowReset => "Command cancelled: workflow reset",
+      Self::SdkRestart => "Command cancelled: SDK restart",
+    }
+  }
+
+  #[must_use]
+  pub const fn as_str(self) -> &'static str {
+    match self {
+      Self::SessionChanged => COMMAND_CANCELLATION_REASON_SESSION_CHANGED,
+      Self::WorkflowReset => COMMAND_CANCELLATION_REASON_WORKFLOW_RESET,
+      Self::SdkRestart => COMMAND_CANCELLATION_REASON_SDK_RESTART,
+    }
+  }
+
+  #[must_use]
+  pub fn into_log(self, session_id: String, now: OffsetDateTime, span: &CommandSpan) -> Log {
+    let mut log = CommandOutcome {
+      succeeded: false,
+      message: Some(self.message().to_string()),
+      fields: LogFields::default(),
+      attachment: None,
+    }
+    .into_log(session_id, now, span);
+    // SDK cancellation metadata is inserted after reserved handler fields are sanitized.
+    log.fields.insert(
+      LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON.into(),
+      self.as_str().into(),
+    );
+    log
+  }
+}
+
+/// A command start requested by the workflow runtime. The token binds one pending transition;
+/// session and start time snapshot its owner, which may be gone by the time execution completes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorkflowCommandRequest {
   pub command_selector: WorkflowCommandSelector,
   pub session_id: String,
+  pub started_at: OffsetDateTime,
   completion_token: WorkflowCommandCompletionToken,
 }
 
@@ -63,10 +216,12 @@ impl WorkflowCommandRequest {
     command_selector: WorkflowCommandSelector,
     session_id: String,
     completion_token: WorkflowCommandCompletionToken,
+    started_at: OffsetDateTime,
   ) -> Self {
     Self {
       command_selector,
       session_id,
+      started_at,
       completion_token,
     }
   }
@@ -74,6 +229,27 @@ impl WorkflowCommandRequest {
   #[must_use]
   pub fn completion_token(&self) -> WorkflowCommandCompletionToken {
     self.completion_token.clone()
+  }
+
+  #[must_use]
+  pub fn start_log(&self) -> Log {
+    CommandSpan {
+      id: self.completion_token.0.clone(),
+      started_at: Some(self.started_at),
+    }
+    .start_log(self.session_id.clone(), self.started_at)
+  }
+
+  #[must_use]
+  pub fn cancelled_log(&self, reason: CommandCancellationReason, now: OffsetDateTime) -> Log {
+    reason.into_log(
+      self.session_id.clone(),
+      now,
+      &CommandSpan {
+        id: self.completion_token.0.clone(),
+        started_at: Some(self.started_at),
+      },
+    )
   }
 }
 
@@ -113,13 +289,23 @@ impl CommandOutcome {
       mut fields,
       attachment,
     } = self;
-    fields.retain(|key, _| !key.starts_with("_command_") && !key.starts_with("_workflow_command_"));
+    fields.retain(|key, _| {
+      !key.starts_with(LOG_FIELD_PREFIX_COMMAND)
+        && !key.starts_with(LOG_FIELD_PREFIX_WORKFLOW_COMMAND)
+        && !key.starts_with(LOG_FIELD_PREFIX_SPAN)
+        && key != LOG_FIELD_NAME_DURATION_MS
+    });
     fields.insert(
-      COMMAND_STATUS_FIELD.into(),
-      if succeeded { "success" } else { "failure" }.into(),
+      LOG_FIELD_NAME_COMMAND_STATUS.into(),
+      if succeeded {
+        COMMAND_STATUS_SUCCESS
+      } else {
+        COMMAND_STATUS_FAILURE
+      }
+      .into(),
     );
     if let Some(message) = message {
-      fields.insert(COMMAND_MESSAGE_FIELD.into(), message.into());
+      fields.insert(LOG_FIELD_NAME_COMMAND_MESSAGE.into(), message.into());
     }
 
     (
@@ -134,10 +320,11 @@ impl CommandOutcome {
   }
 
   #[must_use]
-  pub fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
-    let (log_level, fields, command_attachment) = self.into_log_parts();
+  pub fn into_log(self, session_id: String, now: OffsetDateTime, span: &CommandSpan) -> Log {
+    let (log_level, mut fields, command_attachment) = self.into_log_parts();
+    fields.extend(span.fields(SPAN_TYPE_END, now));
     Log {
-      log_type: LogType::NORMAL,
+      log_type: LogType::SPAN,
       log_level,
       message: COMMAND_OUTCOME_MESSAGE.into(),
       session_id: session_id.into(),
@@ -153,6 +340,9 @@ impl CommandOutcome {
 /// The terminal outcome reported by a workflow command executor.
 #[derive(Clone, Debug)]
 pub enum WorkflowCommandOutcome {
+  Cancelled {
+    reason: CommandCancellationReason,
+  },
   Succeeded {
     message: Option<String>,
     fields: bd_log_primitives::LogFields,
@@ -170,8 +360,9 @@ pub enum WorkflowCommandOutcome {
 }
 
 impl WorkflowCommandOutcome {
-  pub(crate) fn into_log(self, session_id: String, now: OffsetDateTime) -> Log {
+  pub(crate) fn into_log(self, session_id: String, now: OffsetDateTime, span: &CommandSpan) -> Log {
     let (succeeded, message, fields, artifact_id, artifact_metadata) = match self {
+      Self::Cancelled { reason } => return reason.into_log(session_id, now, span),
       Self::Succeeded { message, fields } => (true, message, fields, None, None),
       Self::SucceededWithAttachment {
         message,
@@ -201,7 +392,7 @@ impl WorkflowCommandOutcome {
           source: AttachmentSource::WORKFLOW,
         }),
     }
-    .into_log(session_id, now)
+    .into_log(session_id, now, span)
   }
 }
 
@@ -398,7 +589,16 @@ mod fuzzing {
 pub enum WorkflowEvent<'a> {
   /// A log message was received
   Log(&'a Log),
-  /// A normal log produced by a completed command, with private traversal routing metadata.
+  /// A span start produced by a workflow command, without completion authority.
+  CommandStart(&'a Log),
+  /// A cancellation observation, without authority to complete or initiate a command.
+  CommandCancelled(&'a Log),
+  /// A direct command log or generated descendant with ordinary matcher behavior, but no authority
+  /// over a pending command or an established workflow session.
+  CommandLog(&'a Log),
+  /// An accepted span end with private traversal routing metadata. Other log-matching traversals
+  /// can observe it, but only the pending traversal with this token can resume a command
+  /// transition.
   CommandCompletion {
     log: &'a Log,
     token: &'a WorkflowCommandCompletionToken,
@@ -416,7 +616,10 @@ impl WorkflowEvent<'_> {
   pub(crate) fn capture_session(&self) -> Option<&'static str> {
     match self {
       WorkflowEvent::Log(log) => log.capture_session,
-      WorkflowEvent::CommandCompletion { .. }
+      WorkflowEvent::CommandStart(_)
+      | WorkflowEvent::CommandCancelled(_)
+      | WorkflowEvent::CommandLog(_)
+      | WorkflowEvent::CommandCompletion { .. }
       | WorkflowEvent::SessionStart(_)
       | WorkflowEvent::StateChange(..) => None,
     }
@@ -425,6 +628,9 @@ impl WorkflowEvent<'_> {
   pub(crate) fn occurred_at(&self) -> OffsetDateTime {
     match self {
       WorkflowEvent::Log(log)
+      | WorkflowEvent::CommandStart(log)
+      | WorkflowEvent::CommandCancelled(log)
+      | WorkflowEvent::CommandLog(log)
       | WorkflowEvent::CommandCompletion { log, .. }
       | WorkflowEvent::SessionStart(log) => log.occurred_at,
       WorkflowEvent::StateChange(state_change, ..) => state_change.timestamp,
@@ -633,15 +839,8 @@ impl Workflow {
           log::trace!("completed run, workflow id={}", self.id);
           self.runs.remove(index);
 
-          // In the case where we completed the active run *and* there is a pending initial state
-          // run, we need to see if there is a timeout to initialize on the initial state run. In
-          // this case by definition the initial state run should have a single traversal as it
-          // has not progressed.
-          if is_exclusive_execution && !is_initial_run {
-            debug_assert_eq!(self.runs.first().map(|r| r.traversals.len()), Some(1));
-            if let Some(f) = self.runs.first_mut().and_then(|r| r.traversals.get_mut(0)) {
-              f.initialize_timeout(config, now);
-            }
+          if !is_initial_run {
+            self.promote_initial_run(config, now);
           }
         },
         RunState::Running => {
@@ -675,6 +874,7 @@ impl Workflow {
             let replacement_run = self.runs.remove(index);
             let existing_run_index_after_remove = existing_run_index - 1;
             if let Some(existing_run) = self.runs.get_mut(existing_run_index_after_remove) {
+              result.stats.tracing_ends += u32::from(existing_run.tracing_active);
               *existing_run = replacement_run;
             }
             initial_run_replaced_by_signature = true;
@@ -721,7 +921,8 @@ impl Workflow {
           // This is safe as `has_active_run == true means that there are at least two runs and
           // `is_initial_run == true`` means that we are processing run with index == 0.
           log::trace!("resetting workflow due to initial state transition");
-          self.runs.remove(index + 1);
+          let discarded_run = self.runs.remove(index + 1);
+          result.stats.tracing_ends += u32::from(discarded_run.tracing_active);
         } else {
           // The active state run made progress and the next run to be processed (if there is any)
           // is an initial state run that we do not want to expose to the log.
@@ -737,8 +938,9 @@ impl Workflow {
       && !initial_run_replaced_by_signature
       && let Some(max_active_runs) = parallel_max_active_runs
       && self.runs.len() > max_active_runs
+      && let Some(discarded_run) = self.runs.pop()
     {
-      self.runs.pop();
+      result.stats.tracing_ends += u32::from(discarded_run.tracing_active);
     }
 
     if self.needs_start_metric {
@@ -750,6 +952,20 @@ impl Workflow {
     }
 
     result.finalize(config, &mut self.workflow_debug_state, now)
+  }
+
+  /// Arms a dormant exclusive initial run after its active run is completed or pruned. Sibling
+  /// traversals, parallel runs, and already-armed timeouts must retain their existing lifetimes.
+  pub(crate) fn promote_initial_run(&mut self, config: &Config, now: OffsetDateTime) {
+    if matches!(config.inner().execution(), Execution::Exclusive)
+      && self.runs.len() == 1
+      && let Some(run) = self.runs.first_mut()
+      && run.is_in_initial_state()
+      && let Some(traversal) = run.traversals.first_mut()
+    {
+      log::debug!("promoting initial run for workflow {}", self.id);
+      traversal.initialize_timeout(config, now);
+    }
   }
 
   pub(crate) fn needs_new_run(&self) -> bool {
@@ -1512,6 +1728,8 @@ pub(crate) struct Traversal {
   pub(crate) pending_command: Option<PendingCommand>,
 }
 
+/// Persisted wait state, not a resumable execution. Recovery prunes this traversal rather than
+/// invoking the selector again and risking duplicate external side effects.
 #[bd_macros::proto_serializable]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PendingCommand {
@@ -1519,8 +1737,12 @@ pub(crate) struct PendingCommand {
   pub(crate) completion_token: String,
   #[field(id = 2, serialize_as = "u64")]
   pub(crate) transition_index: usize,
+  /// Accepted by the engine, not merely finished/queued by a worker. Replay still has to evaluate
+  /// the outcome matcher; persisting this marker prevents a second terminal end after recovery.
   #[field(id = 3)]
   pub(crate) completion_received: bool,
+  #[field(id = 4)]
+  pub(crate) started_at: Option<TimestampMicros>,
 }
 
 impl Traversal {
@@ -1588,6 +1810,8 @@ impl Traversal {
 
     let mut result = TraversalResult::default();
     if let Some(pending_command) = &self.pending_command {
+      // A pending invocation pins this traversal, including its timeout and other outgoing edges.
+      // Public log fields cannot unblock it; an accepted, privately routed token is required.
       let WorkflowEvent::CommandCompletion { token, .. } = event else {
         return result;
       };
@@ -1627,7 +1851,11 @@ impl Traversal {
             matcher,
             required_matches,
           },
-          WorkflowEvent::Log(log) | WorkflowEvent::CommandCompletion { log, .. },
+          WorkflowEvent::Log(log)
+          | WorkflowEvent::CommandStart(log)
+          | WorkflowEvent::CommandCancelled(log)
+          | WorkflowEvent::CommandLog(log)
+          | WorkflowEvent::CommandCompletion { log, .. },
         ) => {
           self.process_log_match(
             config,
@@ -1721,6 +1949,9 @@ impl Traversal {
       // provided by the installed field providers.
       let fields = match event {
         WorkflowEvent::Log(log)
+        | WorkflowEvent::CommandStart(log)
+        | WorkflowEvent::CommandCancelled(log)
+        | WorkflowEvent::CommandLog(log)
         | WorkflowEvent::CommandCompletion { log, .. }
         | WorkflowEvent::SessionStart(log) => FieldsRef::new(&log.fields, &log.matching_fields),
         WorkflowEvent::StateChange(_, fields, _) => fields,
@@ -1748,6 +1979,9 @@ impl Traversal {
     result
   }
 
+  /// First visit dispatches execution and parks the traversal; it does not run configured actions.
+  /// Only the accepted terminal replay can evaluate the outcome matcher and take the transition.
+  /// Cancellation removes the traversal outside this path, bypassing its completion actions.
   #[allow(clippy::too_many_arguments)]
   fn process_command_match<'a>(
     &mut self,
@@ -1814,9 +2048,14 @@ impl Traversal {
       return;
     }
 
-    // Outcome logs only resume their matching pending traversal; they must not recursively start
-    // a command in another traversal.
-    if matches!(event, WorkflowEvent::CommandCompletion { .. }) {
+    // Workflow lifecycle observations and cancellation ends must not recursively start commands.
+    // Non-cancelled direct command logs intentionally retain ordinary matcher behavior.
+    if matches!(
+      event,
+      WorkflowEvent::CommandStart(_)
+        | WorkflowEvent::CommandCancelled(_)
+        | WorkflowEvent::CommandCompletion { .. }
+    ) {
       return;
     }
 
@@ -1842,10 +2081,14 @@ impl Traversal {
     }
 
     let completion_token = WorkflowCommandCompletionToken(Uuid::new_v4().to_string());
+    // Record the invocation and charge its cooldown at launch, including failed/cancelled work.
+    // RunCommand requests dispatch only; the transition's other actions wait for matching
+    // completion.
     self.pending_command = Some(PendingCommand {
       completion_token: completion_token.0.clone(),
       transition_index: index,
       completion_received: false,
+      started_at: Some(TimestampMicros(now)),
     });
     command_last_started_at_ns.insert(matcher_id, now_ns);
     result
@@ -1853,6 +2096,7 @@ impl Traversal {
       .push(TriggeredAction::RunCommand(TriggeredActionRunCommand {
         command_selector: command_selector.clone(),
         completion_token,
+        started_at: now,
       }));
   }
 
@@ -2268,6 +2512,7 @@ pub(crate) enum TriggeredAction<'a> {
 pub(crate) struct TriggeredActionRunCommand {
   pub(crate) command_selector: WorkflowCommandSelector,
   pub(crate) completion_token: WorkflowCommandCompletionToken,
+  pub(crate) started_at: OffsetDateTime,
 }
 
 //

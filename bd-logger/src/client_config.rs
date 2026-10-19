@@ -281,6 +281,7 @@ impl LoggerUpdate {
     command_execution_policy: CommandExecutionPolicy,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
     command_state: Arc<DeviceCommandState>,
+    time_provider: Arc<dyn TimeProvider>,
     scope: &Scope,
   ) -> Self {
     Self {
@@ -297,6 +298,7 @@ impl LoggerUpdate {
         command_execution_policy,
         remote_screenshot_capture_handler,
         command_state,
+        time_provider,
       ),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),
       filter_config_parse_failure: scope.counter("filter_config_parse_failure"),

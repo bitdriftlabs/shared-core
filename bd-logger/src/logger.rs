@@ -26,6 +26,7 @@ use bd_event_buffer::ProviderSnapshot;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  LOG_FIELD_NAME_DURATION_MS,
   LogFieldValue,
   LogFields,
   LogLevel,
@@ -295,7 +296,7 @@ impl LoggerHandle {
 
   pub fn log_resource_utilization(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
     fields.insert(
-      "_duration_ms".into(),
+      LOG_FIELD_NAME_DURATION_MS.into(),
       AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
 
@@ -367,7 +368,7 @@ impl LoggerHandle {
     duration: time::Duration,
   ) {
     fields.insert(
-      "_duration_ms".into(),
+      LOG_FIELD_NAME_DURATION_MS.into(),
       AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
 
@@ -390,7 +391,7 @@ impl LoggerHandle {
   pub fn log_sdk_start(&self, mut fields: AnnotatedLogFields, duration: time::Duration) {
     fields.extend([
       (
-        "_duration_ms".into(),
+        LOG_FIELD_NAME_DURATION_MS.into(),
         AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
       ),
       (
@@ -442,7 +443,7 @@ impl LoggerHandle {
     log::debug!("emitting app update event: {version:?}");
 
     fields.insert(
-      "_duration_ms".into(),
+      LOG_FIELD_NAME_DURATION_MS.into(),
       AnnotatedLogField::new_ootb((duration.as_seconds_f64() * 1_000f64).to_string()),
     );
     if let Some(app_install_size_bytes) = app_install_size_bytes {
@@ -712,6 +713,10 @@ pub trait TestHooks: Send + Sync {
   fn remote_streaming_action_processed(&self) {}
 
   fn remote_streaming_trigger_upload_completed(&self) {}
+
+  /// The upload manager released this buffer's active-upload gate. Durable flush completion is
+  /// reported separately, since the buffer worker and aggregate completion task finish separately.
+  fn trigger_buffer_upload_completed(&self, _buffer_id: &str) {}
 
   fn workflow_attachment_upload_completed(&self, _artifact_id: uuid::Uuid) {}
 

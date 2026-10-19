@@ -36,14 +36,15 @@ fn event_buffer(total_limit_bytes: usize) -> EventBuffer {
 #[tokio::test]
 async fn thread_local_logger_guard() {
   let event_buffer = event_buffer(1024);
-  let sender = async_log_buffer::Sender::from_event_buffer(event_buffer.clone());
-
   let sdk_directory = TempDir::new().unwrap();
+  let session_strategy = no_timeout(sdk_directory.path()).strategy();
+  let sender =
+    async_log_buffer::Sender::from_event_buffer(event_buffer.clone(), session_strategy.clone());
   let store = in_memory_store();
   let handle = LoggerHandle {
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
-    session_strategy: no_timeout(sdk_directory.path()).strategy(),
+    session_strategy,
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store),
@@ -80,14 +81,15 @@ async fn thread_local_logger_guard() {
 
 #[tokio::test]
 async fn session_id_is_rejected_while_reentrancy_guard_is_held() {
-  let sender = async_log_buffer::Sender::from_event_buffer(event_buffer(1024));
-
   let sdk_directory = TempDir::new().unwrap();
+  let session_strategy = no_timeout(sdk_directory.path()).strategy();
+  let sender =
+    async_log_buffer::Sender::from_event_buffer(event_buffer(1024), session_strategy.clone());
   let store = in_memory_store();
   let handle = LoggerHandle {
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
-    session_strategy: no_timeout(sdk_directory.path()).strategy(),
+    session_strategy,
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store),
@@ -109,15 +111,16 @@ async fn session_id_is_rejected_while_reentrancy_guard_is_held() {
 #[tokio::test]
 async fn register_opaque_entity_id_updates_queue_and_watch() {
   let event_buffer = event_buffer(1024 * 1024);
-  let sender = async_log_buffer::Sender::from_event_buffer(event_buffer.clone());
-
   let sdk_directory = TempDir::new().unwrap();
+  let session_strategy = no_timeout(sdk_directory.path()).strategy();
+  let sender =
+    async_log_buffer::Sender::from_event_buffer(event_buffer.clone(), session_strategy.clone());
   let store = in_memory_store();
   let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
   let handle = LoggerHandle {
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
-    session_strategy: no_timeout(sdk_directory.path()).strategy(),
+    session_strategy,
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store.clone()),
@@ -161,15 +164,16 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
 
 #[tokio::test]
 async fn register_opaque_entity_id_does_not_update_watch_when_queueing_fails() {
-  let sender = async_log_buffer::Sender::from_event_buffer(event_buffer(0));
-
   let sdk_directory = TempDir::new().unwrap();
+  let session_strategy = no_timeout(sdk_directory.path()).strategy();
+  let sender =
+    async_log_buffer::Sender::from_event_buffer(event_buffer(0), session_strategy.clone());
   let store = in_memory_store();
   let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
   let handle = LoggerHandle {
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
-    session_strategy: no_timeout(sdk_directory.path()).strategy(),
+    session_strategy,
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store),

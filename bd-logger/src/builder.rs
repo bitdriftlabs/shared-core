@@ -666,6 +666,7 @@ impl LoggerBuilder {
           command_execution_policy,
           remote_screenshot_capture_handler,
           command_state.clone(),
+          time_provider.clone(),
           &scope.scope("config"),
         ),
         time_provider.clone(),

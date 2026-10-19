@@ -32,7 +32,7 @@ use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::fs::{self, File};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore, watch};
+use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::time::sleep;
 use uuid::Uuid;
 
@@ -156,6 +156,17 @@ impl WorkflowAttachmentCleanupWorker {
 }
 
 //
+// TestHooks
+//
+
+#[cfg(test)]
+trait TestHooks: Send + Sync {
+  fn admission_started(&self) {}
+
+  fn admission_completed(&self) {}
+}
+
+//
 // AttachmentStore
 //
 
@@ -166,6 +177,8 @@ pub struct AttachmentStore {
   oldest_timestamp: Mutex<Option<u64>>,
   cleanup_generation: AtomicU64,
   admissions: Semaphore,
+  #[cfg(test)]
+  test_hooks: Option<Arc<dyn TestHooks>>,
   upload_ownership: Arc<Semaphore>,
   max_attachment_bytes: IntWatch<attachment::MaxBytes>,
   max_owned_bytes: IntWatch<workflow_attachment::MaxOwnedBytes>,
@@ -269,6 +282,8 @@ impl AttachmentStore {
       oldest_timestamp: Mutex::new(None),
       cleanup_generation: AtomicU64::new(0),
       admissions: Semaphore::new(1),
+      #[cfg(test)]
+      test_hooks: None,
       upload_ownership: Arc::new(Semaphore::new(1)),
       max_attachment_bytes: runtime.register_int_watch(),
       max_owned_bytes: runtime.register_int_watch(),
@@ -350,8 +365,53 @@ impl AttachmentStore {
         "attachment content type exceeds 255 bytes or contains control characters",
       ));
     }
-    let _permit = self.admissions.acquire().await.map_err(io::Error::other)?;
-    self.admit_async(source, content_type).await
+    // Restart recovery rebuilds capacity from disk, but a cancelled command leaves this live store
+    // and its accounting in use. Finish filesystem publication and accounting in an owned worker:
+    // dropping tokio::fs futures can leave blocking I/O running, so inline rollback is not enough.
+    let store = self.clone();
+    let (mut result_tx, result_rx) = oneshot::channel();
+    let (claim_tx, claim_rx) = oneshot::channel();
+    tokio::spawn(async move {
+      let permit = tokio::select! {
+        biased;
+        () = result_tx.closed() => return,
+        permit = store.admissions.acquire() => permit,
+      };
+      let _permit = match permit {
+        Ok(permit) => permit,
+        Err(error) => {
+          let _ = result_tx.send(Err(io::Error::other(error)));
+          return;
+        },
+      };
+      if result_tx.is_closed() {
+        return;
+      }
+      #[cfg(test)]
+      if let Some(hooks) = &store.test_hooks {
+        hooks.admission_started();
+      }
+      let result = store.admit_async(source, content_type).await;
+      let artifact_id = result.as_ref().ok().map(|attachment| attachment.id);
+      let _ = result_tx.send(result);
+      #[cfg(test)]
+      if let Some(hooks) = &store.test_hooks {
+        hooks.admission_completed();
+      }
+      // A successful send can still leave an unpolled result in a dropped receiver. The caller
+      // acknowledges ownership without another await; until then, hold the admission permit and
+      // release any abandoned payload. A failed result send also drops the caller's claim sender.
+      if claim_rx.await.is_err()
+        && let Some(id) = artifact_id
+        && let Err(error) = store.release_async(id).await
+      {
+        log::warn!("failed to release cancelled workflow attachment {id}: {error}");
+      }
+    });
+    let result = result_rx.await.map_err(io::Error::other)?;
+    // No cancellation point is allowed between consuming the result and transferring ownership.
+    let _ = claim_tx.send(());
+    result
   }
 
   pub async fn release(self: &Arc<Self>, id: Uuid) -> io::Result<()> {

@@ -338,6 +338,10 @@ impl BufferUploadManager {
           self.handle_trigger_uploads(trigger, &trigger_upload_complete_tx).await?,
         Some(completed_trigger_buffer) = trigger_upload_complete_rx.recv() => {
           self.active_trigger_uploads.remove(&completed_trigger_buffer);
+          log::debug!("released active trigger upload for buffer {completed_trigger_buffer}");
+          if let Some(test_hooks) = &self.test_hooks {
+            test_hooks.trigger_buffer_upload_completed(&completed_trigger_buffer);
+          }
         },
         () = self.shutdown.cancelled() => {
           self.shutdown().await;
@@ -1457,9 +1461,10 @@ impl ContinuousBufferUploader {
   }
 }
 
-// StreamedBufferUpload is used to manage uploading streamed logs. Unlike the other upload
-// strategies, streamed logs are immediately uploaded without any batching and continuous to upload
-// logs from the buffer forever.
+// Uploads live-tail batches independently of regular buffer uploads. Workflow attachment metadata
+// is forwarded without staging payloads or tracking attachment retention here; the owning regular
+// buffer upload remains responsible. Receiving a reference through tail does not imply that the
+// attachment is available for download.
 struct StreamedBufferUpload {
   // The ring buffer consumer to use to consume logs. We use the cursor consumer to get us async
   // reads, we could technically use the non-cursor version.

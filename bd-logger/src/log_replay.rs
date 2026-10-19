@@ -37,8 +37,10 @@ use bd_workflows::engine::{
   WorkflowsEngineConfig,
 };
 use bd_workflows::workflow::{
+  CommandCancellationReason,
   WorkflowCommandCompletionError,
   WorkflowCommandCompletionToken,
+  WorkflowCommandEvent,
   WorkflowCommandOutcome,
   WorkflowCommandRequest,
   WorkflowDebugStateMap,
@@ -104,7 +106,7 @@ pub trait LogReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    completion_token: Option<WorkflowCommandCompletionToken>,
+    command_event: Option<WorkflowCommandEvent>,
     pipeline: &mut ProcessingPipeline,
     state: &bd_state::Store,
     now: OffsetDateTime,
@@ -134,13 +136,13 @@ impl LogReplay for LoggerReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    completion_token: Option<WorkflowCommandCompletionToken>,
+    command_event: Option<WorkflowCommandEvent>,
     pipeline: &mut ProcessingPipeline,
     state_store: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     pipeline
-      .process_log(log, completion_token.as_ref(), state_store, now)
+      .process_log(log, command_event.as_ref(), state_store, now)
       .await
   }
 
@@ -293,12 +295,13 @@ impl ProcessingPipeline {
 
   pub(crate) fn workflow_command_outcome_log(
     &self,
+    token: &WorkflowCommandCompletionToken,
     outcome: WorkflowCommandOutcome,
     now: OffsetDateTime,
-  ) -> Log {
+  ) -> Result<Log, WorkflowCommandCompletionError> {
     self
       .workflows_engine
-      .workflow_command_outcome_log(outcome, now)
+      .workflow_command_outcome_log(token, outcome, now)
   }
 
   pub(crate) fn accept_workflow_command_completion(
@@ -317,10 +320,28 @@ impl ProcessingPipeline {
     self.workflows_engine.fail_recovered_workflow_commands(now)
   }
 
+  pub(crate) fn take_cancelled_workflow_commands(
+    &mut self,
+    now: OffsetDateTime,
+  ) -> Vec<WorkflowCommandLog> {
+    self.workflows_engine.take_cancelled_workflow_commands(now)
+  }
+
+  pub(crate) fn cancel_workflow_command(
+    &mut self,
+    token: &WorkflowCommandCompletionToken,
+    reason: CommandCancellationReason,
+    now: OffsetDateTime,
+  ) -> Result<WorkflowCommandLog, WorkflowCommandCompletionError> {
+    self
+      .workflows_engine
+      .cancel_workflow_command(token, reason, now)
+  }
+
   async fn process_log(
     &mut self,
     mut log: Log,
-    completion_token: Option<&WorkflowCommandCompletionToken>,
+    command_event: Option<&WorkflowCommandEvent>,
     state: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
@@ -336,19 +357,6 @@ impl ProcessingPipeline {
       .as_ref()
       .is_some_and(|attachment| attachment.source == AttachmentSource::WORKFLOW);
 
-    if !has_workflow_attachment {
-      match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
-        Ok(streamed) => {
-          if streamed {
-            self.stats.streamed_logs.inc();
-          }
-        },
-        Err(e) => {
-          log::debug!("failed to stream log: {e:?}");
-        },
-      }
-    }
-
     let matching_buffers = self.buffer_selector.buffers(
       log.log.log_type,
       log.log.log_level,
@@ -357,8 +365,14 @@ impl ProcessingPipeline {
       &state_reader,
     );
 
-    let event = match completion_token {
-      Some(token) => WorkflowEvent::CommandCompletion {
+    // Routing authority is out-of-band, not inferred from public span fields that user logs or
+    // filters can imitate. Only Completion carries a pending traversal's token; all command event
+    // variants keep historical attribution without replacing an established engine session.
+    let event = match command_event {
+      Some(WorkflowCommandEvent::Start) => WorkflowEvent::CommandStart(&log.log),
+      Some(WorkflowCommandEvent::Cancelled) => WorkflowEvent::CommandCancelled(&log.log),
+      Some(WorkflowCommandEvent::Log) => WorkflowEvent::CommandLog(&log.log),
+      Some(WorkflowCommandEvent::Completion(token)) => WorkflowEvent::CommandCompletion {
         log: &log.log,
         token,
       },
@@ -428,13 +442,19 @@ impl ProcessingPipeline {
     );
     log_replay_result.committed_workflow_attachment =
       (committed || synthetic_committed) && has_workflow_attachment;
-    if log_replay_result.committed_workflow_attachment {
-      // TODO: Stage workflow attachments before streaming their outcome logs so the artifact is
-      // available before a tail-stream consumer receives its reference.
+
+    // Live tail does not retain workflow attachment payloads; they need a regular or synthetic
+    // buffer reference. Without one, the terminal log is omitted even if its start was streamed,
+    // and the caller releases the payload. Other logs stream regardless of regular buffer writes.
+    if !has_workflow_attachment || log_replay_result.committed_workflow_attachment {
+      // TODO: Coordinate workflow attachment staging/upload and retention with live tail. A
+      // committed reference is not upload readiness: continuous uploads can lag, and an unflushed
+      // trigger buffer may never upload the payload. Direct command attachments are already
+      // uploaded before their terminal logs are emitted.
       match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
         Ok(true) => self.stats.streamed_logs.inc(),
         Ok(false) => {},
-        Err(error) => log::debug!("failed to stream workflow attachment log: {error:?}"),
+        Err(error) => log::debug!("failed to stream log: {error:?}"),
       }
     }
 

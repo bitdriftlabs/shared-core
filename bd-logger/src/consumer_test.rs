@@ -50,7 +50,7 @@ use bd_buffer::{
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
-use bd_log_primitives::{EncodableLog, Log, log_level};
+use bd_log_primitives::{COMMAND_OUTCOME_MESSAGE, EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::ApiRequest;
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::logging::payload::{Log as ProtoLog, LogType};
@@ -750,7 +750,7 @@ fn direct_command_artifacts_are_not_workflow_attachments() {
     Log {
       log_level: log_level::INFO,
       log_type: LogType::NORMAL,
-      message: "Command completed".into(),
+      message: COMMAND_OUTCOME_MESSAGE.into(),
       fields: [].into(),
       matching_fields: [].into(),
       session_id: "session".into(),
@@ -1708,15 +1708,14 @@ async fn persisted_trigger_upload_prunes_missing_buffers_on_recovery() {
     })
     .unwrap();
 
-  for _ in 0 .. 100 {
-    if setup.pending_trigger_uploads().await.is_empty() {
-      return;
-    }
-
-    tokio::task::yield_now().await;
-  }
-
-  panic!("expected pruned trigger upload to be cleared from persistence");
+  // Completion is published only after durable cleanup; scheduler yields do not bound disk I/O.
+  setup
+    .wait_for_flush_state(
+      &FlushBufferId::ExplicitSessionCapture("flush-1".to_string()),
+      false,
+    )
+    .await;
+  assert_eq!(setup.pending_trigger_uploads().await, vec![]);
 }
 
 #[tokio::test(start_paused = true)]
