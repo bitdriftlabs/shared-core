@@ -33,6 +33,7 @@ use bytes::Bytes;
 use protobuf::{Chars, Message};
 use std::collections::HashMap;
 use std::io::Write;
+use std::str;
 
 //
 // OtlpCompression
@@ -58,6 +59,12 @@ pub struct OtlpMetric {
 }
 
 fn validate_otlp_metric(sample: &OtlpMetric) -> anyhow::Result<()> {
+  let id = sample.metric.get_id();
+  str::from_utf8(id.name())?;
+  for tag in id.tags() {
+    str::from_utf8(&tag.tag)?;
+    str::from_utf8(&tag.value)?;
+  }
   let end = sample
     .metric
     .timestamp
@@ -66,7 +73,7 @@ fn validate_otlp_metric(sample: &OtlpMetric) -> anyhow::Result<()> {
   if sample.start_time_unix_nano >= end {
     anyhow::bail!("OTLP interval start must precede its end");
   }
-  let kind = sample.metric.get_id().mtype().unwrap_or(MetricType::Gauge);
+  let kind = id.mtype().unwrap_or(MetricType::Gauge);
   if sample.is_monotonic && !matches!(kind, MetricType::Counter(_)) {
     anyhow::bail!("OTLP monotonicity applies only to counters");
   }
@@ -88,13 +95,17 @@ fn validate_otlp_metric(sample: &OtlpMetric) -> anyhow::Result<()> {
         anyhow::bail!("OTLP summary count must be an integral value in the u64 range");
       }
       if !summary.sample_sum.is_finite()
-        || summary.quantiles.iter().any(|quantile| {
-          !quantile.quantile.is_finite()
-            || !(0.0 ..= 1.0).contains(&quantile.quantile)
-            || !quantile.value.is_finite()
-        })
+        || (summary.sample_count == 0.0 && summary.sample_sum != 0.0)
       {
-        anyhow::bail!("OTLP summary values must be finite with quantiles between zero and one");
+        anyhow::bail!("OTLP summary sum must be finite and zero when count is zero");
+      }
+      if summary.quantiles.iter().any(|quantile| {
+        !quantile.quantile.is_finite()
+          || !(0.0 ..= 1.0).contains(&quantile.quantile)
+          || !quantile.value.is_finite()
+          || quantile.value < 0.0
+      }) {
+        anyhow::bail!("OTLP summary quantiles must be in [0, 1] with finite nonnegative values");
       }
       let mut quantiles: Vec<_> = summary
         .quantiles

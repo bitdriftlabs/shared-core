@@ -81,6 +81,11 @@ fn retry_after_seconds_and_dates_are_opt_in() {
       "Wed, 07 Oct 2026 12:00:05 GMT",
       Some(Duration::from_secs(5)),
     ),
+    (
+      "Wednesday, 07-Oct-26 12:00:05 GMT",
+      Some(Duration::from_secs(5)),
+    ),
+    ("Wed Oct  7 12:00:05 2026", Some(Duration::from_secs(5))),
     ("Wed, 07 Oct 2026 11:59:59 GMT", Some(Duration::ZERO)),
     ("0", Some(Duration::ZERO)),
     ("-1", None),

@@ -19,12 +19,13 @@ use async_trait::async_trait;
 use backoff::backoff::{Constant, Zero};
 use bytes::Bytes;
 use futures::future::pending;
+use futures::poll;
 use http::{HeaderMap, StatusCode};
 use std::iter::once;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use tokio::time::{Instant, timeout};
+use tokio::time::{Instant, advance, timeout};
 
 #[derive(Default)]
 struct TestObserver {
@@ -108,6 +109,46 @@ fn one_retry() -> Arc<Retry> {
     max_retries: Some(1),
   })
   .unwrap()
+}
+
+#[tokio::test(start_paused = true)]
+async fn zero_delivery_timeout_does_not_send() {
+  let mut client = MockHttpRemoteWriteClient::new();
+  client.expect_send_write_request().times(0);
+  let observer = Arc::new(TestObserver::default());
+  let engine = otlp_engine(client, observer.clone(), one_retry());
+  assert!(matches!(
+    engine
+      .send_with_timeout(Bytes::from_static(b"request"), None, false, Duration::ZERO)
+      .await,
+    Err(HttpRemoteWriteError::Timeout)
+  ));
+  assert_eq!(observer.sent.load(Ordering::Relaxed), 0);
+  assert_eq!(observer.retries.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test(start_paused = true)]
+async fn retry_resuming_after_delivery_deadline_does_not_send() {
+  let mut client = MockHttpRemoteWriteClient::new();
+  client
+    .expect_send_write_request()
+    .times(1)
+    .returning(|_, _| Err(response_error(StatusCode::SERVICE_UNAVAILABLE, Some("3"))));
+  let observer = Arc::new(TestObserver::default());
+  let engine = otlp_engine(client, observer.clone(), one_retry());
+  let delivery = engine.send_with_timeout(
+    Bytes::from_static(b"request"),
+    None,
+    false,
+    Duration::from_secs(5),
+  );
+  tokio::pin!(delivery);
+  assert!(poll!(delivery.as_mut()).is_pending());
+  assert_eq!(observer.retries.load(Ordering::Relaxed), 1);
+  advance(Duration::from_secs(6)).await;
+  assert!(matches!(delivery.await, Err(HttpRemoteWriteError::Timeout)));
+  assert_eq!(observer.sent.load(Ordering::Relaxed), 7);
+  assert_eq!(observer.retries.load(Ordering::Relaxed), 1);
 }
 
 #[tokio::test(start_paused = true)]

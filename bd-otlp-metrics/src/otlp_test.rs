@@ -19,6 +19,7 @@ use crate::{
   SummaryData,
   TagValue,
 };
+use bytes::Bytes;
 use protobuf::Message;
 use snap::read::FrameDecoder;
 use std::io::Read;
@@ -44,7 +45,7 @@ fn metric(kind: MetricType, timestamp: u64, value: MetricValue) -> Metric {
 fn summary(count: f64) -> MetricValue {
   MetricValue::Summary(SummaryData {
     sample_count: count,
-    sample_sum: 12.5,
+    sample_sum: if count == 0.0 { 0.0 } else { 12.5 },
     quantiles: vec![
       SummaryBucket {
         quantile: 0.99,
@@ -281,18 +282,56 @@ fn summary_count_accepts_zero_and_the_largest_representable_u64_value() {
 }
 
 #[test]
+fn rejects_non_utf8_metric_names_and_attributes() {
+  let valid = Bytes::from_static(b"valid");
+  let invalid = Bytes::from_static(b"\xff");
+  for (name, key, value) in [
+    (invalid.clone(), valid.clone(), valid.clone()),
+    (valid.clone(), invalid.clone(), valid.clone()),
+    (valid.clone(), valid, invalid),
+  ] {
+    let metric = Metric::new(
+      MetricId::new(
+        name,
+        Some(MetricType::Counter(CounterType::Delta)),
+        vec![TagValue { tag: key, value }],
+        false,
+      )
+      .unwrap(),
+      None,
+      180,
+      MetricValue::Simple(1.0),
+    );
+    assert!(
+      encode_otlp_metrics_with_metadata(
+        vec![OtlpMetric {
+          metric,
+          start_time_unix_nano: 120_000_000_000,
+          is_monotonic: true,
+        }],
+        OtlpCompression::None,
+      )
+      .is_err()
+    );
+  }
+}
+
+#[test]
 fn rejects_invalid_summary_values_and_metric_metadata() {
-  for (quantiles, sum) in [
-    (vec![(0.5, 1.0)], f64::INFINITY),
-    (vec![(0.5, f64::NAN)], 1.0),
-    (vec![(f64::NAN, 1.0)], 1.0),
-    (vec![(-0.1, 1.0)], 1.0),
-    (vec![(1.1, 1.0)], 1.0),
-    (vec![(0.5, 1.0), (0.5, 2.0)], 1.0),
-    (vec![(-0.0, 1.0), (0.0, 1.0)], 1.0),
+  for (count, quantiles, sum) in [
+    (0.0, vec![], 12.5),
+    (0.0, vec![], -1.0),
+    (1.0, vec![(0.5, -1.0)], 1.0),
+    (1.0, vec![(0.5, 1.0)], f64::INFINITY),
+    (1.0, vec![(0.5, f64::NAN)], 1.0),
+    (1.0, vec![(f64::NAN, 1.0)], 1.0),
+    (1.0, vec![(-0.1, 1.0)], 1.0),
+    (1.0, vec![(1.1, 1.0)], 1.0),
+    (1.0, vec![(0.5, 1.0), (0.5, 2.0)], 1.0),
+    (1.0, vec![(-0.0, 1.0), (0.0, 1.0)], 1.0),
   ] {
     let value = MetricValue::Summary(SummaryData {
-      sample_count: 1.0,
+      sample_count: count,
       sample_sum: sum,
       quantiles: quantiles
         .into_iter()

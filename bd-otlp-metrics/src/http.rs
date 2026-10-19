@@ -8,9 +8,8 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use http::{HeaderMap, StatusCode};
+use httpdate::parse_http_date;
 use std::time::{Duration, SystemTime};
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc2822;
 
 //
 // HttpRemoteWriteError
@@ -82,7 +81,7 @@ impl HttpRetryPolicy {
     if !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()) {
       return value.parse::<u64>().ok().map(Duration::from_secs);
     }
-    let date: SystemTime = OffsetDateTime::parse(value, &Rfc2822).ok()?.into();
+    let date = parse_http_date(value).ok()?;
     Some(date.duration_since(now).unwrap_or_default())
   }
 }

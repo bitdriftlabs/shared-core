@@ -111,6 +111,10 @@ impl DeliveryEngine {
       .retry_notify_until(
         (self.backoff)(),
         || async {
+          if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            log::debug!("delivery deadline reached before request attempt");
+            return Err(backoff::Error::permanent(HttpRemoteWriteError::Timeout));
+          }
           self.observer.request_sent(compressed_write_request.len());
           match self
             .client
