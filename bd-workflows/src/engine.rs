@@ -173,6 +173,8 @@ pub struct WorkflowsEngine<C, H> {
   configs: Vec<Config>,
   state: WorkflowsState,
   pending_workflow_command_index: HashMap<String, PendingWorkflowCommandLocation>,
+  // Invalidation removes token authority synchronously. The logger later drains this outbox to
+  // stop executors and emit observations using identity captured before destructive mutations.
   cancelled_workflow_commands: Vec<(
     String,
     PendingWorkflowCommandLocation,
@@ -622,6 +624,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       );
   }
 
+  // Configuration reconciliation can move surviving traversals or destroy their owners. Compare
+  // tokens, not coordinates: only vanished, unaccepted invocations need a cancellation end.
   fn rebuild_pending_workflow_command_index(&mut self) {
     let previous_index = std::mem::take(&mut self.pending_workflow_command_index);
     for (workflow_index, workflow) in self.state.workflows.iter().enumerate() {
@@ -755,6 +759,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     })
   }
 
+  /// Previews the owner's end span without accepting the completion or advancing its traversal.
+  /// The logger can normalize it before reserving the terminal decision with accept.
   pub fn workflow_command_outcome_log(
     &self,
     token: &WorkflowCommandCompletionToken,
@@ -778,6 +784,9 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     ))
   }
 
+  /// Reserves a normal terminal outcome, serialized with reset processing by the logging loop.
+  /// This does not evaluate the outcome matcher or run actions; private completion replay must
+  /// follow. Once accepted, later invalidation must not manufacture a cancellation end.
   pub fn accept_workflow_command_completion(
     &mut self,
     token: &WorkflowCommandCompletionToken,
@@ -806,6 +815,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
   }
 
   /// Drains cancellation observations for commands whose owning traversal was invalidated.
+  /// Their tokens no longer authorize completion; callers must stop the workers and replay these
+  /// as cancellation observations, not as completions of the removed transitions.
   pub fn take_cancelled_workflow_commands(
     &mut self,
     now: OffsetDateTime,
@@ -816,7 +827,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       .collect()
   }
 
-  /// Discards only the command's pending traversal, without evaluating its transition actions.
+  /// Discards only the command's pending traversal, preserving siblings and skipping its actions.
+  /// The returned failed end may still trigger ordinary observer workflows when replayed.
   pub fn cancel_workflow_command(
     &mut self,
     token: &WorkflowCommandCompletionToken,
@@ -890,7 +902,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
   }
 
   /// Prunes interrupted command traversals, retaining siblings and unrelated recovered progress.
-  /// Already received completions are pruned without manufacturing a second terminal end.
+  /// Persisted wait state cannot resume an old platform task, and retrying its selector could
+  /// duplicate side effects. Already accepted completions are pruned without a second terminal end.
   pub fn fail_recovered_workflow_commands(
     &mut self,
     now: OffsetDateTime,
@@ -1011,6 +1024,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     self.needs_state_persistence = true;
   }
 
+  // Ordinary ingress supplies the effective session, not cross-thread strategy notifications.
+  // A completion accepted before that ingress can still win after the application resets strategy.
   fn maybe_update_session(&mut self, incoming_session_id: &str) -> bool {
     if self.state.session_id.is_empty() {
       log::debug!("workflows engine: moving from no session to session \"{incoming_session_id}\"");
@@ -1068,6 +1083,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
+    // Ordinary ingress defines the effective session boundary. Command events keep their owner's
+    // session for attribution, but must never reset the engine back after newer ingress.
     let session_start_result = match event {
       WorkflowEvent::Log(log) => {
         let session_changed = self.maybe_update_session(&log.session_id);
@@ -1444,6 +1461,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     //   should continue even as the session ID changes.
     // * streaming actions after the session ID change are cleared on the next call to the
     //   Resolver's resolve method.
+    // Snapshot outstanding command ends before discarding their owners. Accepted completions
+    // already won terminal arbitration and must not gain another end during session cleanup.
     self.cancelled_workflow_commands.extend(
       self
         .pending_workflow_command_index
@@ -1889,6 +1908,9 @@ pub(crate) struct WorkflowsState {
   command_last_started_at_ns: HashMap<String, i64>,
 }
 
+/// Mutable traversal coordinates plus an owned lifecycle snapshot. Reset can destroy the traversal
+/// before the logger emits its cancellation, so neither session nor timing may be read from new
+/// state.
 #[derive(Clone)]
 struct PendingWorkflowCommandLocation {
   workflow_index: usize,

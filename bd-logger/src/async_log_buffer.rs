@@ -11,6 +11,7 @@ mod async_log_buffer_test;
 
 use crate::device_command::{
   CommandExecutionPolicy,
+  DeviceCommandRegistry,
   RegisteredCommandDispatcher,
   WorkflowCommandCompletion,
   WorkflowCommandDispatcher,
@@ -84,7 +85,6 @@ use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_workflows::workflow::{
   CommandCancellationReason,
-  WorkflowCommandCompletionError,
   WorkflowCommandCompletionToken,
   WorkflowCommandEvent,
   WorkflowCommandOutcome,
@@ -197,172 +197,81 @@ impl AdmissionCounters {
   }
 }
 
-#[derive(Clone)]
-pub struct Sender {
-  inner: SenderInner,
+//
+// LogAdmission
+//
+
+pub enum LogAdmission {
+  Current,
+  WithProvider(ProviderSnapshot),
+  /// Command ownership is trusted SDK context, independent of the current logging session.
+  Command {
+    session_id: Arc<str>,
+    /// Cancellation ends remain observable, but cannot initiate another command matcher.
+    cancelled: bool,
+  },
 }
 
 #[derive(Clone)]
-enum SenderInner {
-  EventBuffer {
-    event_buffer: EventBuffer,
-    metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
-    session_strategy: Arc<bd_session::Strategy>,
-  },
-  #[cfg(test)]
-  TestEventBuffer { event_buffer: EventBuffer },
+pub struct Sender {
+  event_buffer: EventBuffer,
+  metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
+  session_strategy: Arc<bd_session::Strategy>,
+  device_commands: DeviceCommandRegistry,
 }
 
 impl Sender {
-  fn new(
+  pub(crate) fn new(
     event_buffer: EventBuffer,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
     session_strategy: Arc<bd_session::Strategy>,
+    device_commands: DeviceCommandRegistry,
   ) -> Self {
     Self {
-      inner: SenderInner::EventBuffer {
-        event_buffer,
-        metadata_provider,
-        session_strategy,
-      },
-    }
-  }
-
-  #[cfg(test)]
-  pub(crate) fn from_event_buffer(event_buffer: EventBuffer) -> Self {
-    Self {
-      inner: SenderInner::TestEventBuffer { event_buffer },
-    }
-  }
-
-  pub fn try_send_log(&self, log: LogLine) -> Result<(), AdmissionError> {
-    match &self.inner {
-      SenderInner::EventBuffer {
-        event_buffer,
-        metadata_provider,
-        session_strategy,
-      } => {
-        let context = admission_context(
-          log.attributes_overrides.as_ref(),
-          metadata_provider,
-          session_strategy,
-        )
-        .map_err(|error| {
-          log::debug!("failed to capture log admission context: {error}");
-          AdmissionError::ContextCaptureFailed
-        })?;
-        admit(
-          event_buffer,
-          EventBufferEntry::ingress(LoggerIngressEvent::log(log, context, None)),
-        )
-      },
-      #[cfg(test)]
-      SenderInner::TestEventBuffer { event_buffer } => admit(
-        event_buffer,
-        EventBufferEntry::ingress(LoggerIngressEvent::log(
-          log,
-          EventContext::CurrentProcess(AdmissionContext {
-            session_id: "test".into(),
-            provider: ProviderSnapshot {
-              timestamp: OffsetDateTime::UNIX_EPOCH,
-              ootb_fields: LogFields::default(),
-              custom_fields: LogFields::default(),
-            },
-            admitted_at: OffsetDateTime::UNIX_EPOCH,
-          }),
-          None,
-        )),
-      ),
-    }
-  }
-
-  pub(crate) fn try_send_command_log(
-    &self,
-    log: LogLine,
-    session_id: Arc<str>,
-  ) -> Result<(), AdmissionError> {
-    self.try_send_command_log_with_cancellation(log, session_id, false)
-  }
-
-  pub(crate) fn try_send_command_log_with_cancellation(
-    &self,
-    log: LogLine,
-    session_id: Arc<str>,
-    cancelled: bool,
-  ) -> Result<(), AdmissionError> {
-    let (event_buffer, provider) = match &self.inner {
-      SenderInner::EventBuffer {
-        event_buffer,
-        metadata_provider,
-        ..
-      } => {
-        let provider = provider_snapshot(metadata_provider).map_err(|error| {
-          log::debug!("failed to capture command span metadata: {error}");
-          AdmissionError::ContextCaptureFailed
-        })?;
-        (event_buffer, provider)
-      },
-      #[cfg(test)]
-      SenderInner::TestEventBuffer { event_buffer } => (
-        event_buffer,
-        ProviderSnapshot {
-          timestamp: OffsetDateTime::UNIX_EPOCH,
-          ootb_fields: LogFields::default(),
-          custom_fields: LogFields::default(),
-        },
-      ),
-    };
-    let context = EventContext::Command {
-      session_id,
-      provider: Some(provider),
-      cancelled,
-    };
-    admit(
       event_buffer,
+      metadata_provider,
+      session_strategy,
+      device_commands,
+    }
+  }
+
+  pub(crate) fn device_commands(&self) -> &DeviceCommandRegistry {
+    &self.device_commands
+  }
+
+  pub fn try_send_log(&self, log: LogLine, admission: LogAdmission) -> Result<(), AdmissionError> {
+    let context = match admission {
+      LogAdmission::Current => admission_context(
+        log.attributes_overrides.as_ref(),
+        &self.metadata_provider,
+        &self.session_strategy,
+      ),
+      LogAdmission::WithProvider(provider) => admission_context_from_provider(
+        log.attributes_overrides.as_ref(),
+        provider,
+        &self.session_strategy,
+      ),
+      LogAdmission::Command {
+        session_id,
+        cancelled,
+      } => provider_snapshot(&self.metadata_provider).map(|provider| EventContext::Command {
+        session_id,
+        provider: Some(provider),
+        cancelled,
+      }),
+    }
+    .map_err(|error| {
+      log::debug!("failed to capture log admission context: {error}");
+      AdmissionError::ContextCaptureFailed
+    })?;
+    admit(
+      &self.event_buffer,
       EventBufferEntry::ingress(LoggerIngressEvent::log(log, context, None)),
     )
   }
 
-  pub fn try_send_log_with_provider_snapshot(
-    &self,
-    log: LogLine,
-    provider: ProviderSnapshot,
-  ) -> Result<(), AdmissionError> {
-    match &self.inner {
-      SenderInner::EventBuffer {
-        event_buffer,
-        session_strategy,
-        ..
-      } => {
-        let context = admission_context_from_provider(
-          log.attributes_overrides.as_ref(),
-          provider,
-          session_strategy,
-        )
-        .map_err(|error| {
-          log::debug!("failed to capture log admission context: {error}");
-          AdmissionError::ContextCaptureFailed
-        })?;
-        admit(
-          event_buffer,
-          EventBufferEntry::ingress(LoggerIngressEvent::log(log, context, None)),
-        )
-      },
-      #[cfg(test)]
-      SenderInner::TestEventBuffer { .. } => self.try_send_log(log),
-    }
-  }
-
   pub fn try_send_control(&self, msg: LoggerControl) -> Result<(), AdmissionError> {
-    match &self.inner {
-      SenderInner::EventBuffer { event_buffer, .. } => {
-        admit(event_buffer, EventBufferEntry::Control(msg))
-      },
-      #[cfg(test)]
-      SenderInner::TestEventBuffer { event_buffer } => {
-        admit(event_buffer, EventBufferEntry::Control(msg))
-      },
-    }
+    admit(&self.event_buffer, EventBufferEntry::Control(msg))
   }
 
   pub fn try_send_feature_flag_exposure(
@@ -370,42 +279,19 @@ impl Sender {
     flag: String,
     variant: Option<String>,
   ) -> Result<(), AdmissionError> {
-    match &self.inner {
-      SenderInner::EventBuffer {
-        event_buffer,
-        metadata_provider,
-        session_strategy,
-      } => {
-        let context = current_process_admission_context(metadata_provider, session_strategy)
-          .map_err(|error| {
-            log::debug!("failed to capture feature flag admission context: {error}");
-            AdmissionError::ContextCaptureFailed
-          })?;
-        admit(
-          event_buffer,
-          EventBufferEntry::ingress(LoggerIngressEvent::feature_flag_exposure(
-            flag, variant, context,
-          )),
-        )
-      },
-      #[cfg(test)]
-      SenderInner::TestEventBuffer { event_buffer } => admit(
-        event_buffer,
-        EventBufferEntry::ingress(LoggerIngressEvent::feature_flag_exposure(
-          flag,
-          variant,
-          AdmissionContext {
-            session_id: "test".into(),
-            provider: ProviderSnapshot {
-              timestamp: OffsetDateTime::UNIX_EPOCH,
-              ootb_fields: LogFields::default(),
-              custom_fields: LogFields::default(),
-            },
-            admitted_at: OffsetDateTime::UNIX_EPOCH,
-          },
-        )),
-      ),
-    }
+    let context =
+      current_process_admission_context(&self.metadata_provider, &self.session_strategy).map_err(
+        |error| {
+          log::debug!("failed to capture feature flag admission context: {error}");
+          AdmissionError::ContextCaptureFailed
+        },
+      )?;
+    admit(
+      &self.event_buffer,
+      EventBufferEntry::ingress(LoggerIngressEvent::feature_flag_exposure(
+        flag, variant, context,
+      )),
+    )
   }
 
   pub fn flush_state(&self, block: Block) -> Result<(), AdmissionError> {
@@ -424,12 +310,7 @@ impl Sender {
       (None, None)
     };
 
-    let event_buffer = match &self.inner {
-      SenderInner::EventBuffer { event_buffer, .. } => event_buffer,
-      #[cfg(test)]
-      SenderInner::TestEventBuffer { event_buffer } => event_buffer,
-    };
-    match event_buffer.admit_flush(completion_tx) {
+    match self.event_buffer.admit_flush(completion_tx) {
       FlushAdmissionOutcome::SkippedBeforeStartupGateReady => {},
       FlushAdmissionOutcome::Admission(outcome) => admission_outcome(outcome)?,
     }
@@ -551,8 +432,9 @@ fn admission_outcome(outcome: AdmissionOutcome) -> Result<(), AdmissionError> {
 
 /// Converts a workflow-generated log into a line for immediate replay after its source log.
 ///
-/// Generated logs do not re-enter `EventBuffer`, but must retain their source's immutable admission
-/// context and metadata overrides so they cannot be attributed to a later session or process.
+/// Generated logs do not re-enter `EventBuffer`. Ordinary generated logs retain the source's
+/// immutable context and overrides. Command logs may inherit its provider metadata, but keep their
+/// own session: a reset-triggering source log can already belong to the next session.
 fn workflow_generated_log(
   log: Log,
   context: Option<EventContext>,
@@ -616,6 +498,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   startup_replay_delay: Option<watch::Receiver<time::Duration>>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
+  // Candidate results are accepted on this loop, serialized with ingress and workflow resets.
   workflow_command_completion_rx: mpsc::Receiver<WorkflowCommandCompletion>,
   data_upload_tx: mpsc::Sender<DataUpload>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
@@ -631,6 +514,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   replayer: R,
   workflow_command_dispatcher: WorkflowCommandDispatcher,
+  device_commands: DeviceCommandRegistry,
   workflow_attachment_store: AttachmentStoreHandle,
   workflow_attachment_cleanup_ready: Arc<AtomicBool>,
   interceptors: Vec<Arc<dyn LogInterceptor>>,
@@ -753,6 +637,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let workflow_attachment_cleanup_ready = Arc::new(AtomicBool::new(false));
     let test_hooks = uninitialized_logging_context.test_hooks();
     let (workflow_command_completion_tx, workflow_command_completion_rx) = mpsc::channel(16);
+    let device_commands = DeviceCommandRegistry::default();
 
     // The old log and control channels had 1 MiB and 10 MiB byte budgets respectively. Keep
     // those bootstrap limits while moving both flows into one ordered ingress.
@@ -824,6 +709,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           workflow_attachment_store.clone(),
           remote_screenshot_capture_handler.clone(),
         ),
+        device_commands: device_commands.clone(),
         workflow_attachment_store,
         workflow_attachment_cleanup_ready,
 
@@ -870,7 +756,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         test_hooks,
         last_session_id: None,
       },
-      Sender::new(event_buffer, metadata_provider, session_strategy),
+      Sender::new(
+        event_buffer,
+        metadata_provider,
+        session_strategy,
+        device_commands,
+      ),
       remote_screenshot_capture_handler,
     )
   }
@@ -926,7 +817,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     //    loop or explicitly shut it down. In either case it is not helpful to report this as an
     //    unexpected error.
     // 3. Admission-time session or metadata capture failed, so the event was never enqueued.
-    tx.try_send_log(log)
+    tx.try_send_log(log, LogAdmission::Current)
       .inspect_err(|e| log::debug!("enqueue_log: event admission failed: {e:?}"))?;
 
     Ok(())
@@ -954,7 +845,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       capture_session,
     };
 
-    tx.try_send_log_with_provider_snapshot(log, provider)
+    tx.try_send_log(log, LogAdmission::WithProvider(provider))
       .inspect_err(|e| log::debug!("enqueue_log: event admission failed: {e:?}"))?;
 
     Ok(())
@@ -993,6 +884,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Ok(log_replay_result) => log_replay_result,
         Err(error) => {
           if matches!(command_event, Some(WorkflowCommandEvent::Start)) {
+            // The engine has already parked the traversal and dispatched execution. Start logging
+            // is best-effort; a metadata/buffer failure must not strand the pending command.
             log::warn!("failed to replay workflow command start; dropping it: {error}");
             continue;
           }
@@ -1031,6 +924,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) -> Vec<(Log, Option<WorkflowCommandEvent>)> {
     let mut logs = Vec::new();
     if let LoggingState::Initialized(context) = &mut self.logging_state {
+      // The engine invalidated these tokens synchronously. Its outbox retained the original
+      // span/session/reason; signal their workers before dispatching any newly requested commands.
       for cancellation in context
         .processing_pipeline
         .take_cancelled_workflow_commands(self.time_provider.now())
@@ -1041,23 +936,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
     for request in result.workflow_commands_to_start {
       logs.push((request.start_log(), Some(WorkflowCommandEvent::Start)));
-      match self.session_strategy.session_lifetime() {
-        Ok(lifetime) => self
-          .workflow_command_dispatcher
-          .dispatch_with_lifetime(&request, Some(lifetime)),
-        Err(error) => {
-          log::warn!("failed to capture workflow command session lifetime: {error}");
-          if let LoggingState::Initialized(context) = &mut self.logging_state
-            && let Ok(cancellation) = context.processing_pipeline.cancel_workflow_command(
-              &request.completion_token(),
-              CommandCancellationReason::SessionChanged,
-              self.time_provider.now(),
-            )
-          {
-            logs.push((cancellation.log, Some(WorkflowCommandEvent::Cancelled)));
-          }
-        },
-      }
+      self.workflow_command_dispatcher.dispatch(&request);
     }
     self
       .pending_workflow_debug_state
@@ -1098,6 +977,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
+  // Worker completion alone is insufficient: preview/normalize the outcome, reserve the engine's
+  // terminal decision, then replay with private token authority. A reset processed first removes
+  // that authority even if a successful worker result was already queued on the completion channel.
   async fn process_workflow_command_completion(
     &mut self,
     completion: WorkflowCommandCompletion,
@@ -1110,18 +992,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       | WorkflowCommandOutcome::Cancelled { .. } => None,
     };
     let WorkflowCommandCompletion { token, outcome } = completion;
-    let cancellation = match outcome {
-      WorkflowCommandOutcome::Cancelled { reason } => Some(reason),
-      _ if self
-        .workflow_command_dispatcher
-        .with_current(&token, || ())
-        .is_none() =>
-      {
-        Some(CommandCancellationReason::SessionChanged)
-      },
-      _ => None,
-    };
-    if let Some(reason) = cancellation {
+    if let WorkflowCommandOutcome::Cancelled { reason } = outcome {
       self
         .cancel_workflow_completion(&token, reason, artifact_id, state_store)
         .await;
@@ -1182,25 +1053,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       },
     };
 
-    let logging_state = &mut self.logging_state;
-    let accepted = self
-      .workflow_command_dispatcher
-      .with_current(&token, || match logging_state {
-        LoggingState::Initialized(context) => context
-          .processing_pipeline
-          .accept_workflow_command_completion(&token),
-        LoggingState::Uninitialized(_) => Err(WorkflowCommandCompletionError::UnknownToken),
-      });
-    let Some(accepted) = accepted else {
-      self
-        .cancel_workflow_completion(
-          &token,
-          CommandCancellationReason::SessionChanged,
-          artifact_id,
-          state_store,
-        )
-        .await;
-      return;
+    // Session reset and completion acceptance both run on this loop. A strategy reset on another
+    // thread is not effective here until an ordinary log/state event reaches the engine.
+    // Acceptance precedes replay so only this outcome can reach the pending transition's matcher.
+    let accepted = match &mut self.logging_state {
+      LoggingState::Initialized(context) => context
+        .processing_pipeline
+        .accept_workflow_command_completion(&token),
+      LoggingState::Uninitialized(_) => return,
     };
     self.workflow_command_dispatcher.cancel(&token);
     if accepted.is_err() {
@@ -1223,6 +1083,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     match result {
       Ok(result) => {
         if let Some(id) = artifact_id {
+          // Handler success does not guarantee a persistent log reference: filtering/buffer
+          // selection may leave none. Only a committed reference may retain the admitted payload.
           if result.committed_workflow_attachment {
             Self::record_workflow_attachment_timestamp(
               self.workflow_attachment_store(),
@@ -1285,6 +1147,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     if let Some(id) = artifact_id {
       Self::release_workflow_attachment(self.workflow_attachment_store(), id).await;
     }
+    // A reset may already have removed the token and emitted its authoritative cancellation.
+    // The worker's fallback cancellation must not manufacture another end or replace that reason.
     let result = match &mut self.logging_state {
       LoggingState::Initialized(context) => {
         context
@@ -1314,6 +1178,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
+  // Persisted traversal state cannot resume the old platform invocation. Prune only pending
+  // command traversals and replay cancellation observations, never completion-authorized events.
   async fn recover_workflow_commands(&mut self, state_store: &bd_state::Store) {
     let logs = match &mut self.logging_state {
       LoggingState::Initialized(context) => context
@@ -1542,6 +1408,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           },
         };
 
+        // Preserving the span's session is not enough: updating the live system field here would
+        // still rewind session metadata when an old command end arrives after the boundary.
         if !command_owned
           && !matches!(
             log.attributes_overrides,
@@ -1616,6 +1484,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     }
 
+    // This is the effective session boundary for direct commands. Command-owned logs bypass this
+    // method: an old end span retains its owner without moving the live logging session backward.
+    // Reserve cancellation synchronously before awaiting state persistence.
+    self.device_commands.update_session(session_id);
     self.last_session_id = Some(session_id.clone());
 
     if let Err(e) = state_store
@@ -2044,6 +1916,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         )
         .await;
       if let Some(result) = result {
+        self
+          .update_system_session_id(state_store, &session_id)
+          .await;
         self
           .process_state_change_replay_result(result, state_store)
           .await;

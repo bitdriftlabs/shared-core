@@ -156,6 +156,17 @@ impl WorkflowAttachmentCleanupWorker {
 }
 
 //
+// TestHooks
+//
+
+#[cfg(test)]
+trait TestHooks: Send + Sync {
+  fn admission_started(&self) {}
+
+  fn admission_completed(&self) {}
+}
+
+//
 // AttachmentStore
 //
 
@@ -167,9 +178,7 @@ pub struct AttachmentStore {
   cleanup_generation: AtomicU64,
   admissions: Semaphore,
   #[cfg(test)]
-  admission_started: Mutex<Option<oneshot::Sender<()>>>,
-  #[cfg(test)]
-  admission_completed: Mutex<Option<oneshot::Sender<()>>>,
+  test_hooks: Option<Arc<dyn TestHooks>>,
   upload_ownership: Arc<Semaphore>,
   max_attachment_bytes: IntWatch<attachment::MaxBytes>,
   max_owned_bytes: IntWatch<workflow_attachment::MaxOwnedBytes>,
@@ -274,9 +283,7 @@ impl AttachmentStore {
       cleanup_generation: AtomicU64::new(0),
       admissions: Semaphore::new(1),
       #[cfg(test)]
-      admission_started: Mutex::default(),
-      #[cfg(test)]
-      admission_completed: Mutex::default(),
+      test_hooks: None,
       upload_ownership: Arc::new(Semaphore::new(1)),
       max_attachment_bytes: runtime.register_int_watch(),
       max_owned_bytes: runtime.register_int_watch(),
@@ -358,8 +365,9 @@ impl AttachmentStore {
         "attachment content type exceeds 255 bytes or contains control characters",
       ));
     }
-    // A cancelled caller must not interrupt a filesystem transaction between publication and
-    // accounting. At most one worker enters the transaction; abandoned waiters never enter it.
+    // Restart recovery rebuilds capacity from disk, but a cancelled command leaves this live store
+    // and its accounting in use. Finish filesystem publication and accounting in an owned worker:
+    // dropping tokio::fs futures can leave blocking I/O running, so inline rollback is not enough.
     let store = self.clone();
     let (mut result_tx, result_rx) = oneshot::channel();
     let (claim_tx, claim_rx) = oneshot::channel();
@@ -380,18 +388,20 @@ impl AttachmentStore {
         return;
       }
       #[cfg(test)]
-      if let Some(started) = store.admission_started.lock().take() {
-        let _ = started.send(());
+      if let Some(hooks) = &store.test_hooks {
+        hooks.admission_started();
       }
       let result = store.admit_async(source, content_type).await;
       let artifact_id = result.as_ref().ok().map(|attachment| attachment.id);
-      let sent = result_tx.send(result).is_ok();
+      let _ = result_tx.send(result);
       #[cfg(test)]
-      if let Some(completed) = store.admission_completed.lock().take() {
-        let _ = completed.send(());
+      if let Some(hooks) = &store.test_hooks {
+        hooks.admission_completed();
       }
-      // Sending is not enough: cancellation can drop an unpolled, successfully delivered result.
-      if (!sent || claim_rx.await.is_err())
+      // A successful send can still leave an unpolled result in a dropped receiver. The caller
+      // acknowledges ownership without another await; until then, hold the admission permit and
+      // release any abandoned payload. A failed result send also drops the caller's claim sender.
+      if claim_rx.await.is_err()
         && let Some(id) = artifact_id
         && let Err(error) = store.release_async(id).await
       {
@@ -399,6 +409,7 @@ impl AttachmentStore {
       }
     });
     let result = result_rx.await.map_err(io::Error::other)?;
+    // No cancellation point is allowed between consuming the result and transferring ownership.
     let _ = claim_tx.send(());
     result
   }

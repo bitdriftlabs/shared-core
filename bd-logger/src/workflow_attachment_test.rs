@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{AttachmentStore, AttachmentStoreHandle, WorkflowAttachmentCleanupWorker};
+use super::{AttachmentStore, AttachmentStoreHandle, TestHooks, WorkflowAttachmentCleanupWorker};
 use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
@@ -35,6 +35,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::{RetentionHandle, RetentionRegistry};
 use bd_time::TestTimeProvider;
 use flate2::read::ZlibDecoder;
+use parking_lot::Mutex;
 use protobuf::Message;
 use std::collections::HashMap;
 use std::io::{self, Read};
@@ -56,24 +57,45 @@ impl AttachmentStore {
   }
 }
 
+struct AdmissionTestHooks {
+  started: Mutex<Option<oneshot::Sender<()>>>,
+  completed: Mutex<Option<oneshot::Sender<()>>>,
+}
+
+impl TestHooks for AdmissionTestHooks {
+  fn admission_started(&self) {
+    if let Some(started) = self.started.lock().take() {
+      let _ = started.send(());
+    }
+  }
+
+  fn admission_completed(&self) {
+    if let Some(completed) = self.completed.lock().take() {
+      let _ = completed.send(());
+    }
+  }
+}
+
 #[tokio::test]
 async fn cancelled_admission_never_leaks_files_or_capacity() {
   for phase in ["waiting", "writing", "delivered"] {
     let directory = tempfile::tempdir().unwrap();
     let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
-    let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
+    let mut store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
       .get()
       .await
       .unwrap();
+    let (started_tx, started_rx) = oneshot::channel();
+    let (completed_tx, completed_rx) = oneshot::channel();
+    Arc::get_mut(&mut store).unwrap().test_hooks = Some(Arc::new(AdmissionTestHooks {
+      started: Mutex::new(Some(started_tx)),
+      completed: Mutex::new(Some(completed_tx)),
+    }));
     let permit = if phase == "waiting" {
       Some(store.block_admissions_for_test().await)
     } else {
       None
     };
-    let (started_tx, started_rx) = oneshot::channel();
-    let (completed_tx, completed_rx) = oneshot::channel();
-    *store.admission_started.lock() = Some(started_tx);
-    *store.admission_completed.lock() = Some(completed_tx);
     let mut admission = Box::pin(store.admit(UploadSource::Bytes(b"cancelled".to_vec()), None));
     assert!(futures_util::poll!(&mut admission).is_pending());
     if phase != "waiting" {

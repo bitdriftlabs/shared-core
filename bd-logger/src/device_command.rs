@@ -5,11 +5,49 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+//! Shared execution primitives for direct device commands and workflow command matchers.
+//!
+//! # Direct commands
+//! Fresh server configuration admits an invocation through `DeviceCommandState`, which owns
+//! live-SDK deduplication and update tracking. An admitted worker registers its session owner and
+//! emits a span start. Valid requests wait for the backend's Accepted acknowledgement before
+//! invoking a handler, capturing a screenshot, or starting a prepared buffer upload. The span
+//! includes those waits and result uploading, but ends when the local terminal outcome is chosen,
+//! before the final update acknowledgement. Reconnects and configuration replacement do not
+//! restart or cancel admitted execution; cached configuration must not execute commands after
+//! SDK restart.
+//!
+//! # Workflow commands
+//! The engine parks a traversal behind a private completion token and asks
+//! [`WorkflowCommandDispatcher`] to execute its selector. The logger emits the start span and
+//! receives a candidate outcome, including durable attachment admission when applicable.
+//! Completing the handler does not itself advance the workflow: the logging loop must accept
+//! the token, replay its end span, and match the optional outcome predicate before the command
+//! transition's configured actions run. Workflow attachments upload later, unlike direct results.
+//!
+//! # Cancellation boundaries
+//! Session changes become effective when ordinary log/state ingress is processed, not when an
+//! application thread resets the session strategy. [`DeviceCommandRegistry`] cancels unfinished
+//! direct executions at that boundary; the engine invalidates pending workflow commands when it
+//! observes the new session or resets their owning traversals. A normal terminal outcome already
+//! accepted wins over later cancellation, including while its transport acknowledgement is pending.
+//! Cancellation emits a failed ERROR end with an explicit reason, retaining the original span and
+//! session. Command telemetry never moves the live logging or workflow session back to that owner.
+//!
+//! # Cancellation limits and teardown
+//! Cancellation drops the executor future; native registered-handler bridges use that drop to
+//! request cooperative cancellation. [`CommandExecutionPolicy`] also drops timed-out handler or
+//! screenshot futures, but reports an ordinary timeout failure rather than a session/reset
+//! cancellation. Neither path rolls back screenshot, flush, or upload work already handed off.
+//! Span logging is best-effort: SDK teardown may leave a start without an end. On restart,
+//! persisted pending workflow traversals are cancelled, not re-executed, while sibling progress is
+//! retained.
+
 #[cfg(test)]
 #[path = "./device_command_test.rs"]
 mod tests;
 
-use crate::async_log_buffer::Sender as LogSender;
+use crate::async_log_buffer::{LogAdmission, Sender as LogSender};
 use crate::workflow_attachment::AttachmentStoreHandle;
 use anyhow::anyhow;
 use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
@@ -43,7 +81,6 @@ use bd_proto::protos::workflow::workflow_command::{
 };
 use bd_runtime::runtime::device_command::ExecutionTimeoutFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch};
-use bd_session::SessionLifetime;
 use bd_time::{TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::{
   COMMAND_OUTCOME_MESSAGE,
@@ -63,8 +100,8 @@ use protobuf::Message;
 use std::collections::HashMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Weak};
 use time::OffsetDateTime;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{oneshot, watch};
@@ -73,9 +110,6 @@ use uuid::Uuid;
 
 const MAX_SCREENSHOT_BYTES: usize = 2 * 1024 * 1024;
 const REGISTERED_COMMAND_ARTIFACT_TYPE_ID: &str = "device_command_attachment";
-
-// A device command is executed only from a freshly delivered configuration. Cached tail
-// configuration can preserve log streaming, but must never replay a prior command after restart.
 
 //
 // TestHooks
@@ -91,6 +125,7 @@ trait TestHooks: Send + Sync {
 // DeviceCommandDispatcher
 //
 
+/// Owns direct-command admission and execution tasks across configuration and mux lifetimes.
 pub struct DeviceCommandDispatcher {
   senders: DeviceCommandSenders,
   trigger_upload_tx: Sender<TriggerUpload>,
@@ -134,36 +169,129 @@ struct DeviceCommandSenders {
 }
 
 //
+// DeviceCommandRegistry
+//
+
+/// Tracks direct executions at the logging layer's processed-session boundary, not at the
+/// application thread's session-strategy reset. Weak entries do not keep SDK execution alive.
+#[derive(Clone, Default)]
+pub struct DeviceCommandRegistry {
+  state: Arc<Mutex<DeviceCommandRegistryState>>,
+}
+
+#[derive(Default)]
+struct DeviceCommandRegistryState {
+  // Before the logger observes its first session, registration falls back to the strategy's ID.
+  session_id: Option<Arc<str>>,
+  executions: Vec<(Weak<DeviceCommandExecution>, oneshot::Sender<()>)>,
+}
+
+impl DeviceCommandRegistry {
+  fn register(
+    &self,
+    mut execution: DeviceCommandExecution,
+  ) -> (Arc<DeviceCommandExecution>, oneshot::Receiver<()>) {
+    let mut state = self.state.lock();
+    if let Some(session_id) = &state.session_id {
+      // Registration and processed-session changes share this lock. A task starting after the
+      // boundary cannot register an old owner captured earlier from the session strategy.
+      execution.session_id = Ok(session_id.clone());
+    }
+    state.executions.retain(|(execution, _)| {
+      execution
+        .upgrade()
+        .is_some_and(|execution| execution.is_running())
+    });
+    let execution = Arc::new(execution);
+    let (cancel_tx, cancel_rx) = oneshot::channel();
+    state
+      .executions
+      .push((Arc::downgrade(&execution), cancel_tx));
+    (execution, cancel_rx)
+  }
+
+  /// Called only for a session observed by the logging layer, never directly by a strategy reset.
+  pub(crate) fn update_session(&self, session_id: &Arc<str>) {
+    let mut state = self.state.lock();
+    if state.session_id.as_ref() == Some(session_id) {
+      return;
+    }
+    state.session_id = Some(session_id.clone());
+    let mut cancelled = Vec::new();
+    for (weak, cancel_tx) in std::mem::take(&mut state.executions) {
+      let Some(execution) = weak.upgrade() else {
+        continue;
+      };
+      if execution
+        .session_id
+        .as_ref()
+        .is_ok_and(|owner| owner == session_id)
+      {
+        state.executions.push((weak, cancel_tx));
+      } else if execution.cancel() {
+        cancelled.push(cancel_tx);
+      }
+    }
+    drop(state);
+    // The terminal decision is already made. Wake workers outside the registry lock; they drop
+    // platform work and emit the failed end only after their start log has been submitted.
+    for cancel_tx in cancelled {
+      let _ = cancel_tx.send(());
+    }
+  }
+}
+
+//
 // DeviceCommandExecution
 //
+
+#[derive(PartialEq, Eq)]
+enum DeviceCommandStatus {
+  /// Includes Accepted-ACK, execution, and result-upload waits, all of which can be cancelled.
+  Running,
+  /// The local terminal outcome won, independently of end-log admission or final acknowledgement.
+  Finished,
+  /// The registry reserved cancellation; the worker still owns dropping work and emitting the end.
+  Cancelled,
+}
 
 struct DeviceCommandExecution {
   senders: DeviceCommandSenders,
   span: CommandSpan,
   session_id: anyhow::Result<Arc<str>>,
   time_provider: Arc<dyn TimeProvider>,
-  ended: AtomicBool,
-  cancelled: AtomicBool,
-  session_lifetime: Option<SessionLifetime>,
+  status: Mutex<DeviceCommandStatus>,
+  // Cancellation uses the sequence after the last update handed to the API, even if not yet ACKed.
   last_update_sequence: AtomicU64,
 }
 
 impl DeviceCommandExecution {
+  fn is_running(&self) -> bool {
+    *self.status.lock() == DeviceCommandStatus::Running
+  }
+
+  fn is_cancelled(&self) -> bool {
+    *self.status.lock() == DeviceCommandStatus::Cancelled
+  }
+
+  fn cancel(&self) -> bool {
+    let mut status = self.status.lock();
+    if *status != DeviceCommandStatus::Running {
+      return false;
+    }
+    *status = DeviceCommandStatus::Cancelled;
+    true
+  }
+
   fn emit(&self, log: LogLine) {
     let result = match &self.session_id {
-      Ok(session_id) => {
-        if self.cancelled.load(Ordering::Relaxed) {
-          self
-            .senders
-            .log_sender
-            .try_send_command_log_with_cancellation(log, session_id.clone(), true)
-        } else {
-          self
-            .senders
-            .log_sender
-            .try_send_command_log(log, session_id.clone())
-        }
-      },
+      Ok(session_id) => self.senders.log_sender.try_send_log(
+        log,
+        LogAdmission::Command {
+          session_id: session_id.clone(),
+          cancelled: self.is_cancelled(),
+        },
+      ),
       Err(error) => {
         log::debug!("failed to capture device command span session: {error}");
         return;
@@ -192,6 +320,8 @@ impl DeviceCommandExecution {
     });
   }
 
+  /// Reserves a normal terminal end before transport submission. Accepted updates have no end log
+  /// and leave the terminal state unchanged; duplicate or cancelled terminal attempts return false.
   fn finish(
     &self,
     update: &DeviceCommandUpdate,
@@ -205,24 +335,22 @@ impl DeviceCommandExecution {
     ) else {
       return true;
     };
-    let claim = || !self.ended.swap(true, Ordering::Relaxed);
-    let claimed = self
-      .session_lifetime
-      .as_ref()
-      .map_or_else(claim, |lifetime| {
-        lifetime.with_current(claim).unwrap_or(false)
-      });
-    if claimed {
-      self.emit(log);
+    {
+      // Only this direct execution's terminal outcome competes with processed-session
+      // cancellation. Workflow completions are serialized entirely by the logging loop.
+      let mut status = self.status.lock();
+      if *status != DeviceCommandStatus::Running {
+        return false;
+      }
+      *status = DeviceCommandStatus::Finished;
     }
-    claimed
+    self.emit(log);
+    true
   }
 
-  fn cancel_update(&self, command_id: &str) -> Option<DeviceCommandUpdate> {
-    if self.ended.swap(true, Ordering::Relaxed) {
-      return None;
-    }
-    self.cancelled.store(true, Ordering::Relaxed);
+  // Called once by the worker after the registry wins cancellation and the work future is dropped.
+  // Keeping emission here preserves start/end order even if reset raced initial registration.
+  fn cancellation_update(&self, command_id: &str) -> DeviceCommandUpdate {
     let reason = CommandCancellationReason::SessionChanged;
     if let Ok(session_id) = &self.session_id {
       let log = reason.into_log(session_id.to_string(), self.time_provider.now(), &self.span);
@@ -242,11 +370,11 @@ impl DeviceCommandExecution {
       });
     }
     log::debug!("device command {command_id} cancelled because its session ended");
-    Some(failed_device_command_update(
+    failed_device_command_update(
       command_id,
       self.last_update_sequence.load(Ordering::Relaxed) + 1,
       CommandError::Other(reason.message().to_string()),
-    ))
+    )
   }
 }
 
@@ -383,24 +511,21 @@ impl DeviceCommandDispatcher {
     let time_provider = self.time_provider.clone();
     Box::pin(async move {
       let started_at = time_provider.now();
-      let lifetime = session_strategy.session_lifetime();
-      let session_id = lifetime
-        .as_ref()
-        .map(|lifetime| lifetime.session_id.clone())
-        .map_err(|error| anyhow!("{error}"));
-      let execution = Arc::new(DeviceCommandExecution {
-        senders,
-        span: CommandSpan {
-          id: command_id.clone(),
-          started_at: Some(started_at),
-        },
-        session_id,
-        time_provider,
-        ended: AtomicBool::new(false),
-        cancelled: AtomicBool::new(false),
-        session_lifetime: lifetime.ok(),
-        last_update_sequence: AtomicU64::new(0),
-      });
+      let (execution, cancel_rx) =
+        senders
+          .log_sender
+          .device_commands()
+          .register(DeviceCommandExecution {
+            senders: senders.clone(),
+            span: CommandSpan {
+              id: command_id.clone(),
+              started_at: Some(started_at),
+            },
+            session_id: session_strategy.session_id(),
+            time_provider,
+            status: Mutex::new(DeviceCommandStatus::Running),
+            last_update_sequence: AtomicU64::new(0),
+          });
       execution.start(started_at);
       let mut work = Box::pin(execute_device_command(
         command,
@@ -411,38 +536,32 @@ impl DeviceCommandDispatcher {
         execution_policy,
         remote_screenshot_capture_handler,
       ));
-      let result = if let Some(mut lifetime) = execution.session_lifetime.clone() {
+      let result = {
+        // A closed sender is not cancellation: pruning a finished registry entry also closes it.
+        // Only an explicit signal may interrupt work, including a pending Accepted-ACK wait.
         tokio::select! {
           biased;
-          () = lifetime.cancelled() => {
-            if execution.ended.load(Ordering::Relaxed) {
-              work.await
-            } else {
-              drop(work);
-              match execution.cancel_update(&command_id) {
-                Some(update) => submit_device_command_update(&execution, update).await,
-                None => Ok(()),
-              }
-            }
-          },
+          Ok(()) = cancel_rx => Ok(()),
           result = &mut work => result,
         }
-      } else {
-        work.await
       };
+      // Drop the handler/adapter before emitting cancellation or waiting on its backend update.
+      // This requests platform cancellation without waiting for cooperative platform work to stop.
+      drop(work);
       if let Err(error) = result {
+        // Delivery can fail after a terminal end was already emitted. finish then does nothing,
+        // rather than replacing that outcome or producing a second end.
         execution.finish(
           &failed_device_command_update(&command_id, 1, CommandError::Other(error.to_string())),
           None,
         );
-        if let Some(lifetime) = &execution.session_lifetime
-          && !lifetime.is_current()
-          && let Some(update) = execution.cancel_update(&command_id)
-          && let Err(error) = submit_device_command_update(&execution, update).await
-        {
+        log::debug!("device command {command_id} execution stopped: {error}");
+      }
+      if execution.is_cancelled() {
+        let update = execution.cancellation_update(&command_id);
+        if let Err(error) = submit_device_command_update(&execution, update).await {
           log::debug!("failed to submit cancelled device command {command_id}: {error}");
         }
-        log::debug!("device command {command_id} execution stopped: {error}");
       }
     })
   }
@@ -518,11 +637,14 @@ pub enum CommandResult {
 /// Handles an opaque command selected by its registered command ID.
 /// Direct and workflow invocations have a runtime-configurable execution timeout, defaulting to
 /// five seconds. Handlers must yield to allow deadlines and cancellation to be observed.
+/// The future can be dropped on timeout, session cancellation, workflow invalidation, or teardown;
+/// native bridges request platform cancellation, but already-started external effects may continue.
 #[async_trait::async_trait]
 pub trait RegisteredCommandHandler: Send + Sync {
   async fn execute(&self, invocation: CommandInvocation) -> CommandResult;
 }
 
+/// Bounds handler/capture execution, not Accepted-ACK, attachment, or terminal-delivery waits.
 #[derive(Clone)]
 pub struct CommandExecutionPolicy {
   timeout: DurationWatch<ExecutionTimeoutFlag>,
@@ -589,6 +711,8 @@ impl CommandExecutionPolicy {
   }
 }
 
+/// Registry of handler definitions, not live invocations. Lookup clones the handler, so replacing
+/// or unregistering a definition does not revoke work that already obtained it.
 #[derive(Clone, Default)]
 pub struct RegisteredCommandDispatcher {
   handlers: Arc<RwLock<HashMap<String, Arc<dyn RegisteredCommandHandler>>>>,
@@ -635,21 +759,20 @@ impl RegisteredCommandDispatcher {
   }
 }
 
+/// A candidate result, not authority to advance a traversal. Its token may have been invalidated
+/// while execution, attachment admission, or delivery to the logging loop was in progress.
 pub struct WorkflowCommandCompletion {
   pub token: WorkflowCommandCompletionToken,
   pub outcome: WorkflowCommandOutcome,
 }
 
+/// Runs selectors independently of workflow evaluation. The engine owns terminal decisions and
+/// span identity; removing a dispatch token closes its sender and drops unfinished executor work.
 #[derive(Clone)]
 pub struct WorkflowCommandDispatcher {
   executor: WorkflowCommandExecutor,
   completion_tx: Sender<WorkflowCommandCompletion>,
-  executions: Arc<Mutex<HashMap<WorkflowCommandCompletionToken, WorkflowCommandExecution>>>,
-}
-
-struct WorkflowCommandExecution {
-  lifetime: Option<SessionLifetime>,
-  _cancel: watch::Sender<()>,
+  executions: Arc<Mutex<HashMap<WorkflowCommandCompletionToken, watch::Sender<()>>>>,
 }
 
 #[derive(Clone)]
@@ -680,11 +803,7 @@ impl WorkflowCommandDispatcher {
     }
   }
 
-  pub fn dispatch_with_lifetime(
-    &self,
-    request: &WorkflowCommandRequest,
-    lifetime: Option<SessionLifetime>,
-  ) {
+  pub fn dispatch(&self, request: &WorkflowCommandRequest) {
     let token = request.completion_token();
     let completion_tx = self.completion_tx.clone();
     let command_selector = request.command_selector.clone();
@@ -692,29 +811,15 @@ impl WorkflowCommandDispatcher {
     let attachment_store = self.executor.attachment_store.clone();
     let session_id = request.session_id.clone();
     let (cancel_tx, mut cancel_rx) = watch::channel(());
-    self.executions.lock().insert(
-      token.clone(),
-      WorkflowCommandExecution {
-        lifetime: lifetime.clone(),
-        _cancel: cancel_tx,
-      },
-    );
+    // Publish cancellation ownership before spawning so a reset can stop even an unpolled task.
+    self.executions.lock().insert(token.clone(), cancel_tx);
 
     tokio::task::spawn(async move {
-      let cancellation_session_id = session_id.clone();
       let cancellation = async move {
-        if let Some(mut lifetime) = lifetime {
-          if lifetime.session_id.as_ref() != cancellation_session_id {
-            return CommandCancellationReason::SessionChanged;
-          }
-          tokio::select! {
-            () = lifetime.cancelled() => CommandCancellationReason::SessionChanged,
-            _ = cancel_rx.changed() => CommandCancellationReason::WorkflowReset,
-          }
-        } else {
-          let _ = cancel_rx.changed().await;
-          CommandCancellationReason::WorkflowReset
-        }
+        let _ = cancel_rx.changed().await;
+        // Engine invalidation already records the authoritative end and reason, including
+        // SessionChanged. This fallback result is stale once that token has been removed.
+        CommandCancellationReason::WorkflowReset
       };
       let outcome = tokio::select! {
         biased;
@@ -725,6 +830,8 @@ impl WorkflowCommandDispatcher {
         .send(WorkflowCommandCompletion { token, outcome })
         .await
       {
+        // Until the logging loop consumes the candidate, it owns no persistent log reference.
+        // If delivery fails, release admission here; stale delivered candidates are released there.
         if let WorkflowCommandOutcome::SucceededWithAttachment { artifact_id, .. } = error.0.outcome
         {
           match attachment_store.get().await {
@@ -741,23 +848,10 @@ impl WorkflowCommandDispatcher {
     });
   }
 
+  /// Releases the task's ownership slot. Also used after normal completion acceptance; removing
+  /// the slot is not itself authority to emit a cancellation end or change the engine's decision.
   pub fn cancel(&self, token: &WorkflowCommandCompletionToken) {
     self.executions.lock().remove(token);
-  }
-
-  pub fn with_current<T>(
-    &self,
-    token: &WorkflowCommandCompletionToken,
-    decide: impl FnOnce() -> T,
-  ) -> Option<T> {
-    let executions = self.executions.lock();
-    match executions
-      .get(token)
-      .and_then(|execution| execution.lifetime.as_ref())
-    {
-      Some(lifetime) => lifetime.with_current(decide),
-      None => Some(decide()),
-    }
   }
 }
 
@@ -849,6 +943,9 @@ fn workflow_command_failure(error: CommandError) -> WorkflowCommandOutcome {
   }
 }
 
+// A successful workflow result owns a durable local admission, not an uploaded artifact. The
+// logger must either persist an outcome reference or release it if replay/token validation fails.
+// Cancellation during admission is handled by the store's owned transaction/handoff protocol.
 async fn workflow_command_outcome(
   result: CommandResult,
   attachment_store: &AttachmentStoreHandle,
@@ -1071,6 +1168,8 @@ async fn execute_buffer_dump_device_command(
   };
   let (trigger_upload, admission_rx, completion_rx) =
     TriggerUpload::new_device_command_with_completion(Vec::new(), command_id.clone(), session_id);
+  // Preparation discovers the result size without authorizing upload. start_upload_tx is released
+  // only after Accepted is ACKed, so cancellation during that wait cannot start the prepared dump.
   if trigger_upload_tx.send(trigger_upload).await.is_err() {
     send_device_command_update(
       &senders,
@@ -1263,6 +1362,8 @@ async fn execute_custom_device_command(
   send_device_command_update_with_artifact(&senders, update, artifact_metadata).await
 }
 
+// Direct success requires both durable staging and upload acknowledgement, so its terminal update
+// can advertise a ready artifact. Dropping these waits does not retract uploader-owned work.
 async fn stage_device_command_attachment(
   attachment: CommandAttachment,
   type_id: &str,
@@ -1295,8 +1396,8 @@ async fn stage_device_command_attachment(
   }
 }
 
-// These helpers construct a completed update only after the corresponding attachment upload was
-// acknowledged. The server verifies the same declaration against its durable attachment catalog.
+// Callers finish any declared artifact/log-batch upload before constructing Completed. Backend
+// validation checks the declaration against durable results; final update delivery is separate.
 fn completed_device_command_update(
   command_id: &str,
   output_truncated: bool,
@@ -1391,6 +1492,8 @@ fn failed_device_command_update_with_fields(
   }
 }
 
+// Only terminal updates produce an end span; Accepted is protocol progress, not another span log.
+// CommandOutcome sanitizes handler fields before inserting the SDK's status and attachment data.
 fn device_command_outcome_log(
   update: &DeviceCommandUpdate,
   artifact_metadata: Option<CommandArtifactMetadata>,
@@ -1470,16 +1573,16 @@ async fn send_device_command_update_with_artifact(
   update: DeviceCommandUpdate,
   artifact_metadata: Option<CommandArtifactMetadata>,
 ) -> anyhow::Result<()> {
-  let update = if execution.finish(&update, artifact_metadata) {
-    update
-  } else if let Some(update) = execution.cancel_update(&update.command_id) {
-    update
-  } else {
+  // Choose the local terminal outcome before awaiting its ACK. A later session boundary or
+  // transport error must not replace an already chosen result with a second terminal end.
+  if !execution.finish(&update, artifact_metadata) {
     anyhow::bail!("device command already has a terminal outcome");
-  };
+  }
   submit_device_command_update(execution, update).await
 }
 
+// Transport only: an ACK failure does not reopen terminal arbitration or retry the handler.
+// The original command expiry bounds submission/ACK waits; execution has its separate policy.
 async fn submit_device_command_update(
   execution: &DeviceCommandExecution,
   update: DeviceCommandUpdate,

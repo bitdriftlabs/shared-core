@@ -69,7 +69,9 @@ use uuid::Uuid;
 
 /// Correlation and timing shared by direct and workflow command lifecycle logs.
 pub struct CommandSpan {
+  /// The direct command ID or opaque workflow completion token, unchanged across cancellation.
   pub id: String,
+  /// Legacy recovered pending state may lack a start time; omit duration rather than invent one.
   pub started_at: Option<OffsetDateTime>,
 }
 
@@ -128,6 +130,7 @@ pub(crate) fn workflow_command_cooldown_key_prefix(workflow_id: &str) -> String 
 }
 
 /// An opaque capability used to complete exactly one pending workflow command.
+/// Possession alone does not advance a traversal: the engine must first accept the completion.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WorkflowCommandCompletionToken(pub(crate) String);
 
@@ -135,12 +138,17 @@ pub struct WorkflowCommandCompletionToken(pub(crate) String);
 // WorkflowCommandEvent
 //
 
-/// Private replay routing, independent of public command span fields.
+/// Private replay routing, independent of public command span fields. Observers can match command
+/// logs, but only an accepted Completion can resume its matching pending command transition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WorkflowCommandEvent {
+  /// Workflow span start; observation only, without permission to initiate another command.
   Start,
+  /// Terminal candidate accepted by the engine before replay.
   Completion(WorkflowCommandCompletionToken),
+  /// Failed end for an invalidated command; not a matchable completion of its old transition.
   Cancelled,
+  /// Non-cancelled direct command telemetry: normal matcher behavior, without session advancement.
   Direct,
 }
 
@@ -192,7 +200,8 @@ impl CommandCancellationReason {
   }
 }
 
-/// A command start requested by the workflow runtime.
+/// A command start requested by the workflow runtime. The token binds one pending transition;
+/// session and start time snapshot its owner, which may be gone by the time execution completes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorkflowCommandRequest {
   pub command_selector: WorkflowCommandSelector,
@@ -583,9 +592,12 @@ pub enum WorkflowEvent<'a> {
   CommandStart(&'a Log),
   /// A cancellation observation, without authority to complete or initiate a command.
   CommandCancelled(&'a Log),
-  /// A direct command log, which must not synchronize the current workflow session.
+  /// A direct command log with ordinary matcher behavior, but no authority over a pending command
+  /// or the current workflow session.
   CommandLog(&'a Log),
-  /// A span end produced by a completed command, with private traversal routing metadata.
+  /// An accepted span end with private traversal routing metadata. Other log-matching traversals
+  /// can observe it, but only the pending traversal with this token can resume a command
+  /// transition.
   CommandCompletion {
     log: &'a Log,
     token: &'a WorkflowCommandCompletionToken,
@@ -1708,6 +1720,8 @@ pub(crate) struct Traversal {
   pub(crate) pending_command: Option<PendingCommand>,
 }
 
+/// Persisted wait state, not a resumable execution. Recovery prunes this traversal rather than
+/// invoking the selector again and risking duplicate external side effects.
 #[bd_macros::proto_serializable]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PendingCommand {
@@ -1715,6 +1729,8 @@ pub(crate) struct PendingCommand {
   pub(crate) completion_token: String,
   #[field(id = 2, serialize_as = "u64")]
   pub(crate) transition_index: usize,
+  /// Accepted by the engine, not merely finished/queued by a worker. Replay still has to evaluate
+  /// the outcome matcher; persisting this marker prevents a second terminal end after recovery.
   #[field(id = 3)]
   pub(crate) completion_received: bool,
   #[field(id = 4)]
@@ -1786,6 +1802,8 @@ impl Traversal {
 
     let mut result = TraversalResult::default();
     if let Some(pending_command) = &self.pending_command {
+      // A pending invocation pins this traversal, including its timeout and other outgoing edges.
+      // Public log fields cannot unblock it; an accepted, privately routed token is required.
       let WorkflowEvent::CommandCompletion { token, .. } = event else {
         return result;
       };
@@ -1953,6 +1971,9 @@ impl Traversal {
     result
   }
 
+  /// First visit dispatches execution and parks the traversal; it does not run configured actions.
+  /// Only the accepted terminal replay can evaluate the outcome matcher and take the transition.
+  /// Cancellation removes the traversal outside this path, bypassing its completion actions.
   #[allow(clippy::too_many_arguments)]
   fn process_command_match<'a>(
     &mut self,
@@ -2019,8 +2040,8 @@ impl Traversal {
       return;
     }
 
-    // Lifecycle logs must not recursively start commands. Only a terminal completion can resume
-    // its matching pending traversal.
+    // Workflow lifecycle observations and cancellation ends must not recursively start commands.
+    // Non-cancelled direct command logs intentionally retain ordinary matcher behavior.
     if matches!(
       event,
       WorkflowEvent::CommandStart(_)
@@ -2052,6 +2073,9 @@ impl Traversal {
     }
 
     let completion_token = WorkflowCommandCompletionToken(Uuid::new_v4().to_string());
+    // Record the invocation and charge its cooldown at launch, including failed/cancelled work.
+    // RunCommand requests dispatch only; the transition's other actions wait for matching
+    // completion.
     self.pending_command = Some(PendingCommand {
       completion_token: completion_token.0.clone(),
       transition_index: index,

@@ -13,6 +13,7 @@ use super::{
   CommandResult,
   DeviceCommandDispatcher,
   DeviceCommandExecution,
+  DeviceCommandStatus,
   RegisteredCommandDispatcher,
   RegisteredCommandHandler,
   TestHooks,
@@ -84,7 +85,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::future::{Future, pending, poll_fn};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::Poll;
 use tempfile::TempDir;
@@ -237,12 +238,13 @@ fn direct_dispatcher(
     log_limit_bytes: 100_000,
     total_limit_bytes: 100_000,
   });
+  let session_strategy = no_timeout(directory).strategy();
   (
     DeviceCommandDispatcher::new(
       upload_tx,
-      LogSender::from_event_buffer(logs),
+      LogSender::from_event_buffer(logs, session_strategy.clone()),
       trigger_tx,
-      no_timeout(directory).strategy(),
+      session_strategy,
       artifacts,
       registry,
       policy,
@@ -266,9 +268,7 @@ fn direct_execution(
     },
     session_id: dispatcher.session_strategy.session_id(),
     time_provider: dispatcher.time_provider.clone(),
-    ended: AtomicBool::new(false),
-    cancelled: AtomicBool::new(false),
-    session_lifetime: Some(dispatcher.session_strategy.session_lifetime().unwrap()),
+    status: Mutex::new(DeviceCommandStatus::Running),
     last_update_sequence: AtomicU64::new(0),
   }
 }
@@ -283,12 +283,54 @@ async fn command_event_buffer(dispatcher: &mut DeviceCommandDispatcher) -> Event
   let opening = logs.next_batch(64).await;
   assert!(opening.startup_gate_opened.is_some());
   assert!(opening.entries.is_empty());
-  dispatcher.senders.log_sender = LogSender::from_event_buffer(logs.clone());
+  dispatcher.senders.log_sender =
+    LogSender::from_event_buffer(logs.clone(), dispatcher.session_strategy.clone());
   logs
 }
 
 #[tokio::test]
-async fn direct_session_reset_cancels_accepted_wait_and_running_handler() {
+async fn direct_registration_uses_processed_session_even_when_strategy_snapshot_differs() {
+  for boundary_processed in [false, true] {
+    let (directory, _runtime, policy) = command_runtime();
+    let (dispatcher, _updates) = direct_dispatcher(
+      directory.path(),
+      policy,
+      RegisteredCommandDispatcher::default(),
+      RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+      Arc::new(MockClient::new()),
+    );
+    let registry = dispatcher.senders.log_sender.device_commands();
+    let first = dispatcher.session_strategy.session_id().unwrap();
+    registry.update_session(&first);
+    let stale_execution = direct_execution(&dispatcher, "command");
+    dispatcher.session_strategy.start_new_session(None).unwrap();
+    let second = dispatcher.session_strategy.session_id().unwrap();
+    let execution = if boundary_processed {
+      // The worker captured A before the logger processed B, but registers only afterward.
+      registry.update_session(&second);
+      stale_execution
+    } else {
+      // The strategy already says B, but A is still the effective logging session.
+      direct_execution(&dispatcher, "command")
+    };
+    let (execution, cancelled) = registry.register(execution);
+    assert_eq!(
+      execution.session_id.as_ref().unwrap(),
+      if boundary_processed { &second } else { &first }
+    );
+    assert!(execution.is_running());
+    registry.update_session(&"third-session".into());
+    cancelled.await.unwrap();
+    assert!(execution.is_cancelled());
+    assert!(!execution.finish(
+      &completed_device_command_update("command", false, None, no_attachment()),
+      None
+    ));
+  }
+}
+
+#[tokio::test]
+async fn direct_processed_session_change_cancels_accepted_wait_and_running_handler() {
   for during_handler in [false, true] {
     let (directory, _runtime, policy) = command_runtime();
     let (handler, mut started_rx, dropped_rx) = pending_handler();
@@ -325,6 +367,14 @@ async fn direct_session_reset_cancels_accepted_wait_and_running_handler() {
     };
     clock.advance(Duration::milliseconds(125));
     dispatcher.session_strategy.start_new_session(None).unwrap();
+    assert!(updates.try_recv().is_err());
+    // A strategy reset alone is not the boundary. The real logger calls this when processing
+    // the first ordinary event from the new session.
+    dispatcher
+      .senders
+      .log_sender
+      .device_commands()
+      .update_session(&dispatcher.session_strategy.session_id().unwrap());
     let terminal = acknowledge_update(&mut updates).await;
     assert_eq!(terminal.update_sequence_number, 2);
     assert!(matches!(
@@ -451,6 +501,11 @@ async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or
         clock.advance(Duration::seconds(10));
         if scenario == "terminal_ack_session_reset" {
           dispatcher.session_strategy.start_new_session(None).unwrap();
+          dispatcher
+            .senders
+            .log_sender
+            .device_commands()
+            .update_session(&dispatcher.session_strategy.session_id().unwrap());
         }
         if scenario == "terminal_ack_failure" {
           drop(terminal.response_tx);

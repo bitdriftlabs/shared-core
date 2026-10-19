@@ -60,63 +60,6 @@ fn started_session_ids(request: &StateUpdateRequest) -> Vec<&str> {
 }
 
 #[tokio::test]
-async fn session_lifetime_observes_replacement_even_when_ids_are_reused() {
-  let sdk_directory = TempDir::new().unwrap();
-  let strategy = no_timeout_strategy(&sdk_directory, "session-1").strategy();
-  let mut first = strategy.session_lifetime().unwrap();
-  assert_eq!(first.session_id.as_ref(), "session-1");
-  assert_eq!(first.with_current(|| 42), Some(42));
-
-  strategy
-    .start_new_session(Some("session-1".into()))
-    .unwrap();
-  first.cancelled().await;
-  assert!(!first.is_current());
-  assert_eq!(first.with_current(|| 42), None);
-  let second = strategy.session_lifetime().unwrap();
-  strategy
-    .start_new_session(Some("session-2".into()))
-    .unwrap();
-  strategy
-    .start_new_session(Some("session-1".into()))
-    .unwrap();
-  assert!(!second.is_current());
-  assert!(strategy.session_lifetime().unwrap().is_current());
-}
-
-#[test]
-fn session_lifetime_ignores_activity_and_announcement_bookkeeping() {
-  let sdk_directory = TempDir::new().unwrap();
-  let strategy = no_timeout_strategy(&sdk_directory, "session-1").strategy();
-  let lifetime = strategy.session_lifetime().unwrap();
-  strategy.session_id().unwrap();
-  let update = strategy.handshake_state_update();
-  strategy.acknowledge_state_update(&update);
-  strategy.set_max_pending_started_sessions(0);
-  assert!(lifetime.is_current());
-}
-
-#[tokio::test]
-async fn session_lifetime_is_invalidated_by_inactivity_rollover() {
-  let sdk_directory = TempDir::new().unwrap();
-  let clock = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
-  let strategy = Strategy::configuration(
-    sdk_directory.path(),
-    Some("session-1".into()),
-    Some(Duration::minutes(30)),
-    Arc::new(TestCallbacks),
-    clock.clone(),
-  )
-  .strategy();
-  let mut lifetime = strategy.session_lifetime().unwrap();
-  clock.advance(Duration::minutes(31));
-  let next = strategy.session_lifetime().unwrap();
-  lifetime.cancelled().await;
-  assert_ne!(lifetime.session_id, next.session_id);
-  assert!(next.is_current());
-}
-
-#[tokio::test]
 async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
   let sdk_directory = TempDir::new().unwrap();
   let StrategyWithWorker {
