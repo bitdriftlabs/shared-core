@@ -1708,15 +1708,14 @@ async fn persisted_trigger_upload_prunes_missing_buffers_on_recovery() {
     })
     .unwrap();
 
-  for _ in 0 .. 100 {
-    if setup.pending_trigger_uploads().await.is_empty() {
-      return;
-    }
-
-    tokio::task::yield_now().await;
-  }
-
-  panic!("expected pruned trigger upload to be cleared from persistence");
+  // Completion is published only after durable cleanup; scheduler yields do not bound disk I/O.
+  setup
+    .wait_for_flush_state(
+      &FlushBufferId::ExplicitSessionCapture("flush-1".to_string()),
+      false,
+    )
+    .await;
+  assert_eq!(setup.pending_trigger_uploads().await, vec![]);
 }
 
 #[tokio::test(start_paused = true)]

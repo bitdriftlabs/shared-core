@@ -1720,29 +1720,9 @@ fn workflow_start_tracing_status_tracks_streaming_carryover() {
 
 #[test]
 fn workflow_start_tracing_with_streaming_replays_before_new_session_after_restart() {
-  // This restart integration covers the workflow-owned path, not the remote-command path.
-  // The contract we care about is:
-  // 1. a workflow-triggered flush-with-streaming that has reached durable pending state survives a
-  //    process restart,
-  // 2. tracing/streaming carry over long enough for the replayed upload to be observed after
-  //    restart, and
-  // 3. the first post-restart event can still run through the carried-over stream before the new
-  //    session tears that stream down.
-  //
-  // Gaps: this test does not try to prove every ordering detail of replay completion versus
-  // streaming teardown. The logger integration harness cannot currently wait on an explicit
-  // "replayed workflow stream fully removed" signal, so we validate the externally visible
-  // contract instead of overfitting to a particular internal schedule.
-  //
-  // Inherent instability: once the replayed stream is active again, the exact point where the new
-  // session clears it is one event-loop boundary later. That means the first post-restart log may
-  // or may not still be present in the later trigger-buffer flush, depending on whether it was
-  // retired before the explicit flush below. We document and accept that race instead of masking
-  // it with sleeps.
-  //
-  // Future work for restart safety: expose a deterministic hook from the logging/workflow engine
-  // for "replayed streaming action installed" and "replayed streaming action removed on session
-  // rollover" so the integration can assert those transitions directly.
+  // Restore tracing and the pending workflow flush after restart. Finish replay before processing
+  // the new session: its first log must retire the restored stream, and both new logs must then
+  // remain in the trigger buffer for a fresh flush.
   let b = state("B");
   let a = state("A").declare_transition_with_actions(
     &b,
@@ -1783,7 +1763,7 @@ fn workflow_start_tracing_with_streaming_replays_before_new_session_after_restar
 
   assert!(!setup.logger_handle.is_tracing_active());
 
-  setup.server.suppress_next_log_upload_response();
+  let _blocked_log_upload_response = setup.server.block_next_log_upload_response();
   setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
@@ -1814,10 +1794,16 @@ fn workflow_start_tracing_with_streaming_replays_before_new_session_after_restar
     assert_eq!(vec!["trace_stream_action"], *log_upload.logs()[0].workflow_action_ids());
   });
 
+  // Seeing the request does not mean the ACK, durable cleanup, or manager admission-gate release
+  // has completed. Tracing alone is not a barrier: session rollover can drop its lease while the
+  // pending flush still keeps streaming alive.
+  setup.wait_for_remote_streaming_trigger_upload_completion();
+  setup.wait_for_trigger_buffer_upload_completion("trigger_buffer_id");
+
   setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
-    "message streamed after restart".into(),
+    "first log after restart".into(),
     [].into(),
     [].into(),
   );
@@ -1845,17 +1831,12 @@ fn workflow_start_tracing_with_streaming_replays_before_new_session_after_restar
       .iter()
       .map(|log| log.message().to_string())
       .collect();
-    // Both outcomes are valid here. The replayed stream is guaranteed to survive long enough for
-    // the first post-restart event to observe it, but by the time we explicitly flush the trigger
-    // buffer the replayed event may already have been retired.
-    assert!(
-      messages
-        == vec!["message after streaming termination".to_string()]
-        || messages
-          == vec![
-            "message streamed after restart".to_string(),
-            "message after streaming termination".to_string(),
-          ]
+    assert_eq!(
+      messages,
+      vec![
+        "first log after restart".to_string(),
+        "message after streaming termination".to_string(),
+      ]
     );
   });
 }

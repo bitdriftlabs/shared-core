@@ -714,6 +714,10 @@ pub trait TestHooks: Send + Sync {
 
   fn remote_streaming_trigger_upload_completed(&self) {}
 
+  /// The upload manager released this buffer's active-upload gate. Durable flush completion is
+  /// reported separately, since the buffer worker and aggregate completion task finish separately.
+  fn trigger_buffer_upload_completed(&self, _buffer_id: &str) {}
+
   fn workflow_attachment_upload_completed(&self, _artifact_id: uuid::Uuid) {}
 
   fn workflow_event_processed(&self) {}

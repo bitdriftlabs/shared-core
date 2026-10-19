@@ -201,6 +201,12 @@ impl crate::TestHooks for AsyncLogBufferTestHooks {
     }
   }
 
+  fn trigger_buffer_upload_completed(&self, buffer_id: &str) {
+    if let Some(delegate) = &self.delegate {
+      delegate.trigger_buffer_upload_completed(buffer_id);
+    }
+  }
+
   fn workflow_event_processed(&self) {
     if let Some(delegate) = &self.delegate {
       delegate.workflow_event_processed();

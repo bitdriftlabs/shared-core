@@ -338,6 +338,10 @@ impl BufferUploadManager {
           self.handle_trigger_uploads(trigger, &trigger_upload_complete_tx).await?,
         Some(completed_trigger_buffer) = trigger_upload_complete_rx.recv() => {
           self.active_trigger_uploads.remove(&completed_trigger_buffer);
+          log::debug!("released active trigger upload for buffer {completed_trigger_buffer}");
+          if let Some(test_hooks) = &self.test_hooks {
+            test_hooks.trigger_buffer_upload_completed(&completed_trigger_buffer);
+          }
         },
         () = self.shutdown.cancelled() => {
           self.shutdown().await;
