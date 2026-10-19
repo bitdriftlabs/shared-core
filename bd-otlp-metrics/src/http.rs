@@ -8,6 +8,8 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use http::{HeaderMap, StatusCode};
+use httpdate::parse_http_date;
+use std::time::{Duration, SystemTime};
 
 //
 // HttpRemoteWriteError
@@ -25,6 +27,63 @@ pub enum HttpRemoteWriteError {
   Response(StatusCode, String, HeaderMap),
   #[error("request timeout")]
   Timeout,
+  #[error("permanent delivery error: {0}")]
+  Permanent(String),
+  #[error("OTLP partial success: {rejected_data_points} rejected data points: {error_message}")]
+  PartialSuccess {
+    rejected_data_points: u64,
+    error_message: String,
+  },
+}
+
+//
+// HttpRetryPolicy
+//
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum HttpRetryPolicy {
+  #[default]
+  RemoteWrite,
+  Otlp,
+}
+
+impl HttpRetryPolicy {
+  #[must_use]
+  pub fn should_retry(self, error: &HttpRemoteWriteError) -> bool {
+    match (self, error) {
+      (_, HttpRemoteWriteError::Permanent(_) | HttpRemoteWriteError::PartialSuccess { .. })
+      | (Self::Otlp, HttpRemoteWriteError::Aws(_)) => false,
+      (Self::RemoteWrite, error) => should_retry(error),
+      (Self::Otlp, HttpRemoteWriteError::Response(status, ..)) => matches!(
+        *status,
+        StatusCode::TOO_MANY_REQUESTS
+          | StatusCode::BAD_GATEWAY
+          | StatusCode::SERVICE_UNAVAILABLE
+          | StatusCode::GATEWAY_TIMEOUT
+      ),
+      (Self::Otlp, _) => true,
+    }
+  }
+
+  #[must_use]
+  pub fn retry_after(self, error: &HttpRemoteWriteError, now: SystemTime) -> Option<Duration> {
+    if !matches!(self, Self::Otlp) || !self.should_retry(error) {
+      return None;
+    }
+    let HttpRemoteWriteError::Response(_, _, headers) = error else {
+      return None;
+    };
+    let value = headers
+      .get(http::header::RETRY_AFTER)?
+      .to_str()
+      .ok()?
+      .trim();
+    if !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()) {
+      return value.parse::<u64>().ok().map(Duration::from_secs);
+    }
+    let date = parse_http_date(value).ok()?;
+    Some(date.duration_since(now).unwrap_or_default())
+  }
 }
 
 #[allow(clippy::ref_option_ref)]
@@ -41,6 +100,7 @@ pub trait HttpRemoteWriteClient: Send + Sync {
 #[must_use]
 pub fn should_retry(error: &HttpRemoteWriteError) -> bool {
   match error {
+    HttpRemoteWriteError::Permanent(_) | HttpRemoteWriteError::PartialSuccess { .. } => false,
     HttpRemoteWriteError::Response(status, ..) => {
       status.is_server_error() || *status == StatusCode::TOO_MANY_REQUESTS
     },

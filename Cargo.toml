@@ -115,6 +115,7 @@ h2                    = "0.4.20"
 http                  = "1.5.0"
 http-body             = "1.1.0"
 http-body-util        = "0.1.5"
+httpdate              = "1.0.3"
 hyper                 = "1.12.0"
 hyper-rustls          = { version = "0.27.10", default-features = false }
 hyper-util            = { version = "0.1.21", features = ["client", "client-legacy"] }

@@ -5,12 +5,14 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::http::{HttpRemoteWriteClient, HttpRemoteWriteError, should_retry};
+use crate::http::{HttpRemoteWriteClient, HttpRemoteWriteError, HttpRetryPolicy};
 use crate::retry::Retry;
 use backoff::backoff::Backoff;
 use bytes::Bytes;
 use http::HeaderMap;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
+use tokio::time::{Instant, timeout_at};
 
 pub type BackoffFactory = Arc<dyn Fn() -> Box<dyn Backoff + Send> + Send + Sync>;
 
@@ -32,6 +34,7 @@ pub struct DeliveryEngine {
   client: Arc<dyn HttpRemoteWriteClient>,
   observer: Arc<dyn DeliveryObserver>,
   retry: Arc<Retry>,
+  policy: HttpRetryPolicy,
 }
 
 impl DeliveryEngine {
@@ -46,7 +49,14 @@ impl DeliveryEngine {
       client,
       observer,
       retry,
+      policy: HttpRetryPolicy::RemoteWrite,
     }
+  }
+
+  #[must_use]
+  pub fn with_retry_policy(mut self, policy: HttpRetryPolicy) -> Self {
+    self.policy = policy;
+    self
   }
 
   pub async fn send(
@@ -56,10 +66,55 @@ impl DeliveryEngine {
     shutdown_pending: bool,
   ) -> Result<(), HttpRemoteWriteError> {
     self
+      .send_until(
+        compressed_write_request,
+        extra_headers,
+        shutdown_pending,
+        None,
+      )
+      .await
+  }
+
+  /// Bounds attempts and retry sleeps by one total delivery budget.
+  pub async fn send_with_timeout(
+    &self,
+    compressed_write_request: Bytes,
+    extra_headers: Option<&HeaderMap>,
+    shutdown_pending: bool,
+    timeout: Duration,
+  ) -> Result<(), HttpRemoteWriteError> {
+    let deadline = Instant::now().checked_add(timeout).ok_or_else(|| {
+      HttpRemoteWriteError::Permanent("delivery timeout exceeds the clock range".to_string())
+    })?;
+    timeout_at(
+      deadline,
+      self.send_until(
+        compressed_write_request,
+        extra_headers,
+        shutdown_pending,
+        Some(deadline),
+      ),
+    )
+    .await
+    .map_err(|_| HttpRemoteWriteError::Timeout)?
+  }
+
+  async fn send_until(
+    &self,
+    compressed_write_request: Bytes,
+    extra_headers: Option<&HeaderMap>,
+    shutdown_pending: bool,
+    deadline: Option<Instant>,
+  ) -> Result<(), HttpRemoteWriteError> {
+    self
       .retry
-      .retry_notify(
+      .retry_notify_until(
         (self.backoff)(),
         || async {
+          if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            log::debug!("delivery deadline reached before request attempt");
+            return Err(backoff::Error::permanent(HttpRemoteWriteError::Timeout));
+          }
           self.observer.request_sent(compressed_write_request.len());
           match self
             .client
@@ -67,13 +122,18 @@ impl DeliveryEngine {
             .await
           {
             Ok(()) => Ok(()),
-            Err(error) if should_retry(&error) && !shutdown_pending => {
-              Err(backoff::Error::transient(error))
+            Err(error) if self.policy.should_retry(&error) && !shutdown_pending => {
+              let retry_after = self.policy.retry_after(&error, SystemTime::now());
+              Err(backoff::Error::Transient {
+                err: error,
+                retry_after,
+              })
             },
             Err(error) => Err(backoff::Error::permanent(error)),
           }
         },
         || self.observer.request_retry(),
+        deadline,
       )
       .await
   }

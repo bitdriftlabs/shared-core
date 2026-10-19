@@ -17,6 +17,7 @@ bd-workspace-hack.workspace = true
 bytes.workspace             = true
 futures.workspace           = true
 http.workspace              = true
+httpdate.workspace          = true
 hyper-util.workspace        = true
 log.workspace               = true
 mockall.workspace           = true
