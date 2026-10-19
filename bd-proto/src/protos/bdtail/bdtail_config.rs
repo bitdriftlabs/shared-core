@@ -39,10 +39,6 @@ pub struct DeviceCommandRequest {
     pub command_id: ::protobuf::Chars,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.command_selector)
     pub command_selector: ::protobuf::MessageField<super::workflow_command::WorkflowCommandSelector>,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.sdk_instance_id)
-    pub sdk_instance_id: ::protobuf::Chars,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.expires_at)
-    pub expires_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -60,7 +56,7 @@ impl DeviceCommandRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut fields = ::std::vec::Vec::with_capacity(2);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "command_id",
@@ -71,16 +67,6 @@ impl DeviceCommandRequest {
             "command_selector",
             |m: &DeviceCommandRequest| { &m.command_selector },
             |m: &mut DeviceCommandRequest| { &mut m.command_selector },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "sdk_instance_id",
-            |m: &DeviceCommandRequest| { &m.sdk_instance_id },
-            |m: &mut DeviceCommandRequest| { &mut m.sdk_instance_id },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
-            "expires_at",
-            |m: &DeviceCommandRequest| { &m.expires_at },
-            |m: &mut DeviceCommandRequest| { &mut m.expires_at },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandRequest>(
             "DeviceCommandRequest",
@@ -106,12 +92,6 @@ impl ::protobuf::Message for DeviceCommandRequest {
                 18 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.command_selector)?;
                 },
-                26 => {
-                    self.sdk_instance_id = is.read_tokio_chars()?;
-                },
-                34 => {
-                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.expires_at)?;
-                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -131,13 +111,6 @@ impl ::protobuf::Message for DeviceCommandRequest {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
-        if !self.sdk_instance_id.is_empty() {
-            my_size += ::protobuf::rt::string_size(3, &self.sdk_instance_id);
-        }
-        if let Some(v) = self.expires_at.as_ref() {
-            let len = v.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -149,12 +122,6 @@ impl ::protobuf::Message for DeviceCommandRequest {
         }
         if let Some(v) = self.command_selector.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
-        }
-        if !self.sdk_instance_id.is_empty() {
-            os.write_string(3, &self.sdk_instance_id)?;
-        }
-        if let Some(v) = self.expires_at.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -175,8 +142,6 @@ impl ::protobuf::Message for DeviceCommandRequest {
     fn clear(&mut self) {
         self.command_id.clear();
         self.command_selector.clear();
-        self.sdk_instance_id.clear();
-        self.expires_at.clear();
         self.special_fields.clear();
     }
 
@@ -184,8 +149,6 @@ impl ::protobuf::Message for DeviceCommandRequest {
         static instance: DeviceCommandRequest = DeviceCommandRequest {
             command_id: ::protobuf::Chars::new(),
             command_selector: ::protobuf::MessageField::none(),
-            sdk_instance_id: ::protobuf::Chars::new(),
-            expires_at: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -496,21 +459,18 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n6bitdrift_public/protobuf/bdtail/v1/bdtail_config.proto\x12\"bitdrift_\
     public.protobuf.bdtail.v1\x1a5bitdrift_public/protobuf/matcher/v1/log_ma\
     tcher.proto\x1a;bitdrift_public/protobuf/workflow/v1/workflow_command.pr\
-    oto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.prot\
-    o\"\xaa\x02\n\x14DeviceCommandRequest\x12'\n\ncommand_id\x18\x01\x20\x01\
-    (\tR\tcommandIdB\x08\xfaB\x05r\x03\xb0\x01\x01\x12r\n\x10command_selecto\
-    r\x18\x02\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.WorkflowCo\
-    mmandSelectorR\x0fcommandSelectorB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x120\
-    \n\x0fsdk_instance_id\x18\x03\x20\x01(\tR\rsdkInstanceIdB\x08\xfaB\x05r\
-    \x03\xb0\x01\x01\x12C\n\nexpires_at\x18\x04\x20\x01(\x0b2\x1a.google.pro\
-    tobuf.TimestampR\texpiresAtB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"\xe0\x01\
-    \n\x0cBdTailStream\x12$\n\tstream_id\x18\x01\x20\x01(\tR\x08streamIdB\
-    \x07\xfaB\x04r\x02\x10\x01\x12I\n\x07matcher\x18\x02\x20\x01(\x0b2/.bitd\
-    rift_public.protobuf.matcher.v1.LogMatcherR\x07matcher\x12_\n\x0edevice_\
-    command\x18\x03\x20\x01(\x0b28.bitdrift_public.protobuf.bdtail.v1.Device\
-    CommandRequestR\rdeviceCommand\"o\n\x14BdTailConfigurations\x12W\n\x0eac\
-    tive_streams\x18\x01\x20\x03(\x0b20.bitdrift_public.protobuf.bdtail.v1.B\
-    dTailStreamR\ractiveStreamsb\x06proto3\
+    oto\x1a\x17validate/validate.proto\"\xb3\x01\n\x14DeviceCommandRequest\
+    \x12'\n\ncommand_id\x18\x01\x20\x01(\tR\tcommandIdB\x08\xfaB\x05r\x03\
+    \xb0\x01\x01\x12r\n\x10command_selector\x18\x02\x20\x01(\x0b2=.bitdrift_\
+    public.protobuf.workflow.v1.WorkflowCommandSelectorR\x0fcommandSelectorB\
+    \x08\xfaB\x05\x8a\x01\x02\x10\x01\"\xe0\x01\n\x0cBdTailStream\x12$\n\tst\
+    ream_id\x18\x01\x20\x01(\tR\x08streamIdB\x07\xfaB\x04r\x02\x10\x01\x12I\
+    \n\x07matcher\x18\x02\x20\x01(\x0b2/.bitdrift_public.protobuf.matcher.v1\
+    .LogMatcherR\x07matcher\x12_\n\x0edevice_command\x18\x03\x20\x01(\x0b28.\
+    bitdrift_public.protobuf.bdtail.v1.DeviceCommandRequestR\rdeviceCommand\
+    \"o\n\x14BdTailConfigurations\x12W\n\x0eactive_streams\x18\x01\x20\x03(\
+    \x0b20.bitdrift_public.protobuf.bdtail.v1.BdTailStreamR\ractiveStreamsb\
+    \x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -527,10 +487,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(4);
+            let mut deps = ::std::vec::Vec::with_capacity(3);
             deps.push(super::log_matcher::file_descriptor().clone());
             deps.push(super::workflow_command::file_descriptor().clone());
-            deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(3);
             messages.push(DeviceCommandRequest::generated_message_descriptor_data());

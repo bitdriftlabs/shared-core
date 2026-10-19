@@ -1,3 +1,10 @@
+// shared-core - bitdrift's common client/server libraries
+// Copyright Bitdrift, Inc. All rights reserved.
+//
+// Use of this source code is governed by a source available license that can be found in the
+// LICENSE.polyform file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
 use super::{OtlpCompression, OtlpMetric, encode_otlp_metrics, encode_otlp_metrics_with_metadata};
 use crate::protos::metrics::metric::Data;
 use crate::protos::metrics::{AggregationTemporality, number_data_point};
