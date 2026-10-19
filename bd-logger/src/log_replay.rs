@@ -384,7 +384,7 @@ impl ProcessingPipeline {
     let event = match command_event {
       Some(WorkflowCommandEvent::Start) => WorkflowEvent::CommandStart(&log.log),
       Some(WorkflowCommandEvent::Cancelled) => WorkflowEvent::CommandCancelled(&log.log),
-      Some(WorkflowCommandEvent::Direct) => WorkflowEvent::CommandLog(&log.log),
+      Some(WorkflowCommandEvent::Log) => WorkflowEvent::CommandLog(&log.log),
       Some(WorkflowCommandEvent::Completion(token)) => WorkflowEvent::CommandCompletion {
         log: &log.log,
         token,

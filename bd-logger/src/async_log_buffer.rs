@@ -901,7 +901,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       committed_workflow_attachment |= log_replay_result.committed_workflow_attachment;
       let logs_to_inject = self.handle_log_replay_result(log_replay_result);
       logs.extend(logs_to_inject.into_iter().map(|(log, command_event)| {
-        let attributes_overrides = if matches!(command_event, Some(WorkflowCommandEvent::Start)) {
+        // Lifecycle timestamps are generated at processing time, independently of the source
+        // ingress snapshot or override. Ordinary generated logs retain source-log timing.
+        let attributes_overrides = if matches!(
+          command_event,
+          Some(WorkflowCommandEvent::Start | WorkflowCommandEvent::Cancelled)
+        ) {
           Some(LogAttributesOverrides::OccurredAt(log.occurred_at))
         } else {
           source_attributes_overrides.clone()
@@ -1276,9 +1281,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     context: Option<EventContext>,
     command_event: Option<&WorkflowCommandEvent>,
   ) -> anyhow::Result<LogReplayResult> {
+    // Generated descendants retain command ownership but not their parent's completion token.
+    // They remain ordinary matcher inputs without becoming a historical session boundary.
+    let command_event = command_event.cloned().or_else(|| {
+      matches!(&context, Some(EventContext::Command { .. })).then_some(WorkflowCommandEvent::Log)
+    });
     let normalized_log = self.normalize_log(log, state_store, context).await?;
     self
-      .write_log(normalized_log, command_event.cloned(), state_store)
+      .write_log(normalized_log, command_event, state_store)
       .await
   }
 
@@ -1621,7 +1631,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       EventContext::Command { cancelled: true, .. } =>
                         Some(WorkflowCommandEvent::Cancelled),
                       EventContext::Command { cancelled: false, .. } =>
-                        Some(WorkflowCommandEvent::Direct),
+                        Some(WorkflowCommandEvent::Log),
                       _ => None,
                     };
                     let result = if command_event.is_some() {

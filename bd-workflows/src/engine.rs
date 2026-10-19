@@ -1441,6 +1441,20 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         .collect(),
       workflow_commands_to_start: workflow_commands_to_start
         .into_iter()
+        // A parallel run can park a command and then be evicted or replaced later in this same
+        // event. Such tokens never reached the index or dispatcher and must not acquire a span.
+        .filter(|action| {
+          let has_owner = self
+            .pending_workflow_command_index
+            .contains_key(&action.completion_token.0);
+          if !has_owner {
+            log::debug!(
+              "workflow command owner invalidated before dispatch, token={:?}",
+              action.completion_token
+            );
+          }
+          has_owner
+        })
         .map(|action| {
           WorkflowCommandRequest::new(
             action.command_selector,

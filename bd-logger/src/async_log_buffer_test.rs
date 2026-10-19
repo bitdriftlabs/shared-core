@@ -107,7 +107,14 @@ use bd_test_helpers::rule;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::session_replay::NoOpTarget;
-use bd_test_helpers::workflow::{WorkflowBuilder, make_flush_buffers_action, state};
+use bd_test_helpers::workflow::{
+  WorkflowBuilder,
+  make_emit_counter_action,
+  make_flush_buffers_action,
+  make_generate_log_action_proto,
+  metric_value,
+  state,
+};
 use bd_time::{
   OffsetDateTimeExt,
   SystemTimeProvider,
@@ -115,7 +122,7 @@ use bd_time::{
   TimeDurationExt,
   TimeProvider,
 };
-use bd_workflows::config::WorkflowsConfiguration;
+use bd_workflows::config::{Config, WorkflowsConfiguration};
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use bd_workflows::workflow::{
@@ -1317,7 +1324,7 @@ fn normal_log(message: &str) -> LogLine {
   }
 }
 
-fn command_workflows() -> WorkflowsConfiguration {
+fn command_workflow() -> Config {
   let terminal = state("terminal");
   let command = state("command").declare_transition(
     &terminal,
@@ -1346,9 +1353,11 @@ fn command_workflows() -> WorkflowsConfiguration {
     },
   );
   let start = state("start").declare_transition(&command, rule!(message_equals("start")));
-  WorkflowsConfiguration::new_with_workflow_configurations(vec![
-    WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
-  ])
+  WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config()
+}
+
+fn command_workflows() -> WorkflowsConfiguration {
+  WorkflowsConfiguration::new_with_workflow_configurations(vec![command_workflow()])
 }
 
 async fn wait_for_startup_gate_ready(setup: &Setup) {
@@ -1409,9 +1418,7 @@ impl LogReplay for TestReplay {
     self.completion_tokens.lock().push(match &command_event {
       Some(WorkflowCommandEvent::Completion(token)) => Some(token.clone()),
       Some(
-        WorkflowCommandEvent::Start
-        | WorkflowCommandEvent::Cancelled
-        | WorkflowCommandEvent::Direct,
+        WorkflowCommandEvent::Start | WorkflowCommandEvent::Cancelled | WorkflowCommandEvent::Log,
       )
       | None => None,
     });
@@ -2358,7 +2365,7 @@ async fn workflow_command_processed_session_boundary_and_attribution() {
               provider: None,
               cancelled: false,
             }),
-            Some(WorkflowCommandEvent::Direct),
+            Some(WorkflowCommandEvent::Log),
           )
           .await
           .map_err(|error| error.error)
@@ -2566,6 +2573,242 @@ async fn workflow_command_processed_session_boundary_and_attribution() {
 }
 
 #[tokio::test]
+async fn workflow_command_generated_descendants_do_not_rewind_session_or_complete_commands() {
+  for command_event in [WorkflowCommandEvent::Cancelled, WorkflowCommandEvent::Log] {
+    let mut setup = Setup::new();
+    let terminal = state("terminal");
+    let second = state("second").declare_transition_with_actions(
+      &terminal,
+      rule!(message_equals("second descendant")),
+      &[make_emit_counter_action(
+        "descendants_observed",
+        metric_value(1),
+        vec![],
+      )],
+    );
+    let first = state("first").declare_transition_with_actions(
+      &second,
+      rule!(message_equals("first descendant")),
+      &[make_generate_log_action_proto(
+        "second descendant",
+        &[],
+        "second",
+        LogType::NORMAL,
+      )],
+    );
+    let observer = state("observer").declare_transition_with_actions(
+      &first,
+      rule!(message_equals(COMMAND_OUTCOME_MESSAGE)),
+      &[make_generate_log_action_proto(
+        "first descendant",
+        &[],
+        "first",
+        LogType::NORMAL,
+      )],
+    );
+    let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+      command_workflow(),
+      WorkflowBuilder::new("observer", &[&observer, &first, &second, &terminal]).make_config(),
+    ]);
+    let (_config_tx, config_rx) = mpsc::channel(1);
+    let (buffer, _) = setup.make_test_async_log_buffer(config_rx);
+    let state_store = TestStore::new().await;
+    let state_store = (*state_store).clone();
+    let mut buffer = buffer
+      .update(setup.make_config_update(workflows), &state_store)
+      .await;
+    buffer.replayer.forward_logs_to_pipeline = true;
+    let previous = setup.session_strategy.session_id().unwrap();
+    buffer
+      .process_all_logs(normal_log("start"), &state_store, None)
+      .await
+      .unwrap();
+    setup.session_strategy.start_new_session(None).unwrap();
+    let current = setup.session_strategy.session_id().unwrap();
+    buffer
+      .process_all_logs(normal_log("start"), &state_store, None)
+      .await
+      .unwrap();
+    // Park a current-session command without dispatching a worker. Only engine acceptance may
+    // complete it, regardless of the public span fields on the historical event or descendants.
+    let request = buffer
+      .process_log(normal_log("execute"), &state_store, None, None)
+      .await
+      .unwrap()
+      .workflow_commands_to_start
+      .pop()
+      .unwrap();
+    let mut log = normal_log(COMMAND_OUTCOME_MESSAGE);
+    log.log_type = LogType::SPAN;
+    log.fields = request
+      .start_log()
+      .fields
+      .into_iter()
+      .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+      .collect();
+    let historical_index = buffer.replayer.timestamps.len();
+    buffer
+      .process_all_logs_with_completion(
+        log,
+        &state_store,
+        Some(EventContext::Command {
+          session_id: previous.clone(),
+          provider: None,
+          cancelled: command_event == WorkflowCommandEvent::Cancelled,
+        }),
+        Some(command_event),
+      )
+      .await
+      .map_err(|error| error.error)
+      .unwrap();
+
+    assert_eq!(
+      &buffer.replayer.logs.lock()[historical_index ..],
+      [
+        COMMAND_OUTCOME_MESSAGE,
+        "first descendant",
+        "second descendant",
+      ]
+    );
+    assert!(
+      buffer.replayer.session_ids[historical_index ..]
+        .iter()
+        .all(|session| session == previous.as_ref())
+    );
+    assert!(
+      buffer.replayer.completion_tokens.lock()[historical_index ..]
+        .iter()
+        .all(Option::is_none)
+    );
+    setup
+      .collector
+      .assert_workflow_counter_eq(1, "descendants_observed", labels! {});
+    setup
+      .collector
+      .assert_counter_eq(2, "workflows:sessions_total", labels! {});
+    setup
+      .collector
+      .assert_counter_eq(0, "workflows:session_thrashes_total", labels! {});
+    assert_eq!(
+      state_store
+        .read()
+        .await
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
+        .unwrap()
+        .string_value(),
+      current.as_ref()
+    );
+    let engine = buffer.logging_state.workflows_engine().unwrap();
+    assert!(
+      engine
+        .workflow_command_outcome_log(
+          &request.completion_token(),
+          WorkflowCommandOutcome::Succeeded {
+            message: None,
+            fields: LogFields::default(),
+          },
+          buffer.time_provider.now(),
+        )
+        .is_ok()
+    );
+  }
+}
+
+#[tokio::test]
+async fn workflow_command_cancellation_preserves_processing_timestamp() {
+  for session_change in [false, true] {
+    for explicit_timestamp in [false, true] {
+      let mut setup = Setup::new();
+      let (_config_tx, config_rx) = mpsc::channel(1);
+      let (buffer, _) = setup.make_test_async_log_buffer(config_rx);
+      let state_store = TestStore::new().await;
+      let state_store = (*state_store).clone();
+      let mut buffer = buffer
+        .update(setup.make_config_update(command_workflows()), &state_store)
+        .await;
+      let started_at = OffsetDateTime::UNIX_EPOCH + 2.seconds();
+      let clock = Arc::new(TestTimeProvider::new(started_at));
+      buffer.time_provider = clock.clone();
+      buffer.replayer.forward_logs_to_pipeline = true;
+      buffer
+        .process_all_logs(normal_log("start"), &state_store, None)
+        .await
+        .unwrap();
+      buffer
+        .process_all_logs(normal_log("execute"), &state_store, None)
+        .await
+        .unwrap();
+      let start_index = buffer.replayer.timestamps.len() - 1;
+      assert_eq!(buffer.replayer.timestamps[start_index], started_at);
+
+      if session_change {
+        setup.session_strategy.start_new_session(None).unwrap();
+      }
+      let mut context =
+        current_process_admission_context(&buffer.metadata_provider, &setup.session_strategy)
+          .unwrap();
+      // Model ingress admitted before command dispatch but processed after it. Neither this
+      // snapshot nor an explicit source-log timestamp may replace the cancellation's own time.
+      let admitted_at = OffsetDateTime::UNIX_EPOCH + 1.seconds();
+      context.admitted_at = admitted_at;
+      context.provider.timestamp = admitted_at;
+      let mut boundary = normal_log("start");
+      if explicit_timestamp {
+        boundary.attributes_overrides = Some(LogAttributesOverrides::OccurredAt(
+          OffsetDateTime::UNIX_EPOCH,
+        ));
+      }
+      clock.advance(125.milliseconds());
+      buffer
+        .process_all_logs(
+          boundary,
+          &state_store,
+          Some(EventContext::CurrentProcess(context)),
+        )
+        .await
+        .unwrap();
+      assert_eq!(
+        buffer.replayer.timestamps[start_index + 1],
+        if explicit_timestamp {
+          OffsetDateTime::UNIX_EPOCH
+        } else {
+          admitted_at
+        }
+      );
+      assert_eq!(
+        buffer.replayer.logs.lock().last().unwrap(),
+        COMMAND_OUTCOME_MESSAGE
+      );
+      assert_eq!(buffer.replayer.timestamps.last(), Some(&clock.now()));
+      let fields = buffer.replayer.fields.lock();
+      let start = &fields[start_index];
+      let end = fields.last().unwrap();
+      assert_eq!(
+        end.get(LOG_FIELD_NAME_SPAN_ID),
+        start.get(LOG_FIELD_NAME_SPAN_ID)
+      );
+      assert_eq!(
+        end.get(LOG_FIELD_NAME_DURATION_MS).unwrap().as_str(),
+        Some("125")
+      );
+      assert_eq!(
+        end
+          .get(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON)
+          .unwrap()
+          .as_str(),
+        Some(
+          if session_change {
+            "session_changed"
+          } else {
+            "workflow_reset"
+          }
+        )
+      );
+    }
+  }
+}
+
+#[tokio::test]
 async fn direct_commands_use_processed_session_boundary_without_rewinding_logging() {
   for (complete_before_boundary, state_boundary) in
     [(false, false), (true, false), (false, true), (true, true)]
@@ -2705,7 +2948,7 @@ async fn direct_commands_use_processed_session_boundary_without_rewinding_loggin
       let command_event = if *cancelled {
         WorkflowCommandEvent::Cancelled
       } else {
-        WorkflowCommandEvent::Direct
+        WorkflowCommandEvent::Log
       };
       let LoggerIngressPayload::Log(log) = event.payload else {
         panic!("expected command log");

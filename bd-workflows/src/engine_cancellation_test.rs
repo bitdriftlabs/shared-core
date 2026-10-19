@@ -502,6 +502,59 @@ async fn workflow_command_parallel_eviction_and_run_duration_stop() {
 }
 
 #[tokio::test]
+async fn workflow_command_same_event_parallel_eviction_only_dispatches_surviving_owners() {
+  for (max_runs, replace_signature) in [(1, false), (2, false), (3, true)] {
+    let terminal = state("terminal");
+    let command = state("command").declare_transition(&terminal, workflow_command_rule());
+    let start = state("start").declare_transition_with_extractions(
+      &command,
+      rule!(message_equals("start")),
+      &[make_save_field_extraction("saved_user", "user")],
+    );
+    let setup = Setup::new();
+    let mut engine = setup
+      .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+        vec![
+          WorkflowBuilder::new("workflow", &[&start, &command, &terminal])
+            .with_parallel_execution(Some(max_runs))
+            .make_config(),
+        ],
+      ))
+      .await;
+    let now = datetime!(2026-01-01 00:00 UTC);
+    engine.process_log(timed_command_log("start", now).with_tags(labels! { "user" => "first" }));
+    // The old run first parks a command; later in this same event, the new initial run can evict
+    // or replace it. No worker or span start may escape for a token with no surviving owner.
+    let requests = engine
+      .process_log(timed_command_log("start", now).with_tags(labels! {
+        "user" => if replace_signature { "first" } else { "second" },
+      }))
+      .workflow_commands_to_start;
+    let expected = usize::from(max_runs == 2);
+    assert_eq!(requests.len(), expected);
+    assert_eq!(engine.engine.pending_workflow_command_index.len(), expected);
+    for request in requests {
+      assert!(
+        engine
+          .engine
+          .pending_workflow_command_index
+          .contains_key(&request.completion_token().0)
+      );
+      engine
+        .engine
+        .accept_workflow_command_completion(&request.completion_token())
+        .unwrap();
+    }
+    assert!(
+      engine
+        .engine
+        .take_cancelled_workflow_commands(now)
+        .is_empty()
+    );
+  }
+}
+
+#[tokio::test]
 async fn workflow_command_log_count_stop_cancels_pending_traversals() {
   let terminal = state("terminal");
   let sibling = state("sibling").declare_transition(&terminal, rule!(message_equals("finish")));

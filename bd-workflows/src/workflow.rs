@@ -148,8 +148,9 @@ pub enum WorkflowCommandEvent {
   Completion(WorkflowCommandCompletionToken),
   /// Failed end for an invalidated command; not a matchable completion of its old transition.
   Cancelled,
-  /// Non-cancelled direct command telemetry: normal matcher behavior, without session advancement.
-  Direct,
+  /// Direct command telemetry or generated descendants of command logs: normal matcher behavior,
+  /// without completion authority or session advancement.
+  Log,
 }
 
 //
@@ -592,8 +593,8 @@ pub enum WorkflowEvent<'a> {
   CommandStart(&'a Log),
   /// A cancellation observation, without authority to complete or initiate a command.
   CommandCancelled(&'a Log),
-  /// A direct command log with ordinary matcher behavior, but no authority over a pending command
-  /// or the current workflow session.
+  /// A direct command log or generated descendant with ordinary matcher behavior, but no authority
+  /// over a pending command or the current workflow session.
   CommandLog(&'a Log),
   /// An accepted span end with private traversal routing metadata. Other log-matching traversals
   /// can observe it, but only the pending traversal with this token can resume a command
