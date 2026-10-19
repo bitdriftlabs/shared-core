@@ -149,7 +149,7 @@ pub enum WorkflowCommandEvent {
   /// Failed end for an invalidated command; not a matchable completion of its old transition.
   Cancelled,
   /// Direct command telemetry or generated descendants of command logs: normal matcher behavior,
-  /// without completion authority or session advancement.
+  /// without completion authority or permission to replace an established session.
   Log,
 }
 
@@ -594,7 +594,7 @@ pub enum WorkflowEvent<'a> {
   /// A cancellation observation, without authority to complete or initiate a command.
   CommandCancelled(&'a Log),
   /// A direct command log or generated descendant with ordinary matcher behavior, but no authority
-  /// over a pending command or the current workflow session.
+  /// over a pending command or an established workflow session.
   CommandLog(&'a Log),
   /// An accepted span end with private traversal routing metadata. Other log-matching traversals
   /// can observe it, but only the pending traversal with this token can resume a command
@@ -839,15 +839,8 @@ impl Workflow {
           log::trace!("completed run, workflow id={}", self.id);
           self.runs.remove(index);
 
-          // In the case where we completed the active run *and* there is a pending initial state
-          // run, we need to see if there is a timeout to initialize on the initial state run. In
-          // this case by definition the initial state run should have a single traversal as it
-          // has not progressed.
-          if is_exclusive_execution && !is_initial_run {
-            debug_assert_eq!(self.runs.first().map(|r| r.traversals.len()), Some(1));
-            if let Some(f) = self.runs.first_mut().and_then(|r| r.traversals.get_mut(0)) {
-              f.initialize_timeout(config, now);
-            }
+          if !is_initial_run {
+            self.promote_initial_run(config, now);
           }
         },
         RunState::Running => {
@@ -959,6 +952,20 @@ impl Workflow {
     }
 
     result.finalize(config, &mut self.workflow_debug_state, now)
+  }
+
+  /// Arms a dormant exclusive initial run after its active run is completed or pruned. Sibling
+  /// traversals, parallel runs, and already-armed timeouts must retain their existing lifetimes.
+  pub(crate) fn promote_initial_run(&mut self, config: &Config, now: OffsetDateTime) {
+    if matches!(config.inner().execution(), Execution::Exclusive)
+      && self.runs.len() == 1
+      && let Some(run) = self.runs.first_mut()
+      && run.is_in_initial_state()
+      && let Some(traversal) = run.traversals.first_mut()
+    {
+      log::debug!("promoting initial run for workflow {}", self.id);
+      traversal.initialize_timeout(config, now);
+    }
   }
 
   pub(crate) fn needs_new_run(&self) -> bool {

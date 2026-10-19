@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::engine_test::{timed_command_log, workflow_command_rule};
-use super::engine_test_helpers::Setup;
+use super::engine_test_helpers::{Setup, make_state_change_rule, make_string_match};
 use super::{WorkflowCommandLog, WorkflowsEngineConfig};
 use crate::engine_assert_active_runs;
 use crate::test::MakeConfig;
@@ -30,6 +30,7 @@ use bd_log_primitives::{
   LogFields,
 };
 use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+use bd_state::{Scope, StateChange, string_value};
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
@@ -551,6 +552,184 @@ async fn workflow_command_same_event_parallel_eviction_only_dispatches_surviving
         .take_cancelled_workflow_commands(now)
         .is_empty()
     );
+  }
+}
+
+#[tokio::test]
+async fn workflow_command_session_start_carryover_reconciles_final_owners() {
+  for scenario in ["reset", "eviction", "survives"] {
+    let terminal = state("terminal");
+    let command = state("command").declare_transition(&terminal, workflow_command_rule());
+    let start = state("start")
+      .declare_transition(
+        &command,
+        make_state_change_rule(
+          Scope::FeatureFlagExposure,
+          "ready",
+          make_string_match("yes"),
+        ),
+      )
+      .declare_transition(&command, rule!(message_equals("reset")));
+    let builder = WorkflowBuilder::new("carryover", &[&start, &command, &terminal]);
+    let builder = if scenario == "eviction" {
+      builder.with_parallel_execution(Some(1))
+    } else {
+      builder
+    };
+    // This command is already returned for dispatch by the state change. If reset, its
+    // cancellation must survive suppression of the never-dispatched carryover command.
+    let existing = state("existing")
+      .declare_transition(&terminal, workflow_command_rule())
+      .declare_transition(&command, rule!(message_equals("reset")));
+    let setup = Setup::new();
+    let mut engine = setup
+      .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+        vec![
+          builder.make_config(),
+          WorkflowBuilder::new("existing", &[&existing, &command, &terminal]).make_config(),
+        ],
+      ))
+      .await;
+    let now = datetime!(2026-01-01 00:00 UTC);
+    let previous = engine
+      .process_state_change(&StateChange::inserted(
+        Scope::FeatureFlagExposure,
+        "ready",
+        string_value("yes"),
+        now,
+      ))
+      .workflow_commands_to_start;
+    assert_eq!(previous.len(), 1);
+    let previous_token = previous[0].completion_token();
+    let requests = engine
+      .process_log(timed_command_log(
+        if scenario == "reset" { "reset" } else { "keep" },
+        now,
+      ))
+      .workflow_commands_to_start;
+    assert_eq!(requests.len(), usize::from(scenario == "survives"));
+    for request in requests {
+      engine
+        .engine
+        .accept_workflow_command_completion(&request.completion_token())
+        .unwrap();
+    }
+    let cancellations = engine.engine.take_cancelled_workflow_commands(now);
+    if scenario == "reset" {
+      assert_cancelled(
+        &cancellations,
+        &previous[0],
+        CommandCancellationReason::WorkflowReset,
+        now,
+      );
+    } else {
+      assert!(cancellations.is_empty());
+      assert!(
+        engine
+          .engine
+          .pending_workflow_command_index
+          .contains_key(&previous_token.0)
+      );
+    }
+  }
+}
+
+#[tokio::test]
+async fn workflow_command_cancellation_promotes_only_dormant_exclusive_initial_timeout() {
+  for (parallel, sibling, recovered) in [
+    (false, false, false),
+    (false, true, false),
+    (true, false, false),
+    (false, false, true),
+    (false, true, true),
+    (true, false, true),
+  ] {
+    let terminal = state("terminal");
+    let timeout = state("timeout");
+    let sibling_state =
+      state("sibling").declare_transition(&terminal, rule!(message_equals("finish")));
+    let command = state("command").declare_transition(&terminal, workflow_command_rule());
+    let mut start = state("start")
+      .declare_transition(&command, rule!(message_equals("start")))
+      .with_timeout(
+        &timeout,
+        1.seconds(),
+        &[make_emit_counter_action(
+          "initial_timeout",
+          metric_value(1),
+          vec![],
+        )],
+      );
+    if sibling {
+      start = start.declare_transition(&sibling_state, rule!(message_equals("start")));
+    }
+    let builder = WorkflowBuilder::new(
+      "workflow",
+      &[&start, &command, &sibling_state, &terminal, &timeout],
+    );
+    let builder = if parallel {
+      builder.with_parallel_execution(Some(3))
+    } else {
+      builder
+    };
+    let setup = Setup::new();
+    let mut engine = setup
+      .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+        vec![builder.make_config()],
+      ))
+      .await;
+    let now = datetime!(2026-01-01 00:00 UTC);
+    engine.process_log(timed_command_log("start", now));
+    let request = engine
+      .process_log(timed_command_log("execute", now + 100.milliseconds()))
+      .workflow_commands_to_start
+      .pop()
+      .unwrap();
+    let cancelled_at = now + 200.milliseconds();
+    if recovered {
+      assert_cancelled(
+        &engine.engine.fail_recovered_workflow_commands(cancelled_at),
+        &request,
+        CommandCancellationReason::SdkRestart,
+        cancelled_at,
+      );
+    } else {
+      engine
+        .engine
+        .cancel_workflow_command(
+          &request.completion_token(),
+          CommandCancellationReason::WorkflowReset,
+          cancelled_at,
+        )
+        .unwrap();
+    }
+    engine.process_log(timed_command_log("probe", now + 1_100.milliseconds()));
+    if parallel {
+      // Parallel timers were already armed when the run was created, not at cancellation.
+      setup
+        .collector
+        .assert_workflow_counter_eq(1, "initial_timeout", labels! {});
+    } else {
+      assert!(
+        setup
+          .collector
+          .find_counter(&NameType::ActionId("initial_timeout".into()), &labels! {})
+          .is_none()
+      );
+    }
+    engine.process_log(timed_command_log("probe", now + 1_200.milliseconds()));
+    if sibling {
+      assert!(
+        setup
+          .collector
+          .find_counter(&NameType::ActionId("initial_timeout".into()), &labels! {})
+          .is_none()
+      );
+    } else {
+      setup
+        .collector
+        .assert_workflow_counter_eq(1, "initial_timeout", labels! {});
+    }
   }
 }
 

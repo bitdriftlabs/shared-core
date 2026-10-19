@@ -85,6 +85,7 @@ use bd_proto::protos::client::artifact::WorkflowAttachmentState;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::state::scope::StateScope;
 use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
 use bd_proto::protos::workflow::workflow::workflow::{MatchRunCommand, Rule};
 use bd_proto::protos::workflow::workflow_command::{
@@ -112,6 +113,8 @@ use bd_test_helpers::workflow::{
   make_emit_counter_action,
   make_flush_buffers_action,
   make_generate_log_action_proto,
+  make_on_new_session_rule,
+  make_state_change_rule,
   metric_value,
   state,
 };
@@ -1324,34 +1327,35 @@ fn normal_log(message: &str) -> LogLine {
   }
 }
 
+fn command_rule() -> Rule {
+  Rule {
+    rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
+      command_selector: Some(WorkflowCommandSelector {
+        command_selector: Some(
+          workflow_command_selector::Command_selector::RegisteredCommand(
+            workflow_command_selector::RegisteredCommand {
+              registered_command_id: "handler".to_string(),
+              ..Default::default()
+            },
+          ),
+        ),
+        ..Default::default()
+      })
+      .into(),
+      minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
+        seconds: 60,
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
 fn command_workflow() -> Config {
   let terminal = state("terminal");
-  let command = state("command").declare_transition(
-    &terminal,
-    Rule {
-      rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
-        command_selector: Some(WorkflowCommandSelector {
-          command_selector: Some(
-            workflow_command_selector::Command_selector::RegisteredCommand(
-              workflow_command_selector::RegisteredCommand {
-                registered_command_id: "handler".to_string(),
-                ..Default::default()
-              },
-            ),
-          ),
-          ..Default::default()
-        })
-        .into(),
-        minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
-          seconds: 60,
-          ..Default::default()
-        })
-        .into(),
-        ..Default::default()
-      })),
-      ..Default::default()
-    },
-  );
+  let command = state("command").declare_transition(&terminal, command_rule());
   let start = state("start").declare_transition(&command, rule!(message_equals("start")));
   WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config()
 }
@@ -2805,6 +2809,275 @@ async fn workflow_command_cancellation_preserves_processing_timestamp() {
         )
       );
     }
+  }
+}
+
+#[tokio::test]
+async fn workflow_command_session_start_carryover_never_dispatches_invalidated_work() {
+  for reset in [false, true] {
+    let mut setup = Setup::new();
+    let terminal = state("terminal");
+    let command = state("command").declare_transition(&terminal, command_rule());
+    let start = state("start")
+      .declare_transition(
+        &command,
+        make_state_change_rule(StateScope::FEATURE_FLAG, "ready", Some("yes")),
+      )
+      .declare_transition(&command, rule!(message_equals("reset")));
+    let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+      WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).make_config(),
+    ]);
+    let (_config_tx, config_rx) = mpsc::channel(1);
+    let (buffer, _) = setup.make_test_async_log_buffer(config_rx);
+    let state_store = TestStore::new().await;
+    let state_store = (*state_store).clone();
+    let mut buffer = buffer
+      .update(setup.make_config_update(workflows), &state_store)
+      .await;
+    let clock = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+    buffer.time_provider = clock.clone();
+    buffer.replayer.forward_logs_to_pipeline = true;
+    let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+    let (result_tx, result_rx) = oneshot::channel();
+    let (returned_tx, returned_rx) = oneshot::channel();
+    let registry = RegisteredCommandDispatcher::default();
+    registry.register(
+      "handler".into(),
+      Arc::new(GatedAttachmentHandler {
+        started_tx,
+        result_rx: Mutex::new(Some(result_rx)),
+        returned_tx: Mutex::new(Some(returned_tx)),
+      }),
+    );
+    let (completion_tx, completion_rx) = mpsc::channel(1);
+    buffer.workflow_command_dispatcher = WorkflowCommandDispatcher::new(
+      registry,
+      CommandExecutionPolicy::new(&setup.runtime),
+      completion_tx,
+      buffer.workflow_attachment_store(),
+      RemoteScreenshotCaptureHandler::new(Arc::new(NoOpTarget)),
+    );
+    buffer.workflow_command_completion_rx = completion_rx;
+    let context =
+      current_process_admission_context(&buffer.metadata_provider, &setup.session_strategy)
+        .unwrap();
+    buffer
+      .process_feature_flag_exposure("ready".into(), Some("yes".into()), context, &state_store)
+      .await;
+    let message = if reset { "reset" } else { "keep" };
+    buffer
+      .process_all_logs(normal_log(message), &state_store, None)
+      .await
+      .unwrap();
+    if reset {
+      assert_eq!(*buffer.replayer.logs.lock(), ["reset"]);
+      assert!(matches!(
+        started_rx.try_recv(),
+        Err(mpsc::error::TryRecvError::Empty)
+      ));
+      // The replacement run may still launch a valid command after the matcher cooldown.
+      clock.advance(61.seconds());
+      buffer
+        .process_all_logs(normal_log("execute"), &state_store, None)
+        .await
+        .unwrap();
+    }
+    started_rx.recv().await.unwrap();
+    clock.advance(125.milliseconds());
+    result_tx
+      .send(CommandResult::Completed {
+        fields: LogFields::default(),
+        attachment: None,
+      })
+      .unwrap();
+    returned_rx.await.unwrap();
+    let completion = buffer.workflow_command_completion_rx.recv().await.unwrap();
+    buffer
+      .process_workflow_command_completion(completion, &state_store)
+      .await;
+    let logs = buffer.replayer.logs.lock();
+    let lifecycle = logs
+      .iter()
+      .filter(|message| {
+        matches!(
+          message.as_str(),
+          COMMAND_START_MESSAGE | COMMAND_OUTCOME_MESSAGE
+        )
+      })
+      .map(String::as_str)
+      .collect::<Vec<_>>();
+    assert_eq!(lifecycle, [COMMAND_START_MESSAGE, COMMAND_OUTCOME_MESSAGE]);
+    assert!(
+      !buffer
+        .replayer
+        .fields
+        .lock()
+        .last()
+        .unwrap()
+        .contains_key(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON)
+    );
+  }
+}
+
+#[tokio::test]
+async fn workflow_command_first_ingress_initializes_session_without_rewinds() {
+  for change_session in [false, true] {
+    let mut setup = Setup::new();
+    let terminal = state("terminal");
+    let command = state("command").declare_transition(&terminal, command_rule());
+    let observer = state("observer").declare_transition_with_actions(
+      &terminal,
+      make_on_new_session_rule(),
+      &[make_emit_counter_action(
+        "session_start_observed",
+        metric_value(1),
+        vec![],
+      )],
+    );
+    let workflows = WorkflowsConfiguration::new_with_workflow_configurations(vec![
+      WorkflowBuilder::new("command", &[&command, &terminal]).make_config(),
+      WorkflowBuilder::new("observer", &[&observer, &terminal]).make_config(),
+    ]);
+    let (_config_tx, config_rx) = mpsc::channel(1);
+    let (buffer, _) = setup.make_test_async_log_buffer(config_rx);
+    let state_store = TestStore::new().await;
+    let state_store = (*state_store).clone();
+    let mut buffer = buffer
+      .update(setup.make_config_update(workflows), &state_store)
+      .await;
+    let clock = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+    buffer.time_provider = clock.clone();
+    buffer.replayer.forward_logs_to_pipeline = true;
+    let (started_tx, started_rx) = oneshot::channel();
+    let (result_tx, result_rx) = oneshot::channel();
+    let registry = RegisteredCommandDispatcher::default();
+    registry.register(
+      "handler".into(),
+      Arc::new(GatedDirectCommandHandler {
+        started_tx: Mutex::new(Some(started_tx)),
+        result_rx: Mutex::new(Some(result_rx)),
+      }),
+    );
+    let (completion_tx, completion_rx) = mpsc::channel(1);
+    buffer.workflow_command_dispatcher = WorkflowCommandDispatcher::new(
+      registry,
+      CommandExecutionPolicy::new(&setup.runtime),
+      completion_tx,
+      buffer.workflow_attachment_store(),
+      RemoteScreenshotCaptureHandler::new(Arc::new(NoOpTarget)),
+    );
+    buffer.workflow_command_completion_rx = completion_rx;
+    let owner = setup.session_strategy.session_id().unwrap();
+    let mut log = normal_log("direct command telemetry");
+    log.log_type = LogType::SPAN;
+    buffer
+      .process_all_logs_with_completion(
+        log,
+        &state_store,
+        Some(EventContext::Command {
+          session_id: owner.clone(),
+          provider: None,
+          cancelled: false,
+        }),
+        Some(WorkflowCommandEvent::Log),
+      )
+      .await
+      .map_err(|error| error.error)
+      .unwrap();
+    let invocation = started_rx.await.unwrap();
+    assert_eq!(invocation.session_id, owner.as_ref());
+    assert_eq!(buffer.replayer.session_ids.last().unwrap(), owner.as_ref());
+    if change_session {
+      setup.session_strategy.start_new_session(None).unwrap();
+    }
+    let current = setup.session_strategy.session_id().unwrap();
+    clock.advance(125.milliseconds());
+    buffer
+      .process_all_logs(normal_log("ordinary ingress"), &state_store, None)
+      .await
+      .unwrap();
+    setup
+      .collector
+      .assert_workflow_counter_eq(1, "session_start_observed", labels! {});
+    // Historical command ingress must not undo the session established by ordinary ingress.
+    buffer
+      .process_all_logs_with_completion(
+        normal_log("historical telemetry"),
+        &state_store,
+        Some(EventContext::Command {
+          session_id: owner.clone(),
+          provider: None,
+          cancelled: false,
+        }),
+        Some(WorkflowCommandEvent::Log),
+      )
+      .await
+      .map_err(|error| error.error)
+      .unwrap();
+    if change_session {
+      let completion = buffer.workflow_command_completion_rx.recv().await.unwrap();
+      assert!(
+        result_tx
+          .send(CommandResult::Completed {
+            fields: LogFields::default(),
+            attachment: None,
+          })
+          .is_err()
+      );
+      buffer
+        .process_workflow_command_completion(completion, &state_store)
+        .await;
+    } else {
+      result_tx
+        .send(CommandResult::Completed {
+          fields: LogFields::default(),
+          attachment: None,
+        })
+        .unwrap();
+      let completion = buffer.workflow_command_completion_rx.recv().await.unwrap();
+      buffer
+        .process_workflow_command_completion(completion, &state_store)
+        .await;
+    }
+    buffer
+      .process_all_logs(normal_log("still current"), &state_store, None)
+      .await
+      .unwrap();
+    setup
+      .collector
+      .assert_workflow_counter_eq(1, "session_start_observed", labels! {});
+    setup.collector.assert_counter_eq(
+      if change_session { 2 } else { 1 },
+      "workflows:sessions_total",
+      labels! {},
+    );
+    setup
+      .collector
+      .assert_counter_eq(0, "workflows:session_thrashes_total", labels! {});
+    assert_eq!(
+      state_store
+        .read()
+        .await
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
+        .unwrap()
+        .string_value(),
+      current.as_ref()
+    );
+    let logs = buffer.replayer.logs.lock();
+    let ends = logs
+      .iter()
+      .enumerate()
+      .filter_map(|(index, message)| (message == COMMAND_OUTCOME_MESSAGE).then_some(index))
+      .collect::<Vec<_>>();
+    assert_eq!(ends.len(), 1);
+    let end = ends[0];
+    assert_eq!(buffer.replayer.session_ids[end], owner.as_ref());
+    assert_eq!(
+      buffer.replayer.fields.lock()[end]
+        .get(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON)
+        .and_then(DataValue::as_str),
+      change_session.then_some("session_changed")
+    );
   }
 }
 

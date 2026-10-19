@@ -380,7 +380,7 @@ impl ProcessingPipeline {
 
     // Routing authority is out-of-band, not inferred from public span fields that user logs or
     // filters can imitate. Only Completion carries a pending traversal's token; all command event
-    // variants keep historical attribution without synchronizing the engine's current session.
+    // variants keep historical attribution without replacing an established engine session.
     let event = match command_event {
       Some(WorkflowCommandEvent::Start) => WorkflowEvent::CommandStart(&log.log),
       Some(WorkflowCommandEvent::Cancelled) => WorkflowEvent::CommandCancelled(&log.log),

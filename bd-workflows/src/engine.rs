@@ -835,13 +835,14 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     reason: CommandCancellationReason,
     now: OffsetDateTime,
   ) -> Result<WorkflowCommandLog, WorkflowCommandCompletionError> {
-    let location = self.remove_pending_workflow_command(token)?;
+    let location = self.remove_pending_workflow_command(token, now)?;
     Ok(location.cancelled_log(token.0.clone(), reason, now))
   }
 
   fn remove_pending_workflow_command(
     &mut self,
     token: &WorkflowCommandCompletionToken,
+    now: OffsetDateTime,
   ) -> Result<PendingWorkflowCommandLocation, WorkflowCommandCompletionError> {
     let location = self
       .pending_workflow_command_index
@@ -850,6 +851,10 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     if location.completion_received {
       return Err(WorkflowCommandCompletionError::AlreadyCompleted);
     }
+    let config = self
+      .configs
+      .get(location.workflow_index)
+      .ok_or(WorkflowCommandCompletionError::UnknownToken)?;
     let workflow = self
       .state
       .workflows
@@ -872,6 +877,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     let ended_tracing = removed_run && run.tracing_active();
     if removed_run {
       workflow.runs.remove(location.run_index);
+      workflow.promote_initial_run(config, now);
     }
     // The caller owns this token's terminal observation. Only adjust surviving index coordinates.
     let location = self
@@ -911,13 +917,17 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     if self.pending_workflow_command_index.is_empty() {
       return vec![];
     }
-    for workflow in &mut self.state.workflows {
+    for (workflow, config) in self.state.workflows.iter_mut().zip(&self.configs) {
+      let previous_run_count = workflow.runs.len();
       workflow.runs.retain_mut(|run| {
         run
           .traversals
           .retain(|traversal| traversal.pending_command.is_none());
         !run.traversals.is_empty()
       });
+      if workflow.runs.len() != previous_run_count {
+        workflow.promote_initial_run(config, now);
+      }
     }
     self.state.refresh_tracing_counts_from_state();
     self.needs_state_persistence = true;
@@ -1083,8 +1093,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
-    // Ordinary ingress defines the effective session boundary. Command events keep their owner's
-    // session for attribution, but must never reset the engine back after newer ingress.
+    // Command ingress may initialize an empty session, but only ordinary ingress can replace an
+    // established session. Historical command attribution must never rewind newer progress.
     let session_start_result = match event {
       WorkflowEvent::Log(log) => {
         let session_changed = self.maybe_update_session(&log.session_id);
@@ -1102,6 +1112,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
               &empty_buffer_ids,
               state_reader,
               now,
+              None,
             ),
           ))
         }
@@ -1110,19 +1121,26 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         self.pending_session_start |= self.maybe_update_session(session_id);
         None
       },
-      WorkflowEvent::CommandStart(_)
-      | WorkflowEvent::CommandCancelled(_)
-      | WorkflowEvent::CommandLog(_)
-      | WorkflowEvent::CommandCompletion { .. }
-      | WorkflowEvent::SessionStart(_) => None,
+      WorkflowEvent::CommandStart(log)
+      | WorkflowEvent::CommandCancelled(log)
+      | WorkflowEvent::CommandLog(log)
+      | WorkflowEvent::CommandCompletion { log, .. } => {
+        if self.state.session_id.is_empty() {
+          // As with state-change initialization, defer SessionStart until ordinary log ingress.
+          self.pending_session_start |= self.maybe_update_session(&log.session_id);
+        }
+        None
+      },
+      WorkflowEvent::SessionStart(_) => None,
     };
 
-    let result = self.process_event_inner(event, log_destination_buffer_ids, state_reader, now);
-
-    match session_start_result {
-      Some(session_start_result) => session_start_result.merge_into(result),
-      None => result,
-    }
+    self.process_event_inner(
+      event,
+      log_destination_buffer_ids,
+      state_reader,
+      now,
+      session_start_result,
+    )
   }
 
   fn process_event_inner<'a>(
@@ -1131,6 +1149,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
+    preceding_event: Option<PrecedingEventCarryover>,
   ) -> WorkflowsEngineResult<'a> {
     let match_context = bd_log_matcher::matcher::MatchContext {
       json_path_string_matching_enabled: self
@@ -1146,7 +1165,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       && event.capture_session().is_none()
       && self.state.streaming_actions.is_empty()
     {
-      return WorkflowsEngineResult {
+      let result = WorkflowsEngineResult {
         log_destination_buffer_ids: Cow::Borrowed(log_destination_buffer_ids),
         triggered_flushes_buffer_ids: TinySet::default(),
         triggered_flush_buffers_action_ids: BTreeSet::default(),
@@ -1155,6 +1174,10 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         workflow_commands_to_start: vec![],
         workflow_debug_state: vec![],
         has_debug_workflows: false,
+      };
+      return match preceding_event {
+        Some(preceding_event) => preceding_event.merge_into(result),
+        None => result,
       };
     }
 
@@ -1428,7 +1451,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       self.needs_state_persistence = true;
     }
 
-    WorkflowsEngineResult {
+    let result = WorkflowsEngineResult {
       log_destination_buffer_ids: Cow::Owned(result.log_destination_buffer_ids),
       triggered_flush_buffers_action_ids: flush_buffers_actions_processing_result
         .triggered_flush_buffers_action_ids,
@@ -1441,20 +1464,6 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         .collect(),
       workflow_commands_to_start: workflow_commands_to_start
         .into_iter()
-        // A parallel run can park a command and then be evicted or replaced later in this same
-        // event. Such tokens never reached the index or dispatcher and must not acquire a span.
-        .filter(|action| {
-          let has_owner = self
-            .pending_workflow_command_index
-            .contains_key(&action.completion_token.0);
-          if !has_owner {
-            log::debug!(
-              "workflow command owner invalidated before dispatch, token={:?}",
-              action.completion_token
-            );
-          }
-          has_owner
-        })
         .map(|action| {
           WorkflowCommandRequest::new(
             action.command_selector,
@@ -1466,7 +1475,31 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         .collect(),
       workflow_debug_state: all_cumulative_workflow_debug_state,
       has_debug_workflows,
+    };
+    let mut result = match preceding_event {
+      Some(preceding_event) => preceding_event.merge_into(result),
+      None => result,
+    };
+    // A command can lose its owner later in the same pass or between SessionStart and ordinary
+    // processing. Reconcile the combined requests only after both passes have finished.
+    let mut undispatched_tokens = TinySet::default();
+    result.workflow_commands_to_start.retain(|request| {
+      let token = request.completion_token();
+      let has_owner = self.pending_workflow_command_index.contains_key(&token.0);
+      if !has_owner {
+        log::debug!("workflow command owner invalidated before dispatch, token={token:?}");
+        undispatched_tokens.insert(token.0);
+      }
+      has_owner
+    });
+    if !undispatched_tokens.is_empty() {
+      // These tokens never escaped to a dispatcher, so neither a start nor an orphan end may be
+      // emitted. Keep cancellation observations for commands dispatched by earlier events.
+      self
+        .cancelled_workflow_commands
+        .retain(|(token, ..)| !undispatched_tokens.contains(token));
     }
+    result
   }
 
   fn clean_state(&mut self) {
