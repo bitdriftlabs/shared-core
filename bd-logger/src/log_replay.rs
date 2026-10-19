@@ -357,19 +357,6 @@ impl ProcessingPipeline {
       .as_ref()
       .is_some_and(|attachment| attachment.source == AttachmentSource::WORKFLOW);
 
-    if !has_workflow_attachment {
-      match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
-        Ok(streamed) => {
-          if streamed {
-            self.stats.streamed_logs.inc();
-          }
-        },
-        Err(e) => {
-          log::debug!("failed to stream log: {e:?}");
-        },
-      }
-    }
-
     let matching_buffers = self.buffer_selector.buffers(
       log.log.log_type,
       log.log.log_level,
@@ -455,13 +442,19 @@ impl ProcessingPipeline {
     );
     log_replay_result.committed_workflow_attachment =
       (committed || synthetic_committed) && has_workflow_attachment;
-    if log_replay_result.committed_workflow_attachment {
-      // TODO: Stage workflow attachments before streaming their outcome logs so the artifact is
-      // available before a tail-stream consumer receives its reference.
+
+    // Live tail does not retain workflow attachment payloads; they need a regular or synthetic
+    // buffer reference. Without one, the terminal log is omitted even if its start was streamed,
+    // and the caller releases the payload. Other logs stream regardless of regular buffer writes.
+    if !has_workflow_attachment || log_replay_result.committed_workflow_attachment {
+      // TODO: Coordinate workflow attachment staging/upload and retention with live tail. A
+      // committed reference is not upload readiness: continuous uploads can lag, and an unflushed
+      // trigger buffer may never upload the payload. Direct command attachments are already
+      // uploaded before their terminal logs are emitted.
       match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
         Ok(true) => self.stats.streamed_logs.inc(),
         Ok(false) => {},
-        Err(error) => log::debug!("failed to stream workflow attachment log: {error:?}"),
+        Err(error) => log::debug!("failed to stream log: {error:?}"),
       }
     }
 

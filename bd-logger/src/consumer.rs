@@ -1461,9 +1461,10 @@ impl ContinuousBufferUploader {
   }
 }
 
-// StreamedBufferUpload is used to manage uploading streamed logs. Unlike the other upload
-// strategies, streamed logs are immediately uploaded without any batching and continuous to upload
-// logs from the buffer forever.
+// Uploads live-tail batches independently of regular buffer uploads. Workflow attachment metadata
+// is forwarded without staging payloads or tracking attachment retention here; the owning regular
+// buffer upload remains responsible. Receiving a reference through tail does not imply that the
+// attachment is available for download.
 struct StreamedBufferUpload {
   // The ring buffer consumer to use to consume logs. We use the cursor consumer to get us async
   // reads, we could technically use the non-cursor version.

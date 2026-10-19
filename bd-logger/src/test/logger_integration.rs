@@ -1198,6 +1198,113 @@ fn log_tailing() {
 }
 
 #[test]
+fn log_tailing_workflow_outcome_depends_on_attachment_buffer_reference() {
+  for has_attachment in [false, true] {
+    for buffer_accepts_outcome in [false, true] {
+      let registered_command_id = "com.example.workflow.tail";
+      let handler: Arc<dyn RegisteredCommandHandler> = Arc::new(TestDeviceCommandHandler {
+        result: Mutex::new(Some(CommandResult::Completed {
+          fields: LogFields::default(),
+          attachment: has_attachment.then(|| CommandAttachment {
+            source: bd_artifact_upload::UploadSource::Bytes(b"attachment".to_vec()),
+            content_type: Some("application/octet-stream".to_string()),
+          }),
+        })),
+      });
+      let mut setup = Setup::new_with_options(SetupOptions {
+        command_handlers: [(registered_command_id.to_string(), handler)].into(),
+        ..Default::default()
+      });
+      let terminal = state("terminal");
+      let command = state("command").declare_transition_with_actions(
+        &terminal,
+        workflow_command_rule(registered_command_id),
+        &[make_generate_log_action_proto(
+          "command finished",
+          &[],
+          "finished",
+          LogType::NORMAL,
+        )],
+      );
+      let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+      assert!(
+        setup
+          .send_configuration_update(configuration_update_from_parts(
+            "",
+            ConfigurationUpdateParts {
+              buffer_config: if buffer_accepts_outcome {
+                vec![default_buffer_config(
+                  Type::TRIGGER,
+                  Some(match_message(COMMAND_OUTCOME_MESSAGE)),
+                )]
+              } else {
+                Vec::new()
+              },
+              workflows: vec![
+                WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).build(),
+              ],
+              bdtail_streams: vec![BdTailStream {
+                stream_id: "all".into(),
+                ..Default::default()
+              }],
+              ..Default::default()
+            },
+          ))
+          .is_none()
+      );
+
+      for message in ["start", "run command"] {
+        setup.log(
+          log_level::DEBUG,
+          LogType::NORMAL,
+          message.into(),
+          [].into(),
+          [].into(),
+          None,
+        );
+      }
+
+      // The generated log follows completion replay, so it bounds the tail without timing-based
+      // assertions about an omitted outcome. The trigger buffer is deliberately never flushed.
+      let mut logs: Vec<WrappedLog> = Vec::new();
+      while !logs.iter().any(|log| log.message() == "command finished") {
+        let upload = setup.server.blocking_next_log_upload().unwrap();
+        assert_eq!(upload.buffer_id(), "streamed");
+        logs.extend(upload.logs());
+      }
+      assert!(
+        logs
+          .iter()
+          .all(|log| log.stream_ids() == &["all".to_string()])
+      );
+      let mut expected_messages = vec!["start", "run command", COMMAND_START_MESSAGE];
+      if !has_attachment || buffer_accepts_outcome {
+        expected_messages.push(COMMAND_OUTCOME_MESSAGE);
+      }
+      expected_messages.push("command finished");
+      assert_eq!(
+        logs.iter().map(WrappedLog::message).collect::<Vec<_>>(),
+        expected_messages,
+      );
+      let attachments = logs
+        .iter()
+        .filter_map(WrappedLog::command_attachment)
+        .collect::<Vec<_>>();
+      assert_eq!(
+        attachments.len(),
+        usize::from(has_attachment && buffer_accepts_outcome),
+      );
+      if let Some(attachment) = attachments.first() {
+        assert_eq!(
+          attachment.source.enum_value().unwrap(),
+          AttachmentSource::WORKFLOW,
+        );
+      }
+    }
+  }
+}
+
+#[test]
 fn workflow_flush_buffers_action_uploads_buffer() {
   let mut setup = Setup::new();
   let session_id = setup.logger_handle.session_id().unwrap();
