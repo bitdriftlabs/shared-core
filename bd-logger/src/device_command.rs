@@ -234,7 +234,7 @@ impl DeviceCommandRegistry {
     }
     drop(state);
     // The terminal decision is already made. Wake workers outside the registry lock; they drop
-    // platform work and emit the failed end only after their start log has been submitted.
+    // platform work and emit the canceled end only after their start log has been submitted.
     for cancel_tx in cancelled {
       let _ = cancel_tx.send(());
     }
@@ -1493,7 +1493,7 @@ fn failed_device_command_update_with_fields(
 }
 
 // Only terminal updates produce an end span; Accepted is protocol progress, not another span log.
-// CommandOutcome sanitizes handler fields before inserting the SDK's status and attachment data.
+// CommandOutcome sanitizes handler fields before inserting the SDK's result and attachment data.
 fn device_command_outcome_log(
   update: &DeviceCommandUpdate,
   artifact_metadata: Option<CommandArtifactMetadata>,

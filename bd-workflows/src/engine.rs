@@ -828,7 +828,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
   }
 
   /// Discards only the command's pending traversal, preserving siblings and skipping its actions.
-  /// The returned failed end may still trigger ordinary observer workflows when replayed.
+  /// The returned canceled end may still trigger ordinary observer workflows when replayed.
   pub fn cancel_workflow_command(
     &mut self,
     token: &WorkflowCommandCompletionToken,

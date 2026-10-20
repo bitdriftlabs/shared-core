@@ -26,6 +26,7 @@ use crate::flush_registry::{
   PersistedTriggerUploadSource,
   PersistedTriggerUploadStreaming,
 };
+use crate::logger::TestHooks;
 use crate::trigger_upload_artifact::{TriggerUploadArtifactStore, WorkflowAttachmentReference};
 use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use assert_matches::assert_matches;
@@ -871,13 +872,20 @@ async fn trigger_attachment_staging_shutdown_is_expected_cancellation() {
   }
 }
 
-struct PendingFlushStateTestEvents {
+struct TriggerUploadTestEvents {
   state_changed_tx: UnboundedSender<(FlushBufferId, bool)>,
+  buffer_upload_completed_tx: UnboundedSender<String>,
 }
 
-impl PendingFlushStateTestHook for PendingFlushStateTestEvents {
+impl PendingFlushStateTestHook for TriggerUploadTestEvents {
   fn flush_state_changed(&self, flush_id: FlushBufferId, is_pending: bool) {
     let _ignored = self.state_changed_tx.send((flush_id, is_pending));
+  }
+}
+
+impl TestHooks for TriggerUploadTestEvents {
+  fn trigger_buffer_upload_completed(&self, buffer_id: &str) {
+    let _ignored = self.buffer_upload_completed_tx.send(buffer_id.to_string());
   }
 }
 
@@ -888,6 +896,7 @@ struct SetupMultiConsumer {
   trigger_upload_tx: Sender<TriggerUpload>,
   process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   pending_flush_state_rx: UnboundedReceiver<(FlushBufferId, bool)>,
+  buffer_upload_completed_rx: UnboundedReceiver<String>,
   runtime_loader: Arc<ConfigLoader>,
   stats: Collector,
   sdk_directory: PathBuf,
@@ -909,10 +918,13 @@ impl SetupMultiConsumer {
     let (log_upload_tx, log_upload_rx) = tokio::sync::mpsc::channel(1);
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
     let (pending_flush_state_tx, pending_flush_state_rx) = unbounded_channel();
+    let (buffer_upload_completed_tx, buffer_upload_completed_rx) = unbounded_channel();
+    let test_events = Arc::new(TriggerUploadTestEvents {
+      state_changed_tx: pending_flush_state_tx,
+      buffer_upload_completed_tx,
+    });
     let process_local_pending_flush_state = Arc::new(
-      ProcessLocalPendingFlushState::new_with_test_hook(Arc::new(PendingFlushStateTestEvents {
-        state_changed_tx: pending_flush_state_tx,
-      })),
+      ProcessLocalPendingFlushState::new_with_test_hook(test_events.clone()),
     );
 
     let shutdown_trigger = ComponentShutdownTrigger::default();
@@ -950,7 +962,7 @@ impl SetupMultiConsumer {
         None,
         PendingTriggerUploadsStore::new(&sdk_directory_clone),
         process_local_pending_flush_state_clone,
-        None,
+        Some(test_events),
       )
       .run()
       .await
@@ -964,6 +976,7 @@ impl SetupMultiConsumer {
       trigger_upload_tx,
       process_local_pending_flush_state,
       pending_flush_state_rx,
+      buffer_upload_completed_rx,
       runtime_loader: config_loader,
       stats,
       sdk_directory,
@@ -1071,6 +1084,14 @@ impl SetupMultiConsumer {
     loop {
       let (changed_flush_id, is_pending) = self.pending_flush_state_rx.recv().await.unwrap();
       if &changed_flush_id == flush_id && is_pending == expected_pending {
+        return;
+      }
+    }
+  }
+
+  async fn wait_for_buffer_upload_completion(&mut self, buffer_id: &str) {
+    loop {
+      if self.buffer_upload_completed_rx.recv().await.unwrap() == buffer_id {
         return;
       }
     }
@@ -1415,15 +1436,13 @@ async fn persisted_trigger_upload_replays_after_restart() {
     })
     .unwrap();
 
-  for _ in 0 .. 100 {
-    if setup.pending_trigger_uploads().await.is_empty() {
-      return;
-    }
-
-    tokio::task::yield_now().await;
-  }
-
-  panic!("expected recovered trigger upload to be cleared from persistence");
+  setup
+    .wait_for_flush_state(
+      &FlushBufferId::ExplicitSessionCapture("flush-1".to_string()),
+      false,
+    )
+    .await;
+  assert_eq!(setup.pending_trigger_uploads().await, vec![]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -1484,15 +1503,13 @@ async fn in_flight_trigger_upload_replays_after_restart() {
     })
     .unwrap();
 
-  for _ in 0 .. 100 {
-    if setup.pending_trigger_uploads().await.is_empty() {
-      return;
-    }
-
-    tokio::task::yield_now().await;
-  }
-
-  panic!("expected recovered in-flight trigger upload to be cleared from persistence");
+  setup
+    .wait_for_flush_state(
+      &FlushBufferId::ExplicitSessionCapture("flush-1".to_string()),
+      false,
+    )
+    .await;
+  assert_eq!(setup.pending_trigger_uploads().await, vec![]);
 }
 
 #[tokio::test(start_paused = true)]
@@ -1643,18 +1660,16 @@ async fn recovered_trigger_upload_only_discards_matching_buffer_prefix_on_restar
     })
     .unwrap();
 
-  for _ in 0 .. 100 {
-    if setup.pending_trigger_uploads().await.is_empty() {
-      break;
-    }
+  setup
+    .wait_for_flush_state(
+      &FlushBufferId::ExplicitSessionCapture("flush-1".to_string()),
+      false,
+    )
+    .await;
+  assert_eq!(setup.pending_trigger_uploads().await, vec![]);
 
-    tokio::task::yield_now().await;
-  }
-  assert_eq!(
-    setup.pending_trigger_uploads().await,
-    [] as [PersistedTriggerUpload; 0]
-  );
-
+  // Durable cleanup and release of the buffer's active-upload gate complete independently.
+  setup.wait_for_buffer_upload_completion("buffer").await;
   setup.trigger_buffer_upload("buffer").await;
 
   let later_upload = setup.next_upload().await;
