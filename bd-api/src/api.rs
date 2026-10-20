@@ -115,6 +115,8 @@ pub trait TestHooks: Send + Sync {
   fn reconnect_backoff_started(&self) {}
 
   fn data_idle_timeout_reached(&self) {}
+
+  fn idle_timeout_evaluated(&self, _: bool) {}
 }
 
 //
@@ -1118,11 +1120,17 @@ impl Api {
     // At this point we have established the stream, so we should start the general
     // request/response handling.
     loop {
+      let awaiting_ack = stream_state.upload_state_tracker.has_pending_requests()
+        || in_flight_state_update.is_some()
+        || self.device_command_updates.has_pending_updates();
       // Set up a data idle timeout if configured.
       let mut data_idle_timeout_at = {
         let interval = self.get_data_idle_timeout();
-        if interval.is_zero() {
-          // If the timeout is disabled, we can just await forever.
+        if interval.is_zero() || awaiting_ack {
+          // Idleness must not discard delivery state before the server responds.
+          log::trace!(
+            "suppressing data idle timeout: interval={interval}, awaiting_ack={awaiting_ack}"
+          );
           None
         } else {
           log::trace!("setting data idle timeout for {interval:?}");
@@ -1130,6 +1138,10 @@ impl Api {
           Box::pin(tokio::time::sleep_until(data_idle_timeout_at)).into()
         }
       };
+
+      if let Some(test_hooks) = &self.test_hooks {
+        test_hooks.idle_timeout_evaluated(awaiting_ack);
+      }
 
       let upstream_event = tokio::select! {
         _ = command_retry.tick(), if self.device_command_updates.has_pending_updates() => {

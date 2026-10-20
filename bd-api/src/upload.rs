@@ -120,6 +120,11 @@ impl StateTracker {
     }
   }
 
+  #[must_use]
+  pub fn has_pending_requests(&self) -> bool {
+    !self.pending_uploads.is_empty() || !self.pending_intents.is_empty()
+  }
+
   /// Track a log upload intent, converting it into an upload intent request.
   pub fn track_intent<T: Send + Sync>(&mut self, intent: Tracked<T, IntentResponse>) -> T {
     let uuid = intent.uuid.clone();

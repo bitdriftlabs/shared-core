@@ -5,6 +5,9 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[path = "./idle_timeout_test.rs"]
+mod idle_timeout_test;
+
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream, TestHooks};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::reconnect::ReconnectState;
@@ -257,6 +260,7 @@ impl bd_internal_logging::Logger for TestLog {
 struct ApiTestHooks {
   reconnect_backoff_started_tx: Sender<()>,
   data_idle_timeout_reached_tx: Option<Sender<()>>,
+  idle_timeout_state_tx: watch::Sender<Option<bool>>,
 }
 
 impl TestHooks for ApiTestHooks {
@@ -268,6 +272,10 @@ impl TestHooks for ApiTestHooks {
     if let Some(tx) = &self.data_idle_timeout_reached_tx {
       let _ignored = tx.try_send(());
     }
+  }
+
+  fn idle_timeout_evaluated(&self, awaiting_ack: bool) {
+    self.idle_timeout_state_tx.send_replace(Some(awaiting_ack));
   }
 }
 
@@ -282,6 +290,7 @@ struct Setup {
   send_data_rx: Receiver<Vec<u8>>,
   start_stream_rx: Receiver<()>,
   reconnect_backoff_started_rx: Receiver<()>,
+  idle_timeout_state_rx: watch::Receiver<Option<bool>>,
   collector: Collector,
   requests_decoder: bd_grpc_codec::Decoder<ApiRequest>,
   time_provider: Arc<bd_time::TestTimeProvider>,
@@ -334,6 +343,7 @@ impl Setup {
     let (start_stream_tx, start_stream_rx) = channel(1);
     let (send_data_tx, send_data_rx) = channel(1);
     let (reconnect_backoff_started_tx, reconnect_backoff_started_rx) = channel(1);
+    let (idle_timeout_state_tx, idle_timeout_state_rx) = watch::channel(None);
     let current_stream_tx = Arc::new(Mutex::new(None));
     let manager = Box::new(PlatformNetwork::new(
       start_stream_tx,
@@ -401,6 +411,7 @@ impl Setup {
     api.test_hooks = Some(Arc::new(ApiTestHooks {
       reconnect_backoff_started_tx,
       data_idle_timeout_reached_tx: idle_timeout_tx,
+      idle_timeout_state_tx,
     }));
 
     let api_task = tokio::task::spawn(async move {
@@ -413,6 +424,7 @@ impl Setup {
       sdk_directory,
       start_stream_rx,
       reconnect_backoff_started_rx,
+      idle_timeout_state_rx,
       data_tx,
       trigger_upload_rx,
       send_data_rx,
@@ -609,6 +621,14 @@ impl Setup {
       .recv()
       .await
       .expect("expected reconnect backoff to start");
+  }
+
+  async fn wait_for_pending_requests(&mut self, expected: bool) {
+    self
+      .idle_timeout_state_rx
+      .wait_for(|state| *state == Some(expected))
+      .await
+      .unwrap();
   }
 
   async fn wait_for_persisted_reconnect_delay(&self) {
@@ -1367,6 +1387,7 @@ async fn data_idle_timeout_data_resets_timeout() {
 
   // Make sure we grab the request to ensure the data was processed.
   setup.next_request(1.seconds()).await.unwrap();
+  setup.wait_for_pending_requests(true).await;
 
   // Advancing time by 4 seconds would have triggered the timeout if not for the data sent above.
   tokio::time::advance(4.std_seconds()).await;
@@ -1381,6 +1402,17 @@ async fn data_idle_timeout_data_resets_timeout() {
     setup.network_quality_provider.get_network_quality(),
     NetworkQuality::Online
   );
+
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::StatsUpload(StatsUploadResponse {
+        upload_uuid: "test".to_string(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })
+    .await;
+  setup.wait_for_pending_requests(false).await;
 
   // Advancing another 7 is enough to trigger the timeout.
   tokio::time::advance(7.std_seconds()).await;
