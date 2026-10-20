@@ -5,7 +5,7 @@
 // you may not use this file except in compliance with the License.
 
 //! Independent trace captures share one permanent registry, not subscriber configuration.
-//! Scope root work with [`TraceCapture::scope`] or [`TraceCapture::in_scope`]. Instrumented
+//! Scope root work with [`TraceCapture::scope`] or [`TraceCapture::in_scope`]. Enabled instrumented
 //! descendants inherit ownership without changing their OTEL parentage. Join background work and
 //! release spans before calling [`TraceCapture::finish`].
 //!
@@ -18,6 +18,7 @@
 //!
 //! Async work uses `capture.scope(future).await`. Use a cloned [`TraceCaptureHandle`] at service
 //! boundaries or for detached roots; ordinary Tokio spawning does not inherit capture scope.
+//! Filtered-out spans cannot carry ownership; use `scope` or `spawn` when filters may disable them.
 //! Each capture owns its SDK provider, including attribute limits and optional batching, so
 //! concurrent tests can exercise different configurations without changing global logging.
 //!

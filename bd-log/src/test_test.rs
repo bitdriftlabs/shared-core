@@ -494,8 +494,15 @@ fn foreign_capture_cannot_finish_during_deferred_span_delivery() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn instrumented_spawn_inherits_ownership_for_parentless_conditional_roots() {
   let capture = TraceCapture::new();
-  let unowned = tracing::info_span!("unowned_parent");
-  let owned = capture.in_scope(|| tracing::info_span!("task_owner"));
+  // CI uses RUST_LOG=error. Both ordinary parents must be enabled to test span-based ownership;
+  // a disabled owner carries no capture, and a disabled explicit parent is treated as parent: None.
+  let unowned = tracing::error_span!("unowned_parent");
+  let owned = capture.in_scope(|| tracing::error_span!("task_owner"));
+  assert!(
+    !unowned.is_disabled(),
+    "the explicit parent must be enabled"
+  );
+  assert!(!owned.is_disabled(), "the task owner must be enabled");
   tokio::spawn(
     async move {
       // An explicit, unowned parent must not fall back to the entered task owner's capture.
