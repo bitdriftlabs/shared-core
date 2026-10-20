@@ -43,19 +43,20 @@ use bd_event_buffer::{
 use bd_log_primitives::command_attachment::AttachmentSource;
 use bd_log_primitives::{
   COMMAND_OUTCOME_MESSAGE,
-  COMMAND_STATUS_FAILURE,
-  COMMAND_STATUS_SUCCESS,
   DataValue,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
-  LOG_FIELD_NAME_COMMAND_STATUS,
   LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_RESULT,
   LOG_FIELD_NAME_SPAN_ID,
   LOG_FIELD_NAME_SPAN_NAME,
   LOG_FIELD_NAME_SPAN_TYPE,
   LogAttributesOverrides,
   LogFields,
   SPAN_NAME_DEVICE_COMMAND,
+  SPAN_RESULT_CANCELED,
+  SPAN_RESULT_FAILURE,
+  SPAN_RESULT_SUCCESS,
   SPAN_TYPE_END,
   SPAN_TYPE_START,
   log_level,
@@ -415,7 +416,7 @@ async fn direct_processed_session_change_cancels_accepted_wait_and_running_handl
     };
     assert_eq!(log.log_level, log_level::ERROR);
     for (field, expected) in [
-      (LOG_FIELD_NAME_COMMAND_STATUS, COMMAND_STATUS_FAILURE),
+      (LOG_FIELD_NAME_RESULT, SPAN_RESULT_CANCELED),
       (
         LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
         "session_changed",
@@ -587,7 +588,7 @@ async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or
       let duration_ms = if scenario == "unknown" { "0" } else { "125" };
       if index == 0 {
         assert!(!log.fields.contains_key(LOG_FIELD_NAME_DURATION_MS));
-        assert!(!log.fields.contains_key(LOG_FIELD_NAME_COMMAND_STATUS));
+        assert!(!log.fields.contains_key(LOG_FIELD_NAME_RESULT));
         let Some(LogAttributesOverrides::OccurredAt(time)) = log.attributes_overrides else {
           panic!("expected the original start timestamp");
         };
@@ -605,15 +606,15 @@ async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or
         assert_eq!(
           log
             .fields
-            .get(LOG_FIELD_NAME_COMMAND_STATUS)
+            .get(LOG_FIELD_NAME_RESULT)
             .unwrap()
             .value
             .as_str(),
           Some(
             if matches!(scenario, "unknown" | "accepted_ack_failure") {
-              COMMAND_STATUS_FAILURE
+              SPAN_RESULT_FAILURE
             } else {
-              COMMAND_STATUS_SUCCESS
+              SPAN_RESULT_SUCCESS
             }
           ),
         );
@@ -1521,7 +1522,7 @@ fn terminal_device_command_updates_produce_outcome_logs() {
   let context = super::device_command_context(
     [
       ("count".into(), DataValue::U64(7)),
-      (LOG_FIELD_NAME_COMMAND_STATUS.into(), "spoofed".into()),
+      (LOG_FIELD_NAME_RESULT.into(), "spoofed".into()),
     ]
     .into(),
   );
@@ -1544,11 +1545,11 @@ fn terminal_device_command_updates_produce_outcome_logs() {
   assert_eq!(
     log
       .fields
-      .get(LOG_FIELD_NAME_COMMAND_STATUS)
+      .get(LOG_FIELD_NAME_RESULT)
       .unwrap()
       .value
       .as_str(),
-    Some(COMMAND_STATUS_SUCCESS)
+    Some(SPAN_RESULT_SUCCESS)
   );
   assert_eq!(log.fields.get("count").unwrap().value, DataValue::U64(7));
   let attachment = log.command_attachment.as_ref().unwrap();
@@ -1572,11 +1573,11 @@ fn terminal_device_command_updates_produce_outcome_logs() {
   assert_eq!(
     log
       .fields
-      .get(LOG_FIELD_NAME_COMMAND_STATUS)
+      .get(LOG_FIELD_NAME_RESULT)
       .unwrap()
       .value
       .as_str(),
-    Some(COMMAND_STATUS_FAILURE)
+    Some(SPAN_RESULT_FAILURE)
   );
   assert_eq!(
     log

@@ -68,8 +68,8 @@ use bd_log_primitives::{
   COMMAND_START_MESSAGE,
   DataValue,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
-  LOG_FIELD_NAME_COMMAND_STATUS,
   LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_RESULT,
   LOG_FIELD_NAME_SPAN_ID,
   Log,
   LogFields,
@@ -2524,20 +2524,14 @@ async fn workflow_command_processed_session_boundary_and_attribution() {
     if matches!(scenario, "late_direct" | "strategy_reset_before_completion") {
       assert!(!fields[end].contains_key(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON));
       assert_eq!(
-        fields[end]
-          .get(LOG_FIELD_NAME_COMMAND_STATUS)
-          .unwrap()
-          .as_str(),
+        fields[end].get(LOG_FIELD_NAME_RESULT).unwrap().as_str(),
         Some("success")
       );
     } else {
       assert_eq!(buffer.replayer.log_levels[end], log_level::ERROR);
       assert_eq!(
-        fields[end]
-          .get(LOG_FIELD_NAME_COMMAND_STATUS)
-          .unwrap()
-          .as_str(),
-        Some("failure")
+        fields[end].get(LOG_FIELD_NAME_RESULT).unwrap().as_str(),
+        Some("canceled")
       );
       assert_eq!(
         fields[end]

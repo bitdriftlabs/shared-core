@@ -29,13 +29,11 @@ use bd_log_primitives::{
   COMMAND_CANCELLATION_REASON_SDK_RESTART,
   COMMAND_CANCELLATION_REASON_SESSION_CHANGED,
   COMMAND_CANCELLATION_REASON_WORKFLOW_RESET,
-  COMMAND_STATUS_FAILURE,
-  COMMAND_STATUS_SUCCESS,
   FieldsRef,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
-  LOG_FIELD_NAME_COMMAND_STATUS,
   LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_RESULT,
   LOG_FIELD_NAME_SPAN_ID,
   LOG_FIELD_NAME_SPAN_NAME,
   LOG_FIELD_NAME_SPAN_TYPE,
@@ -46,6 +44,9 @@ use bd_log_primitives::{
   LogFields,
   LogLevel,
   SPAN_NAME_DEVICE_COMMAND,
+  SPAN_RESULT_CANCELED,
+  SPAN_RESULT_FAILURE,
+  SPAN_RESULT_SUCCESS,
   SPAN_TYPE_END,
   SPAN_TYPE_START,
   log_level,
@@ -146,7 +147,7 @@ pub enum WorkflowCommandEvent {
   Start,
   /// Terminal candidate accepted by the engine before replay.
   Completion(WorkflowCommandCompletionToken),
-  /// Failed end for an invalidated command; not a matchable completion of its old transition.
+  /// Canceled end for an invalidated command; not a matchable completion of its old transition.
   Cancelled,
   /// Direct command telemetry or generated descendants of command logs: normal matcher behavior,
   /// without completion authority or permission to replace an established session.
@@ -192,7 +193,10 @@ impl CommandCancellationReason {
       attachment: None,
     }
     .into_log(session_id, now, span);
-    // SDK cancellation metadata is inserted after reserved handler fields are sanitized.
+    // Cancellation remains an error, but uses the standard canceled span result.
+    log
+      .fields
+      .insert(LOG_FIELD_NAME_RESULT.into(), SPAN_RESULT_CANCELED.into());
     log.fields.insert(
       LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON.into(),
       self.as_str().into(),
@@ -296,11 +300,11 @@ impl CommandOutcome {
         && key != LOG_FIELD_NAME_DURATION_MS
     });
     fields.insert(
-      LOG_FIELD_NAME_COMMAND_STATUS.into(),
+      LOG_FIELD_NAME_RESULT.into(),
       if succeeded {
-        COMMAND_STATUS_SUCCESS
+        SPAN_RESULT_SUCCESS
       } else {
-        COMMAND_STATUS_FAILURE
+        SPAN_RESULT_FAILURE
       }
       .into(),
     );

@@ -31,17 +31,19 @@ use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{
   COMMAND_OUTCOME_MESSAGE,
   COMMAND_START_MESSAGE,
-  COMMAND_STATUS_FAILURE,
   DataValue,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
-  LOG_FIELD_NAME_COMMAND_STATUS,
   LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_RESULT,
   LOG_FIELD_NAME_SPAN_ID,
   LOG_FIELD_NAME_SPAN_NAME,
   LOG_FIELD_NAME_SPAN_TYPE,
   LogFields,
   LogMessage,
+  SPAN_RESULT_CANCELED,
+  SPAN_RESULT_FAILURE,
+  SPAN_RESULT_SUCCESS,
   SPAN_TYPE_END,
   SPAN_TYPE_START,
   log_level,
@@ -103,7 +105,7 @@ fn command_span_preserves_outcome_and_owns_reserved_fields() {
     Some(SPAN_TYPE_START)
   );
   assert!(!start.fields.contains_key(LOG_FIELD_NAME_DURATION_MS));
-  assert!(!start.fields.contains_key(LOG_FIELD_NAME_COMMAND_STATUS));
+  assert!(!start.fields.contains_key(LOG_FIELD_NAME_RESULT));
   assert!(
     !start
       .fields
@@ -121,7 +123,7 @@ fn command_span_preserves_outcome_and_owns_reserved_fields() {
       (LOG_FIELD_NAME_SPAN_TYPE.into(), SPAN_TYPE_START.into()),
       ("_span_extra".into(), "spoofed".into()),
       (LOG_FIELD_NAME_DURATION_MS.into(), "999".into()),
-      (LOG_FIELD_NAME_COMMAND_STATUS.into(), "spoofed".into()),
+      (LOG_FIELD_NAME_RESULT.into(), "spoofed".into()),
       (
         LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON.into(),
         "spoofed".into(),
@@ -147,12 +149,8 @@ fn command_span_preserves_outcome_and_owns_reserved_fields() {
     Some("125")
   );
   assert_eq!(
-    end
-      .fields
-      .get(LOG_FIELD_NAME_COMMAND_STATUS)
-      .unwrap()
-      .as_str(),
-    Some(COMMAND_STATUS_FAILURE)
+    end.fields.get(LOG_FIELD_NAME_RESULT).unwrap().as_str(),
+    Some(SPAN_RESULT_FAILURE)
   );
   assert_eq!(
     end
@@ -172,7 +170,7 @@ fn command_span_preserves_outcome_and_owns_reserved_fields() {
 }
 
 #[test]
-fn command_cancellation_reasons_preserve_span_identity_and_terminal_failure_contract() {
+fn command_cancellation_reasons_preserve_span_identity_and_emit_canceled_result() {
   let started_at = datetime!(2026-01-01 00:00 UTC);
   for (reason, value, message) in [
     (
@@ -206,7 +204,7 @@ fn command_cancellation_reasons_preserve_span_identity_and_terminal_failure_cont
       (LOG_FIELD_NAME_SPAN_ID, "original-invocation"),
       (LOG_FIELD_NAME_SPAN_TYPE, SPAN_TYPE_END),
       (LOG_FIELD_NAME_DURATION_MS, "1000"),
-      (LOG_FIELD_NAME_COMMAND_STATUS, COMMAND_STATUS_FAILURE),
+      (LOG_FIELD_NAME_RESULT, SPAN_RESULT_CANCELED),
       (LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON, value),
       (LOG_FIELD_NAME_COMMAND_MESSAGE, message),
     ] {
@@ -227,10 +225,13 @@ fn ordinary_command_outcomes_cannot_spoof_cancellation() {
     let log = CommandOutcome {
       succeeded,
       message: None,
-      fields: [(
-        LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON.into(),
-        "session_changed".into(),
-      )]
+      fields: [
+        (
+          LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON.into(),
+          "session_changed".into(),
+        ),
+        (LOG_FIELD_NAME_RESULT.into(), SPAN_RESULT_CANCELED.into()),
+      ]
       .into(),
       attachment: None,
     }
@@ -239,6 +240,16 @@ fn ordinary_command_outcomes_cannot_spoof_cancellation() {
       !log
         .fields
         .contains_key(LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON)
+    );
+    assert_eq!(
+      log.fields.get(LOG_FIELD_NAME_RESULT).unwrap().as_str(),
+      Some(
+        if succeeded {
+          SPAN_RESULT_SUCCESS
+        } else {
+          SPAN_RESULT_FAILURE
+        }
+      )
     );
   }
 }

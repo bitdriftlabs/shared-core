@@ -36,15 +36,15 @@ use bd_log_primitives::{
   AnnotatedLogFields,
   COMMAND_OUTCOME_MESSAGE,
   COMMAND_START_MESSAGE,
-  COMMAND_STATUS_FAILURE,
-  COMMAND_STATUS_SUCCESS,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
-  LOG_FIELD_NAME_COMMAND_STATUS,
   LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_RESULT,
   LOG_FIELD_NAME_SPAN_ID,
   LOG_FIELD_NAME_SPAN_NAME,
   LOG_FIELD_NAME_SPAN_TYPE,
   SPAN_NAME_DEVICE_COMMAND,
+  SPAN_RESULT_FAILURE,
+  SPAN_RESULT_SUCCESS,
   SPAN_TYPE_END,
   SPAN_TYPE_START,
 };
@@ -2935,7 +2935,7 @@ fn buffer_dump_device_command_uploads_and_reports_terminal_context() {
       .filter(|log| log.message() == COMMAND_START_MESSAGE).collect();
     let remaining = log_upload.logs();
     let end = remaining.iter().find(|log| log.message() == COMMAND_OUTCOME_MESSAGE).unwrap();
-    assert_eq!(end.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_SUCCESS);
+    assert_eq!(end.field(LOG_FIELD_NAME_RESULT), SPAN_RESULT_SUCCESS);
     assert_eq!(
       end
         .typed_fields()
@@ -3139,7 +3139,7 @@ fn assert_command_span_pair(logs: &[WrappedLog], expected_id: Option<&str>) {
     );
   }
   assert!(!start.has_field(LOG_FIELD_NAME_DURATION_MS));
-  assert!(!start.has_field(LOG_FIELD_NAME_COMMAND_STATUS));
+  assert!(!start.has_field(LOG_FIELD_NAME_RESULT));
   assert!(start.command_attachment().is_none());
   assert!(
     end
@@ -3412,7 +3412,7 @@ fn screenshot_device_command_stages_correlated_attachment() {
     assert_command_span_pair(&logs, Some(command_id));
     let log = &logs[1];
     assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
-    assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_SUCCESS);
+    assert_eq!(log.field(LOG_FIELD_NAME_RESULT), SPAN_RESULT_SUCCESS);
     let attachment = log.command_attachment().unwrap();
     assert_eq!(attachment.artifact_id, artifact_id);
     assert_eq!(attachment.content_type, "image/jpeg");
@@ -3481,7 +3481,7 @@ fn screenshot_device_command_reports_capture_and_validation_failures() {
       assert_command_span_pair(&logs, Some(command_id));
       let log = &logs[1];
       assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
-      assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_FAILURE);
+      assert_eq!(log.field(LOG_FIELD_NAME_RESULT), SPAN_RESULT_FAILURE);
       assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_MESSAGE), expected_error);
     });
   }
@@ -3543,7 +3543,7 @@ fn registered_custom_device_command_completes_without_attachment() {
     assert_command_span_pair(&logs, Some(command_id));
     let log = &logs[1];
     assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
-    assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_SUCCESS);
+    assert_eq!(log.field(LOG_FIELD_NAME_RESULT), SPAN_RESULT_SUCCESS);
     assert_eq!(log.field("result"), "completed");
   });
 }
@@ -3973,10 +3973,7 @@ fn registered_custom_device_command_stages_correlated_attachment() {
   assert_command_span_pair(&logs, Some(command_id));
   let log = &logs[1];
   assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
-  assert_eq!(
-    log.field(LOG_FIELD_NAME_COMMAND_STATUS),
-    COMMAND_STATUS_SUCCESS
-  );
+  assert_eq!(log.field(LOG_FIELD_NAME_RESULT), SPAN_RESULT_SUCCESS);
   let attachment = log.command_attachment().unwrap();
   assert_eq!(attachment.artifact_id, artifact_id);
   assert_eq!(attachment.content_type, "application/vnd.example.capture");
@@ -4149,10 +4146,7 @@ fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
     let log = &logs[0];
     assert_eq!(log.message(), message);
     if message == COMMAND_OUTCOME_MESSAGE {
-      assert_eq!(
-        log.field(LOG_FIELD_NAME_COMMAND_STATUS),
-        COMMAND_STATUS_SUCCESS
-      );
+      assert_eq!(log.field(LOG_FIELD_NAME_RESULT), SPAN_RESULT_SUCCESS);
       assert_eq!(log.field("result"), "attached");
       let metadata = log.command_attachment().unwrap();
       assert_eq!(metadata.artifact_id, artifact_id.to_string());
@@ -4336,10 +4330,7 @@ fn workflow_screenshot_command_uploads_attachment() {
     let log = &logs[0];
     assert_eq!(log.message(), message);
     if message == COMMAND_OUTCOME_MESSAGE {
-      assert_eq!(
-        log.field(LOG_FIELD_NAME_COMMAND_STATUS),
-        COMMAND_STATUS_SUCCESS
-      );
+      assert_eq!(log.field(LOG_FIELD_NAME_RESULT), SPAN_RESULT_SUCCESS);
       let metadata = log.command_attachment().unwrap();
       assert_eq!(metadata.artifact_id, artifact_id.to_string());
       assert_eq!(metadata.content_type, "image/jpeg");
@@ -4397,7 +4388,7 @@ fn unregistered_custom_device_command_fails_without_acceptance() {
     assert_command_span_pair(&logs, Some(command_id));
     let log = &logs[1];
     assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
-    assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_STATUS), COMMAND_STATUS_FAILURE);
+    assert_eq!(log.field(LOG_FIELD_NAME_RESULT), SPAN_RESULT_FAILURE);
     assert_eq!(log.field(LOG_FIELD_NAME_COMMAND_MESSAGE), "command unknown");
   });
 }

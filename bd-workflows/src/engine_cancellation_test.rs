@@ -22,12 +22,13 @@ use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{
   COMMAND_OUTCOME_MESSAGE,
-  COMMAND_STATUS_SUCCESS,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
-  LOG_FIELD_NAME_COMMAND_STATUS,
   LOG_FIELD_NAME_DURATION_MS,
+  LOG_FIELD_NAME_RESULT,
   LOG_FIELD_NAME_SPAN_ID,
   LogFields,
+  SPAN_RESULT_CANCELED,
+  SPAN_RESULT_SUCCESS,
 };
 use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
 use bd_state::{Scope, StateChange, string_value};
@@ -59,6 +60,10 @@ fn assert_cancelled(
   assert_eq!(log.log.session_id.as_ref(), request.session_id);
   assert_eq!(log.log.occurred_at, now);
   assert_eq!(
+    log.log.fields.get(LOG_FIELD_NAME_RESULT).unwrap().as_str(),
+    Some(SPAN_RESULT_CANCELED),
+  );
+  assert_eq!(
     log.log.fields.get(LOG_FIELD_NAME_SPAN_ID),
     request.start_log().fields.get(LOG_FIELD_NAME_SPAN_ID),
   );
@@ -81,11 +86,8 @@ async fn workflow_command_actions_require_accepted_matching_completion() {
     let Some(Rule_type::MatchRunCommand(command_config)) = &mut command_rule.rule_type else {
       panic!("expected command matcher");
     };
-    command_config.outcome_log_matcher = Some(field_equals(
-      LOG_FIELD_NAME_COMMAND_STATUS,
-      COMMAND_STATUS_SUCCESS,
-    ))
-    .into();
+    command_config.outcome_log_matcher =
+      Some(field_equals(LOG_FIELD_NAME_RESULT, SPAN_RESULT_SUCCESS)).into();
     let command = state("command").declare_transition_with_actions(
       &terminal,
       command_rule,
