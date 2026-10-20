@@ -145,6 +145,13 @@ On idle timeout:
 
 Data upload activity resets idle timeout baseline (`last_data_received_at`) and records connectivity event.
 
+Outstanding upload ACKs, upload-intent responses, state-update ACKs, and device-command update
+ACKs suppress the idle timer in both normal and sleep mode. This includes stats attached to the
+handshake. After the last response resolves, the original outbound-activity deadline applies, so
+idle closure may occur immediately. Ping/Pong traffic does not create a delivery keepalive.
+Actual transport failures, server shutdowns, and SDK teardown are unaffected; the data-idle timeout
+is not an ACK timeout.
+
 ## Handshake-specific reconnect outcomes
 
 ### Handshake succeeds

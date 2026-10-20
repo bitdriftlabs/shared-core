@@ -854,6 +854,8 @@ pub mod api {
   // as the client is uploading data, the stream will be kept alive. If the client is configured
   // to upload data infrequently, this timeout can be set to below the upload interval to ensure
   // that the stream is closed while there are no uploads.
+  // Outstanding upload, intent, state-update, and command responses suppress idle closure in
+  // both normal and sleep mode. Once they resolve, the original outbound-activity deadline applies.
   //
   // Note that by default the client will be uploading more often than every 5 mintues due to stats
   // flushes, so the default timeout will typically not be hit unless the client is configured to

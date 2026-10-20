@@ -5,6 +5,9 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[path = "./stats_ack_test.rs"]
+mod stats_ack_test;
+
 use super::setup::{InitialStreamSetup, Setup, SetupOptions};
 use crate::wait_for;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
