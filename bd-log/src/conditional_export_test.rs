@@ -102,7 +102,7 @@ fn conditional_export_filters_before_downstream_processor_and_delegates_lifecycl
   drop(tracer.start_with_context("success", &Context::new().with_value(success.clone())));
   success.decide(false);
   success.close_member();
-  assert_eq!(success.0.state.lock().spans, []);
+  assert!(success.0.state.lock().spans.is_empty());
   let group = CaptureGroup::new(&control, TraceCaptureLimits::default());
   let mut failure = tracer.start_with_context("failure", &Context::new().with_value(group.clone()));
   failure.set_attribute(KeyValue::new("more", "attributes"));
@@ -231,7 +231,7 @@ fn conditional_export_shutdown_clears_buffers_even_without_active_sdk_spans() {
   assert_eq!(probe.ended.lock().as_slice(), []);
   provider.shutdown().unwrap();
   assert_eq!(control.0.lock().bytes, 0);
-  assert_eq!(group.0.state.lock().spans, []);
+  assert!(group.0.state.lock().spans.is_empty());
   assert_eq!(group.0.state.lock().spans.capacity(), 0);
   group.decide(true);
   group.close_member();

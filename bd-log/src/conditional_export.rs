@@ -91,11 +91,22 @@ impl Default for TraceCaptureLimits {
 struct CaptureState {
   started: Instant,
   live: usize,
+  // The last member closes before deferred on_end callbacks run. Foreign providers must remain
+  // alive until those callbacks finish delivering or enqueueing every retained span.
+  delivering: bool,
   created: usize,
   decision: Option<bool>,
   dropped: bool,
   bytes: usize,
-  spans: Vec<SpanData>,
+  spans: Vec<BufferedSpan>,
+}
+
+#[derive(Debug)]
+struct BufferedSpan {
+  data: SpanData,
+  // One conditional trace may cross test captures/providers. Retention belongs to the root, but
+  // each completed span must still reach its own provider's processor when the group is released.
+  processor: Arc<dyn SpanProcessor>,
 }
 
 //
@@ -104,6 +115,21 @@ struct CaptureState {
 
 #[derive(Clone, Debug)]
 pub struct CaptureGroup(Arc<CaptureInner>);
+
+/// Observe deferred data owned by another conditional root without retaining the group itself.
+#[derive(Clone)]
+#[must_use]
+pub struct WeakCaptureGroup(Weak<CaptureInner>);
+
+impl WeakCaptureGroup {
+  #[must_use]
+  pub fn is_pending(&self) -> bool {
+    self.0.upgrade().is_some_and(|group| {
+      let state = group.state.lock();
+      state.delivering || (state.live > 0 && !state.dropped && state.decision != Some(false))
+    })
+  }
+}
 
 #[derive(Debug)]
 struct CaptureInner {
@@ -114,6 +140,10 @@ struct CaptureInner {
 }
 
 impl CaptureGroup {
+  pub fn downgrade(&self) -> WeakCaptureGroup {
+    WeakCaptureGroup(Arc::downgrade(&self.0))
+  }
+
   fn new(control: &ExportControl, limits: TraceCaptureLimits) -> Self {
     let id = {
       let mut state = control.0.lock();
@@ -125,6 +155,7 @@ impl CaptureGroup {
       state: Mutex::new(CaptureState {
         started: Instant::now(),
         live: 1,
+        delivering: false,
         created: 1,
         decision: None,
         dropped: false,
@@ -185,7 +216,7 @@ impl CaptureGroup {
     }
   }
 
-  fn buffer(&self, span: SpanData) {
+  fn buffer(&self, span: SpanData, processor: Arc<dyn SpanProcessor>) {
     let mut state = self.0.state.lock();
     self.check_limits(&mut state);
     if state.dropped || state.decision == Some(false) {
@@ -209,7 +240,10 @@ impl CaptureGroup {
     }
     control.bytes += bytes;
     state.bytes += bytes;
-    state.spans.push(span);
+    state.spans.push(BufferedSpan {
+      data: span,
+      processor,
+    });
   }
 
   pub(crate) fn close_member(&self) {
@@ -231,12 +265,16 @@ impl CaptureGroup {
         state.spans = Vec::new();
         Vec::new()
       };
+      state.delivering = !spans.is_empty();
       drop(state);
       log::trace!(
-        "closing conditional trace capture: {} retained spans",
+        "conditional trace {} delivering {} retained spans",
+        self.0.id,
         spans.len()
       );
       self.0.control.export(spans);
+      self.0.state.lock().delivering = false;
+      log::trace!("conditional trace {} completed span delivery", self.0.id);
     }
   }
 }
@@ -249,7 +287,7 @@ impl Drop for CaptureInner {
   }
 }
 
-fn estimated_span_bytes(span: &SpanData) -> usize {
+pub fn estimated_span_bytes(span: &SpanData) -> usize {
   let attribute_bytes = |attributes: &[KeyValue]| {
     attributes
       .iter()
@@ -337,7 +375,6 @@ impl Drop for CaptureEndGuard {
 #[derive(Debug, Default)]
 struct ControlState {
   groups: HashMap<u64, Weak<CaptureInner>>,
-  processor: Option<Weak<dyn SpanProcessor>>,
   next_id: u64,
   bytes: usize,
   shutdown: bool,
@@ -383,28 +420,32 @@ impl ExportControl {
     inner: P,
   ) -> ExportControlledSpanProcessor<P> {
     let inner = Arc::new(inner);
-    let erased: Arc<dyn SpanProcessor> = inner.clone();
-    self.0.lock().processor = Some(Arc::downgrade(&erased));
     ExportControlledSpanProcessor {
       inner,
       control: self.clone(),
     }
   }
 
-  fn export(&self, spans: Vec<SpanData>) {
-    let processor = {
-      let state = self.0.lock();
-      if state.shutdown {
-        None
-      } else {
-        state.processor.as_ref().and_then(Weak::upgrade)
-      }
-    };
-    if let Some(processor) = processor {
-      for span in spans {
-        processor.on_end(span);
-      }
+  fn export(&self, spans: Vec<BufferedSpan>) {
+    if self.0.lock().shutdown {
+      return;
     }
+    for span in spans {
+      span.processor.on_end(span.data);
+    }
+  }
+
+  #[must_use]
+  pub fn has_pending_captures(&self) -> bool {
+    let groups: Vec<_> = self
+      .0
+      .lock()
+      .groups
+      .values()
+      .cloned()
+      .map(WeakCaptureGroup)
+      .collect();
+    groups.iter().any(WeakCaptureGroup::is_pending)
   }
 
   pub(crate) fn register_root(
@@ -415,7 +456,8 @@ impl ExportControl {
     span.with_subscriber(|(id, dispatch)| {
       let registry = dispatch.downcast_ref::<Registry>()?;
       let root = registry.span(id)?;
-      let group = CaptureGroup::new(self, limits);
+      let control = root.extensions().get::<Self>().cloned();
+      let group = CaptureGroup::new(control.as_ref().unwrap_or(self), limits);
       root.extensions_mut().insert(group.clone());
       Some(group)
     })?
@@ -559,7 +601,7 @@ impl<P: SpanProcessor + 'static> SpanProcessor for ExportControlledSpanProcessor
         .map(|(_, group)| group.clone())
     });
     if let Some(group) = group {
-      group.buffer(span);
+      group.buffer(span, self.inner.clone());
     } else {
       self.inner.on_end(span);
     }
@@ -592,14 +634,9 @@ impl<P: SpanProcessor + 'static> SpanProcessor for ExportControlledSpanProcessor
   }
 
   fn set_resource(&mut self, resource: &Resource) {
-    // Resource setup precedes span creation. Remove our weak callback while mutating the sole
-    // processor owner, then restore it for registry close callbacks.
-    let mut state = self.control.0.lock();
-    state.processor = None;
+    // Resource setup precedes span creation, so no buffered span can own this processor yet.
     Arc::get_mut(&mut self.inner)
       .expect("processor cannot be shared during resource setup")
       .set_resource(resource);
-    let erased: Arc<dyn SpanProcessor> = self.inner.clone();
-    state.processor = Some(Arc::downgrade(&erased));
   }
 }

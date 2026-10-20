@@ -4,6 +4,10 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
+#[path = "./pipeline_test.rs"]
+pub mod pipeline;
+
+use crate::test::TraceCapture;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use tracing::span::{Attributes, Id};
@@ -11,6 +15,62 @@ use tracing::{Event, Subscriber};
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::registry::LookupSpan;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_test_tracing_keeps_registry_and_captures_spawned_tasks() {
+  crate::test::initialize();
+  let original_dispatch = tracing::dispatcher::get_default(Clone::clone);
+  let same_registry = || {
+    tracing::dispatcher::get_default(|current| {
+      std::ptr::eq(
+        original_dispatch.downcast_ref::<Registry>().unwrap(),
+        current.downcast_ref::<Registry>().unwrap(),
+      )
+    })
+  };
+  let first_capture = TraceCapture::new();
+  let second_capture = TraceCapture::new();
+  assert!(same_registry());
+  let (started, second_started) = tokio::sync::oneshot::channel();
+  let (release, released) = tokio::sync::oneshot::channel();
+  let handle = second_capture.handle();
+  let second_task = handle.spawn(async move {
+    let parent = crate::otel_info_span!("second_parent");
+    started.send(()).unwrap();
+    released.await.unwrap();
+    drop(parent.in_scope(|| crate::otel_info_span!("second_child")));
+    drop(parent);
+  });
+  second_started.await.unwrap();
+  let handle = first_capture.handle();
+  handle
+    .spawn(async move {
+      let parent = crate::otel_info_span!("first_parent");
+      drop(parent.in_scope(|| crate::otel_info_span!("first_child")));
+      drop(parent);
+    })
+    .await
+    .unwrap();
+  let first_spans = first_capture.finish();
+  assert!(same_registry());
+  release.send(()).unwrap();
+  second_task.await.unwrap();
+  let second_spans = second_capture.finish();
+  for (spans, parent_name, child_name) in [
+    (first_spans, "first_parent", "first_child"),
+    (second_spans, "second_parent", "second_child"),
+  ] {
+    assert_eq!(spans.len(), 2);
+    let parent = spans.iter().find(|span| span.name == parent_name).unwrap();
+    let child = spans.iter().find(|span| span.name == child_name).unwrap();
+    assert_eq!(child.parent_span_id, parent.span_context.span_id());
+    assert_eq!(
+      child.span_context.trace_id(),
+      parent.span_context.trace_id()
+    );
+  }
+  assert!(same_registry());
+}
 
 #[derive(Clone, Default)]
 struct TargetCaptureLayer {
@@ -50,7 +110,7 @@ where
 }
 
 fn exported_span_names_after_two_stage_init(future: impl Future<Output = ()>) -> Vec<String> {
-  let (spans, ()) = crate::test::with_two_phase_test_otel("bd-log-test", future);
+  let spans = pipeline::two_stage_otel(future);
   spans.iter().map(|span| span.name.to_string()).collect()
 }
 
@@ -117,7 +177,8 @@ fn shared_target_routing_only_forwards_matching_targets() {
 
 #[test]
 fn conditional_otel_span_returns_null_without_direct_otel_parent() {
-  let span_names = exported_span_names_after_two_stage_init(async {
+  let capture = TraceCapture::new();
+  capture.in_scope(|| {
     let span = crate::otel_info_span_if_parent!("conditional_root");
     assert!(span.metadata().is_none());
 
@@ -127,15 +188,13 @@ fn conditional_otel_span_returns_null_without_direct_otel_parent() {
     assert!(nested_span.metadata().is_none());
   });
 
-  assert!(
-    span_names.is_empty(),
-    "unexpected exported spans: {span_names:?}"
-  );
+  assert_eq!(capture.finish(), []);
 }
 
 #[test]
 fn conditional_otel_span_creates_child_for_direct_otel_parent() {
-  let span_names = exported_span_names_after_two_stage_init(async {
+  let capture = TraceCapture::new();
+  capture.in_scope(|| {
     let parent = crate::otel_info_span!("direct_parent");
     let _parent_entered = parent.enter();
 
@@ -147,35 +206,45 @@ fn conditional_otel_span_creates_child_for_direct_otel_parent() {
 
     let _child_entered = child.enter();
   });
+  let spans = capture.finish();
 
-  assert!(span_names.iter().any(|name| name == "direct_parent"));
-  assert!(span_names.iter().any(|name| name == "direct_child"));
+  assert!(spans.iter().any(|span| span.name == "direct_parent"));
+  assert!(spans.iter().any(|span| span.name == "direct_child"));
 }
 
-#[test]
-fn conditional_otel_instrument_only_creates_span_for_direct_otel_parent() {
+#[tokio::test]
+async fn conditional_otel_instrument_only_creates_span_for_direct_otel_parent() {
   fn instrumented_work() -> impl Future<Output = ()> {
     std::future::ready(())
   }
 
-  let span_names = exported_span_names_after_two_stage_init(async {
-    crate::otel_instrument_if_parent!(instrumented_work(), tracing::Level::INFO, "without_parent")
+  let capture = TraceCapture::new();
+  capture
+    .scope(async {
+      crate::otel_instrument_if_parent!(
+        instrumented_work(),
+        tracing::Level::INFO,
+        "without_parent"
+      )
       .await;
 
-    let parent = crate::otel_info_span!("direct_parent");
-    let _parent_entered = parent.enter();
-    crate::otel_instrument_if_parent!(instrumented_work(), tracing::Level::INFO, "with_parent")
-      .await;
-  });
+      let parent = crate::otel_info_span!("direct_parent");
+      let _parent_entered = parent.enter();
+      crate::otel_instrument_if_parent!(instrumented_work(), tracing::Level::INFO, "with_parent")
+        .await;
+    })
+    .await;
+  let spans = capture.finish();
 
-  assert!(span_names.iter().any(|name| name == "direct_parent"));
-  assert!(span_names.iter().any(|name| name == "with_parent"));
-  assert!(!span_names.iter().any(|name| name == "without_parent"));
+  assert!(spans.iter().any(|span| span.name == "direct_parent"));
+  assert!(spans.iter().any(|span| span.name == "with_parent"));
+  assert!(!spans.iter().any(|span| span.name == "without_parent"));
 }
 
 #[test]
 fn trace_context_headers_round_trip_remote_parent() {
-  let (spans, ()) = crate::test::with_two_phase_test_otel("bd-log-test", async {
+  let capture = TraceCapture::new();
+  capture.in_scope(|| {
     let headers = {
       let parent = crate::otel_info_span!("parent");
       let _parent_entered = parent.enter();
@@ -186,6 +255,7 @@ fn trace_context_headers_round_trip_remote_parent() {
     assert!(crate::set_remote_parent(&child, &headers));
     let _child_entered = child.enter();
   });
+  let spans = capture.finish();
   let parent = spans.iter().find(|span| span.name == "parent").unwrap();
   let child = spans.iter().find(|span| span.name == "child").unwrap();
 
@@ -198,7 +268,8 @@ fn trace_context_headers_round_trip_remote_parent() {
 
 #[test]
 fn trace_context_headers_invalid_remote_parent_preserves_local_parent() {
-  let (spans, ()) = crate::test::with_two_phase_test_otel("bd-log-test", async {
+  let capture = TraceCapture::new();
+  capture.in_scope(|| {
     let parent = crate::otel_info_span!("parent");
     let _entered = parent.enter();
     let child = crate::otel_info_span!("child");
@@ -207,6 +278,7 @@ fn trace_context_headers_invalid_remote_parent_preserves_local_parent() {
       &crate::TraceContextHeaders::default()
     ));
   });
+  let spans = capture.finish();
   assert_eq!(spans.len(), 2);
   let parent = spans.iter().find(|span| span.name == "parent").unwrap();
   let child = spans.iter().find(|span| span.name == "child").unwrap();

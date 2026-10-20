@@ -4,230 +4,391 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-use crate::conditional_export::ExportControl;
-use crate::{LogConfig, RegistryLayer, otel};
-use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
-use opentelemetry_sdk::error::OTelSdkResult;
+//! Independent trace captures share one permanent registry, not subscriber configuration.
+//! Scope root work with [`TraceCapture::scope`] or [`TraceCapture::in_scope`]. Enabled instrumented
+//! descendants inherit ownership without changing their OTEL parentage. Join background work and
+//! release spans before calling [`TraceCapture::finish`].
+//!
+//! ```rust
+//! let capture = bd_log::test::TraceCapture::new();
+//! capture.in_scope(|| drop(bd_log::otel_info_span!("operation")));
+//! let spans = capture.finish();
+//! assert_eq!(spans.len(), 1);
+//! ```
+//!
+//! Async work uses `capture.scope(future).await`. Use a cloned [`TraceCaptureHandle`] at service
+//! boundaries or for detached roots; ordinary Tokio spawning does not inherit capture scope.
+//! Filtered-out spans cannot carry ownership; use `scope` or `spawn` when filters may disable them.
+//! Each capture owns its SDK provider, including attribute limits and optional batching, so
+//! concurrent tests can exercise different configurations without changing global logging.
+//!
+//! A permanent registry avoids closing spans against another fixture's subscriber when library
+//! tasks move between runtime workers. Capture-local providers still exercise the real SDK and
+//! conditional-export pipeline; ownership routing must not substitute for that code under test.
+
+mod routing;
+
+#[cfg(test)]
+#[path = "./test_test.rs"]
+mod tests;
+
+use crate::conditional_export::{ExportControl, WeakCaptureGroup, estimated_span_bytes};
+use opentelemetry::trace::{TraceContextExt as _, TracerProvider as _};
+use opentelemetry_sdk::error::{OTelSdkError, OTelSdkResult};
 use opentelemetry_sdk::runtime::{Tokio, TokioCurrentThread};
 use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use opentelemetry_sdk::trace::{
   BatchConfig,
   Sampler,
+  SdkTracer,
   SdkTracerProvider,
   SimpleSpanProcessor,
   SpanData,
   SpanExporter,
 };
+use parking_lot::Mutex;
+pub use routing::initialize;
+use std::collections::HashMap;
 use std::future::Future;
-use std::sync::{Arc, Mutex};
-use tokio::runtime::{Handle, RuntimeFlavor};
+use std::sync::Arc;
+use tokio::runtime::{Builder, Handle, RuntimeFlavor};
+use tokio::task::JoinHandle;
+use tracing::Span;
+use tracing::span::Id;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-use tracing_subscriber::Registry;
-use tracing_subscriber::layer::SubscriberExt;
 
-#[derive(Clone, Default, Debug)]
-pub(crate) struct TestExporter(Arc<Mutex<Vec<SpanData>>>);
+//
+// TestExporter
+//
+
+#[derive(Debug, Default)]
+struct ExportState {
+  spans: Vec<SpanData>,
+  bytes: usize,
+  failure: Option<String>,
+}
+
+// The SDK's in-memory exporter is unbounded and clears recordings on shutdown. Keep this small
+// exporter so runaway tracing fails the test explicitly rather than retaining unlimited data.
+#[derive(Clone, Debug)]
+pub(crate) struct TestExporter {
+  state: Arc<Mutex<ExportState>>,
+  max_spans: usize,
+  max_bytes: usize,
+}
+
+impl Default for TestExporter {
+  fn default() -> Self {
+    Self {
+      state: Arc::default(),
+      max_spans: 16_384,
+      max_bytes: 16 * 1_024 * 1_024,
+    }
+  }
+}
 
 impl TestExporter {
   pub(crate) fn exported_spans(&self) -> Vec<SpanData> {
-    self.0.lock().unwrap().clone()
+    let state = self.state.lock();
+    assert!(
+      state.failure.is_none(),
+      "trace capture failed: {:?}",
+      state.failure
+    );
+    state.spans.clone()
+  }
+
+  fn take_spans(&self) -> Vec<SpanData> {
+    let mut state = self.state.lock();
+    assert!(
+      state.failure.is_none(),
+      "trace capture failed: {:?}",
+      state.failure
+    );
+    std::mem::take(&mut state.spans)
   }
 }
 
 impl SpanExporter for TestExporter {
-  fn export(&self, mut batch: Vec<SpanData>) -> impl Future<Output = OTelSdkResult> {
-    self.0.lock().unwrap().append(&mut batch);
-    std::future::ready(Ok(()))
+  fn export(&self, batch: Vec<SpanData>) -> impl Future<Output = OTelSdkResult> {
+    let mut state = self.state.lock();
+    let bytes = batch
+      .iter()
+      .map(estimated_span_bytes)
+      .fold(0, usize::saturating_add);
+    if state.failure.is_none()
+      && (batch.len() > self.max_spans.saturating_sub(state.spans.len())
+        || bytes > self.max_bytes.saturating_sub(state.bytes))
+    {
+      let failure = format!(
+        "trace capture exceeded its buffer limit ({} spans, {} bytes)",
+        self.max_spans, self.max_bytes
+      );
+      log::error!("{failure}");
+      state.failure = Some(failure);
+      state.spans.clear();
+    }
+    let result = if let Some(failure) = &state.failure {
+      Err(OTelSdkError::InternalFailure(failure.clone()))
+    } else {
+      state.bytes += bytes;
+      state.spans.extend(batch);
+      Ok(())
+    };
+    std::future::ready(result)
   }
 }
 
-fn build_test_otel(service_name: &str) -> (TestExporter, SdkTracerProvider, RegistryLayer) {
-  build_test_otel_with_limit(service_name, 16)
+//
+// TraceCapture
+//
+
+#[derive(Default)]
+struct CaptureState {
+  live: HashMap<Id, &'static str>,
+  // A foreign conditional root can still hold this capture's data after all local spans close.
+  groups: Vec<WeakCaptureGroup>,
+  scopes: usize,
+  finished: bool,
 }
 
-fn build_test_otel_with_limit(
-  service_name: &str,
-  max_attributes: u32,
-) -> (TestExporter, SdkTracerProvider, RegistryLayer) {
-  let exporter = TestExporter::default();
-  let control = ExportControl::default();
-  let provider = SdkTracerProvider::builder()
-    .with_sampler(Sampler::AlwaysOn)
-    .with_max_attributes_per_span(max_attributes)
-    .with_span_processor(control.processor(SimpleSpanProcessor::new(exporter.clone())))
-    .build();
-  let tracer = ExportControl::tracer(provider.tracer(service_name.to_string()));
-
-  (
-    exporter,
-    provider,
-    otel::build_direct_otel_layer(tracer, control),
-  )
-}
-
-pub struct TestTraceContext {
+struct CaptureInner {
   exporter: TestExporter,
   provider: SdkTracerProvider,
-  dispatch: tracing::Dispatch,
+  tracer: SdkTracer,
+  control: ExportControl,
+  state: Mutex<CaptureState>,
 }
 
-impl TestTraceContext {
+/// Owns a bounded recording and its provider. Finish explicitly after shutting down traced work.
+/// Creating a capture never changes the process-wide logger or introduces an OTEL parent.
+#[must_use]
+pub struct TraceCapture {
+  handle: TraceCaptureHandle,
+  finished: bool,
+}
+
+impl Default for TraceCapture {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl TraceCapture {
+  pub fn new() -> Self {
+    Self::builder().build()
+  }
+
+  pub fn builder() -> TraceCaptureBuilder {
+    TraceCaptureBuilder::default()
+  }
+
+  pub fn handle(&self) -> TraceCaptureHandle {
+    self.handle.clone()
+  }
+
+  pub fn in_scope<R>(&self, work: impl FnOnce() -> R) -> R {
+    self.handle.in_scope(work)
+  }
+
+  pub fn scope<F: Future>(&self, future: F) -> impl Future<Output = F::Output> + use<F> {
+    self.handle.scope(future)
+  }
+
+  pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+  where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+  {
+    self.handle.spawn(future)
+  }
+
+  /// A snapshot for assertions made while an operation is still running.
   #[must_use]
-  pub fn new(service_name: &str) -> Self {
-    Self::with_max_attributes(service_name, 16)
+  pub fn spans(&self) -> Vec<SpanData> {
+    self.handle.0.exporter.exported_spans()
+  }
+
+  pub fn flush(&self) {
+    self.handle.0.provider.force_flush().unwrap();
   }
 
   #[must_use]
-  pub fn with_max_attributes(service_name: &str, max_attributes: u32) -> Self {
-    let (exporter, provider, otel_layer) = build_test_otel_with_limit(service_name, max_attributes);
-    Self::from_parts(exporter, provider, otel_layer)
+  pub fn request_span(&self) -> (Span, String) {
+    self.in_scope(|| {
+      let span = crate::otel_info_span!("test_request");
+      let context = span.context().span().span_context().clone();
+      assert!(context.is_valid());
+      let request_id = format!("{}-{}", context.trace_id(), context.span_id());
+      (span, request_id)
+    })
   }
 
+  /// Flush and close this capture only. Live spans or scoped work indicate missing test teardown,
+  /// not something flushing or waiting for an arbitrary delay can repair.
   #[must_use]
-  pub fn with_batch_config(service_name: &str, config: BatchConfig) -> Self {
-    let exporter = TestExporter::default();
-    let control = ExportControl::default();
-    let builder = SdkTracerProvider::builder().with_sampler(Sampler::AlwaysOn);
-    let provider = match Handle::current().runtime_flavor() {
-      RuntimeFlavor::CurrentThread => builder
-        .with_span_processor(
-          control.processor(
-            BatchSpanProcessor::builder(exporter.clone(), TokioCurrentThread)
-              .with_batch_config(config)
-              .build(),
-          ),
-        )
-        .build(),
-      RuntimeFlavor::MultiThread => builder
-        .with_span_processor(
-          control.processor(
-            BatchSpanProcessor::builder(exporter.clone(), Tokio)
-              .with_batch_config(config)
-              .build(),
-          ),
-        )
-        .build(),
-      flavor => panic!("unsupported test runtime: {flavor:?}"),
-    };
-    let tracer = ExportControl::tracer(provider.tracer(service_name.to_string()));
-    Self::from_parts(
-      exporter,
-      provider,
-      otel::build_direct_otel_layer(tracer, control),
-    )
-  }
-
-  fn from_parts(
-    exporter: TestExporter,
-    provider: SdkTracerProvider,
-    otel_layer: RegistryLayer,
-  ) -> Self {
-    let subscriber = Registry::default().with(otel_layer);
-
-    Self {
-      exporter,
-      provider,
-      dispatch: tracing::Dispatch::new(subscriber),
+  pub fn finish(mut self) -> Vec<SpanData> {
+    {
+      let mut state = self.handle.0.state.lock();
+      assert!(
+        state.live.is_empty() && state.scopes == 0,
+        "trace capture still owns {} scoped futures and live spans: {:?}",
+        state.scopes,
+        state.live
+      );
+      assert!(
+        !self.handle.0.control.has_pending_captures()
+          && !state.groups.iter().any(WeakCaptureGroup::is_pending),
+        "trace capture still belongs to an unfinished conditional trace"
+      );
+      state.finished = true;
     }
-  }
-
-  #[must_use]
-  pub fn dispatch(&self) -> tracing::Dispatch {
-    self.dispatch.clone()
-  }
-
-  #[must_use]
-  pub fn exported_spans(&self) -> Vec<SpanData> {
-    self.exporter.exported_spans()
-  }
-
-  pub fn force_flush(&self) {
-    self.provider.force_flush().unwrap();
-  }
-
-  pub fn request_span(&self) -> (tracing::dispatcher::DefaultGuard, tracing::Span, String) {
-    let guard = tracing::dispatcher::set_default(&self.dispatch);
-    let span = crate::otel_info_span!("test_request");
-    let span_context = {
-      let _enter = span.enter();
-      span.context().span().span_context().clone()
-    };
-
-    assert!(span_context.is_valid());
-
-    (
-      guard,
-      span,
-      format!("{}-{}", span_context.trace_id(), span_context.span_id()),
-    )
+    self.finished = true;
+    self.handle.0.provider.force_flush().unwrap();
+    self.handle.0.provider.shutdown().unwrap();
+    self.handle.0.exporter.take_spans()
   }
 }
 
-impl Drop for TestTraceContext {
+impl Drop for TraceCapture {
   fn drop(&mut self) {
-    self.provider.force_flush().unwrap();
+    assert!(
+      self.finished || std::thread::panicking(),
+      "TraceCapture::finish() must be called after shutting down traced work"
+    );
   }
 }
 
-fn test_layers(config: &LogConfig, otel_layer: Option<RegistryLayer>) -> Vec<RegistryLayer> {
-  let mut layers = vec![crate::build_output_layer(config)];
+//
+// TraceCaptureHandle
+//
 
-  if crate::direct_otel_span_debug_enabled() {
-    layers.push(crate::build_direct_otel_debug_layer(config));
+/// Cloneable ownership for service boundaries and explicitly detached root work.
+#[derive(Clone)]
+#[must_use]
+pub struct TraceCaptureHandle(Arc<CaptureInner>);
+
+impl TraceCaptureHandle {
+  pub fn in_scope<R>(&self, work: impl FnOnce() -> R) -> R {
+    routing::in_scope(self, work)
   }
 
-  if let Some(otel_layer) = otel_layer.filter(|_| config.otel.is_some()) {
-    layers.push(otel_layer);
+  pub fn scope<F: Future>(&self, future: F) -> impl Future<Output = F::Output> + use<F> {
+    routing::scope(self.clone(), future)
   }
 
-  layers
+  pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+  where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+  {
+    tokio::spawn(self.scope(future))
+  }
+
+  fn assert_open(&self) {
+    assert!(
+      !self.0.state.lock().finished,
+      "trace capture has already finished"
+    );
+  }
 }
+
+//
+// TraceCaptureBuilder
+//
 
 #[must_use]
-pub fn test_otel_log_config(service_name: impl Into<String>) -> LogConfig {
-  LogConfig {
-    otel: Some(crate::OtelCollectorConfig::new(
-      service_name,
-      "http://127.0.0.1:4317",
-    )),
-    ..LogConfig::default()
+pub struct TraceCaptureBuilder {
+  max_attributes: u32,
+  batch: Option<BatchConfig>,
+  exporter: TestExporter,
+}
+
+impl Default for TraceCaptureBuilder {
+  fn default() -> Self {
+    Self {
+      max_attributes: 16,
+      batch: None,
+      exporter: TestExporter::default(),
+    }
   }
 }
 
-pub fn with_two_phase_test_otel<R>(
-  service_name: &str,
-  future: impl Future<Output = R>,
-) -> (Vec<SpanData>, R) {
-  let initial_config = LogConfig::default();
-  let later_config = test_otel_log_config(service_name);
-  let initial_direct_otel = crate::direct_otel_output_enabled(&initial_config);
-  // Mirror the production logger topology as closely as possible: keep the global filter behind
-  // `reload::Layer`, but use the custom reloadable layer stack for the actual layer list so
-  // tracing-opentelemetry's `WithContext` downcasts still work after the second-stage reload.
-  let (layers, layers_handle) =
-    crate::ReloadableLayerStack::new(test_layers(&initial_config, None));
-  let (filter, filter_handle) =
-    tracing_subscriber::reload::Layer::new(tracing_subscriber::EnvFilter::new(
-      otel::global_filter_rules(&initial_config.log_filter, initial_direct_otel),
-    ));
-  let subscriber = Registry::default().with(layers).with(filter);
+impl TraceCaptureBuilder {
+  pub fn max_attributes(mut self, limit: u32) -> Self {
+    self.max_attributes = limit;
+    self
+  }
 
-  let (exporter, provider, otel_layer) = build_test_otel(service_name);
-  let runtime = tokio::runtime::Runtime::new().unwrap();
+  pub fn max_spans(mut self, limit: usize) -> Self {
+    self.exporter.max_spans = limit;
+    self
+  }
 
-  let result = tracing::subscriber::with_default(subscriber, || {
-    let direct_otel_enabled = crate::direct_otel_output_enabled(&later_config);
-    layers_handle.reload(test_layers(&later_config, Some(otel_layer)));
-    filter_handle
-      .reload(tracing_subscriber::EnvFilter::new(
-        otel::global_filter_rules(&later_config.log_filter, direct_otel_enabled),
-      ))
-      .unwrap();
+  pub fn max_bytes(mut self, limit: usize) -> Self {
+    self.exporter.max_bytes = limit;
+    self
+  }
 
-    runtime.block_on(future)
-  });
+  pub fn batch_config(mut self, config: BatchConfig) -> Self {
+    self.batch = Some(config);
+    self
+  }
 
-  provider.force_flush().unwrap();
+  pub fn build(self) -> TraceCapture {
+    initialize();
+    let control = ExportControl::default();
+    let builder = SdkTracerProvider::builder()
+      .with_sampler(Sampler::AlwaysOn)
+      .with_max_attributes_per_span(self.max_attributes);
+    let provider = if let Some(config) = self.batch {
+      match Handle::current().runtime_flavor() {
+        RuntimeFlavor::CurrentThread => builder
+          .with_span_processor(
+            control.processor(
+              BatchSpanProcessor::builder(self.exporter.clone(), TokioCurrentThread)
+                .with_batch_config(config)
+                .build(),
+            ),
+          )
+          .build(),
+        RuntimeFlavor::MultiThread => builder
+          .with_span_processor(
+            control.processor(
+              BatchSpanProcessor::builder(self.exporter.clone(), Tokio)
+                .with_batch_config(config)
+                .build(),
+            ),
+          )
+          .build(),
+        flavor => panic!("unsupported test runtime: {flavor:?}"),
+      }
+    } else {
+      builder
+        .with_span_processor(control.processor(SimpleSpanProcessor::new(self.exporter.clone())))
+        .build()
+    };
+    let tracer = provider.tracer("test");
+    TraceCapture {
+      handle: TraceCaptureHandle(Arc::new(CaptureInner {
+        provider,
+        tracer,
+        control,
+        exporter: self.exporter,
+        state: Mutex::default(),
+      })),
+      finished: false,
+    }
+  }
+}
 
-  (exporter.exported_spans(), result)
+/// Run a synchronous test's async work with an independently owned capture and current-thread
+/// runtime. Tasks are torn down inside their capture before the final recording is returned.
+pub fn capture_traces<F: Future>(future: F) -> (Vec<SpanData>, F::Output) {
+  let capture = TraceCapture::new();
+  let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+  // Keep runtime destruction inside the ownership scope too: cancellation can close lazy spans.
+  let result = capture.in_scope(|| runtime.block_on(capture.scope(future)));
+  capture.in_scope(|| drop(runtime));
+  (capture.finish(), result)
 }
