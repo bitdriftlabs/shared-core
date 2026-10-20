@@ -91,6 +91,9 @@ impl Default for TraceCaptureLimits {
 struct CaptureState {
   started: Instant,
   live: usize,
+  // The last member closes before deferred on_end callbacks run. Foreign providers must remain
+  // alive until those callbacks finish delivering or enqueueing every retained span.
+  delivering: bool,
   created: usize,
   decision: Option<bool>,
   dropped: bool,
@@ -123,7 +126,7 @@ impl WeakCaptureGroup {
   pub fn is_pending(&self) -> bool {
     self.0.upgrade().is_some_and(|group| {
       let state = group.state.lock();
-      state.live > 0 && !state.dropped && state.decision != Some(false)
+      state.delivering || (state.live > 0 && !state.dropped && state.decision != Some(false))
     })
   }
 }
@@ -152,6 +155,7 @@ impl CaptureGroup {
       state: Mutex::new(CaptureState {
         started: Instant::now(),
         live: 1,
+        delivering: false,
         created: 1,
         decision: None,
         dropped: false,
@@ -261,12 +265,16 @@ impl CaptureGroup {
         state.spans = Vec::new();
         Vec::new()
       };
+      state.delivering = !spans.is_empty();
       drop(state);
       log::trace!(
-        "closing conditional trace capture: {} retained spans",
+        "conditional trace {} delivering {} retained spans",
+        self.0.id,
         spans.len()
       );
       self.0.control.export(spans);
+      self.0.state.lock().delivering = false;
+      log::trace!("conditional trace {} completed span delivery", self.0.id);
     }
   }
 }

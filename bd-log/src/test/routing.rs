@@ -182,11 +182,11 @@ fn owner(ctx: &LayerContext<'_, Registry>, id: &Id) -> Option<OwnedSpan> {
 
 impl Layer<Registry> for CaptureLayer {
   fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: LayerContext<'_, Registry>) {
-    let parent = if attrs.is_contextual() {
-      ctx.lookup_current()
-    } else {
-      attrs.parent().and_then(|id| ctx.span(id))
-    };
+    // Parentless conditional roots still belong to an entered, instrumented task's fixture.
+    // This lookup only assigns ownership; the original attributes keep tracing/OTEL parentage.
+    let parent = attrs
+      .parent()
+      .map_or_else(|| ctx.lookup_current(), |parent| ctx.span(parent));
     // An explicit fixture scope wins over the parent: two captures may participate in one trace.
     // Ownership is stored separately from SDK parent contexts, which remote reparenting can
     // replace.

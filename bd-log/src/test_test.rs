@@ -4,13 +4,27 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-use super::{TraceCapture, capture_traces};
-use crate::conditional_export::TraceCaptureLimits;
-use opentelemetry::trace::{SpanId, TraceContextExt};
+use super::{CaptureInner, TestExporter, TraceCapture, TraceCaptureHandle, capture_traces};
+use crate::conditional_export::{ExportControl, TraceCaptureLimits};
+use opentelemetry::Context;
+use opentelemetry::trace::{SpanId, TraceContextExt, TracerProvider as _};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::error::OTelSdkResult;
+use opentelemetry_sdk::trace::{
+  Sampler,
+  SdkTracerProvider,
+  SimpleSpanProcessor,
+  Span,
+  SpanData,
+  SpanProcessor,
+};
+use parking_lot::Mutex;
 use std::future::pending;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::process::Command;
+use std::sync::mpsc::{SyncSender, sync_channel};
 use std::sync::{Arc, Barrier};
+use std::time::Duration;
 use tokio::runtime::Builder;
 use tokio::sync::oneshot;
 use tracing::Instrument;
@@ -25,6 +39,42 @@ struct TraceOnDrop;
 impl Drop for TraceOnDrop {
   fn drop(&mut self) {
     drop(crate::otel_info_span!("cancelled"));
+  }
+}
+
+//
+// GatedProcessor
+//
+
+#[derive(Debug)]
+struct GatedProcessor {
+  inner: SimpleSpanProcessor<TestExporter>,
+  started: SyncSender<()>,
+  release: Arc<Barrier>,
+}
+
+impl SpanProcessor for GatedProcessor {
+  fn on_start(&self, span: &mut Span, context: &Context) {
+    self.inner.on_start(span, context);
+  }
+
+  fn on_end(&self, span: SpanData) {
+    log::debug!("deferred span reached delivery gate: {}", span.name);
+    self.started.send(()).unwrap();
+    self.release.wait();
+    self.inner.on_end(span);
+  }
+
+  fn force_flush(&self) -> OTelSdkResult {
+    self.inner.force_flush()
+  }
+
+  fn shutdown_with_timeout(&self, timeout: Duration) -> OTelSdkResult {
+    self.inner.shutdown_with_timeout(timeout)
+  }
+
+  fn set_resource(&mut self, resource: &Resource) {
+    self.inner.set_resource(resource);
   }
 }
 
@@ -378,6 +428,118 @@ fn conditional_trace_routes_each_member_to_its_own_capture() {
     second_spans[0].parent_span_id,
     first_spans[0].span_context.span_id()
   );
+}
+
+#[test]
+fn foreign_capture_cannot_finish_during_deferred_span_delivery() {
+  let first = TraceCapture::new();
+  let exporter = TestExporter::default();
+  let control = ExportControl::default();
+  let (started, delivering) = sync_channel(0);
+  let release = Arc::new(Barrier::new(2));
+  let provider = SdkTracerProvider::builder()
+    .with_sampler(Sampler::AlwaysOn)
+    .with_max_attributes_per_span(16)
+    .with_span_processor(control.processor(GatedProcessor {
+      inner: SimpleSpanProcessor::new(exporter.clone()),
+      started,
+      release: release.clone(),
+    }))
+    .build();
+  let second = TraceCapture {
+    handle: TraceCaptureHandle(Arc::new(CaptureInner {
+      tracer: provider.tracer("gated-capture"),
+      provider,
+      control,
+      exporter,
+      state: Mutex::default(),
+    })),
+    finished: false,
+  };
+  let root = first.in_scope(|| crate::otel_span_on_error!("retained_root"));
+  second.in_scope(|| {
+    root.in_scope(|| drop(crate::otel_info_span_if_parent!("deferred_child")));
+  });
+  assert_eq!(second.spans(), []);
+  root.retain();
+  let closer = std::thread::spawn(move || drop(root));
+  delivering.recv().unwrap();
+
+  // Exercise finish's rejection without losing the original owner to the expected panic.
+  let premature = TraceCapture {
+    handle: second.handle(),
+    finished: false,
+  };
+  let result = catch_unwind(AssertUnwindSafe(|| premature.finish()));
+  let still_open = !second.handle.0.state.lock().finished;
+  // Always release and join before asserting, so a failed regression cannot strand the closer.
+  release.wait();
+  closer.join().unwrap();
+  assert!(
+    result.is_err(),
+    "finish accepted spans still being delivered"
+  );
+  assert!(
+    still_open,
+    "finish shut down the provider before delivery completed"
+  );
+  let spans = second.finish();
+  assert_eq!(spans.len(), 1);
+  assert_eq!(spans[0].name, "deferred_child");
+  let roots = first.finish();
+  assert_eq!(roots.len(), 1);
+  assert_eq!(roots[0].name, "retained_root");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn instrumented_spawn_inherits_ownership_for_parentless_conditional_roots() {
+  let capture = TraceCapture::new();
+  let unowned = tracing::info_span!("unowned_parent");
+  let owned = capture.in_scope(|| tracing::info_span!("task_owner"));
+  tokio::spawn(
+    async move {
+      // An explicit, unowned parent must not fall back to the entered task owner's capture.
+      drop(tracing::info_span!(
+        target: crate::OTEL_TARGET,
+        parent: &unowned,
+        "unowned_child"
+      ));
+      crate::otel::instrument_on_error(
+        async {
+          tokio::task::yield_now().await;
+          drop(crate::otel_info_span_if_parent!("failed_child"));
+          Err::<(), &str>("retain the failed operation")
+        },
+        crate::otel_span_on_error!("failed_root"),
+      )
+      .await
+      .unwrap_err();
+      crate::otel::instrument_on_error(
+        async {
+          drop(crate::otel_info_span_if_parent!("successful_child"));
+          Ok::<(), &str>(())
+        },
+        crate::otel_span_on_error!("successful_root"),
+      )
+      .await
+      .unwrap();
+    }
+    .instrument(owned),
+  )
+  .await
+  .unwrap();
+  let spans = capture.finish();
+  assert_eq!(spans.len(), 2);
+  let root = spans
+    .iter()
+    .find(|span| span.name == "failed_root")
+    .unwrap();
+  let child = spans
+    .iter()
+    .find(|span| span.name == "failed_child")
+    .unwrap();
+  assert_eq!(root.parent_span_id, SpanId::INVALID);
+  assert_eq!(child.parent_span_id, root.span_context.span_id());
 }
 
 #[test]
