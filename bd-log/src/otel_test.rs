@@ -5,7 +5,8 @@
 // you may not use this file except in compliance with the License.
 
 use super::active_tokio_runtime_flavor;
-use crate::test::{TestTraceContext, with_two_phase_test_otel};
+use crate::test::TraceCapture;
+use crate::tests::pipeline::two_stage_otel;
 use opentelemetry::Value;
 use opentelemetry::trace::{SpanId, Status, TraceContextExt};
 use opentelemetry_sdk::trace::BatchConfigBuilder;
@@ -15,35 +16,36 @@ use std::time::Duration;
 use tokio::runtime::{Builder, RuntimeFlavor};
 use tokio::sync::Barrier;
 use tracing::Instrument as _;
-use tracing::instrument::WithSubscriber as _;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 #[tokio::test]
 async fn conditional_export_buffers_only_controlled_descendants_until_failure() {
-  let context = TestTraceContext::new("conditional-children");
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  let root = crate::otel_span_on_error!("root");
-  crate::otel::instrument_on_error(
-    async {
-      let child = crate::otel_info_span_if_parent!("child", value = 42);
-      {
-        let _entered = child.enter();
-        crate::otel_info!("child event");
-        let grandchild = crate::otel_debug_span_if_parent!("grandchild");
-        drop(grandchild);
-        let excluded = tracing::info_span!("library_child");
-        drop(excluded);
-      }
-      drop(child);
-      assert_eq!(context.exported_spans(), []);
-      Err::<(), _>("final failure")
-    },
-    root,
-  )
-  .await
-  .unwrap_err();
-  let spans = context.exported_spans();
+  let capture = TraceCapture::new();
+  capture
+    .scope(async {
+      let root = crate::otel_span_on_error!("root");
+      crate::otel::instrument_on_error(
+        async {
+          let child = crate::otel_info_span_if_parent!("child", value = 42);
+          {
+            let _entered = child.enter();
+            crate::otel_info!("child event");
+            let grandchild = crate::otel_debug_span_if_parent!("grandchild");
+            drop(grandchild);
+            let excluded = tracing::info_span!("library_child");
+            drop(excluded);
+          }
+          drop(child);
+          assert_eq!(capture.spans(), []);
+          Err::<(), _>("final failure")
+        },
+        root,
+      )
+      .await
+      .unwrap_err();
+    })
+    .await;
+  let spans = capture.finish();
   assert_eq!(spans.len(), 3);
   let root = spans.iter().find(|span| span.name == "root").unwrap();
   let child = spans.iter().find(|span| span.name == "child").unwrap();
@@ -66,131 +68,138 @@ async fn conditional_export_buffers_only_controlled_descendants_until_failure() 
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn conditional_export_waits_for_lazy_and_detached_children() {
-  let context = TestTraceContext::new("conditional-children");
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  let (send, receive) = tokio::sync::oneshot::channel();
-  let root = crate::otel_span_on_error!("root");
-  crate::otel::instrument_on_error(
-    async {
-      let lazy = crate::otel_info_span_if_parent!("lazy");
-      let child = crate::otel_info_span_if_parent!("detached");
-      send.send((lazy, child)).unwrap();
-      Err::<(), _>("failed")
-    },
-    root,
-  )
-  .await
-  .unwrap_err();
-  assert_eq!(context.exported_spans(), []);
-  let (lazy, child) = receive.await.unwrap();
-  // Start a descendant after the root outcome, through an explicitly propagated child.
-  let grandchild = {
-    let _entered = child.enter();
-    crate::otel_info_span_if_parent!("late_grandchild")
-  };
-  drop(child);
-  drop(lazy);
-  assert_eq!(context.exported_spans(), []);
-  drop(grandchild);
-  assert_eq!(context.exported_spans().len(), 4);
+  let capture = TraceCapture::new();
+  capture
+    .scope(async {
+      let (send, receive) = tokio::sync::oneshot::channel();
+      let root = crate::otel_span_on_error!("root");
+      crate::otel::instrument_on_error(
+        async {
+          let lazy = crate::otel_info_span_if_parent!("lazy");
+          let child = crate::otel_info_span_if_parent!("detached");
+          send.send((lazy, child)).unwrap();
+          Err::<(), _>("failed")
+        },
+        root,
+      )
+      .await
+      .unwrap_err();
+      assert_eq!(capture.spans(), []);
+      let (lazy, child) = receive.await.unwrap();
+      // Start a descendant after the root outcome, through an explicitly propagated child.
+      let grandchild = {
+        let _entered = child.enter();
+        crate::otel_info_span_if_parent!("late_grandchild")
+      };
+      drop(child);
+      drop(lazy);
+      assert_eq!(capture.spans(), []);
+      drop(grandchild);
+    })
+    .await;
+  assert_eq!(capture.finish().len(), 4);
 }
 
 #[tokio::test]
 async fn conditional_export_discards_children_on_success_and_cancellation() {
-  let context = TestTraceContext::with_max_attributes("conditional-children", 0);
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  crate::otel::instrument_on_error(
-    async {
-      let retry = crate::otel_info_span_if_parent!("failed_attempt");
-      retry.set_status(Status::error("retryable"));
-      drop(retry);
-      let recovery = crate::otel_info_span_if_parent!("recovered_attempt");
-      drop(recovery);
-      Ok::<_, &str>(())
-    },
-    crate::otel_span_on_error!("success"),
-  )
-  .await
-  .unwrap();
-  let mut request = Box::pin(crate::otel::instrument_on_error(
-    async {
-      let child = crate::otel_info_span_if_parent!("cancelled_child");
-      let _entered = child.enter();
-      pending::<Result<(), &str>>().await
-    },
-    crate::otel_span_on_error!("cancelled"),
-  ));
-  assert!(
-    std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
+  let capture = TraceCapture::builder().max_attributes(0).build();
+  capture
+    .scope(async {
+      crate::otel::instrument_on_error(
+        async {
+          let retry = crate::otel_info_span_if_parent!("failed_attempt");
+          retry.set_status(Status::error("retryable"));
+          drop(retry);
+          let recovery = crate::otel_info_span_if_parent!("recovered_attempt");
+          drop(recovery);
+          Ok::<_, &str>(())
+        },
+        crate::otel_span_on_error!("success"),
+      )
       .await
-      .is_pending()
-  );
-  drop(request);
-  assert_eq!(context.exported_spans(), []);
+      .unwrap();
+      let mut request = Box::pin(crate::otel::instrument_on_error(
+        async {
+          let child = crate::otel_info_span_if_parent!("cancelled_child");
+          let _entered = child.enter();
+          pending::<Result<(), &str>>().await
+        },
+        crate::otel_span_on_error!("cancelled"),
+      ));
+      assert!(
+        std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
+          .await
+          .is_pending()
+      );
+      drop(request);
+    })
+    .await;
+  assert_eq!(capture.finish(), []);
 }
 
 #[tokio::test]
 async fn conditional_export_limit_suppresses_buffered_and_unstarted_children() {
-  let context = TestTraceContext::new("conditional-limits");
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  let limits = crate::otel::TraceCaptureLimits {
-    max_spans: 2,
-    ..crate::otel::TraceCaptureLimits::default()
-  };
-  let root = crate::otel_span_on_error!(limits: limits, "limited");
-  crate::otel::instrument_on_error(
-    async {
-      let buffered = crate::otel_info_span_if_parent!("buffered");
-      drop(buffered);
-      let overflow = crate::otel_info_span_if_parent!("overflow");
-      drop(overflow);
-      let late = crate::otel_info_span_if_parent!("late");
-      drop(late);
-      Err::<(), _>("failed")
-    },
-    root,
-  )
-  .await
-  .unwrap_err();
-  assert_eq!(context.exported_spans(), []);
-  let ordinary = crate::otel_info_span!("ordinary");
-  drop(ordinary);
-  assert_eq!(context.exported_spans().len(), 1);
+  let capture = TraceCapture::new();
+  capture
+    .scope(async {
+      let limits = crate::otel::TraceCaptureLimits {
+        max_spans: 2,
+        ..crate::otel::TraceCaptureLimits::default()
+      };
+      let root = crate::otel_span_on_error!(limits: limits, "limited");
+      crate::otel::instrument_on_error(
+        async {
+          let buffered = crate::otel_info_span_if_parent!("buffered");
+          drop(buffered);
+          let overflow = crate::otel_info_span_if_parent!("overflow");
+          drop(overflow);
+          let late = crate::otel_info_span_if_parent!("late");
+          drop(late);
+          Err::<(), _>("failed")
+        },
+        root,
+      )
+      .await
+      .unwrap_err();
+      assert_eq!(capture.spans(), []);
+      let ordinary = crate::otel_info_span!("ordinary");
+      drop(ordinary);
+    })
+    .await;
+  assert_eq!(capture.finish().len(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn conditional_export_propagates_to_spawned_controlled_children() {
-  let context = TestTraceContext::with_max_attributes("conditional-task", 0);
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  crate::otel::instrument_on_error(
-    async {
-      let child = crate::otel_info_span_if_parent!("task");
-      tokio::spawn(
-        async move {
-          async {
-            let grandchild = crate::otel_info_span_if_parent!("task_child");
-            drop(grandchild);
-            tokio::task::yield_now().await;
-          }
-          .instrument(child)
-          .await;
-        }
-        .with_subscriber(dispatch.clone()),
+  let capture = TraceCapture::builder().max_attributes(0).build();
+  capture
+    .scope(async {
+      crate::otel::instrument_on_error(
+        async {
+          let child = crate::otel_info_span_if_parent!("task");
+          let handle = capture.handle();
+          handle
+            .spawn(async move {
+              async {
+                let grandchild = crate::otel_info_span_if_parent!("task_child");
+                drop(grandchild);
+                tokio::task::yield_now().await;
+              }
+              .instrument(child)
+              .await;
+            })
+            .await
+            .unwrap();
+          assert_eq!(capture.spans(), []);
+          Err::<(), _>("failed")
+        },
+        crate::otel_span_on_error!("root"),
       )
       .await
-      .unwrap();
-      assert_eq!(context.exported_spans(), []);
-      Err::<(), _>("failed")
-    },
-    crate::otel_span_on_error!("root"),
-  )
-  .await
-  .unwrap_err();
-  assert_eq!(context.exported_spans().len(), 3);
+      .unwrap_err();
+    })
+    .await;
+  assert_eq!(capture.finish().len(), 3);
 }
 
 async fn concurrent_batch_captures() {
@@ -199,55 +208,51 @@ async fn concurrent_batch_captures() {
     .with_max_export_batch_size(16)
     .with_scheduled_delay(Duration::from_secs(3_600))
     .build();
-  let context = TestTraceContext::with_batch_config("concurrent-captures", config);
-  let dispatch = context.dispatch();
+  let capture = TraceCapture::builder().batch_config(config).build();
   let barrier = Arc::new(Barrier::new(32));
   let mut tasks = Vec::new();
   for request_id in 0 .. 32_i64 {
     let barrier = barrier.clone();
-    tasks.push(tokio::spawn(
-      async move {
-        let ordinary = crate::otel_info_span!("ordinary", request_id);
-        let (root, parent_context) = {
-          let _entered = ordinary.enter();
-          (
-            crate::otel_span_on_error!("root", request_id),
-            ordinary.context().span().span_context().clone(),
-          )
-        };
-        drop(ordinary);
-        let result = crate::otel::instrument_on_error(
-          async {
-            let child = crate::otel_info_span_if_parent!("child", request_id);
-            async {
-              crate::otel_info!(request_id, "child event");
-              tokio::task::yield_now().await;
-              drop(crate::otel_debug_span_if_parent!("grandchild", request_id));
-              drop(tracing::info_span!("excluded_library_span"));
-            }
-            .instrument(child)
-            .await;
-            barrier.wait().await;
-            if request_id % 2 == 0 {
-              Err("final failure")
-            } else {
-              Ok(())
-            }
-          },
-          root,
+    let handle = capture.handle();
+    tasks.push(handle.spawn(async move {
+      let ordinary = crate::otel_info_span!("ordinary", request_id);
+      let (root, parent_context) = {
+        let _entered = ordinary.enter();
+        (
+          crate::otel_span_on_error!("root", request_id),
+          ordinary.context().span().span_context().clone(),
         )
-        .await;
-        (request_id, parent_context, result.is_err())
-      }
-      .with_subscriber(dispatch.clone()),
-    ));
+      };
+      drop(ordinary);
+      let result = crate::otel::instrument_on_error(
+        async {
+          let child = crate::otel_info_span_if_parent!("child", request_id);
+          async {
+            crate::otel_info!(request_id, "child event");
+            tokio::task::yield_now().await;
+            drop(crate::otel_debug_span_if_parent!("grandchild", request_id));
+            drop(tracing::info_span!("excluded_library_span"));
+          }
+          .instrument(child)
+          .await;
+          barrier.wait().await;
+          if request_id % 2 == 0 {
+            Err("final failure")
+          } else {
+            Ok(())
+          }
+        },
+        root,
+      )
+      .await;
+      (request_id, parent_context, result.is_err())
+    }));
   }
   let mut outcomes = Vec::new();
   for task in tasks {
     outcomes.push(task.await.unwrap());
   }
-  context.force_flush();
-  let spans = context.exported_spans();
+  let spans = capture.finish();
   assert_eq!(spans.len(), 32 + 16 * 3);
   for (request_id, parent_context, failed) in outcomes {
     let request_spans: Vec<_> = spans
@@ -310,32 +315,35 @@ async fn conditional_export_concurrent_batch_multi_thread() {
 
 #[tokio::test]
 async fn conditional_export_nested_roots_have_independent_decisions() {
-  let context = TestTraceContext::new("conditional-nested");
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  let outer = crate::otel_span_on_error!("outer");
-  let outer_context = outer.context();
-  crate::otel::instrument_on_error(
-    async {
-      let outer_child = crate::otel_info_span_if_parent!("outer_child");
-      drop(outer_child);
+  let capture = TraceCapture::new();
+  let outer_context = capture
+    .scope(async {
+      let outer = crate::otel_span_on_error!("outer");
+      let outer_context = outer.context();
       crate::otel::instrument_on_error(
         async {
-          let child = crate::otel_info_span_if_parent!("inner_child");
-          drop(child);
-          Err::<(), _>("inner failed")
+          let outer_child = crate::otel_info_span_if_parent!("outer_child");
+          drop(outer_child);
+          crate::otel::instrument_on_error(
+            async {
+              let child = crate::otel_info_span_if_parent!("inner_child");
+              drop(child);
+              Err::<(), _>("inner failed")
+            },
+            crate::otel_span_on_error!("inner"),
+          )
+          .await
+          .unwrap_err();
+          Ok::<_, &str>(())
         },
-        crate::otel_span_on_error!("inner"),
+        outer,
       )
       .await
-      .unwrap_err();
-      Ok::<_, &str>(())
-    },
-    outer,
-  )
-  .await
-  .unwrap();
-  let spans = context.exported_spans();
+      .unwrap();
+      outer_context
+    })
+    .await;
+  let spans = capture.finish();
   assert_eq!(spans.len(), 2);
   let root = spans.iter().find(|span| span.name == "inner").unwrap();
   let child = spans
@@ -356,30 +364,33 @@ async fn conditional_export_nested_roots_have_independent_decisions() {
 
 #[tokio::test]
 async fn conditional_export_parent_cancellation_does_not_suppress_child_failure() {
-  let context = TestTraceContext::new("conditional-parent-cancelled");
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  let outer = crate::otel_span_on_error!("outer");
-  let inner = {
-    let _entered = outer.enter();
-    crate::otel_span_on_error!("inner")
-  };
-  let parent_context = outer.context();
-  drop(crate::otel::instrument_on_error(
-    pending::<Result<(), &str>>(),
-    outer,
-  ));
-  assert_eq!(context.exported_spans(), []);
-  crate::otel::instrument_on_error(
-    async {
-      drop(crate::otel_info_span_if_parent!("request"));
-      Err::<(), _>("child failed")
-    },
-    inner,
-  )
-  .await
-  .unwrap_err();
-  let spans = context.exported_spans();
+  let capture = TraceCapture::new();
+  let parent_context = capture
+    .scope(async {
+      let outer = crate::otel_span_on_error!("outer");
+      let inner = {
+        let _entered = outer.enter();
+        crate::otel_span_on_error!("inner")
+      };
+      let parent_context = outer.context();
+      drop(crate::otel::instrument_on_error(
+        pending::<Result<(), &str>>(),
+        outer,
+      ));
+      assert_eq!(capture.spans(), []);
+      crate::otel::instrument_on_error(
+        async {
+          drop(crate::otel_info_span_if_parent!("request"));
+          Err::<(), _>("child failed")
+        },
+        inner,
+      )
+      .await
+      .unwrap_err();
+      parent_context
+    })
+    .await;
+  let spans = capture.finish();
   assert_eq!(spans.len(), 2);
   let inner = spans.iter().find(|span| span.name == "inner").unwrap();
   assert_eq!(inner.status, Status::error("child failed"));
@@ -398,66 +409,71 @@ async fn conditional_export_parent_cancellation_does_not_suppress_child_failure(
 
 #[tokio::test]
 async fn conditional_export_cancellation_is_final_with_a_surviving_handle() {
-  let context = TestTraceContext::new("conditional-cancellation");
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  let root = crate::otel_span_on_error!("cancelled");
-  let mut request = Box::pin(crate::otel::instrument_on_error(
-    async {
-      let child = crate::otel_info_span_if_parent!("child");
-      drop(child);
-      pending::<Result<(), &str>>().await
-    },
-    root.clone(),
-  ));
-  assert!(
-    std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
-      .await
-      .is_pending()
-  );
-  drop(request);
-  root.retain();
-  drop(root);
-  assert_eq!(context.exported_spans(), []);
+  let capture = TraceCapture::new();
+  capture
+    .scope(async {
+      let root = crate::otel_span_on_error!("cancelled");
+      let mut request = Box::pin(crate::otel::instrument_on_error(
+        async {
+          let child = crate::otel_info_span_if_parent!("child");
+          drop(child);
+          pending::<Result<(), &str>>().await
+        },
+        root.clone(),
+      ));
+      assert!(
+        std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
+          .await
+          .is_pending()
+      );
+      drop(request);
+      root.retain();
+      drop(root);
+    })
+    .await;
+  assert_eq!(capture.finish(), []);
 }
 
-#[tokio::test]
-async fn conditional_export_unpolled_cancellation_is_final_with_a_surviving_handle() {
-  let context = TestTraceContext::new("conditional-unpolled-cancellation");
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  let root = crate::otel_span_on_error!("cancelled");
-  {
-    let _entered = root.enter();
-    let child = crate::otel_info_span_if_parent!("already_completed_child");
-    drop(child);
-  }
-  let request = crate::otel::instrument_on_error(ready(Err::<(), _>("not executed")), root.clone());
-  drop(request);
-  root.retain();
-  drop(root);
-  assert_eq!(context.exported_spans(), []);
+#[test]
+fn conditional_export_unpolled_cancellation_is_final_with_a_surviving_handle() {
+  let capture = TraceCapture::new();
+  capture.in_scope(|| {
+    let root = crate::otel_span_on_error!("cancelled");
+    {
+      let _entered = root.enter();
+      let child = crate::otel_info_span_if_parent!("already_completed_child");
+      drop(child);
+    }
+    let request =
+      crate::otel::instrument_on_error(ready(Err::<(), _>("not executed")), root.clone());
+    drop(request);
+    root.retain();
+    drop(root);
+  });
+  assert_eq!(capture.finish(), []);
 }
 
 #[tokio::test]
 async fn conditional_export_sampling_decides_only_at_completion() {
   for sampled in [false, true] {
     for failed in [false, true] {
-      let context = TestTraceContext::new("conditional-sampling");
-      let dispatch = context.dispatch();
-      let _guard = tracing::dispatcher::set_default(&dispatch);
-      let root = crate::otel_span_on_error!("operation");
-      let result = crate::otel::instrument_on_error_or_sample(
-        async {
-          drop(crate::otel_info_span_if_parent!("request"));
-          if failed { Err("final error") } else { Ok(42) }
-        },
-        root,
-        sampled,
-      )
-      .await;
-      assert_eq!(result, if failed { Err("final error") } else { Ok(42) });
-      let spans = context.exported_spans();
+      let capture = TraceCapture::new();
+      capture
+        .scope(async {
+          let root = crate::otel_span_on_error!("operation");
+          let result = crate::otel::instrument_on_error_or_sample(
+            async {
+              drop(crate::otel_info_span_if_parent!("request"));
+              if failed { Err("final error") } else { Ok(42) }
+            },
+            root,
+            sampled,
+          )
+          .await;
+          assert_eq!(result, if failed { Err("final error") } else { Ok(42) });
+        })
+        .await;
+      let spans = capture.finish();
       assert_eq!(spans.len(), if sampled || failed { 2 } else { 0 });
       if let Some(root) = spans.iter().find(|span| span.name == "operation") {
         assert_eq!(
@@ -477,32 +493,35 @@ async fn conditional_export_sampling_decides_only_at_completion() {
 #[tokio::test]
 async fn conditional_export_sampling_retains_valid_creation_parent_only() {
   for valid_parent in [false, true] {
-    let context = TestTraceContext::new("conditional-parent-sampling");
-    let dispatch = context.dispatch();
-    let _guard = tracing::dispatcher::set_default(&dispatch);
-    let parent = if valid_parent {
-      crate::otel_info_span!("parent")
-    } else {
-      tracing::info_span!("ordinary_parent")
-    };
-    let root = {
-      let _entered = parent.enter();
-      crate::otel_span_on_error!("operation")
-    };
-    assert_eq!(root.has_ambient_parent(), valid_parent);
-    let parent_context = parent.context();
-    drop(parent);
-    let result = crate::otel::instrument_on_error_or_sample(
-      async {
-        drop(crate::otel_info_span_if_parent!("request"));
-        Ok::<_, &str>(42)
-      },
-      root,
-      false,
-    )
-    .await;
-    assert_eq!(result, Ok(42));
-    let spans = context.exported_spans();
+    let capture = TraceCapture::new();
+    let parent_context = capture
+      .scope(async {
+        let parent = if valid_parent {
+          crate::otel_info_span!("parent")
+        } else {
+          tracing::info_span!("ordinary_parent")
+        };
+        let root = {
+          let _entered = parent.enter();
+          crate::otel_span_on_error!("operation")
+        };
+        assert_eq!(root.has_ambient_parent(), valid_parent);
+        let parent_context = parent.context();
+        drop(parent);
+        let result = crate::otel::instrument_on_error_or_sample(
+          async {
+            drop(crate::otel_info_span_if_parent!("request"));
+            Ok::<_, &str>(42)
+          },
+          root,
+          false,
+        )
+        .await;
+        assert_eq!(result, Ok(42));
+        parent_context
+      })
+      .await;
+    let spans = capture.finish();
     assert_eq!(spans.len(), if valid_parent { 3 } else { 0 });
     if valid_parent {
       let root = spans.iter().find(|span| span.name == "operation").unwrap();
@@ -523,33 +542,35 @@ async fn conditional_export_sampling_retains_valid_creation_parent_only() {
 #[tokio::test]
 async fn conditional_export_sampling_ignores_context_without_direct_otel_parent() {
   for ordinary_child in [false, true] {
-    let context = TestTraceContext::new("conditional-direct-parent");
-    let dispatch = context.dispatch();
-    let _guard = tracing::dispatcher::set_default(&dispatch);
-    let source = crate::otel_info_span!("context_source");
-    let source_context = source.context();
-    let parent = if ordinary_child {
-      tracing::info_span!("ordinary_child")
-    } else {
-      tracing::Span::none()
-    };
-    let root = {
-      let _ambient = source_context.attach();
-      let _source = ordinary_child.then(|| source.enter());
-      let _entered = parent.enter();
-      assert!(crate::current_trace_context_headers().is_some());
-      assert!(crate::otel_info_span_if_parent!("excluded").is_disabled());
-      crate::otel_span_on_error!("operation")
-    };
-    assert!(!root.has_ambient_parent());
-    assert_eq!(
-      crate::otel::instrument_on_error_or_sample(ready(Ok::<_, &str>(42)), root, false).await,
-      Ok(42)
-    );
-    drop(parent);
-    assert_eq!(context.exported_spans(), []);
-    drop(source);
-    let spans = context.exported_spans();
+    let capture = TraceCapture::new();
+    capture
+      .scope(async {
+        let source = crate::otel_info_span!("context_source");
+        let source_context = source.context();
+        let parent = if ordinary_child {
+          tracing::info_span!("ordinary_child")
+        } else {
+          tracing::Span::none()
+        };
+        let root = {
+          let _ambient = source_context.attach();
+          let _source = ordinary_child.then(|| source.enter());
+          let _entered = parent.enter();
+          assert!(crate::current_trace_context_headers().is_some());
+          assert!(crate::otel_info_span_if_parent!("excluded").is_disabled());
+          crate::otel_span_on_error!("operation")
+        };
+        assert!(!root.has_ambient_parent());
+        assert_eq!(
+          crate::otel::instrument_on_error_or_sample(ready(Ok::<_, &str>(42)), root, false).await,
+          Ok(42)
+        );
+        drop(parent);
+        assert_eq!(capture.spans(), []);
+        drop(source);
+      })
+      .await;
+    let spans = capture.finish();
     assert_eq!(spans.len(), 1);
     assert_eq!(spans[0].name, "context_source");
   }
@@ -557,38 +578,40 @@ async fn conditional_export_sampling_ignores_context_without_direct_otel_parent(
 
 #[tokio::test]
 async fn conditional_export_parent_does_not_retain_cancelled_or_error_only_success() {
-  let context = TestTraceContext::new("conditional-parent-cancellation");
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  let parent = crate::otel_info_span!("parent");
-  let (error_only, cancelled) = {
-    let _entered = parent.enter();
-    (
-      crate::otel_span_on_error!("error_only"),
-      crate::otel_span_on_error!("cancelled"),
-    )
-  };
-  crate::otel::instrument_on_error(ready(Ok::<_, &str>(())), error_only)
-    .await
-    .unwrap();
-  let mut request = Box::pin(crate::otel::instrument_on_error_or_sample(
-    async {
-      drop(crate::otel_info_span_if_parent!("request"));
-      pending::<Result<(), &str>>().await
-    },
-    cancelled.clone(),
-    false,
-  ));
-  assert!(
-    std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
-      .await
-      .is_pending()
-  );
-  drop(request);
-  cancelled.retain();
-  drop(cancelled);
-  drop(parent);
-  let spans = context.exported_spans();
+  let capture = TraceCapture::new();
+  capture
+    .scope(async {
+      let parent = crate::otel_info_span!("parent");
+      let (error_only, cancelled) = {
+        let _entered = parent.enter();
+        (
+          crate::otel_span_on_error!("error_only"),
+          crate::otel_span_on_error!("cancelled"),
+        )
+      };
+      crate::otel::instrument_on_error(ready(Ok::<_, &str>(())), error_only)
+        .await
+        .unwrap();
+      let mut request = Box::pin(crate::otel::instrument_on_error_or_sample(
+        async {
+          drop(crate::otel_info_span_if_parent!("request"));
+          pending::<Result<(), &str>>().await
+        },
+        cancelled.clone(),
+        false,
+      ));
+      assert!(
+        std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
+          .await
+          .is_pending()
+      );
+      drop(request);
+      cancelled.retain();
+      drop(cancelled);
+      drop(parent);
+    })
+    .await;
+  let spans = capture.finish();
   assert_eq!(spans.len(), 1);
   assert_eq!(spans[0].name, "parent");
 }
@@ -596,60 +619,64 @@ async fn conditional_export_parent_does_not_retain_cancelled_or_error_only_succe
 #[tokio::test]
 async fn conditional_export_sampled_cancellation_is_final() {
   for polled in [false, true] {
-    let context = TestTraceContext::new("conditional-sampled-cancellation");
-    let dispatch = context.dispatch();
-    let _guard = tracing::dispatcher::set_default(&dispatch);
-    let root = crate::otel_span_on_error!("cancelled");
-    let mut request = Box::pin(crate::otel::instrument_on_error_or_sample(
-      async {
-        drop(crate::otel_info_span_if_parent!("request"));
-        pending::<Result<(), &str>>().await
-      },
-      root.clone(),
-      true,
-    ));
-    if polled {
-      assert!(
-        std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
-          .await
-          .is_pending()
-      );
-    }
-    drop(request);
-    root.retain();
-    drop(root);
-    assert_eq!(context.exported_spans(), []);
+    let capture = TraceCapture::new();
+    capture
+      .scope(async {
+        let root = crate::otel_span_on_error!("cancelled");
+        let mut request = Box::pin(crate::otel::instrument_on_error_or_sample(
+          async {
+            drop(crate::otel_info_span_if_parent!("request"));
+            pending::<Result<(), &str>>().await
+          },
+          root.clone(),
+          true,
+        ));
+        if polled {
+          assert!(
+            std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
+              .await
+              .is_pending()
+          );
+        }
+        drop(request);
+        root.retain();
+        drop(root);
+      })
+      .await;
+    assert_eq!(capture.finish(), []);
   }
 }
 
 #[tokio::test]
 async fn conditional_export_only_retains_final_errors_with_any_attribute_budget() {
   for limit in [0, 1, 16] {
-    let context = TestTraceContext::with_max_attributes("conditional-export-test", limit);
-    let dispatch = context.dispatch();
-    let _guard = tracing::dispatcher::set_default(&dispatch);
-    let success = crate::otel_span_on_error!("success", first = 1, second = 2);
-    assert!(
-      crate::otel::instrument_on_error(ready(Ok::<_, &str>(())), success)
-        .await
-        .is_ok()
-    );
-    let failure = crate::otel_span_on_error!("failure", first = 1, second = 2);
-    // Entering creates the SDK span before the retention field is updated.
-    {
-      let _entered = failure.enter();
-    }
-    assert!(
-      crate::otel::instrument_on_error(ready(Err::<(), _>("final error")), failure)
-        .await
-        .is_err()
-    );
-    let ordinary = crate::otel_info_span!("ordinary");
-    {
-      let _entered = ordinary.enter();
-    }
-    drop(ordinary);
-    let spans = context.exported_spans();
+    let capture = TraceCapture::builder().max_attributes(limit).build();
+    capture
+      .scope(async {
+        let success = crate::otel_span_on_error!("success", first = 1, second = 2);
+        assert!(
+          crate::otel::instrument_on_error(ready(Ok::<_, &str>(())), success)
+            .await
+            .is_ok()
+        );
+        let failure = crate::otel_span_on_error!("failure", first = 1, second = 2);
+        // Entering creates the SDK span before the retention field is updated.
+        {
+          let _entered = failure.enter();
+        }
+        assert!(
+          crate::otel::instrument_on_error(ready(Err::<(), _>("final error")), failure)
+            .await
+            .is_err()
+        );
+        let ordinary = crate::otel_info_span!("ordinary");
+        {
+          let _entered = ordinary.enter();
+        }
+        drop(ordinary);
+      })
+      .await;
+    let spans = capture.finish();
     assert_eq!(spans.len(), 2);
     let failure = spans.iter().find(|span| span.name == "failure").unwrap();
     assert_eq!(failure.status, Status::error("final error"));
@@ -666,40 +693,42 @@ async fn conditional_export_only_retains_final_errors_with_any_attribute_budget(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn conditional_export_discards_cancelled_and_recovered_errors() {
-  let context = TestTraceContext::new("conditional-export-test");
-  let dispatch = context.dispatch();
-  let _guard = tracing::dispatcher::set_default(&dispatch);
-  let span = crate::otel_span_on_error!("cancelled");
-  let mut request = Box::pin(crate::otel::instrument_on_error(
-    async {
-      crate::otel_error!("intermediate error");
-      pending::<Result<(), &str>>().await
-    },
-    span,
-  ));
-  assert!(
-    std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
+  let capture = TraceCapture::new();
+  capture
+    .scope(async {
+      let span = crate::otel_span_on_error!("cancelled");
+      let mut request = Box::pin(crate::otel::instrument_on_error(
+        async {
+          crate::otel_error!("intermediate error");
+          pending::<Result<(), &str>>().await
+        },
+        span,
+      ));
+      assert!(
+        std::future::poll_fn(|task| std::task::Poll::Ready(request.as_mut().poll(task)))
+          .await
+          .is_pending()
+      );
+      drop(request);
+      let span = crate::otel_span_on_error!("recovered");
+      crate::otel::instrument_on_error(
+        async {
+          crate::otel_error!("retryable error");
+          tokio::task::yield_now().await;
+          Ok::<_, &str>(())
+        },
+        span,
+      )
       .await
-      .is_pending()
-  );
-  drop(request);
-  let span = crate::otel_span_on_error!("recovered");
-  crate::otel::instrument_on_error(
-    async {
-      crate::otel_error!("retryable error");
-      tokio::task::yield_now().await;
-      Ok::<_, &str>(())
-    },
-    span,
-  )
-  .await
-  .unwrap();
-  assert_eq!(context.exported_spans(), []);
+      .unwrap();
+    })
+    .await;
+  assert_eq!(capture.finish(), []);
 }
 
 #[test]
 fn conditional_export_survives_two_stage_logger_setup_and_preserves_parent() {
-  let (spans, ()) = with_two_phase_test_otel("conditional-export-test", async {
+  let spans = two_stage_otel(async {
     let parent = crate::otel_info_span!("parent");
     let failure = {
       let _entered = parent.enter();
