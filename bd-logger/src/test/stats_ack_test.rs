@@ -118,12 +118,25 @@ impl TestHooks for StatsCompletion {
 
 #[tokio::test(start_paused = true)]
 async fn delayed_stats_ack_retires_persisted_batch_before_reconnect() {
+  check_delayed_stats_ack(false, false, 1500).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn delayed_stats_ack_retires_persisted_batch_across_sleep_modes() {
+  for (initial_sleep_mode, active_sleep_mode) in
+    [(false, false), (true, true), (false, true), (true, false)]
+  {
+    check_delayed_stats_ack(initial_sleep_mode, active_sleep_mode, 15_000).await;
+  }
+}
+
+async fn check_delayed_stats_ack(initial_sleep_mode: bool, active_sleep_mode: bool, idle_ms: u32) {
   let directory = tempfile::tempdir_in(".").unwrap();
   seed_stale_snapshot(&directory);
   let runtime = ConfigLoader::new(directory.path());
   runtime
     .update_snapshot(make_simple_update(vec![
-      ("api.data_idle_timeout_interval_ms", ValueKind::Int(1500)),
+      ("api.data_idle_timeout_interval_ms", ValueKind::Int(idle_ms)),
       ("api.min_reconnect_interval_ms", ValueKind::Int(0)),
     ]))
     .await
@@ -132,6 +145,7 @@ async fn delayed_stats_ack_retires_persisted_batch_before_reconnect() {
 
   let (stream_tx, mut streams) = mpsc::channel(1);
   let mut params = create_minimal_init_params(directory.path());
+  params.start_in_sleep_mode = initial_sleep_mode;
   params.network = Box::new(Network(stream_tx));
   let completion = Arc::new(StatsCompletion::default());
   let (_flush_tick_tx, flush_ticker) = TestTicker::new();
@@ -146,6 +160,7 @@ async fn delayed_stats_ack_retires_persisted_batch_before_reconnect() {
   let Some(Request_type::Handshake(handshake)) = stream.next_request().await.request_type else {
     panic!("expected handshake");
   };
+  assert_eq!(handshake.sleep_mode, initial_sleep_mode);
   let stats = handshake.startup_stats_upload.as_ref().unwrap();
   assert_eq!(stats.upload_uuid, STALE_SNAPSHOT_FILE);
 
@@ -166,7 +181,11 @@ async fn delayed_stats_ack_retires_persisted_batch_before_reconnect() {
     stream.next_request().await.request_type,
     Some(Request_type::Ping(_))
   ));
-  tokio::time::advance(10.seconds().unsigned_abs()).await;
+  logger
+    .new_logger_handle()
+    .transition_sleep_mode(active_sleep_mode);
+  tokio::time::advance(30.seconds().unsigned_abs()).await;
+  assert!(!stream.events.is_closed());
   let stats_directory = directory.path().join(STATS_DIRECTORY);
   assert!(stats_directory.join(STALE_SNAPSHOT_FILE).exists());
 
@@ -190,6 +209,7 @@ async fn delayed_stats_ack_retires_persisted_batch_before_reconnect() {
   else {
     panic!("expected reconnect handshake");
   };
+  assert_eq!(handshake.sleep_mode, active_sleep_mode);
   assert!(handshake.startup_stats_upload.is_none());
   logger.shutdown(false);
   driver.await.unwrap().unwrap();
