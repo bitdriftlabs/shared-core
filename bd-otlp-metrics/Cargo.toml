@@ -11,8 +11,8 @@ doctest = false
 [dependencies]
 anyhow.workspace            = true
 async-trait.workspace       = true
-backoff                     = { version = "0.4.0", features = ["tokio"] }
 base64ct.workspace          = true
+bd-backoff.path             = "../bd-backoff"
 bd-workspace-hack.workspace = true
 bytes.workspace             = true
 futures.workspace           = true

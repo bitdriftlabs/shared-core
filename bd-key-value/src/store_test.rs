@@ -77,10 +77,10 @@ fn bincode_string_compatibility() {
 
   let value = "test-string".to_string();
   store.set_string(&STRING_TEST_KEY, &value);
-  let bincode_encoded = bincode::encode_to_vec(value, bincode::config::legacy()).unwrap();
+  let legacy_encoded = b"\x0b\0\0\0\0\0\0\0test-string";
 
   assert_eq!(
-    base64::engine::general_purpose::STANDARD.encode(&bincode_encoded),
+    base64::engine::general_purpose::STANDARD.encode(legacy_encoded),
     *storage_values.lock().get(STRING_TEST_KEY.key()).unwrap()
   );
 }
@@ -95,9 +95,9 @@ fn bincode_string_compatibility_long_string() {
   let value = "test-string".repeat(1000);
   store.set_string(&STRING_TEST_KEY, &value);
 
-  let bincode_encoded = bincode::encode_to_vec(value, bincode::config::legacy()).unwrap();
+  let legacy_encoded = [b"\xf8\x2a\0\0\0\0\0\0".as_slice(), value.as_bytes()].concat();
   assert_eq!(
-    base64::engine::general_purpose::STANDARD.encode(&bincode_encoded),
+    base64::engine::general_purpose::STANDARD.encode(&legacy_encoded),
     *storage_values.lock().get(STRING_TEST_KEY.key()).unwrap()
   );
 }

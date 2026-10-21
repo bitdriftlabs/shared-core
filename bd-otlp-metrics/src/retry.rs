@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use anyhow::bail;
-use backoff::backoff::Backoff;
+use bd_backoff::InfiniteBackoff;
 use futures::Future;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -14,6 +14,19 @@ use std::time::Duration;
 use tokio::time::{Instant, sleep_until};
 
 const DEFAULT_BUDGET: f64 = 0.1;
+
+//
+// RetryError
+//
+
+#[derive(Debug)]
+pub enum RetryError<E> {
+  Permanent(E),
+  Transient {
+    err: E,
+    retry_after: Option<Duration>,
+  },
+}
 
 //
 // RetryConfig
@@ -95,7 +108,7 @@ impl Retry {
   async fn maybe_retry(
     &self,
     retry_count: &mut u32,
-    backoff: &mut impl Backoff,
+    backoff: &mut (impl InfiniteBackoff + ?Sized),
     notify: &mut impl FnMut(),
     retry_after: Option<Duration>,
     deadline: Option<Instant>,
@@ -111,10 +124,7 @@ impl Retry {
       return false;
     }
 
-    let Some(backoff) = backoff.next_backoff() else {
-      log::debug!("no further retries available (backoff exhausted)");
-      return false;
-    };
+    let backoff = backoff.next_backoff().unsigned_abs();
 
     let delay = retry_after.map_or(backoff, |delay| delay.max(backoff));
     let Some(wakeup) = Instant::now().checked_add(delay) else {
@@ -158,9 +168,9 @@ impl Retry {
     self.config.budget.unwrap_or(DEFAULT_BUDGET)
   }
 
-  pub async fn retry_notify<T, E, FutureType: Future<Output = Result<T, backoff::Error<E>>>>(
+  pub async fn retry_notify<T, E, FutureType: Future<Output = Result<T, RetryError<E>>>>(
     &self,
-    backoff: impl Backoff,
+    backoff: &mut (impl InfiniteBackoff + ?Sized),
     operation: impl FnMut() -> FutureType,
     notify: impl FnMut(),
   ) -> Result<T, E> {
@@ -169,13 +179,9 @@ impl Retry {
       .await
   }
 
-  pub async fn retry_notify_until<
-    T,
-    E,
-    FutureType: Future<Output = Result<T, backoff::Error<E>>>,
-  >(
+  pub async fn retry_notify_until<T, E, FutureType: Future<Output = Result<T, RetryError<E>>>>(
     &self,
-    mut backoff: impl Backoff,
+    backoff: &mut (impl InfiniteBackoff + ?Sized),
     mut operation: impl FnMut() -> FutureType,
     mut notify: impl FnMut(),
     deadline: Option<Instant>,
@@ -192,12 +198,12 @@ impl Retry {
 
       match result {
         Ok(result) => break Ok(result),
-        Err(backoff::Error::Permanent(error)) => break Err(error),
-        Err(backoff::Error::Transient { err, retry_after }) => {
+        Err(RetryError::Permanent(error)) => break Err(error),
+        Err(RetryError::Transient { err, retry_after }) => {
           if !self
             .maybe_retry(
               &mut retry_count,
-              &mut backoff,
+              backoff,
               &mut notify,
               retry_after,
               deadline,

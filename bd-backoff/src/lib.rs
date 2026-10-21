@@ -17,6 +17,7 @@ pub mod backoff;
 pub mod clock;
 pub mod default;
 pub mod exponential;
+pub mod future;
 
 pub use crate::backoff::{FiniteBackoff, InfiniteBackoff};
 pub use crate::clock::{Clock, SystemClock};

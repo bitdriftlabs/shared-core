@@ -6,15 +6,15 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::http::{HttpRemoteWriteClient, HttpRemoteWriteError, HttpRetryPolicy};
-use crate::retry::Retry;
-use backoff::backoff::Backoff;
+use crate::retry::{Retry, RetryError};
+use bd_backoff::InfiniteBackoff;
 use bytes::Bytes;
 use http::HeaderMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::time::{Instant, timeout_at};
 
-pub type BackoffFactory = Arc<dyn Fn() -> Box<dyn Backoff + Send> + Send + Sync>;
+pub type BackoffFactory = Arc<dyn Fn() -> Box<dyn InfiniteBackoff + Send> + Send + Sync>;
 
 //
 // DeliveryObserver
@@ -109,11 +109,11 @@ impl DeliveryEngine {
     self
       .retry
       .retry_notify_until(
-        (self.backoff)(),
+        &mut *(self.backoff)(),
         || async {
           if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
             log::debug!("delivery deadline reached before request attempt");
-            return Err(backoff::Error::permanent(HttpRemoteWriteError::Timeout));
+            return Err(RetryError::Permanent(HttpRemoteWriteError::Timeout));
           }
           self.observer.request_sent(compressed_write_request.len());
           match self
@@ -124,12 +124,12 @@ impl DeliveryEngine {
             Ok(()) => Ok(()),
             Err(error) if self.policy.should_retry(&error) && !shutdown_pending => {
               let retry_after = self.policy.retry_after(&error, SystemTime::now());
-              Err(backoff::Error::Transient {
+              Err(RetryError::Transient {
                 err: error,
                 retry_after,
               })
             },
-            Err(error) => Err(backoff::Error::permanent(error)),
+            Err(error) => Err(RetryError::Permanent(error)),
           }
         },
         || self.observer.request_retry(),
