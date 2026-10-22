@@ -78,4 +78,4 @@ pub use otlp::{
   encode_otlp_metrics,
   encode_otlp_metrics_with_metadata,
 };
-pub use retry::{Retry, RetryConfig};
+pub use retry::{Retry, RetryConfig, RetryError};

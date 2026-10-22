@@ -23,7 +23,6 @@ tokio.workspace             = true
 [dev-dependencies]
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 bd-test-helpers-core.path   = "../bd-test-helpers-core"
-bincode.workspace           = true
 ctor.workspace              = true
 parking_lot.workspace       = true
 pretty_assertions.workspace = true

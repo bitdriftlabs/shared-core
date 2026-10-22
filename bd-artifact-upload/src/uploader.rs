@@ -11,6 +11,7 @@ mod tests;
 
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_api::{DataUpload, RuntimeBackoffPolicy};
+use bd_backoff::future::retry_notify;
 use bd_backoff::{ExponentialBackoff, InfiniteBackoff};
 use bd_bounded_buffer::SendCounters;
 use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, STATE_SNAPSHOT_ARTIFACT_TYPE_ID};
@@ -41,7 +42,7 @@ use bd_proto::protos::logging::payload::Data;
 use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload, attachment};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Counter as _;
-use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
+use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use mockall::automock;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
@@ -452,6 +453,8 @@ impl Client for UploadClient {
 enum Error {
   #[error("Task is shutting down")]
   Shutdown,
+  #[error("Upload attempt did not complete successfully")]
+  IncompleteUpload,
   #[error("Unhandled error: {0:#}")]
   Unhandled(anyhow::Error),
 }
@@ -1319,46 +1322,43 @@ impl Uploader {
     // wrong. We put no overall timeout as the device might be offline for a long time and we want
     // to give it whatever time it needs to perform the upload.
 
-    loop {
-      let upload_uuid = TrackedArtifactUpload::upload_uuid();
-      let (tracked, response) = TrackedArtifactUpload::new(
-        upload_uuid.clone(),
-        UploadArtifactRequest {
-          upload_uuid,
-          type_id: type_id.clone(),
-          contents: contents.clone(),
-          artifact_id: name.clone(),
-          time: timestamp.into_proto(),
-          session_id: session_id.clone(),
-          state_metadata: state_metadata.clone(),
-          feature_flags: feature_flags.clone(),
-          command_id: command_id.clone(),
-          content_type: content_type.clone(),
-          payload_encoding: payload_encoding.into(),
-          ..Default::default()
-        },
-      );
-
-      data_upload_tx
-        .send(DataUpload::ArtifactUpload(tracked))
-        .await
-        .map_err(|_| Error::Shutdown)?;
-
-      match response.await {
-        Ok(response) if response.success => {
-          log::debug!("upload of artifact: {name} succeeded");
-          break;
-        },
-        Ok(_) | Err(_) => {},
-      }
-
-      let delay = retry_policy.next_backoff();
-
-      log::debug!("upload of artifact: {name} failed, retrying in {delay:?}");
-      delay.sleep().await;
-    }
-
-    Ok(())
+    retry_notify(
+      || Some(retry_policy.next_backoff()),
+      || async {
+        let upload_uuid = TrackedArtifactUpload::upload_uuid();
+        let (tracked, response) = TrackedArtifactUpload::new(
+          upload_uuid.clone(),
+          UploadArtifactRequest {
+            upload_uuid,
+            type_id: type_id.clone(),
+            contents: contents.clone(),
+            artifact_id: name.clone(),
+            time: timestamp.into_proto(),
+            session_id: session_id.clone(),
+            state_metadata: state_metadata.clone(),
+            feature_flags: feature_flags.clone(),
+            command_id: command_id.clone(),
+            content_type: content_type.clone(),
+            payload_encoding: payload_encoding.into(),
+            ..Default::default()
+          },
+        );
+        data_upload_tx
+          .send(DataUpload::ArtifactUpload(tracked))
+          .await
+          .map_err(|_| Error::Shutdown)?;
+        match response.await {
+          Ok(response) if response.success => {
+            log::debug!("upload of artifact: {name} succeeded");
+            Ok(())
+          },
+          Ok(_) | Err(_) => Err(Error::IncompleteUpload),
+        }
+      },
+      |error| matches!(error, Error::IncompleteUpload),
+      |_, delay| log::debug!("upload of artifact: {name} failed, retrying in {delay:?}"),
+    )
+    .await
   }
 
   async fn perform_intent_negotiation(
@@ -1370,33 +1370,34 @@ impl Uploader {
     state_metadata: HashMap<String, Data>,
     mut retry_policy: ExponentialBackoff,
   ) -> Result<IntentDecision> {
-    loop {
-      let upload_uuid = TrackedArtifactIntent::upload_uuid();
-      let (tracked, response) = TrackedArtifactIntent::new(
-        upload_uuid.clone(),
-        UploadArtifactIntentRequest {
-          type_id: type_id.clone(),
-          artifact_id: id.clone(),
-          intent_uuid: upload_uuid.clone(),
-          session_id: (!session_id.is_empty()).then(|| session_id.clone()),
-          time: timestamp.into_proto(),
-          metadata: state_metadata.clone(),
-          ..Default::default()
-        },
-      );
-
-      data_upload_tx
-        .send(DataUpload::ArtifactUploadIntent(tracked))
-        .await
-        .map_err(|_| Error::Shutdown)?;
-
-      if let Ok(response) = response.await {
-        break Ok(response.decision);
-      }
-
-      let delay = retry_policy.next_backoff();
-      log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}");
-      delay.sleep().await;
-    }
+    retry_notify(
+      || Some(retry_policy.next_backoff()),
+      || async {
+        let upload_uuid = TrackedArtifactIntent::upload_uuid();
+        let (tracked, response) = TrackedArtifactIntent::new(
+          upload_uuid.clone(),
+          UploadArtifactIntentRequest {
+            type_id: type_id.clone(),
+            artifact_id: id.clone(),
+            intent_uuid: upload_uuid.clone(),
+            session_id: (!session_id.is_empty()).then(|| session_id.clone()),
+            time: timestamp.into_proto(),
+            metadata: state_metadata.clone(),
+            ..Default::default()
+          },
+        );
+        data_upload_tx
+          .send(DataUpload::ArtifactUploadIntent(tracked))
+          .await
+          .map_err(|_| Error::Shutdown)?;
+        response
+          .await
+          .map(|response| response.decision)
+          .map_err(|_| Error::IncompleteUpload)
+      },
+      |error| matches!(error, Error::IncompleteUpload),
+      |_, delay| log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}"),
+    )
+    .await
   }
 }

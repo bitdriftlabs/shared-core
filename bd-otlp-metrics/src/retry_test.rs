@@ -5,9 +5,10 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{Retry, RetryConfig};
-use backoff::ExponentialBackoffBuilder;
+use super::{Retry, RetryConfig, RetryError};
+use bd_backoff::{ExponentialBackoffBuilder, Finite, SystemClock};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use time::Duration;
 
 #[test]
 fn rejects_invalid_budget() {
@@ -39,14 +40,16 @@ async fn stops_at_max_retries() {
 
   let result = retry
     .retry_notify(
-      ExponentialBackoffBuilder::new()
-        .with_initial_interval(std::time::Duration::ZERO)
-        .with_max_interval(std::time::Duration::ZERO)
-        .with_max_elapsed_time(None)
+      &mut ExponentialBackoffBuilder::<SystemClock, Finite>::new_infinite()
+        .with_initial_interval(Duration::ZERO)
+        .with_max_interval(Duration::ZERO)
         .build(),
       || async {
         attempts.fetch_add(1, Ordering::Relaxed);
-        Err::<(), _>(backoff::Error::transient("failed"))
+        Err::<(), _>(RetryError::Transient {
+          err: "failed",
+          retry_after: None,
+        })
       },
       || {
         notifications.fetch_add(1, Ordering::Relaxed);

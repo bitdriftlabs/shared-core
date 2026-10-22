@@ -16,7 +16,7 @@ use super::{
   RetryConfig,
 };
 use async_trait::async_trait;
-use backoff::backoff::{Constant, Zero};
+use bd_backoff::InfiniteBackoff;
 use bytes::Bytes;
 use futures::future::pending;
 use futures::poll;
@@ -26,6 +26,28 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::time::{Instant, advance, timeout};
+
+struct Zero {}
+
+impl InfiniteBackoff for Zero {
+  fn next_backoff(&mut self) -> time::Duration {
+    time::Duration::ZERO
+  }
+}
+
+struct Constant(Duration);
+
+impl Constant {
+  fn new(interval: Duration) -> Self {
+    Self(interval)
+  }
+}
+
+impl InfiniteBackoff for Constant {
+  fn next_backoff(&mut self) -> time::Duration {
+    self.0.try_into().unwrap()
+  }
+}
 
 #[derive(Default)]
 struct TestObserver {

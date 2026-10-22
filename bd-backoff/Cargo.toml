@@ -12,3 +12,7 @@ doctest = false
 bd-workspace-hack.workspace = true
 rand.workspace              = true
 time.workspace              = true
+tokio                       = { workspace = true, features = ["time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
