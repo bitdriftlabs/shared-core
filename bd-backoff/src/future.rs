@@ -29,9 +29,7 @@ where
     should_retry,
     notify,
     |_, delay| async move {
-      if !delay.is_zero() {
-        tokio::time::sleep(delay).await;
-      }
+      tokio::time::sleep(delay).await;
       true
     },
   )

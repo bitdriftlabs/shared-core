@@ -158,3 +158,34 @@ async fn dropping_sleeping_retry_prevents_another_attempt() {
   tokio::time::advance(StdDuration::from_secs(10)).await;
   assert_eq!(attempts.get(), 1);
 }
+
+#[tokio::test(start_paused = true)]
+async fn zero_delay_retries_yield_before_exhausting_ready_attempts() {
+  const MAX_ATTEMPTS: usize = 1024;
+
+  let attempts = Cell::new(0);
+  let mut retry = Box::pin(retry_notify(
+    || Some(Duration::ZERO),
+    || {
+      attempts.set(attempts.get() + 1);
+      ready(
+        if attempts.get() < MAX_ATTEMPTS {
+          Err("transient failure")
+        } else {
+          Ok(())
+        },
+      )
+    },
+    |_| true,
+    |_, _| {},
+  ));
+  poll_fn(|context| {
+    assert!(retry.as_mut().poll(context).is_pending());
+    Poll::Ready(())
+  })
+  .await;
+
+  assert_ne!(attempts.get(), MAX_ATTEMPTS);
+  assert_eq!(retry.await, Ok(()));
+  assert_eq!(attempts.get(), MAX_ATTEMPTS);
+}
