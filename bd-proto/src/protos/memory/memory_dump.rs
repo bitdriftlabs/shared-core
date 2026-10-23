@@ -1650,6 +1650,8 @@ pub struct Heap {
     // message fields
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Heap.truncated)
     pub truncated: bool,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Heap.skipped_blocks)
+    pub skipped_blocks: u64,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Heap.total)
     pub total: ::protobuf::MessageField<BlockCount>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Heap.largest_block_bytes)
@@ -1666,10 +1668,6 @@ pub struct Heap {
     pub unclassified: ::protobuf::MessageField<Unclassified>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Heap.owners)
     pub owners: ::protobuf::MessageField<Owners>,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Heap.dropped)
-    pub dropped: ::protobuf::MessageField<Dropped>,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Heap.timings)
-    pub timings: ::protobuf::MessageField<HeapTimings>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Heap.by_type)
     pub by_type: ::std::vec::Vec<TypeRow>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Heap.zones)
@@ -1691,12 +1689,17 @@ impl Heap {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(13);
+        let mut fields = ::std::vec::Vec::with_capacity(12);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "truncated",
             |m: &Heap| { &m.truncated },
             |m: &mut Heap| { &mut m.truncated },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "skipped_blocks",
+            |m: &Heap| { &m.skipped_blocks },
+            |m: &mut Heap| { &mut m.skipped_blocks },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, BlockCount>(
             "total",
@@ -1738,16 +1741,6 @@ impl Heap {
             |m: &Heap| { &m.owners },
             |m: &mut Heap| { &mut m.owners },
         ));
-        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, Dropped>(
-            "dropped",
-            |m: &Heap| { &m.dropped },
-            |m: &mut Heap| { &mut m.dropped },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, HeapTimings>(
-            "timings",
-            |m: &Heap| { &m.timings },
-            |m: &mut Heap| { &mut m.timings },
-        ));
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "by_type",
             |m: &Heap| { &m.by_type },
@@ -1779,40 +1772,37 @@ impl ::protobuf::Message for Heap {
                 8 => {
                     self.truncated = is.read_bool()?;
                 },
-                18 => {
+                16 => {
+                    self.skipped_blocks = is.read_uint64()?;
+                },
+                26 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.total)?;
                 },
-                24 => {
+                32 => {
                     self.largest_block_bytes = is.read_uint64()?;
                 },
-                34 => {
+                42 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.named)?;
                 },
-                42 => {
+                50 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.swift_boxes)?;
                 },
-                50 => {
+                58 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.images)?;
                 },
-                58 => {
+                66 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.reporter)?;
                 },
-                66 => {
+                74 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.unclassified)?;
                 },
-                74 => {
+                82 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.owners)?;
                 },
-                82 => {
-                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.dropped)?;
-                },
                 90 => {
-                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.timings)?;
-                },
-                98 => {
                     self.by_type.push(is.read_message()?);
                 },
-                106 => {
+                98 => {
                     self.zones.push(is.read_message()?);
                 },
                 tag => {
@@ -1830,12 +1820,15 @@ impl ::protobuf::Message for Heap {
         if self.truncated != false {
             my_size += 1 + 1;
         }
+        if self.skipped_blocks != 0 {
+            my_size += ::protobuf::rt::uint64_size(2, self.skipped_blocks);
+        }
         if let Some(v) = self.total.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
         if self.largest_block_bytes != 0 {
-            my_size += ::protobuf::rt::uint64_size(3, self.largest_block_bytes);
+            my_size += ::protobuf::rt::uint64_size(4, self.largest_block_bytes);
         }
         if let Some(v) = self.named.as_ref() {
             let len = v.compute_size();
@@ -1858,14 +1851,6 @@ impl ::protobuf::Message for Heap {
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
         if let Some(v) = self.owners.as_ref() {
-            let len = v.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
-        if let Some(v) = self.dropped.as_ref() {
-            let len = v.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
-        if let Some(v) = self.timings.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
@@ -1886,41 +1871,38 @@ impl ::protobuf::Message for Heap {
         if self.truncated != false {
             os.write_bool(1, self.truncated)?;
         }
+        if self.skipped_blocks != 0 {
+            os.write_uint64(2, self.skipped_blocks)?;
+        }
         if let Some(v) = self.total.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
         }
         if self.largest_block_bytes != 0 {
-            os.write_uint64(3, self.largest_block_bytes)?;
+            os.write_uint64(4, self.largest_block_bytes)?;
         }
         if let Some(v) = self.named.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
-        }
-        if let Some(v) = self.swift_boxes.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
         }
-        if let Some(v) = self.images.as_ref() {
+        if let Some(v) = self.swift_boxes.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
         }
-        if let Some(v) = self.reporter.as_ref() {
+        if let Some(v) = self.images.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
         }
-        if let Some(v) = self.unclassified.as_ref() {
+        if let Some(v) = self.reporter.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(8, v, os)?;
         }
-        if let Some(v) = self.owners.as_ref() {
+        if let Some(v) = self.unclassified.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
         }
-        if let Some(v) = self.dropped.as_ref() {
+        if let Some(v) = self.owners.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(10, v, os)?;
         }
-        if let Some(v) = self.timings.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(11, v, os)?;
-        }
         for v in &self.by_type {
-            ::protobuf::rt::write_message_field_with_cached_size(12, v, os)?;
+            ::protobuf::rt::write_message_field_with_cached_size(11, v, os)?;
         };
         for v in &self.zones {
-            ::protobuf::rt::write_message_field_with_cached_size(13, v, os)?;
+            ::protobuf::rt::write_message_field_with_cached_size(12, v, os)?;
         };
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -1940,6 +1922,7 @@ impl ::protobuf::Message for Heap {
 
     fn clear(&mut self) {
         self.truncated = false;
+        self.skipped_blocks = 0;
         self.total.clear();
         self.largest_block_bytes = 0;
         self.named.clear();
@@ -1948,8 +1931,6 @@ impl ::protobuf::Message for Heap {
         self.reporter.clear();
         self.unclassified.clear();
         self.owners.clear();
-        self.dropped.clear();
-        self.timings.clear();
         self.by_type.clear();
         self.zones.clear();
         self.special_fields.clear();
@@ -1958,6 +1939,7 @@ impl ::protobuf::Message for Heap {
     fn default_instance() -> &'static Heap {
         static instance: Heap = Heap {
             truncated: false,
+            skipped_blocks: 0,
             total: ::protobuf::MessageField::none(),
             largest_block_bytes: 0,
             named: ::protobuf::MessageField::none(),
@@ -1966,8 +1948,6 @@ impl ::protobuf::Message for Heap {
             reporter: ::protobuf::MessageField::none(),
             unclassified: ::protobuf::MessageField::none(),
             owners: ::protobuf::MessageField::none(),
-            dropped: ::protobuf::MessageField::none(),
-            timings: ::protobuf::MessageField::none(),
             by_type: ::std::vec::Vec::new(),
             zones: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
@@ -2485,340 +2465,6 @@ impl ::protobuf::reflect::ProtobufValue for Owners {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
-// @@protoc_insertion_point(message:bitdrift_public.protobuf.memory.v1.Dropped)
-#[derive(PartialEq,Clone,Default,Debug)]
-pub struct Dropped {
-    // message fields
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Dropped.skipped_blocks)
-    pub skipped_blocks: u64,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Dropped.candidate_overflow)
-    pub candidate_overflow: u64,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.Dropped.unreadable_candidates)
-    pub unreadable_candidates: u64,
-    // special fields
-    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.memory.v1.Dropped.special_fields)
-    pub special_fields: ::protobuf::SpecialFields,
-}
-
-impl<'a> ::std::default::Default for &'a Dropped {
-    fn default() -> &'a Dropped {
-        <Dropped as ::protobuf::Message>::default_instance()
-    }
-}
-
-impl Dropped {
-    pub fn new() -> Dropped {
-        ::std::default::Default::default()
-    }
-
-    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "skipped_blocks",
-            |m: &Dropped| { &m.skipped_blocks },
-            |m: &mut Dropped| { &mut m.skipped_blocks },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "candidate_overflow",
-            |m: &Dropped| { &m.candidate_overflow },
-            |m: &mut Dropped| { &mut m.candidate_overflow },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "unreadable_candidates",
-            |m: &Dropped| { &m.unreadable_candidates },
-            |m: &mut Dropped| { &mut m.unreadable_candidates },
-        ));
-        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Dropped>(
-            "Dropped",
-            fields,
-            oneofs,
-        )
-    }
-}
-
-impl ::protobuf::Message for Dropped {
-    const NAME: &'static str = "Dropped";
-
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-        while let Some(tag) = is.read_raw_tag_or_eof()? {
-            match tag {
-                8 => {
-                    self.skipped_blocks = is.read_uint64()?;
-                },
-                16 => {
-                    self.candidate_overflow = is.read_uint64()?;
-                },
-                24 => {
-                    self.unreadable_candidates = is.read_uint64()?;
-                },
-                tag => {
-                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u64 {
-        let mut my_size = 0;
-        if self.skipped_blocks != 0 {
-            my_size += ::protobuf::rt::uint64_size(1, self.skipped_blocks);
-        }
-        if self.candidate_overflow != 0 {
-            my_size += ::protobuf::rt::uint64_size(2, self.candidate_overflow);
-        }
-        if self.unreadable_candidates != 0 {
-            my_size += ::protobuf::rt::uint64_size(3, self.unreadable_candidates);
-        }
-        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-        self.special_fields.cached_size().set(my_size as u32);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-        if self.skipped_blocks != 0 {
-            os.write_uint64(1, self.skipped_blocks)?;
-        }
-        if self.candidate_overflow != 0 {
-            os.write_uint64(2, self.candidate_overflow)?;
-        }
-        if self.unreadable_candidates != 0 {
-            os.write_uint64(3, self.unreadable_candidates)?;
-        }
-        os.write_unknown_fields(self.special_fields.unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn special_fields(&self) -> &::protobuf::SpecialFields {
-        &self.special_fields
-    }
-
-    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-        &mut self.special_fields
-    }
-
-    fn new() -> Dropped {
-        Dropped::new()
-    }
-
-    fn clear(&mut self) {
-        self.skipped_blocks = 0;
-        self.candidate_overflow = 0;
-        self.unreadable_candidates = 0;
-        self.special_fields.clear();
-    }
-
-    fn default_instance() -> &'static Dropped {
-        static instance: Dropped = Dropped {
-            skipped_blocks: 0,
-            candidate_overflow: 0,
-            unreadable_candidates: 0,
-            special_fields: ::protobuf::SpecialFields::new(),
-        };
-        &instance
-    }
-}
-
-impl ::protobuf::MessageFull for Dropped {
-    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-        descriptor.get(|| file_descriptor().message_by_package_relative_name("Dropped").unwrap()).clone()
-    }
-}
-
-impl ::std::fmt::Display for Dropped {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for Dropped {
-    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-}
-
-// @@protoc_insertion_point(message:bitdrift_public.protobuf.memory.v1.HeapTimings)
-#[derive(PartialEq,Clone,Default,Debug)]
-pub struct HeapTimings {
-    // message fields
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.HeapTimings.lock_held_ms)
-    pub lock_held_ms: f64,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.HeapTimings.lock_wait_ms)
-    pub lock_wait_ms: f64,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.HeapTimings.resolve_ms)
-    pub resolve_ms: f64,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.HeapTimings.owners_ms)
-    pub owners_ms: f64,
-    // special fields
-    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.memory.v1.HeapTimings.special_fields)
-    pub special_fields: ::protobuf::SpecialFields,
-}
-
-impl<'a> ::std::default::Default for &'a HeapTimings {
-    fn default() -> &'a HeapTimings {
-        <HeapTimings as ::protobuf::Message>::default_instance()
-    }
-}
-
-impl HeapTimings {
-    pub fn new() -> HeapTimings {
-        ::std::default::Default::default()
-    }
-
-    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "lock_held_ms",
-            |m: &HeapTimings| { &m.lock_held_ms },
-            |m: &mut HeapTimings| { &mut m.lock_held_ms },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "lock_wait_ms",
-            |m: &HeapTimings| { &m.lock_wait_ms },
-            |m: &mut HeapTimings| { &mut m.lock_wait_ms },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "resolve_ms",
-            |m: &HeapTimings| { &m.resolve_ms },
-            |m: &mut HeapTimings| { &mut m.resolve_ms },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "owners_ms",
-            |m: &HeapTimings| { &m.owners_ms },
-            |m: &mut HeapTimings| { &mut m.owners_ms },
-        ));
-        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HeapTimings>(
-            "HeapTimings",
-            fields,
-            oneofs,
-        )
-    }
-}
-
-impl ::protobuf::Message for HeapTimings {
-    const NAME: &'static str = "HeapTimings";
-
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-        while let Some(tag) = is.read_raw_tag_or_eof()? {
-            match tag {
-                9 => {
-                    self.lock_held_ms = is.read_double()?;
-                },
-                17 => {
-                    self.lock_wait_ms = is.read_double()?;
-                },
-                25 => {
-                    self.resolve_ms = is.read_double()?;
-                },
-                33 => {
-                    self.owners_ms = is.read_double()?;
-                },
-                tag => {
-                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u64 {
-        let mut my_size = 0;
-        if self.lock_held_ms != 0. {
-            my_size += 1 + 8;
-        }
-        if self.lock_wait_ms != 0. {
-            my_size += 1 + 8;
-        }
-        if self.resolve_ms != 0. {
-            my_size += 1 + 8;
-        }
-        if self.owners_ms != 0. {
-            my_size += 1 + 8;
-        }
-        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-        self.special_fields.cached_size().set(my_size as u32);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-        if self.lock_held_ms != 0. {
-            os.write_double(1, self.lock_held_ms)?;
-        }
-        if self.lock_wait_ms != 0. {
-            os.write_double(2, self.lock_wait_ms)?;
-        }
-        if self.resolve_ms != 0. {
-            os.write_double(3, self.resolve_ms)?;
-        }
-        if self.owners_ms != 0. {
-            os.write_double(4, self.owners_ms)?;
-        }
-        os.write_unknown_fields(self.special_fields.unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn special_fields(&self) -> &::protobuf::SpecialFields {
-        &self.special_fields
-    }
-
-    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-        &mut self.special_fields
-    }
-
-    fn new() -> HeapTimings {
-        HeapTimings::new()
-    }
-
-    fn clear(&mut self) {
-        self.lock_held_ms = 0.;
-        self.lock_wait_ms = 0.;
-        self.resolve_ms = 0.;
-        self.owners_ms = 0.;
-        self.special_fields.clear();
-    }
-
-    fn default_instance() -> &'static HeapTimings {
-        static instance: HeapTimings = HeapTimings {
-            lock_held_ms: 0.,
-            lock_wait_ms: 0.,
-            resolve_ms: 0.,
-            owners_ms: 0.,
-            special_fields: ::protobuf::SpecialFields::new(),
-        };
-        &instance
-    }
-}
-
-impl ::protobuf::MessageFull for HeapTimings {
-    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-        descriptor.get(|| file_descriptor().message_by_package_relative_name("HeapTimings").unwrap()).clone()
-    }
-}
-
-impl ::std::fmt::Display for HeapTimings {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for HeapTimings {
-    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-}
-
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.memory.v1.TypeRow)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct TypeRow {
@@ -2896,7 +2542,7 @@ impl TypeRow {
         }
     }
 
-    // .bitdrift_public.protobuf.memory.v1.ImageAddress address = 5;
+    // .bitdrift_public.protobuf.memory.v1.ImageAddress address = 2;
 
     pub fn address(&self) -> &ImageAddress {
         match self.identity {
@@ -2998,16 +2644,16 @@ impl ::protobuf::Message for TypeRow {
                 10 => {
                     self.identity = ::std::option::Option::Some(type_row::Identity::Name(is.read_string()?));
                 },
-                42 => {
+                18 => {
                     self.identity = ::std::option::Option::Some(type_row::Identity::Address(is.read_message()?));
                 },
-                16 => {
+                24 => {
                     self.kind = is.read_enum_or_unknown()?;
                 },
-                24 => {
+                32 => {
                     self.blocks = is.read_uint64()?;
                 },
-                32 => {
+                40 => {
                     self.bytes = is.read_uint64()?;
                 },
                 tag => {
@@ -3023,13 +2669,13 @@ impl ::protobuf::Message for TypeRow {
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
         if self.kind != ::protobuf::EnumOrUnknown::new(type_row::Kind::UNSPECIFIED) {
-            my_size += ::protobuf::rt::int32_size(2, self.kind.value());
+            my_size += ::protobuf::rt::int32_size(3, self.kind.value());
         }
         if self.blocks != 0 {
-            my_size += ::protobuf::rt::uint64_size(3, self.blocks);
+            my_size += ::protobuf::rt::uint64_size(4, self.blocks);
         }
         if self.bytes != 0 {
-            my_size += ::protobuf::rt::uint64_size(4, self.bytes);
+            my_size += ::protobuf::rt::uint64_size(5, self.bytes);
         }
         if let ::std::option::Option::Some(ref v) = self.identity {
             match v {
@@ -3049,13 +2695,13 @@ impl ::protobuf::Message for TypeRow {
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
         if self.kind != ::protobuf::EnumOrUnknown::new(type_row::Kind::UNSPECIFIED) {
-            os.write_enum(2, ::protobuf::EnumOrUnknown::value(&self.kind))?;
+            os.write_enum(3, ::protobuf::EnumOrUnknown::value(&self.kind))?;
         }
         if self.blocks != 0 {
-            os.write_uint64(3, self.blocks)?;
+            os.write_uint64(4, self.blocks)?;
         }
         if self.bytes != 0 {
-            os.write_uint64(4, self.bytes)?;
+            os.write_uint64(5, self.bytes)?;
         }
         if let ::std::option::Option::Some(ref v) = self.identity {
             match v {
@@ -3063,7 +2709,7 @@ impl ::protobuf::Message for TypeRow {
                     os.write_string(1, v)?;
                 },
                 &type_row::Identity::Address(ref v) => {
-                    ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
                 },
             };
         }
@@ -3226,8 +2872,6 @@ pub struct ZoneRow {
     pub blocks: u64,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.ZoneRow.bytes)
     pub bytes: u64,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.ZoneRow.lock_held_ms)
-    pub lock_held_ms: f64,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.ZoneRow.enumerated)
     pub enumerated: bool,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.ZoneRow.seen)
@@ -3253,7 +2897,7 @@ impl ZoneRow {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(8);
+        let mut fields = ::std::vec::Vec::with_capacity(7);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "name",
@@ -3269,11 +2913,6 @@ impl ZoneRow {
             "bytes",
             |m: &ZoneRow| { &m.bytes },
             |m: &mut ZoneRow| { &mut m.bytes },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "lock_held_ms",
-            |m: &ZoneRow| { &m.lock_held_ms },
-            |m: &mut ZoneRow| { &mut m.lock_held_ms },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "enumerated",
@@ -3322,19 +2961,16 @@ impl ::protobuf::Message for ZoneRow {
                 24 => {
                     self.bytes = is.read_uint64()?;
                 },
-                33 => {
-                    self.lock_held_ms = is.read_double()?;
-                },
-                40 => {
+                32 => {
                     self.enumerated = is.read_bool()?;
                 },
-                48 => {
+                40 => {
                     self.seen = is.read_bool()?;
                 },
-                56 => {
+                48 => {
                     self.skipped = is.read_bool()?;
                 },
-                64 => {
+                56 => {
                     self.truncated = is.read_bool()?;
                 },
                 tag => {
@@ -3357,9 +2993,6 @@ impl ::protobuf::Message for ZoneRow {
         }
         if self.bytes != 0 {
             my_size += ::protobuf::rt::uint64_size(3, self.bytes);
-        }
-        if self.lock_held_ms != 0. {
-            my_size += 1 + 8;
         }
         if self.enumerated != false {
             my_size += 1 + 1;
@@ -3388,20 +3021,17 @@ impl ::protobuf::Message for ZoneRow {
         if self.bytes != 0 {
             os.write_uint64(3, self.bytes)?;
         }
-        if self.lock_held_ms != 0. {
-            os.write_double(4, self.lock_held_ms)?;
-        }
         if self.enumerated != false {
-            os.write_bool(5, self.enumerated)?;
+            os.write_bool(4, self.enumerated)?;
         }
         if self.seen != false {
-            os.write_bool(6, self.seen)?;
+            os.write_bool(5, self.seen)?;
         }
         if self.skipped != false {
-            os.write_bool(7, self.skipped)?;
+            os.write_bool(6, self.skipped)?;
         }
         if self.truncated != false {
-            os.write_bool(8, self.truncated)?;
+            os.write_bool(7, self.truncated)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -3423,7 +3053,6 @@ impl ::protobuf::Message for ZoneRow {
         self.name.clear();
         self.blocks = 0;
         self.bytes = 0;
-        self.lock_held_ms = 0.;
         self.enumerated = false;
         self.seen = false;
         self.skipped = false;
@@ -3436,7 +3065,6 @@ impl ::protobuf::Message for ZoneRow {
             name: ::std::string::String::new(),
             blocks: 0,
             bytes: 0,
-            lock_held_ms: 0.,
             enumerated: false,
             seen: false,
             skipped: false,
@@ -3509,53 +3137,44 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01(\x04R\ncompressed\x12!\n\x0cvirtual_size\x18\x07\x20\x01(\x04R\x0bv\
     irtualSize\x12\x18\n\x07charged\x18\x08\x20\x01(\x04R\x07charged\"@\n\
     \x0eImageChargeRow\x12\x14\n\x05image\x18\x01\x20\x01(\rR\x05image\x12\
-    \x18\n\x07charged\x18\x02\x20\x01(\x04R\x07charged\"\xfa\x06\n\x04Heap\
-    \x12\x1c\n\ttruncated\x18\x01\x20\x01(\x08R\ttruncated\x12D\n\x05total\
-    \x18\x02\x20\x01(\x0b2..bitdrift_public.protobuf.memory.v1.BlockCountR\
-    \x05total\x12.\n\x13largest_block_bytes\x18\x03\x20\x01(\x04R\x11largest\
-    BlockBytes\x12D\n\x05named\x18\x04\x20\x01(\x0b2..bitdrift_public.protob\
-    uf.memory.v1.BlockCountR\x05named\x12O\n\x0bswift_boxes\x18\x05\x20\x01(\
-    \x0b2..bitdrift_public.protobuf.memory.v1.BlockCountR\nswiftBoxes\x12F\n\
-    \x06images\x18\x06\x20\x01(\x0b2..bitdrift_public.protobuf.memory.v1.Blo\
-    ckCountR\x06images\x12J\n\x08reporter\x18\x07\x20\x01(\x0b2..bitdrift_pu\
-    blic.protobuf.memory.v1.BlockCountR\x08reporter\x12T\n\x0cunclassified\
-    \x18\x08\x20\x01(\x0b20.bitdrift_public.protobuf.memory.v1.UnclassifiedR\
-    \x0cunclassified\x12B\n\x06owners\x18\t\x20\x01(\x0b2*.bitdrift_public.p\
-    rotobuf.memory.v1.OwnersR\x06owners\x12E\n\x07dropped\x18\n\x20\x01(\x0b\
-    2+.bitdrift_public.protobuf.memory.v1.DroppedR\x07dropped\x12I\n\x07timi\
-    ngs\x18\x0b\x20\x01(\x0b2/.bitdrift_public.protobuf.memory.v1.HeapTiming\
-    sR\x07timings\x12D\n\x07by_type\x18\x0c\x20\x03(\x0b2+.bitdrift_public.p\
-    rotobuf.memory.v1.TypeRowR\x06byType\x12A\n\x05zones\x18\r\x20\x03(\x0b2\
-    +.bitdrift_public.protobuf.memory.v1.ZoneRowR\x05zones\":\n\nBlockCount\
-    \x12\x16\n\x06blocks\x18\x01\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\
-    \x18\x02\x20\x01(\x04R\x05bytes\"Z\n\x0cUnclassified\x12\x16\n\x06blocks\
-    \x18\x01\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\x18\x02\x20\x01(\x04\
-    R\x05bytes\x12\x1c\n\thistogram\x18\x03\x20\x03(\x04R\thistogram\"\xc8\
-    \x01\n\x06Owners\x12\x16\n\x06blocks\x18\x01\x20\x01(\x04R\x06blocks\x12\
-    \x14\n\x05bytes\x18\x02\x20\x01(\x04R\x05bytes\x12#\n\rshared_blocks\x18\
-    \x03\x20\x01(\x04R\x0csharedBlocks\x12%\n\x0etable_overflow\x18\x04\x20\
-    \x01(\x04R\rtableOverflow\x12D\n\x07by_type\x18\x05\x20\x03(\x0b2+.bitdr\
-    ift_public.protobuf.memory.v1.TypeRowR\x06byType\"\x94\x01\n\x07Dropped\
-    \x12%\n\x0eskipped_blocks\x18\x01\x20\x01(\x04R\rskippedBlocks\x12-\n\
-    \x12candidate_overflow\x18\x02\x20\x01(\x04R\x11candidateOverflow\x123\n\
-    \x15unreadable_candidates\x18\x03\x20\x01(\x04R\x14unreadableCandidates\
-    \"\x8d\x01\n\x0bHeapTimings\x12\x20\n\x0clock_held_ms\x18\x01\x20\x01(\
-    \x01R\nlockHeldMs\x12\x20\n\x0clock_wait_ms\x18\x02\x20\x01(\x01R\nlockW\
-    aitMs\x12\x1d\n\nresolve_ms\x18\x03\x20\x01(\x01R\tresolveMs\x12\x1b\n\t\
-    owners_ms\x18\x04\x20\x01(\x01R\x08ownersMs\"\x9a\x02\n\x07TypeRow\x12\
-    \x14\n\x04name\x18\x01\x20\x01(\tH\0R\x04name\x12L\n\x07address\x18\x05\
-    \x20\x01(\x0b20.bitdrift_public.protobuf.memory.v1.ImageAddressH\0R\x07a\
-    ddress\x12D\n\x04kind\x18\x02\x20\x01(\x0e20.bitdrift_public.protobuf.me\
-    mory.v1.TypeRow.KindR\x04kind\x12\x16\n\x06blocks\x18\x03\x20\x01(\x04R\
-    \x06blocks\x12\x14\n\x05bytes\x18\x04\x20\x01(\x04R\x05bytes\"+\n\x04Kin\
-    d\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\t\n\x05CLASS\x10\x01\x12\x07\n\x03C\
-    XX\x10\x02B\n\n\x08identity\"\xd9\x01\n\x07ZoneRow\x12\x12\n\x04name\x18\
-    \x01\x20\x01(\tR\x04name\x12\x16\n\x06blocks\x18\x02\x20\x01(\x04R\x06bl\
-    ocks\x12\x14\n\x05bytes\x18\x03\x20\x01(\x04R\x05bytes\x12\x20\n\x0clock\
-    _held_ms\x18\x04\x20\x01(\x01R\nlockHeldMs\x12\x1e\n\nenumerated\x18\x05\
-    \x20\x01(\x08R\nenumerated\x12\x12\n\x04seen\x18\x06\x20\x01(\x08R\x04se\
-    en\x12\x18\n\x07skipped\x18\x07\x20\x01(\x08R\x07skipped\x12\x1c\n\ttrun\
-    cated\x18\x08\x20\x01(\x08R\ttruncatedb\x06proto3\
+    \x18\n\x07charged\x18\x02\x20\x01(\x04R\x07charged\"\x8f\x06\n\x04Heap\
+    \x12\x1c\n\ttruncated\x18\x01\x20\x01(\x08R\ttruncated\x12%\n\x0eskipped\
+    _blocks\x18\x02\x20\x01(\x04R\rskippedBlocks\x12D\n\x05total\x18\x03\x20\
+    \x01(\x0b2..bitdrift_public.protobuf.memory.v1.BlockCountR\x05total\x12.\
+    \n\x13largest_block_bytes\x18\x04\x20\x01(\x04R\x11largestBlockBytes\x12\
+    D\n\x05named\x18\x05\x20\x01(\x0b2..bitdrift_public.protobuf.memory.v1.B\
+    lockCountR\x05named\x12O\n\x0bswift_boxes\x18\x06\x20\x01(\x0b2..bitdrif\
+    t_public.protobuf.memory.v1.BlockCountR\nswiftBoxes\x12F\n\x06images\x18\
+    \x07\x20\x01(\x0b2..bitdrift_public.protobuf.memory.v1.BlockCountR\x06im\
+    ages\x12J\n\x08reporter\x18\x08\x20\x01(\x0b2..bitdrift_public.protobuf.\
+    memory.v1.BlockCountR\x08reporter\x12T\n\x0cunclassified\x18\t\x20\x01(\
+    \x0b20.bitdrift_public.protobuf.memory.v1.UnclassifiedR\x0cunclassified\
+    \x12B\n\x06owners\x18\n\x20\x01(\x0b2*.bitdrift_public.protobuf.memory.v\
+    1.OwnersR\x06owners\x12D\n\x07by_type\x18\x0b\x20\x03(\x0b2+.bitdrift_pu\
+    blic.protobuf.memory.v1.TypeRowR\x06byType\x12A\n\x05zones\x18\x0c\x20\
+    \x03(\x0b2+.bitdrift_public.protobuf.memory.v1.ZoneRowR\x05zones\":\n\nB\
+    lockCount\x12\x16\n\x06blocks\x18\x01\x20\x01(\x04R\x06blocks\x12\x14\n\
+    \x05bytes\x18\x02\x20\x01(\x04R\x05bytes\"Z\n\x0cUnclassified\x12\x16\n\
+    \x06blocks\x18\x01\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\x18\x02\
+    \x20\x01(\x04R\x05bytes\x12\x1c\n\thistogram\x18\x03\x20\x03(\x04R\thist\
+    ogram\"\xc8\x01\n\x06Owners\x12\x16\n\x06blocks\x18\x01\x20\x01(\x04R\
+    \x06blocks\x12\x14\n\x05bytes\x18\x02\x20\x01(\x04R\x05bytes\x12#\n\rsha\
+    red_blocks\x18\x03\x20\x01(\x04R\x0csharedBlocks\x12%\n\x0etable_overflo\
+    w\x18\x04\x20\x01(\x04R\rtableOverflow\x12D\n\x07by_type\x18\x05\x20\x03\
+    (\x0b2+.bitdrift_public.protobuf.memory.v1.TypeRowR\x06byType\"\x9a\x02\
+    \n\x07TypeRow\x12\x14\n\x04name\x18\x01\x20\x01(\tH\0R\x04name\x12L\n\
+    \x07address\x18\x02\x20\x01(\x0b20.bitdrift_public.protobuf.memory.v1.Im\
+    ageAddressH\0R\x07address\x12D\n\x04kind\x18\x03\x20\x01(\x0e20.bitdrift\
+    _public.protobuf.memory.v1.TypeRow.KindR\x04kind\x12\x16\n\x06blocks\x18\
+    \x04\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\x18\x05\x20\x01(\x04R\
+    \x05bytes\"+\n\x04Kind\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\t\n\x05CLASS\
+    \x10\x01\x12\x07\n\x03CXX\x10\x02B\n\n\x08identity\"\xb7\x01\n\x07ZoneRo\
+    w\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12\x16\n\x06blocks\x18\
+    \x02\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\x18\x03\x20\x01(\x04R\
+    \x05bytes\x12\x1e\n\nenumerated\x18\x04\x20\x01(\x08R\nenumerated\x12\
+    \x12\n\x04seen\x18\x05\x20\x01(\x08R\x04seen\x12\x18\n\x07skipped\x18\
+    \x06\x20\x01(\x08R\x07skipped\x12\x1c\n\ttruncated\x18\x07\x20\x01(\x08R\
+    \ttruncatedb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -3573,7 +3192,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(0);
-            let mut messages = ::std::vec::Vec::with_capacity(16);
+            let mut messages = ::std::vec::Vec::with_capacity(14);
             messages.push(MemoryDump::generated_message_descriptor_data());
             messages.push(Image::generated_message_descriptor_data());
             messages.push(ImageAddress::generated_message_descriptor_data());
@@ -3586,8 +3205,6 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(BlockCount::generated_message_descriptor_data());
             messages.push(Unclassified::generated_message_descriptor_data());
             messages.push(Owners::generated_message_descriptor_data());
-            messages.push(Dropped::generated_message_descriptor_data());
-            messages.push(HeapTimings::generated_message_descriptor_data());
             messages.push(TypeRow::generated_message_descriptor_data());
             messages.push(ZoneRow::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
