@@ -1113,6 +1113,22 @@ pub mod device_command {
     "device_command.execution_timeout_ms",
     time::Duration::seconds(5)
   );
+
+  pub mod stack_sampling {
+    // The built-in stack sampling command pays a few seconds of fixed platform overhead per
+    // capture, so it runs under its own deadline rather than the general command timeout.
+    duration_feature_flag!(
+      ExecutionTimeoutFlag,
+      "device_command.stack_sampling.execution_timeout_ms",
+      time::Duration::seconds(15)
+    );
+    // Upper bound on the sampling window a command may request.
+    duration_feature_flag!(
+      MaxDurationFlag,
+      "device_command.stack_sampling.max_duration_ms",
+      time::Duration::seconds(10)
+    );
+  }
 }
 
 pub mod workflow_attachment {

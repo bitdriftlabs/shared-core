@@ -38,6 +38,7 @@ use crate::device_command::{
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
+use crate::profiling::{NoopProfilingTarget, ProfilingHandler};
 use crate::{Block, InitializationState, StartupReplayEligibility};
 use bd_api::upload::DeviceCommandState;
 use bd_api::{DataUpload, SimpleNetworkQualityProvider};
@@ -349,6 +350,7 @@ impl Setup {
       Box::new(NoOpListenerTarget),
       RegisteredCommandDispatcher::default(),
       CommandExecutionPolicy::new(&self.runtime),
+      ProfilingHandler::new(Arc::new(NoopProfilingTarget)),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
@@ -384,6 +386,7 @@ impl Setup {
       Box::new(NoOpListenerTarget),
       RegisteredCommandDispatcher::default(),
       CommandExecutionPolicy::new(&self.runtime),
+      ProfilingHandler::new(Arc::new(NoopProfilingTarget)),
       config_update_rx,
       report_rx,
       self.shutdown.as_ref().unwrap().make_handle(),
@@ -2340,6 +2343,7 @@ async fn workflow_command_processed_session_boundary_and_attribution() {
       completion_tx,
       buffer.workflow_attachment_store(),
       RemoteScreenshotCaptureHandler::new(Arc::new(NoOpTarget)),
+      ProfilingHandler::new(Arc::new(NoopProfilingTarget)),
     );
     buffer.workflow_command_completion_rx = completion_rx;
     buffer
@@ -2856,6 +2860,7 @@ async fn workflow_command_session_start_carryover_never_dispatches_invalidated_w
       completion_tx,
       buffer.workflow_attachment_store(),
       RemoteScreenshotCaptureHandler::new(Arc::new(NoOpTarget)),
+      ProfilingHandler::new(Arc::new(NoopProfilingTarget)),
     );
     buffer.workflow_command_completion_rx = completion_rx;
     let context =
@@ -2965,6 +2970,7 @@ async fn workflow_command_first_ingress_initializes_session_without_rewinds() {
       completion_tx,
       buffer.workflow_attachment_store(),
       RemoteScreenshotCaptureHandler::new(Arc::new(NoOpTarget)),
+      ProfilingHandler::new(Arc::new(NoopProfilingTarget)),
     );
     buffer.workflow_command_completion_rx = completion_rx;
     let owner = setup.session_strategy.session_id().unwrap();
@@ -3123,6 +3129,7 @@ async fn direct_commands_use_processed_session_boundary_without_rewinding_loggin
       registry,
       CommandExecutionPolicy::new(&setup.runtime),
       RemoteScreenshotCaptureHandler::new(Arc::new(NoOpTarget)),
+      ProfilingHandler::new(Arc::new(NoopProfilingTarget)),
       command_state.clone(),
       Arc::new(SystemTimeProvider),
     );
@@ -3395,6 +3402,7 @@ async fn workflow_command_span_includes_handler_and_admission_but_not_background
     completion_tx,
     attachment_store,
     RemoteScreenshotCaptureHandler::new(Arc::new(NoOpTarget)),
+    ProfilingHandler::new(Arc::new(NoopProfilingTarget)),
   );
   buffer.workflow_command_completion_rx = completion_rx;
 
