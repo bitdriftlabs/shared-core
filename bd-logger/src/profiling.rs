@@ -24,14 +24,16 @@ use tokio::sync::oneshot;
 /// Error name reported when the platform has no profiler for the current OS or OS version.
 pub const UNSUPPORTED_ERROR_NAME: &str = "unsupported";
 
-/// One stack sampling capture as the platform should perform it. Every value is already clamped.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// One stack sampling capture as the platform should perform it. Every value is already validated.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StackSampleRequest {
   /// Identifies the capture in the completion and in a later cancellation.
   pub request_id: u64,
   pub duration: time::Duration,
   pub frequency_hz: u32,
   pub buffer_size_kb: u32,
+  /// Recorded with the capture by the platform profiler, which exposes it to the app.
+  pub tag: String,
 }
 
 /// A recorded trace, left on disk for the uploader to consume and delete.
@@ -132,6 +134,7 @@ impl ProfilingHandler {
     duration: time::Duration,
     frequency_hz: u32,
     buffer_size_kb: u32,
+    tag: String,
   ) -> Result<StackSampleOutcome, StackSampleError> {
     let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
     if self
@@ -160,6 +163,7 @@ impl ProfilingHandler {
         duration,
         frequency_hz,
         buffer_size_kb,
+        tag,
       },
       Box::new(move |result| {
         completed.store(true, Ordering::Release);
