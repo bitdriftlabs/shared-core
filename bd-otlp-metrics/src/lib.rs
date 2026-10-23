@@ -74,8 +74,10 @@ pub use offload::{
 pub use otlp::{
   OtlpCompression,
   OtlpMetric,
+  OtlpPoint,
   deserialize_otlp_metrics_request,
   encode_otlp_metrics,
   encode_otlp_metrics_with_metadata,
+  encode_otlp_points,
 };
 pub use retry::{Retry, RetryConfig, RetryError};
