@@ -16,6 +16,8 @@ use crate::protos::metrics::metric::Data;
 use crate::protos::metrics::summary_data_point::ValueAtQuantile;
 use crate::protos::metrics::{
   AggregationTemporality,
+  ExponentialHistogram,
+  ExponentialHistogramDataPoint,
   Gauge,
   Histogram,
   HistogramDataPoint,
@@ -31,7 +33,7 @@ use crate::protos::metrics::{
 use crate::protos::metrics_service::ExportMetricsServiceRequest;
 use bytes::Bytes;
 use protobuf::{Chars, Message};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::str;
 
@@ -56,6 +58,75 @@ pub struct OtlpMetric {
   pub metric: ModelMetric,
   pub start_time_unix_nano: u64,
   pub is_monotonic: bool,
+}
+
+//
+// OtlpPoint
+//
+
+#[derive(Clone, Debug)]
+pub enum OtlpPoint {
+  Metric(OtlpMetric),
+  ExponentialHistogram {
+    name: Chars,
+    point: ExponentialHistogramDataPoint,
+    temporality: CounterType,
+  },
+}
+
+impl From<OtlpMetric> for OtlpPoint {
+  fn from(metric: OtlpMetric) -> Self {
+    Self::Metric(metric)
+  }
+}
+
+fn validate_exponential_histogram(point: &ExponentialHistogramDataPoint) -> anyhow::Result<()> {
+  if point.start_time_unix_nano >= point.time_unix_nano {
+    anyhow::bail!("OTLP interval start must precede its end");
+  }
+  if !(-4 ..= 5).contains(&point.scale)
+    || !point.zero_threshold.is_finite()
+    || point.zero_threshold < 0.0
+  {
+    anyhow::bail!("invalid OTLP exponential histogram scale or zero threshold");
+  }
+  let mut count = point.zero_count;
+  for buckets in point.positive.iter().chain(point.negative.iter()) {
+    if buckets.bucket_counts.len() > 256
+      || buckets
+        .offset
+        .checked_add(i32::try_from(buckets.bucket_counts.len())?)
+        .is_none()
+    {
+      anyhow::bail!("OTLP exponential histogram bucket span exceeds its limit");
+    }
+    for bucket_count in &buckets.bucket_counts {
+      count = count
+        .checked_add(*bucket_count)
+        .ok_or_else(|| anyhow::anyhow!("OTLP exponential histogram count overflow"))?;
+    }
+  }
+  if count != point.count {
+    anyhow::bail!("inconsistent OTLP exponential histogram counts");
+  }
+  if point.sum.is_some_and(|sum| {
+    !sum.is_finite()
+      || sum < 0.0
+      || (point.count == 0 && sum != 0.0)
+      || point
+        .negative
+        .iter()
+        .any(|buckets| buckets.bucket_counts.iter().any(|count| *count > 0))
+  }) {
+    anyhow::bail!("OTLP exponential histogram sum requires finite nonnegative observations");
+  }
+  let mut attributes = HashSet::new();
+  for attribute in &point.attributes {
+    if !attributes.insert(&attribute.key) {
+      anyhow::bail!("OTLP point attributes must be unique");
+    }
+  }
+  Ok(())
 }
 
 fn validate_otlp_metric(sample: &OtlpMetric) -> anyhow::Result<()> {
@@ -310,11 +381,87 @@ pub fn encode_otlp_metrics_with_metadata(
   Ok(encode_samples(samples, compression, true))
 }
 
+pub fn encode_otlp_points(
+  points: Vec<OtlpPoint>,
+  compression: OtlpCompression,
+) -> anyhow::Result<Bytes> {
+  let mut samples = Vec::new();
+  let mut histograms: HashMap<Chars, (CounterType, Vec<ExponentialHistogramDataPoint>)> =
+    HashMap::new();
+  let mut kinds = HashMap::new();
+  for point in points {
+    let (name, kind, temporality) = match &point {
+      OtlpPoint::Metric(sample) => {
+        validate_otlp_metric(sample)?;
+        (
+          Chars::from_bytes(sample.metric.get_id().name().clone())?,
+          Some((sample.metric.get_id().mtype(), sample.is_monotonic)),
+          None,
+        )
+      },
+      OtlpPoint::ExponentialHistogram {
+        name,
+        point,
+        temporality,
+      } => {
+        validate_exponential_histogram(point)?;
+        (name.clone(), None, Some(*temporality))
+      },
+    };
+    if name.is_empty() {
+      anyhow::bail!("OTLP metric name must not be empty");
+    }
+    if let Some(previous) = kinds.insert(name, (kind, temporality))
+      && previous != (kind, temporality)
+    {
+      anyhow::bail!("conflicting OTLP metric types under the same name");
+    }
+    match point {
+      OtlpPoint::Metric(sample) => samples.push(sample),
+      OtlpPoint::ExponentialHistogram {
+        name,
+        point,
+        temporality,
+      } => {
+        histograms
+          .entry(name)
+          .or_insert_with(|| (temporality, Vec::new()))
+          .1
+          .push(point);
+      },
+    }
+  }
+  let mut metrics = make_metrics(samples, true);
+  metrics.extend(
+    histograms
+      .into_iter()
+      .map(|(name, (temporality, data_points))| Metric {
+        name,
+        data: Some(Data::ExponentialHistogram(ExponentialHistogram {
+          data_points,
+          aggregation_temporality: match temporality {
+            CounterType::Delta => AggregationTemporality::AGGREGATION_TEMPORALITY_DELTA.into(),
+            CounterType::Absolute => {
+              AggregationTemporality::AGGREGATION_TEMPORALITY_CUMULATIVE.into()
+            },
+          },
+          ..Default::default()
+        })),
+        ..Default::default()
+      }),
+  );
+  Ok(encode_request(metrics, compression))
+}
+
 fn encode_samples(
   samples: Vec<OtlpMetric>,
   compression: OtlpCompression,
   sort_quantiles: bool,
 ) -> Bytes {
+  encode_request(make_metrics(samples, sort_quantiles), compression)
+}
+
+fn make_metrics(samples: Vec<OtlpMetric>, sort_quantiles: bool) -> Vec<Metric> {
   let metrics_by_name_and_type: HashMap<(Bytes, MetricType, bool), Vec<OtlpMetric>> = samples
     .into_iter()
     .fold(HashMap::new(), |mut metrics, sample| {
@@ -327,7 +474,7 @@ fn encode_samples(
       metrics
     });
 
-  let metrics = metrics_by_name_and_type
+  metrics_by_name_and_type
     .into_iter()
     .filter_map(|((name, mtype, is_monotonic), samples)| match mtype {
       MetricType::Gauge | MetricType::DirectGauge | MetricType::Counter(_) => {
@@ -340,8 +487,10 @@ fn encode_samples(
         None
       },
     })
-    .collect();
+    .collect()
+}
 
+fn encode_request(metrics: Vec<Metric>, compression: OtlpCompression) -> Bytes {
   let request = ExportMetricsServiceRequest {
     resource_metrics: vec![ResourceMetrics {
       scope_metrics: vec![ScopeMetrics {

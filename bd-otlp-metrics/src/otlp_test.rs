@@ -5,9 +5,21 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{OtlpCompression, OtlpMetric, encode_otlp_metrics, encode_otlp_metrics_with_metadata};
+use super::{
+  OtlpCompression,
+  OtlpMetric,
+  OtlpPoint,
+  encode_otlp_metrics,
+  encode_otlp_metrics_with_metadata,
+  encode_otlp_points,
+};
+use crate::protos::metrics::exponential_histogram_data_point::Buckets;
 use crate::protos::metrics::metric::Data;
-use crate::protos::metrics::{AggregationTemporality, number_data_point};
+use crate::protos::metrics::{
+  AggregationTemporality,
+  ExponentialHistogramDataPoint,
+  number_data_point,
+};
 use crate::protos::metrics_service::ExportMetricsServiceRequest;
 use crate::{
   CounterType,
@@ -64,6 +76,158 @@ fn decode(samples: Vec<OtlpMetric>) -> ExportMetricsServiceRequest {
     &encode_otlp_metrics_with_metadata(samples, OtlpCompression::None).unwrap(),
   )
   .unwrap()
+}
+
+fn exponential_point() -> ExponentialHistogramDataPoint {
+  ExponentialHistogramDataPoint {
+    start_time_unix_nano: 120_000_000_000,
+    time_unix_nano: 180_000_000_000,
+    count: 9_007_199_254_740_993,
+    scale: 5,
+    zero_count: 1,
+    positive: Some(Buckets {
+      offset: -1,
+      bucket_counts: vec![9_007_199_254_740_992],
+      ..Default::default()
+    })
+    .into(),
+    ..Default::default()
+  }
+}
+
+#[test]
+fn exponential_histograms_keep_integer_counts_and_temporality_in_mixed_batches() {
+  for (compression, temporality) in [
+    (OtlpCompression::None, CounterType::Delta),
+    (OtlpCompression::Snappy, CounterType::Delta),
+    (OtlpCompression::None, CounterType::Absolute),
+    (OtlpCompression::Snappy, CounterType::Absolute),
+  ] {
+    let encoded = encode_otlp_points(
+      vec![
+        OtlpPoint::ExponentialHistogram {
+          name: "histogram".into(),
+          point: exponential_point(),
+          temporality,
+        },
+        OtlpMetric {
+          metric: metric(MetricType::Summary, 180, summary(3.0)),
+          start_time_unix_nano: 120_000_000_000,
+          is_monotonic: false,
+        }
+        .into(),
+      ],
+      compression,
+    )
+    .unwrap();
+    let decoded = super::deserialize_otlp_metrics_request(&encoded, compression);
+    assert!(decoded.contains("exponential_histogram"));
+    if matches!(compression, OtlpCompression::None) {
+      let request = ExportMetricsServiceRequest::parse_from_bytes(&encoded).unwrap();
+      let metrics = &request.resource_metrics[0].scope_metrics[0].metrics;
+      assert_eq!(metrics.len(), 2);
+      let histogram = metrics
+        .iter()
+        .find_map(|metric| match &metric.data {
+          Some(Data::ExponentialHistogram(histogram)) => Some(histogram),
+          _ => None,
+        })
+        .unwrap();
+      assert_eq!(
+        histogram.aggregation_temporality.enum_value().unwrap(),
+        match temporality {
+          CounterType::Delta => AggregationTemporality::AGGREGATION_TEMPORALITY_DELTA,
+          CounterType::Absolute => AggregationTemporality::AGGREGATION_TEMPORALITY_CUMULATIVE,
+        }
+      );
+      assert_eq!(histogram.data_points, [exponential_point()]);
+    }
+  }
+}
+
+#[test]
+fn exponential_histograms_reject_invalid_counts_spans_and_optional_sums() {
+  let mut invalid = Vec::new();
+  let mut point = exponential_point();
+  point.count += 1;
+  invalid.push(point);
+  let mut point = exponential_point();
+  point.positive.as_mut().unwrap().bucket_counts = vec![0; 257];
+  invalid.push(point);
+  let mut point = exponential_point();
+  point.scale = 6;
+  invalid.push(point);
+  let mut point = exponential_point();
+  point.start_time_unix_nano = point.time_unix_nano;
+  invalid.push(point);
+  let mut point = exponential_point();
+  point.zero_threshold = f64::NAN;
+  invalid.push(point);
+  for sum in [f64::INFINITY, -1.0] {
+    let mut point = exponential_point();
+    point.sum = Some(sum);
+    invalid.push(point);
+  }
+  let mut point = exponential_point();
+  point.negative = point.positive.take().into();
+  point.sum = Some(1.0);
+  invalid.push(point);
+  for point in invalid {
+    assert!(
+      encode_otlp_points(
+        vec![OtlpPoint::ExponentialHistogram {
+          name: "histogram".into(),
+          point,
+          temporality: CounterType::Delta,
+        }],
+        OtlpCompression::None
+      )
+      .is_err()
+    );
+  }
+}
+
+#[test]
+fn mixed_wire_types_cannot_share_a_metric_name() {
+  assert!(
+    encode_otlp_points(
+      vec![
+        OtlpPoint::ExponentialHistogram {
+          name: "metric".into(),
+          point: exponential_point(),
+          temporality: CounterType::Delta,
+        },
+        OtlpMetric {
+          metric: metric(MetricType::Summary, 180, summary(3.0)),
+          start_time_unix_nano: 120_000_000_000,
+          is_monotonic: false,
+        }
+        .into(),
+      ],
+      OtlpCompression::None
+    )
+    .is_err()
+  );
+}
+
+#[test]
+fn histogram_temporalities_cannot_share_a_metric_name() {
+  assert!(
+    encode_otlp_points(
+      [CounterType::Delta, CounterType::Absolute]
+        .into_iter()
+        .map(|temporality| {
+          OtlpPoint::ExponentialHistogram {
+            name: "histogram".into(),
+            point: exponential_point(),
+            temporality,
+          }
+        })
+        .collect(),
+      OtlpCompression::None,
+    )
+    .is_err()
+  );
 }
 
 #[test]
