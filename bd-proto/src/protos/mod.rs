@@ -13,6 +13,7 @@ pub mod google;
 pub mod insight;
 pub mod log_matcher;
 pub mod logging;
+pub mod memory;
 pub mod prometheus;
 pub mod state;
 pub mod value_matcher;
