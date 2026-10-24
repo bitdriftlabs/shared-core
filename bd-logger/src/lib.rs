@@ -57,6 +57,7 @@ pub use crate::device_command::{
 pub use crate::logger::{ChannelPair, InitParams};
 pub use crate::profiling::{
   NoopProfilingTarget,
+  OwnedTrace,
   ProfilingHandler,
   ProfilingTarget,
   StackSampleCompletion,

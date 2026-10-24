@@ -16,7 +16,7 @@
 #[path = "./profiling_test.rs"]
 mod profiling_test;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::sync::oneshot;
@@ -36,10 +36,40 @@ pub struct StackSampleRequest {
   pub tag: String,
 }
 
-/// A recorded trace, left on disk for the uploader to consume and delete.
+/// A recorded trace as the platform reports it: an absolute path the core takes ownership of.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StackSampleOutcome {
   pub path: PathBuf,
+}
+
+/// A recorded trace the core owns. The file is deleted when this is dropped, so a trace whose
+/// command was cancelled, timed out or failed before the uploader took it never outlives the
+/// command, wherever the drop happens (a dropped future, an unread channel, an abandoned result).
+/// The uploader consumes the file itself; the later drop then finds nothing to delete.
+#[derive(Debug)]
+pub struct OwnedTrace {
+  path: PathBuf,
+}
+
+impl OwnedTrace {
+  #[must_use]
+  pub fn path(&self) -> &Path {
+    &self.path
+  }
+}
+
+impl Drop for OwnedTrace {
+  fn drop(&mut self) {
+    // A single unlink of a small file; cheap enough to do inline wherever the drop lands.
+    if let Err(error) = std::fs::remove_file(&self.path)
+      && error.kind() != std::io::ErrorKind::NotFound
+    {
+      log::debug!(
+        "failed to remove stack sampling trace {}: {error}",
+        self.path.display()
+      );
+    }
+  }
 }
 
 /// Why the platform could not produce a trace. `code` and `name` carry the platform profiler's
@@ -128,14 +158,15 @@ impl ProfilingHandler {
   }
 
   /// Waits for the platform callback. The caller owns the deadline; dropping the future releases
-  /// the capture slot and cancels the platform capture if it has not completed yet.
+  /// the capture slot and cancels the platform capture if it has not completed yet. A trace the
+  /// platform reports after that is deleted, since nobody is left to upload it.
   pub async fn capture_stack_sample(
     &self,
     duration: time::Duration,
     frequency_hz: u32,
     buffer_size_kb: u32,
     tag: String,
-  ) -> Result<StackSampleOutcome, StackSampleError> {
+  ) -> Result<OwnedTrace, StackSampleError> {
     let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
     if self
       .active_request_id
@@ -167,6 +198,24 @@ impl ProfilingHandler {
       },
       Box::new(move |result| {
         completed.store(true, Ordering::Release);
+        let result = result.and_then(|outcome| {
+          // Every consumer resolves the path differently (uploader root, SDK directory, process
+          // working directory), so only an absolute path names one file to all of them.
+          if outcome.path.is_absolute() {
+            Ok(OwnedTrace { path: outcome.path })
+          } else {
+            Err(StackSampleError {
+              code: 0,
+              name: "invalid_path".to_string(),
+              message: format!(
+                "the platform reported a relative trace path {}",
+                outcome.path.display()
+              ),
+            })
+          }
+        });
+        // A receiver that already gave up (timeout or cancellation) hands the trace back here,
+        // and dropping it deletes the file.
         let _ = completion_tx.send(result);
       }),
     );

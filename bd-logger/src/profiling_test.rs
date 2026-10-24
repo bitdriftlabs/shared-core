@@ -16,9 +16,16 @@ use super::{
 };
 use parking_lot::Mutex;
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
+
+fn write_trace(directory: &tempfile::TempDir, name: &str) -> PathBuf {
+  let path = directory.path().join(name);
+  std::fs::write(&path, b"trace").unwrap();
+  path
+}
 
 #[derive(Default)]
 struct DeferredTarget {
@@ -55,6 +62,7 @@ async fn default_target_fails_as_unsupported() {
 
 #[tokio::test]
 async fn completion_resolves_the_capture_and_releases_the_slot() {
+  let directory = tempfile::tempdir().unwrap();
   let target = Arc::new(DeferredTarget::default());
   let handler = ProfilingHandler::new(target.clone());
   let (started_tx, mut started_rx) = mpsc::unbounded_channel();
@@ -80,14 +88,15 @@ async fn completion_resolves_the_capture_and_releases_the_slot() {
     }]
   );
   let completion = target.completions.lock().pop_front().unwrap();
-  completion(Ok(StackSampleOutcome {
-    path: "/tmp/trace".into(),
-  }));
-  assert_eq!(
-    capture.await.unwrap().unwrap().path.to_str(),
-    Some("/tmp/trace")
-  );
+  let path = write_trace(&directory, "trace");
+  completion(Ok(StackSampleOutcome { path: path.clone() }));
+  let trace = capture.await.unwrap().unwrap();
+  assert_eq!(trace.path(), path);
   assert!(target.cancelled.lock().is_empty());
+  // The core owns the file: dropping an unconsumed trace deletes it.
+  assert!(path.exists());
+  drop(trace);
+  assert!(!path.exists());
 
   // The slot is free again, so a second capture is accepted with a new request ID.
   let second = tokio::spawn(async move {
@@ -98,9 +107,32 @@ async fn completion_resolves_the_capture_and_releases_the_slot() {
   started_rx.recv().await.unwrap();
   assert_eq!(target.requests.lock()[1].request_id, 2);
   target.completions.lock().pop_front().unwrap()(Ok(StackSampleOutcome {
-    path: "/tmp/second".into(),
+    path: directory.path().join("second"),
   }));
   second.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn relative_trace_path_is_rejected_without_touching_the_file_system() {
+  let target = Arc::new(DeferredTarget::default());
+  let handler = ProfilingHandler::new(target.clone());
+  let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+  *target.started_tx.lock() = Some(started_tx);
+  let capture = tokio::spawn({
+    let handler = handler.clone();
+    async move {
+      handler
+        .capture_stack_sample(time::Duration::seconds(3), 100, 2048, "bitdrift".into())
+        .await
+    }
+  });
+  started_rx.recv().await.unwrap();
+  target.completions.lock().pop_front().unwrap()(Ok(StackSampleOutcome {
+    path: "trace.perfetto".into(),
+  }));
+  let error = capture.await.unwrap().unwrap_err();
+  assert_eq!(error.name, "invalid_path");
+  assert!(error.message.contains("trace.perfetto"));
 }
 
 #[tokio::test]
@@ -126,14 +158,16 @@ async fn concurrent_capture_is_rejected_without_reaching_the_target() {
   assert_eq!(error.name, "already_executing");
   assert_eq!(target.requests.lock().len(), 1);
 
+  let directory = tempfile::tempdir().unwrap();
   target.completions.lock().pop_front().unwrap()(Ok(StackSampleOutcome {
-    path: "/tmp/trace".into(),
+    path: directory.path().join("trace"),
   }));
   first.await.unwrap().unwrap();
 }
 
 #[tokio::test]
-async fn dropping_an_unfinished_capture_cancels_it_and_ignores_the_late_completion() {
+async fn dropping_an_unfinished_capture_cancels_it_and_deletes_the_late_trace() {
+  let directory = tempfile::tempdir().unwrap();
   let target = Arc::new(DeferredTarget::default());
   let handler = ProfilingHandler::new(target.clone());
   let (started_tx, mut started_rx) = mpsc::unbounded_channel();
@@ -152,10 +186,11 @@ async fn dropping_an_unfinished_capture_cancels_it_and_ignores_the_late_completi
   assert!(capture.await.unwrap_err().is_cancelled());
   assert_eq!(*target.cancelled.lock(), vec![1]);
 
-  // The platform still reports; nothing is waiting, and the slot is already free.
-  target.completions.lock().pop_front().unwrap()(Ok(StackSampleOutcome {
-    path: "/tmp/late".into(),
-  }));
+  // The platform still reports a real file; nothing is waiting for it, so it is deleted at once,
+  // and the slot is already free.
+  let late = write_trace(&directory, "late");
+  target.completions.lock().pop_front().unwrap()(Ok(StackSampleOutcome { path: late.clone() }));
+  assert!(!late.exists());
   let second = tokio::spawn(async move {
     handler
       .capture_stack_sample(time::Duration::seconds(3), 100, 2048, "bitdrift".into())
@@ -164,7 +199,7 @@ async fn dropping_an_unfinished_capture_cancels_it_and_ignores_the_late_completi
   started_rx.recv().await.unwrap();
   assert_eq!(target.requests.lock()[1].request_id, 2);
   target.completions.lock().pop_front().unwrap()(Ok(StackSampleOutcome {
-    path: "/tmp/second".into(),
+    path: directory.path().join("second"),
   }));
   second.await.unwrap().unwrap();
 }

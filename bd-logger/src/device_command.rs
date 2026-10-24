@@ -48,7 +48,7 @@
 mod tests;
 
 use crate::async_log_buffer::{LogAdmission, Sender as LogSender};
-use crate::profiling::{ProfilingHandler, StackSampleError, StackSampleOutcome};
+use crate::profiling::{OwnedTrace, ProfilingHandler, StackSampleError};
 use crate::workflow_attachment::AttachmentStoreHandle;
 use anyhow::anyhow;
 use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
@@ -740,7 +740,7 @@ impl CommandExecutionPolicy {
     &self,
     handler: ProfilingHandler,
     params: &StackSamplingParams,
-  ) -> Result<StackSampleOutcome, StackSamplingFailure> {
+  ) -> Result<OwnedTrace, StackSamplingFailure> {
     let timeout = *self.stack_sampling_timeout.read();
     match self
       .execute_within(
@@ -1029,18 +1029,17 @@ async fn workflow_builtin_command_outcome(
         .capture_stack_sample(profiling_handler, &params)
         .await
       {
-        Ok(outcome) => {
-          let result = workflow_command_outcome(
+        Ok(trace) => {
+          // The workflow store keeps its own copy of the trace; the source is deleted when
+          // `trace` drops, whether admission completes, fails or is cancelled part-way.
+          workflow_command_outcome(
             CommandResult::Completed {
               fields: params.fields(),
-              attachment: Some(stack_sampling_attachment(&outcome)),
+              attachment: Some(stack_sampling_attachment(&trace)),
             },
             attachment_store,
           )
-          .await;
-          // The workflow store keeps its own copy of the trace.
-          discard_trace_file(&outcome.path).await;
-          result
+          .await
         },
         Err(failure) => failure.into_workflow_outcome(),
       }
@@ -1425,24 +1424,12 @@ pub fn stack_sampling_params(
   })
 }
 
-/// The uploader reads the trace once, compresses it on the way and deletes the source itself.
-fn stack_sampling_attachment(outcome: &StackSampleOutcome) -> CommandAttachment {
+/// The uploader reads the trace once, compresses it on the way and deletes the source itself;
+/// whatever it leaves behind goes when the [`OwnedTrace`] drops.
+fn stack_sampling_attachment(trace: &OwnedTrace) -> CommandAttachment {
   CommandAttachment {
-    source: UploadSource::Path(outcome.path.clone()),
+    source: UploadSource::Path(trace.path().to_path_buf()),
     content_type: Some(STACK_SAMPLING_CONTENT_TYPE.to_string()),
-  }
-}
-
-/// Removes a trace the command could not hand to the uploader. A missing file is fine: the
-/// uploader deletes the source once it has persisted its copy.
-async fn discard_trace_file(path: &std::path::Path) {
-  if let Err(error) = tokio::fs::remove_file(path).await
-    && error.kind() != std::io::ErrorKind::NotFound
-  {
-    log::debug!(
-      "failed to remove stack sampling trace {}: {error}",
-      path.display()
-    );
   }
 }
 
@@ -1489,11 +1476,11 @@ async fn execute_stack_sampling_device_command(
       return Ok(());
     },
   };
-  let outcome = match execution_policy
+  let trace = match execution_policy
     .capture_stack_sample(profiling_handler, &params)
     .await
   {
-    Ok(outcome) => outcome,
+    Ok(trace) => trace,
     Err(failure) => {
       send_device_command_update(
         &senders,
@@ -1504,15 +1491,19 @@ async fn execute_stack_sampling_device_command(
     },
   };
 
-  let update = match stage_device_command_attachment(
-    stack_sampling_attachment(&outcome),
+  let staged = stage_device_command_attachment(
+    stack_sampling_attachment(&trace),
     STACK_SAMPLING_ARTIFACT_TYPE_ID,
     &command_id,
     &session_id,
     artifact_client,
   )
-  .await
-  {
+  .await;
+  // The uploader has either consumed the file or never taken it. Drop the trace before reporting
+  // so that whatever is left is gone by the time the outcome is visible; a cancellation at the
+  // await above drops it too.
+  drop(trace);
+  let update = match staged {
     Ok((artifact_id, metadata)) => {
       return send_device_command_update_with_artifact(
         &senders,
@@ -1527,7 +1518,6 @@ async fn execute_stack_sampling_device_command(
       .await;
     },
     Err(error) => {
-      discard_trace_file(&outcome.path).await;
       failed_device_command_update(&command_id, 2, CommandError::Other(error.to_string()))
     },
   };

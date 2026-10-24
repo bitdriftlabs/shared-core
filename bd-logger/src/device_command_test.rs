@@ -2178,13 +2178,51 @@ async fn direct_stack_sampling_timeout_cancels_the_platform_capture() {
   assert_field(&fields, "error", "command timed out");
   assert_eq!(*target.cancelled.lock(), vec![1]);
 
-  // The platform still reports after cancellation; nothing else is sent.
-  target.complete(Ok(StackSampleOutcome {
-    path: directory.path().join("late.perfetto"),
-  }));
+  // The platform still reports after cancellation; the trace is deleted and nothing else is sent.
+  let late = write_trace(directory.path(), "late.perfetto");
+  target.complete(Ok(StackSampleOutcome { path: late.clone() }));
+  assert!(!late.exists());
   assert_eq!(
     updates.try_recv().unwrap_err(),
     mpsc::error::TryRecvError::Empty
+  );
+}
+
+#[tokio::test]
+async fn direct_stack_sampling_staging_failure_deletes_the_trace() {
+  let (directory, _runtime, policy) = command_runtime();
+  let (profiling, target, mut started_rx) = deferred_profiling();
+  let mut artifacts = MockClient::new();
+  artifacts
+    .expect_enqueue_command_upload()
+    .times(1)
+    .returning(|_, _, _, _, _, _, _, _, _| Err(bd_artifact_upload::EnqueueError::QueueFull));
+  let (dispatcher, mut updates) = direct_dispatcher_with_profiling(
+    directory.path(),
+    policy,
+    RegisteredCommandDispatcher::default(),
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    profiling,
+    Arc::new(artifacts),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(HashMap::new(), &dispatcher)]);
+  assert_eq!(
+    acknowledge_update(&mut updates)
+      .await
+      .update_sequence_number,
+    1
+  );
+  started_rx.recv().await.unwrap();
+  let trace = write_trace(directory.path(), "trace.perfetto");
+  target.complete(Ok(StackSampleOutcome {
+    path: trace.clone(),
+  }));
+
+  let fields = failed_fields(acknowledge_update(&mut updates).await);
+  assert_field(&fields, "error", "upload queue full");
+  assert!(
+    !trace.exists(),
+    "a trace the uploader never took is deleted"
   );
 }
 
