@@ -32,6 +32,7 @@ mod logger;
 mod logging_state;
 mod metadata;
 mod network;
+mod profiling;
 mod service;
 mod state_upload;
 mod trigger_upload_artifact;
@@ -54,6 +55,16 @@ pub use crate::device_command::{
   RegisteredCommandHandler,
 };
 pub use crate::logger::{ChannelPair, InitParams};
+pub use crate::profiling::{
+  NoopProfilingTarget,
+  OwnedTrace,
+  ProfilingHandler,
+  ProfilingTarget,
+  StackSampleCompletion,
+  StackSampleError,
+  StackSampleOutcome,
+  StackSampleRequest,
+};
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 use bd_buffer::AbslCode;
 pub use bd_client_common::sdk_status::{InitializationState, SdkStatus, SdkStatusTracker};

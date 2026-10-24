@@ -27,6 +27,7 @@ use crate::logger::{
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
+use crate::profiling::ProfilingHandler;
 use crate::workflow_attachment::{AttachmentStoreHandle, WorkflowAttachmentCleanupWorker};
 use crate::{Block, battery, internal_report, network};
 use bd_api::DataUpload;
@@ -610,6 +611,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
     command_dispatcher: RegisteredCommandDispatcher,
     command_execution_policy: CommandExecutionPolicy,
+    profiling_handler: ProfilingHandler,
     config_update_rx: mpsc::Receiver<ConfigUpdate>,
     report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
     shutdown_trigger_handle: ComponentShutdownTriggerHandle,
@@ -708,6 +710,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           workflow_command_completion_tx,
           workflow_attachment_store.clone(),
           remote_screenshot_capture_handler.clone(),
+          profiling_handler,
         ),
         device_commands: device_commands.clone(),
         workflow_attachment_store,

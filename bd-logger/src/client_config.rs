@@ -16,6 +16,7 @@ use crate::device_command::{
   RegisteredCommandDispatcher,
 };
 use crate::logging_state::{BufferProducers, ConfigUpdate};
+use crate::profiling::ProfilingHandler;
 use crate::write_log_to_buffer;
 use anyhow::anyhow;
 use bd_api::upload::DeviceCommandState;
@@ -280,6 +281,7 @@ impl LoggerUpdate {
     command_dispatcher: RegisteredCommandDispatcher,
     command_execution_policy: CommandExecutionPolicy,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+    profiling_handler: ProfilingHandler,
     command_state: Arc<DeviceCommandState>,
     time_provider: Arc<dyn TimeProvider>,
     scope: &Scope,
@@ -297,6 +299,7 @@ impl LoggerUpdate {
         command_dispatcher,
         command_execution_policy,
         remote_screenshot_capture_handler,
+        profiling_handler,
         command_state,
         time_provider,
       ),

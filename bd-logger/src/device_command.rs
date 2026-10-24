@@ -48,6 +48,7 @@
 mod tests;
 
 use crate::async_log_buffer::{LogAdmission, Sender as LogSender};
+use crate::profiling::{OwnedTrace, ProfilingHandler, StackSampleError};
 use crate::workflow_attachment::AttachmentStoreHandle;
 use anyhow::anyhow;
 use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
@@ -80,6 +81,10 @@ use bd_proto::protos::workflow::workflow_command::{
   workflow_command_selector,
 };
 use bd_runtime::runtime::device_command::ExecutionTimeoutFlag;
+use bd_runtime::runtime::device_command::stack_sampling::{
+  ExecutionTimeoutFlag as StackSamplingTimeoutFlag,
+  MaxDurationFlag as StackSamplingMaxDurationFlag,
+};
 use bd_runtime::runtime::{ConfigLoader, DurationWatch};
 use bd_time::{TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::{
@@ -99,6 +104,7 @@ use parking_lot::{Mutex, RwLock};
 use protobuf::Message;
 use std::collections::HashMap;
 use std::future::Future;
+use std::ops::RangeInclusive;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
@@ -110,6 +116,21 @@ use uuid::Uuid;
 
 const MAX_SCREENSHOT_BYTES: usize = 2 * 1024 * 1024;
 const REGISTERED_COMMAND_ARTIFACT_TYPE_ID: &str = "device_command_attachment";
+const STACK_SAMPLING_ARTIFACT_TYPE_ID: &str = "stack_sampling_trace";
+const STACK_SAMPLING_CONTENT_TYPE: &str = "application/vnd.bitdrift.perfetto-trace";
+const STACK_SAMPLING_DEFAULT_DURATION: time::Duration = time::Duration::milliseconds(3000);
+const STACK_SAMPLING_MIN_DURATION: time::Duration = time::Duration::milliseconds(1000);
+/// Measured platform cost of starting the sampler and post-processing its output. The sampling
+/// window must leave this much room inside the command's execution timeout.
+const STACK_SAMPLING_OVERHEAD: time::Duration = time::Duration::milliseconds(2500);
+const STACK_SAMPLING_DEFAULT_FREQUENCY_HZ: u32 = 100;
+const STACK_SAMPLING_FREQUENCY_HZ: RangeInclusive<u32> = 10 ..= 250;
+const STACK_SAMPLING_DEFAULT_BUFFER_KB: u32 = 2048;
+const STACK_SAMPLING_BUFFER_KB: RangeInclusive<u32> = 256 ..= 16384;
+/// Lets an app that observes platform profiling results recognise the SDK's captures.
+const STACK_SAMPLING_DEFAULT_TAG: &str = "bitdrift";
+/// The platform puts the tag in the output file name, so it must stay a safe file-name fragment.
+const STACK_SAMPLING_MAX_TAG_LEN: usize = 64;
 
 //
 // TestHooks
@@ -134,6 +155,7 @@ pub struct DeviceCommandDispatcher {
   command_dispatcher: RegisteredCommandDispatcher,
   execution_policy: CommandExecutionPolicy,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+  profiling_handler: ProfilingHandler,
   command_state: Arc<DeviceCommandState>,
   // At most one waiter for capacity, replaced by the next fresh configuration.
   admission_task: Arc<Mutex<Option<JoinHandle<()>>>>,
@@ -388,6 +410,7 @@ impl DeviceCommandDispatcher {
     command_dispatcher: RegisteredCommandDispatcher,
     execution_policy: CommandExecutionPolicy,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+    profiling_handler: ProfilingHandler,
     command_state: Arc<DeviceCommandState>,
     time_provider: Arc<dyn TimeProvider>,
   ) -> Self {
@@ -403,6 +426,7 @@ impl DeviceCommandDispatcher {
       command_dispatcher,
       execution_policy,
       remote_screenshot_capture_handler,
+      profiling_handler,
       command_state,
       admission_task: Arc::default(),
       test_hooks: None,
@@ -508,6 +532,7 @@ impl DeviceCommandDispatcher {
     let command_dispatcher = self.command_dispatcher.clone();
     let execution_policy = self.execution_policy.clone();
     let remote_screenshot_capture_handler = self.remote_screenshot_capture_handler.clone();
+    let profiling_handler = self.profiling_handler.clone();
     let time_provider = self.time_provider.clone();
     Box::pin(async move {
       let started_at = time_provider.now();
@@ -535,6 +560,7 @@ impl DeviceCommandDispatcher {
         command_dispatcher,
         execution_policy,
         remote_screenshot_capture_handler,
+        profiling_handler,
       ));
       let result = {
         // A closed sender is not cancellation: pruning a finished registry entry also closes it.
@@ -648,12 +674,16 @@ pub trait RegisteredCommandHandler: Send + Sync {
 #[derive(Clone)]
 pub struct CommandExecutionPolicy {
   timeout: DurationWatch<ExecutionTimeoutFlag>,
+  stack_sampling_timeout: DurationWatch<StackSamplingTimeoutFlag>,
+  stack_sampling_max_duration: DurationWatch<StackSamplingMaxDurationFlag>,
 }
 
 impl CommandExecutionPolicy {
   pub(crate) fn new(runtime: &ConfigLoader) -> Self {
     Self {
       timeout: runtime.register_duration_watch(),
+      stack_sampling_timeout: runtime.register_duration_watch(),
+      stack_sampling_max_duration: runtime.register_duration_watch(),
     }
   }
 
@@ -662,6 +692,21 @@ impl CommandExecutionPolicy {
     F: Future<Output = Result<T, CommandError>>,
   {
     let timeout = *self.timeout.read();
+    self
+      .execute_within(command, timeout, execution)
+      .await
+      .and_then(|result| result)
+  }
+
+  async fn execute_within<F, T>(
+    &self,
+    command: &str,
+    timeout: time::Duration,
+    execution: F,
+  ) -> Result<T, CommandError>
+  where
+    F: Future<Output = T>,
+  {
     if timeout.is_zero() {
       return Err(CommandError::Timeout);
     }
@@ -670,12 +715,49 @@ impl CommandExecutionPolicy {
       .timeout(AssertUnwindSafe(execution).catch_unwind())
       .await
     {
-      Ok(Ok(result)) => result,
+      Ok(Ok(result)) => Ok(result),
       Ok(Err(_)) => Err(CommandError::Other("command handler panicked".into())),
       Err(_) => {
         log::debug!("command {command} execution timed out after {timeout}");
         Err(CommandError::Timeout)
       },
+    }
+  }
+
+  /// The longest sampling window a stack sampling command may run: the configured maximum, and
+  /// never more than its execution timeout leaves after the platform's fixed overhead.
+  pub(crate) fn stack_sampling_limits(&self) -> StackSamplingLimits {
+    let timeout = *self.stack_sampling_timeout.read();
+    StackSamplingLimits {
+      max_duration: (*self.stack_sampling_max_duration.read())
+        .min(timeout - STACK_SAMPLING_OVERHEAD),
+    }
+  }
+
+  /// Dropping the returned future on timeout drops the capture future, which cancels the platform
+  /// capture.
+  async fn capture_stack_sample(
+    &self,
+    handler: ProfilingHandler,
+    params: &StackSamplingParams,
+  ) -> Result<OwnedTrace, StackSamplingFailure> {
+    let timeout = *self.stack_sampling_timeout.read();
+    match self
+      .execute_within(
+        STACK_SAMPLING_ARTIFACT_TYPE_ID,
+        timeout,
+        handler.capture_stack_sample(
+          params.duration,
+          params.frequency_hz,
+          params.buffer_size_kb,
+          params.tag.clone(),
+        ),
+      )
+      .await
+    {
+      Ok(Ok(outcome)) => Ok(outcome),
+      Ok(Err(error)) => Err(StackSamplingFailure::Platform(error)),
+      Err(error) => Err(StackSamplingFailure::Command(error)),
     }
   }
 
@@ -781,6 +863,7 @@ struct WorkflowCommandExecutor {
   execution_policy: CommandExecutionPolicy,
   attachment_store: AttachmentStoreHandle,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+  profiling_handler: ProfilingHandler,
 }
 
 impl WorkflowCommandDispatcher {
@@ -790,6 +873,7 @@ impl WorkflowCommandDispatcher {
     completion_tx: Sender<WorkflowCommandCompletion>,
     attachment_store: AttachmentStoreHandle,
     remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+    profiling_handler: ProfilingHandler,
   ) -> Self {
     Self {
       executor: WorkflowCommandExecutor {
@@ -797,6 +881,7 @@ impl WorkflowCommandDispatcher {
         execution_policy,
         attachment_store,
         remote_screenshot_capture_handler,
+        profiling_handler,
       },
       completion_tx,
       executions: Arc::default(),
@@ -890,6 +975,7 @@ impl WorkflowCommandExecutor {
           command,
           &arguments,
           self.remote_screenshot_capture_handler.clone(),
+          self.profiling_handler.clone(),
           &self.execution_policy,
           &self.attachment_store,
         )
@@ -904,6 +990,7 @@ async fn workflow_builtin_command_outcome(
   command: workflow_command_selector::BuiltinCommand,
   arguments: &HashMap<String, Data>,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+  profiling_handler: ProfilingHandler,
   execution_policy: &CommandExecutionPolicy,
   attachment_store: &AttachmentStoreHandle,
 ) -> WorkflowCommandOutcome {
@@ -930,6 +1017,31 @@ async fn workflow_builtin_command_outcome(
           .await
         },
         Err(error) => workflow_command_failure(error),
+      }
+    },
+    Ok(WellKnownCommandType::STACK_SAMPLING_TRACE) => {
+      let params = match stack_sampling_params(arguments, execution_policy.stack_sampling_limits())
+      {
+        Ok(params) => params,
+        Err(error) => return workflow_command_failure(error),
+      };
+      match execution_policy
+        .capture_stack_sample(profiling_handler, &params)
+        .await
+      {
+        Ok(trace) => {
+          // The workflow store keeps its own copy of the trace; the source is deleted when
+          // `trace` drops, whether admission completes, fails or is cancelled part-way.
+          workflow_command_outcome(
+            CommandResult::Completed {
+              fields: params.fields(),
+              attachment: Some(stack_sampling_attachment(&trace)),
+            },
+            attachment_store,
+          )
+          .await
+        },
+        Err(failure) => failure.into_workflow_outcome(),
       }
     },
     _ => workflow_command_failure(CommandError::CommandUnknown),
@@ -1005,6 +1117,7 @@ async fn execute_device_command(
   command_dispatcher: RegisteredCommandDispatcher,
   execution_policy: CommandExecutionPolicy,
   remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
+  profiling_handler: ProfilingHandler,
 ) -> anyhow::Result<()> {
   let command_id = command.command_id.to_string();
   let selector = command.command_selector.into_option().unwrap_or_default();
@@ -1034,6 +1147,17 @@ async fn execute_device_command(
             artifact_client,
             execution_policy,
             remote_screenshot_capture_handler,
+          )
+          .await
+        },
+        Ok(WellKnownCommandType::STACK_SAMPLING_TRACE) => {
+          execute_stack_sampling_device_command(
+            command_id,
+            &arguments,
+            senders,
+            artifact_client,
+            execution_policy,
+            profiling_handler,
           )
           .await
         },
@@ -1127,6 +1251,268 @@ async fn execute_screenshot_device_command(
       return send_device_command_update_with_artifact(
         &senders,
         completed_device_command_update(&command_id, false, None, artifact_attachment(artifact_id)),
+        Some(metadata),
+      )
+      .await;
+    },
+    Err(error) => {
+      failed_device_command_update(&command_id, 2, CommandError::Other(error.to_string()))
+    },
+  };
+  send_device_command_update(&senders, update).await
+}
+
+//
+// Stack sampling
+//
+
+/// A stack sampling command's arguments after defaults, clamping and validation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StackSamplingParams {
+  duration: time::Duration,
+  frequency_hz: u32,
+  buffer_size_kb: u32,
+  tag: String,
+}
+
+impl StackSamplingParams {
+  /// The result context: what actually ran, so the backend can tell clamped from requested.
+  fn fields(&self) -> LogFields {
+    [
+      ("profiling_type".into(), "STACK_SAMPLING".to_string().into()),
+      (
+        "duration_ms".into(),
+        self.duration.whole_milliseconds().to_string().into(),
+      ),
+      ("frequency_hz".into(), self.frequency_hz.to_string().into()),
+      (
+        "buffer_size_kb".into(),
+        self.buffer_size_kb.to_string().into(),
+      ),
+      ("tag".into(), self.tag.clone().into()),
+    ]
+    .into()
+  }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StackSamplingLimits {
+  max_duration: time::Duration,
+}
+
+/// Why a stack sampling capture produced no trace: the platform profiler failed, with its own
+/// error code and name, or the command itself did (timeout, panic).
+#[derive(Debug)]
+enum StackSamplingFailure {
+  Platform(StackSampleError),
+  Command(CommandError),
+}
+
+impl StackSamplingFailure {
+  fn into_fields(self) -> LogFields {
+    match self {
+      Self::Platform(error) => [
+        ("error".into(), error.message.into()),
+        ("profiling_error_code".into(), error.code.to_string().into()),
+        ("profiling_error_name".into(), error.name.into()),
+      ]
+      .into(),
+      Self::Command(error) => [("error".into(), error.into_message().into())].into(),
+    }
+  }
+
+  fn into_workflow_outcome(self) -> WorkflowCommandOutcome {
+    match self {
+      Self::Platform(error) => WorkflowCommandOutcome::Failed {
+        message: Some(error.message),
+        fields: [
+          ("profiling_error_code".into(), error.code.to_string().into()),
+          ("profiling_error_name".into(), error.name.into()),
+        ]
+        .into(),
+      },
+      Self::Command(error) => workflow_command_failure(error),
+    }
+  }
+}
+
+fn optional_integer_argument(
+  arguments: &HashMap<String, Data>,
+  name: &str,
+) -> Result<Option<i64>, CommandError> {
+  let Some(data) = arguments.get(name) else {
+    return Ok(None);
+  };
+  match &data.data_type {
+    Some(Data_type::SintData(value)) => Ok(Some(*value)),
+    Some(Data_type::IntData(value)) => i64::try_from(*value)
+      .map(Some)
+      .map_err(|_| CommandError::InvalidArguments(format!("argument {name} is out of range"))),
+    _ => Err(CommandError::InvalidArguments(format!(
+      "argument {name} must be an integer"
+    ))),
+  }
+}
+
+fn stack_sampling_tag(arguments: &HashMap<String, Data>) -> Result<String, CommandError> {
+  let tag = match arguments
+    .get("tag")
+    .and_then(|data| data.data_type.as_ref())
+  {
+    None => return Ok(STACK_SAMPLING_DEFAULT_TAG.to_string()),
+    Some(Data_type::StringData(tag)) if tag.is_empty() => {
+      return Ok(STACK_SAMPLING_DEFAULT_TAG.to_string());
+    },
+    Some(Data_type::StringData(tag)) => tag,
+    Some(_) => {
+      return Err(CommandError::InvalidArguments(
+        "argument tag must be a string".to_string(),
+      ));
+    },
+  };
+  let safe = tag.len() <= STACK_SAMPLING_MAX_TAG_LEN
+    && tag
+      .bytes()
+      .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'));
+  if !safe {
+    return Err(CommandError::InvalidArguments(format!(
+      "argument tag must be at most {STACK_SAMPLING_MAX_TAG_LEN} letters, digits, '.', '_' or '-'"
+    )));
+  }
+  Ok(tag.clone())
+}
+
+fn clamped_u32(value: Option<i64>, default: u32, range: &RangeInclusive<u32>) -> u32 {
+  value.map_or(default, |value| {
+    u32::try_from(value.clamp(i64::from(*range.start()), i64::from(*range.end())))
+      .unwrap_or(default)
+  })
+}
+
+/// Applies defaults and clamps. Fails only when the arguments are not integers or the limits
+/// leave no usable sampling window at all.
+pub fn stack_sampling_params(
+  arguments: &HashMap<String, Data>,
+  limits: StackSamplingLimits,
+) -> Result<StackSamplingParams, CommandError> {
+  if limits.max_duration < STACK_SAMPLING_MIN_DURATION {
+    return Err(CommandError::InvalidArguments(format!(
+      "stack sampling needs at least {} ms but the command timeout leaves {} ms",
+      STACK_SAMPLING_MIN_DURATION.whole_milliseconds(),
+      limits.max_duration.whole_milliseconds().max(0)
+    )));
+  }
+  let duration = optional_integer_argument(arguments, "duration_ms")?
+    .map_or(
+      STACK_SAMPLING_DEFAULT_DURATION,
+      time::Duration::milliseconds,
+    )
+    .clamp(STACK_SAMPLING_MIN_DURATION, limits.max_duration);
+  Ok(StackSamplingParams {
+    duration,
+    frequency_hz: clamped_u32(
+      optional_integer_argument(arguments, "frequency_hz")?,
+      STACK_SAMPLING_DEFAULT_FREQUENCY_HZ,
+      &STACK_SAMPLING_FREQUENCY_HZ,
+    ),
+    buffer_size_kb: clamped_u32(
+      optional_integer_argument(arguments, "buffer_size_kb")?,
+      STACK_SAMPLING_DEFAULT_BUFFER_KB,
+      &STACK_SAMPLING_BUFFER_KB,
+    ),
+    tag: stack_sampling_tag(arguments)?,
+  })
+}
+
+/// The uploader reads the trace once, compresses it on the way and deletes the source itself;
+/// whatever it leaves behind goes when the [`OwnedTrace`] drops.
+fn stack_sampling_attachment(trace: &OwnedTrace) -> CommandAttachment {
+  CommandAttachment {
+    source: UploadSource::Path(trace.path().to_path_buf()),
+    content_type: Some(STACK_SAMPLING_CONTENT_TYPE.to_string()),
+  }
+}
+
+async fn execute_stack_sampling_device_command(
+  command_id: String,
+  arguments: &HashMap<String, Data>,
+  senders: Arc<DeviceCommandExecution>,
+  artifact_client: Arc<dyn bd_artifact_upload::Client>,
+  execution_policy: CommandExecutionPolicy,
+  profiling_handler: ProfilingHandler,
+) -> anyhow::Result<()> {
+  send_device_command_update(
+    &senders,
+    DeviceCommandUpdate {
+      command_id: command_id.clone(),
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(
+        device_command_update::Accepted::default(),
+      )),
+      ..Default::default()
+    },
+  )
+  .await?;
+
+  let session_id = match &senders.session_id {
+    Ok(session_id) => session_id.to_string(),
+    Err(error) => {
+      send_device_command_update(
+        &senders,
+        failed_device_command_update(&command_id, 2, CommandError::Other(error.to_string())),
+      )
+      .await?;
+      return Ok(());
+    },
+  };
+  let params = match stack_sampling_params(arguments, execution_policy.stack_sampling_limits()) {
+    Ok(params) => params,
+    Err(error) => {
+      send_device_command_update(
+        &senders,
+        failed_device_command_update(&command_id, 2, error),
+      )
+      .await?;
+      return Ok(());
+    },
+  };
+  let trace = match execution_policy
+    .capture_stack_sample(profiling_handler, &params)
+    .await
+  {
+    Ok(trace) => trace,
+    Err(failure) => {
+      send_device_command_update(
+        &senders,
+        failed_device_command_update_with_fields(&command_id, 2, failure.into_fields()),
+      )
+      .await?;
+      return Ok(());
+    },
+  };
+
+  let staged = stage_device_command_attachment(
+    stack_sampling_attachment(&trace),
+    STACK_SAMPLING_ARTIFACT_TYPE_ID,
+    &command_id,
+    &session_id,
+    artifact_client,
+  )
+  .await;
+  // The uploader has either consumed the file or never taken it. Drop the trace before reporting
+  // so that whatever is left is gone by the time the outcome is visible; a cancellation at the
+  // await above drops it too.
+  drop(trace);
+  let update = match staged {
+    Ok((artifact_id, metadata)) => {
+      return send_device_command_update_with_artifact(
+        &senders,
+        completed_device_command_update(
+          &command_id,
+          false,
+          Some(device_command_context(params.fields())),
+          artifact_attachment(artifact_id),
+        ),
         Some(metadata),
       )
       .await;

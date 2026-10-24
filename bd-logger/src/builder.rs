@@ -19,6 +19,7 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::{Logger, PendingEntityIdUpdate, TestHooks};
 use crate::logging_state::UninitializedLoggingContext;
+use crate::profiling::{NoopProfilingTarget, ProfilingHandler, ProfilingTarget};
 use crate::state_upload::StateUploadHandle;
 use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use crate::{
@@ -196,6 +197,7 @@ pub struct LoggerBuilder {
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
   command_handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
+  profiling_target: Option<Box<dyn ProfilingTarget>>,
   test_hooks: Option<Arc<dyn TestHooks>>,
   startup_replay_eligibility: StartupReplayEligibility,
 }
@@ -212,9 +214,18 @@ impl LoggerBuilder {
       time_provider: None,
       crash_report_hook: None,
       command_handlers: HashMap::new(),
+      profiling_target: None,
       test_hooks: None,
       startup_replay_eligibility: StartupReplayEligibility::Unknown,
     }
+  }
+
+  /// Sets the platform profiler behind the built-in stack sampling command. Without one, the
+  /// command fails as unsupported on this platform.
+  #[must_use]
+  pub fn with_profiling_target(mut self, target: Box<dyn ProfilingTarget>) -> Self {
+    self.profiling_target = Some(target);
+    self
   }
 
   /// Sets the component shutdown handle to be used by the logger. By default the logger will
@@ -407,6 +418,11 @@ impl LoggerBuilder {
     let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
     let command_dispatcher = RegisteredCommandDispatcher::new(self.command_handlers);
     let command_execution_policy = CommandExecutionPolicy::new(&runtime_loader);
+    let profiling_handler = ProfilingHandler::new(Arc::from(
+      self
+        .profiling_target
+        .unwrap_or_else(|| Box::new(NoopProfilingTarget)),
+    ));
 
     let (async_log_buffer, async_log_buffer_communication_tx, remote_screenshot_capture_handler) =
       AsyncLogBuffer::<LoggerReplay>::new(
@@ -435,6 +451,7 @@ impl LoggerBuilder {
         self.params.events_listener_target,
         command_dispatcher.clone(),
         command_execution_policy.clone(),
+        profiling_handler.clone(),
         config_update_rx,
         report_proc_rx,
         shutdown_handle.clone(),
@@ -665,6 +682,7 @@ impl LoggerBuilder {
           command_dispatcher,
           command_execution_policy,
           remote_screenshot_capture_handler,
+          profiling_handler,
           command_state.clone(),
           time_provider.clone(),
           &scope.scope("config"),
