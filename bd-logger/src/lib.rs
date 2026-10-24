@@ -52,6 +52,7 @@ pub use crate::device_command::{
   CommandInvocation,
   CommandResult,
   RegisteredCommandHandler,
+  STACK_SAMPLING_COMMAND_KEY,
 };
 pub use crate::logger::{ChannelPair, InitParams};
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};

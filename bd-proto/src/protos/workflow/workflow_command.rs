@@ -1024,6 +1024,8 @@ pub enum WellKnownCommandType {
     DUMP_DEVICE_BUFFER = 1,
     // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.WellKnownCommandType.TAKE_SCREENSHOT)
     TAKE_SCREENSHOT = 2,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.WellKnownCommandType.STACK_SAMPLING_TRACE)
+    STACK_SAMPLING_TRACE = 3,
 }
 
 impl ::protobuf::Enum for WellKnownCommandType {
@@ -1038,6 +1040,7 @@ impl ::protobuf::Enum for WellKnownCommandType {
             0 => ::std::option::Option::Some(WellKnownCommandType::TYPE_UNSPECIFIED),
             1 => ::std::option::Option::Some(WellKnownCommandType::DUMP_DEVICE_BUFFER),
             2 => ::std::option::Option::Some(WellKnownCommandType::TAKE_SCREENSHOT),
+            3 => ::std::option::Option::Some(WellKnownCommandType::STACK_SAMPLING_TRACE),
             _ => ::std::option::Option::None
         }
     }
@@ -1047,6 +1050,7 @@ impl ::protobuf::Enum for WellKnownCommandType {
             "TYPE_UNSPECIFIED" => ::std::option::Option::Some(WellKnownCommandType::TYPE_UNSPECIFIED),
             "DUMP_DEVICE_BUFFER" => ::std::option::Option::Some(WellKnownCommandType::DUMP_DEVICE_BUFFER),
             "TAKE_SCREENSHOT" => ::std::option::Option::Some(WellKnownCommandType::TAKE_SCREENSHOT),
+            "STACK_SAMPLING_TRACE" => ::std::option::Option::Some(WellKnownCommandType::STACK_SAMPLING_TRACE),
             _ => ::std::option::Option::None
         }
     }
@@ -1055,6 +1059,7 @@ impl ::protobuf::Enum for WellKnownCommandType {
         WellKnownCommandType::TYPE_UNSPECIFIED,
         WellKnownCommandType::DUMP_DEVICE_BUFFER,
         WellKnownCommandType::TAKE_SCREENSHOT,
+        WellKnownCommandType::STACK_SAMPLING_TRACE,
     ];
 }
 
@@ -1119,14 +1124,32 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
     \x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging\
     .v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01\
-    *\xe7\x01\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_UNSPECIFIED\x10\0\
+    *\x86\x08\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_UNSPECIFIED\x10\0\
     \x12V\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1a>\xc2\xf3\x18:\n\x12dump_device\
     _buffer\x12$Requests\x20the\x20device's\x20buffered\x20logs.\x12a\n\x0fT\
     AKE_SCREENSHOT\x10\x02\x1aL\xc2\xf3\x18H\n\x0ftake_screenshot\x125Captur\
-    es\x20the\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20image.:\
-    \x9f\x01\n\x1awell_known_command_options\x18\xb8\x8e\x03\x20\x01(\x0b2=.\
-    bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions\x12!.google\
-    .protobuf.EnumValueOptionsR\x17wellKnownCommandOptionsb\x06proto3\
+    es\x20the\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20image.\
+    \x12\x9c\x06\n\x14STACK_SAMPLING_TRACE\x10\x03\x1a\x81\x06\xc2\xf3\x18\
+    \xfc\x05\n\x14stack_sampling_trace\x12TCaptures\x20a\x20Perfetto\x20stac\
+    k\x20sampling\x20trace\x20of\x20the\x20application's\x20process\x20(Andr\
+    oid\x2015+).\x1a\x9f\x01\n\x0bduration_ms\x10\x05\x1a\x8b\x01How\x20long\
+    \x20to\x20sample,\x20in\x20milliseconds.\x20Defaults\x20to\x203000.\x20T\
+    he\x20client\x20clamps\x20it\x20to\x20its\x20configured\x20maximum\x20an\
+    d\x20to\x20the\x20command\x20execution\x20timeout.\x20\x01\x1a^\n\x0cfre\
+    quency_hz\x10\x05\x1aJSampling\x20frequency\x20in\x20Hz.\x20Defaults\x20\
+    to\x20100;\x20the\x20client\x20clamps\x20it\x20to\x2010-250.\x20\x01\x1a\
+    c\n\x0ebuffer_size_kb\x10\x05\x1aMTrace\x20buffer\x20size\x20in\x20KB.\
+    \x20Defaults\x20to\x202048;\x20the\x20client\x20clamps\x20it\x20to\x2025\
+    6-16384.\x20\x01\x1a\xa6\x02\n\x03tag\x10\x01\x1a\x9a\x02Tag\x20recorded\
+    \x20with\x20the\x20capture.\x20The\x20system\x20puts\x20it\x20in\x20the\
+    \x20output\x20file\x20name\x20and\x20reports\x20it\x20through\x20Profili\
+    ngResult.getTag(),\x20so\x20an\x20app\x20that\x20observes\x20profiling\
+    \x20results\x20can\x20tell\x20these\x20captures\x20apart.\x20Defaults\
+    \x20to\x20\"bitdrift\";\x20letters,\x20digits,\x20'.',\x20'_'\x20and\x20\
+    '-'\x20only,\x20at\x20most\x2064\x20characters.\x20\x01:\x9f\x01\n\x1awe\
+    ll_known_command_options\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.\
+    protobuf.workflow.v1.WellKnownCommandOptions\x12!.google.protobuf.EnumVa\
+    lueOptionsR\x17wellKnownCommandOptionsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

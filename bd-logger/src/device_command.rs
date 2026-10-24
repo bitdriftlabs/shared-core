@@ -79,7 +79,7 @@ use bd_proto::protos::workflow::workflow_command::{
   WorkflowCommandSelector,
   workflow_command_selector,
 };
-use bd_runtime::runtime::device_command::ExecutionTimeoutFlag;
+use bd_runtime::runtime::device_command::{ExecutionTimeoutFlag, StackSamplingTimeoutFlag};
 use bd_runtime::runtime::{ConfigLoader, DurationWatch};
 use bd_time::{TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::{
@@ -100,6 +100,7 @@ use protobuf::Message;
 use std::collections::HashMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use time::OffsetDateTime;
@@ -110,6 +111,13 @@ use uuid::Uuid;
 
 const MAX_SCREENSHOT_BYTES: usize = 2 * 1024 * 1024;
 const REGISTERED_COMMAND_ARTIFACT_TYPE_ID: &str = "device_command_attachment";
+/// The key a platform registers its built-in stack sampling handler under. The core passes the
+/// well-known `STACK_SAMPLING_TRACE` command through to that handler exactly like a registered
+/// command, so the platform owns the capture end to end and one handler serves both direct and
+/// workflow invocations. Apps must not register under this key.
+pub const STACK_SAMPLING_COMMAND_KEY: &str = "stack_sampling_trace";
+/// The backend admits a built-in trace only under its well-known artifact type.
+const STACK_SAMPLING_ARTIFACT_TYPE_ID: &str = "stack_sampling_trace";
 
 //
 // TestHooks
@@ -648,12 +656,14 @@ pub trait RegisteredCommandHandler: Send + Sync {
 #[derive(Clone)]
 pub struct CommandExecutionPolicy {
   timeout: DurationWatch<ExecutionTimeoutFlag>,
+  stack_sampling_timeout: DurationWatch<StackSamplingTimeoutFlag>,
 }
 
 impl CommandExecutionPolicy {
   pub(crate) fn new(runtime: &ConfigLoader) -> Self {
     Self {
       timeout: runtime.register_duration_watch(),
+      stack_sampling_timeout: runtime.register_duration_watch(),
     }
   }
 
@@ -662,6 +672,18 @@ impl CommandExecutionPolicy {
     F: Future<Output = Result<T, CommandError>>,
   {
     let timeout = *self.timeout.read();
+    self.execute_within(command, timeout, execution).await
+  }
+
+  async fn execute_within<F, T>(
+    &self,
+    command: &str,
+    timeout: time::Duration,
+    execution: F,
+  ) -> Result<T, CommandError>
+  where
+    F: Future<Output = Result<T, CommandError>>,
+  {
     if timeout.is_zero() {
       return Err(CommandError::Timeout);
     }
@@ -685,8 +707,15 @@ impl CommandExecutionPolicy {
     invocation: CommandInvocation,
   ) -> CommandResult {
     let registered_command_id = invocation.registered_command_id.clone();
+    // The built-in stack sampling handler records for seconds and then waits for the profiler to
+    // write the trace, so it has its own deadline; every other handler shares the generic one.
+    let timeout = if registered_command_id == STACK_SAMPLING_COMMAND_KEY {
+      *self.stack_sampling_timeout.read()
+    } else {
+      *self.timeout.read()
+    };
     match self
-      .execute(&registered_command_id, async move {
+      .execute_within(&registered_command_id, timeout, async move {
         Ok(handler.execute(invocation).await)
       })
       .await
@@ -864,26 +893,23 @@ impl WorkflowCommandExecutor {
     let arguments = command_selector.arguments;
     match command_selector.command_selector {
       Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
-        if let Some(handler) = self
-          .command_dispatcher
-          .get_handler(&command.registered_command_id)
-        {
-          let result = self
-            .execution_policy
-            .execute_registered(
-              handler,
-              CommandInvocation {
-                command_id: None,
-                registered_command_id: command.registered_command_id,
-                arguments,
-                session_id,
-              },
-            )
-            .await;
-          workflow_command_outcome(result, &self.attachment_store).await
-        } else {
-          workflow_command_failure(CommandError::CommandUnknown)
-        }
+        self
+          .execute_platform_command(
+            PlatformCommand::registered(command.registered_command_id),
+            arguments,
+            session_id,
+          )
+          .await
+      },
+      Some(workflow_command_selector::Command_selector::BuiltinCommand(command))
+        if matches!(
+          command.type_.enum_value(),
+          Ok(WellKnownCommandType::STACK_SAMPLING_TRACE)
+        ) =>
+      {
+        self
+          .execute_platform_command(PlatformCommand::stack_sampling(), arguments, session_id)
+          .await
       },
       Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
         workflow_builtin_command_outcome(
@@ -897,6 +923,99 @@ impl WorkflowCommandExecutor {
       },
       None => workflow_command_failure(CommandError::CommandUnknown),
     }
+  }
+
+  /// Runs a command through the handler the platform registered for it. Workflow attachments are
+  /// copied into the attachment store, so a file the handler handed over is deleted afterwards.
+  async fn execute_platform_command(
+    &self,
+    platform_command: PlatformCommand,
+    arguments: HashMap<String, Data>,
+    session_id: String,
+  ) -> WorkflowCommandOutcome {
+    let Some(handler) = self.command_dispatcher.get_handler(&platform_command.key) else {
+      return workflow_command_failure(platform_command.missing_handler);
+    };
+    let result = self
+      .execution_policy
+      .execute_registered(
+        handler,
+        CommandInvocation {
+          command_id: None,
+          registered_command_id: platform_command.key,
+          arguments,
+          session_id,
+        },
+      )
+      .await;
+    let handed_over = attachment_path(&result);
+    let outcome = workflow_command_outcome(result, &self.attachment_store).await;
+    discard_handed_over_file(handed_over).await;
+    outcome
+  }
+}
+
+/// A command the platform executes through a [`RegisteredCommandHandler`]: one the app
+/// registered, or a well-known command the SDK's platform layer implements under a reserved key.
+struct PlatformCommand {
+  key: String,
+  /// The artifact type the backend expects the attachment under.
+  artifact_type_id: &'static str,
+  /// Reported when no handler is registered under `key`.
+  missing_handler: CommandError,
+}
+
+impl PlatformCommand {
+  fn registered(registered_command_id: String) -> Self {
+    Self {
+      key: registered_command_id,
+      artifact_type_id: REGISTERED_COMMAND_ARTIFACT_TYPE_ID,
+      missing_handler: CommandError::CommandUnknown,
+    }
+  }
+
+  fn stack_sampling() -> Self {
+    Self {
+      key: STACK_SAMPLING_COMMAND_KEY.to_string(),
+      artifact_type_id: STACK_SAMPLING_ARTIFACT_TYPE_ID,
+      missing_handler: CommandError::Other(
+        "stack sampling is not supported on this platform".to_string(),
+      ),
+    }
+  }
+}
+
+/// The file a completed result hands over to the SDK, if its attachment is a path.
+fn attachment_path(result: &CommandResult) -> Option<PathBuf> {
+  match result {
+    CommandResult::Completed {
+      attachment: Some(attachment),
+      ..
+    } => attachment_path_of(attachment),
+    _ => None,
+  }
+}
+
+/// A relative path is left alone: each consumer resolves it against its own root.
+fn attachment_path_of(attachment: &CommandAttachment) -> Option<PathBuf> {
+  match &attachment.source {
+    UploadSource::Path(path) if path.is_absolute() => Some(path.clone()),
+    _ => None,
+  }
+}
+
+/// A handler that attaches a file hands it to the SDK, which deletes it once it is no longer
+/// needed. The uploader does that itself when it consumes a direct upload; this covers the
+/// copies the workflow store takes and uploads that were never enqueued.
+async fn discard_handed_over_file(path: Option<PathBuf>) {
+  let Some(path) = path else { return };
+  if let Err(error) = tokio::fs::remove_file(&path).await
+    && error.kind() != std::io::ErrorKind::NotFound
+  {
+    log::debug!(
+      "failed to remove command attachment file {}: {error}",
+      path.display()
+    );
   }
 }
 
@@ -1011,9 +1130,9 @@ async fn execute_device_command(
   let arguments = selector.arguments;
   match selector.command_selector {
     Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
-      execute_custom_device_command(
+      execute_platform_device_command(
         command_id,
-        command.registered_command_id.clone(),
+        PlatformCommand::registered(command.registered_command_id.clone()),
         arguments,
         senders,
         artifact_client,
@@ -1024,6 +1143,18 @@ async fn execute_device_command(
     },
     Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
       match command.type_.enum_value() {
+        Ok(WellKnownCommandType::STACK_SAMPLING_TRACE) => {
+          execute_platform_device_command(
+            command_id,
+            PlatformCommand::stack_sampling(),
+            arguments,
+            senders,
+            artifact_client,
+            command_dispatcher,
+            execution_policy,
+          )
+          .await
+        },
         Ok(WellKnownCommandType::DUMP_DEVICE_BUFFER) if arguments.is_empty() => {
           execute_buffer_dump_device_command(command_id, senders, trigger_upload_tx).await
         },
@@ -1248,9 +1379,9 @@ async fn execute_buffer_dump_device_command(
   send_device_command_update(&senders, update).await
 }
 
-async fn execute_custom_device_command(
+async fn execute_platform_device_command(
   command_id: String,
-  registered_command_id: String,
+  platform_command: PlatformCommand,
   arguments: HashMap<String, Data>,
   senders: Arc<DeviceCommandExecution>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -1269,10 +1400,10 @@ async fn execute_custom_device_command(
     .await?;
     return Ok(());
   };
-  let Some(handler) = command_dispatcher.get_handler(&registered_command_id) else {
+  let Some(handler) = command_dispatcher.get_handler(&platform_command.key) else {
     send_device_command_update(
       &senders,
-      failed_device_command_update(&command_id, 1, CommandError::CommandUnknown),
+      failed_device_command_update(&command_id, 1, platform_command.missing_handler),
     )
     .await?;
     return Ok(());
@@ -1307,7 +1438,7 @@ async fn execute_custom_device_command(
       handler,
       CommandInvocation {
         command_id: Some(command_id_uuid),
-        registered_command_id,
+        registered_command_id: platform_command.key,
         arguments,
         session_id: session_id.clone(),
       },
@@ -1319,9 +1450,10 @@ async fn execute_custom_device_command(
     CommandResult::Completed { fields, attachment } => {
       let attachment = match attachment {
         Some(attachment) => {
+          let handed_over = attachment_path_of(&attachment);
           match stage_device_command_attachment(
             attachment,
-            REGISTERED_COMMAND_ARTIFACT_TYPE_ID,
+            platform_command.artifact_type_id,
             &command_id,
             &session_id,
             artifact_client,
@@ -1333,6 +1465,8 @@ async fn execute_custom_device_command(
               artifact_attachment(artifact_id)
             },
             Err(error) => {
+              // The uploader deletes a file it consumed; one it never took is deleted here.
+              discard_handed_over_file(handed_over).await;
               return send_device_command_update(
                 &senders,
                 failed_device_command_update(

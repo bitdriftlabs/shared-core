@@ -16,6 +16,7 @@ use super::{
   DeviceCommandStatus,
   RegisteredCommandDispatcher,
   RegisteredCommandHandler,
+  STACK_SAMPLING_COMMAND_KEY,
   TestHooks,
   WorkflowCommandDispatcher,
   artifact_attachment,
@@ -63,7 +64,7 @@ use bd_log_primitives::{
 };
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
 use bd_proto::protos::client::api::{DeviceCommandUpdate, device_command_update};
-use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::logging::payload::{Data, LogType};
 use bd_proto::protos::workflow::workflow_command::{
   WellKnownCommandType,
   WorkflowCommandSelector,
@@ -85,7 +86,7 @@ use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::future::{Future, pending, poll_fn};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::Poll;
@@ -1192,6 +1193,319 @@ impl Drop for DropSignal {
       let _ = sender.send(());
     }
   }
+}
+
+//
+// Stack sampling pass-through
+//
+
+/// Records what the platform handler was invoked with and answers with one prepared result.
+struct RecordingHandler {
+  invocations: Mutex<Vec<CommandInvocation>>,
+  result: Mutex<Option<CommandResult>>,
+}
+
+impl RecordingHandler {
+  fn new(result: CommandResult) -> Arc<Self> {
+    Arc::new(Self {
+      invocations: Mutex::default(),
+      result: Mutex::new(Some(result)),
+    })
+  }
+}
+
+#[async_trait::async_trait]
+impl RegisteredCommandHandler for RecordingHandler {
+  async fn execute(&self, invocation: CommandInvocation) -> CommandResult {
+    self.invocations.lock().push(invocation);
+    self.result.lock().take().expect("one invocation")
+  }
+}
+
+fn text_argument(value: &str) -> Data {
+  let mut data = Data::new();
+  data.set_string_data(value.to_string());
+  data
+}
+
+fn stack_sampling_arguments() -> HashMap<String, Data> {
+  HashMap::from([
+    ("duration_ms".to_string(), text_argument("5000")),
+    ("tag".to_string(), text_argument("checkout")),
+  ])
+}
+
+fn stack_sampling_selector(arguments: HashMap<String, Data>) -> WorkflowCommandSelector {
+  WorkflowCommandSelector {
+    command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
+      workflow_command_selector::BuiltinCommand {
+        type_: WellKnownCommandType::STACK_SAMPLING_TRACE.into(),
+        ..Default::default()
+      },
+    )),
+    arguments,
+    ..Default::default()
+  }
+}
+
+fn stack_sampling_request(
+  command_id: Uuid,
+  arguments: HashMap<String, Data>,
+  dispatcher: &DeviceCommandDispatcher,
+) -> DeviceCommandRequest {
+  DeviceCommandRequest {
+    command_id: command_id.to_string().into(),
+    command_selector: Some(stack_sampling_selector(arguments)).into(),
+    sdk_instance_id: dispatcher.command_state.sdk_instance_id.clone().into(),
+    expires_at: (OffsetDateTime::now_utc() + Duration::days(1)).into_proto(),
+    ..Default::default()
+  }
+}
+
+fn write_trace(directory: &Path) -> PathBuf {
+  let path = directory.join("trace.perfetto");
+  fs::write(&path, b"trace").unwrap();
+  path
+}
+
+fn failed_error(update: DeviceCommandUpdate) -> String {
+  let Some(device_command_update::Update_type::Failed(failed)) = update.update_type else {
+    panic!("expected a failed command update");
+  };
+  let fields = &failed.context.as_ref().unwrap().fields;
+  match DataValue::from_proto(fields.get("error").unwrap().clone()) {
+    Some(DataValue::String(error)) => error,
+    other => panic!("expected a string error, got {other:?}"),
+  }
+}
+
+#[tokio::test]
+async fn direct_stack_sampling_is_passed_through_to_the_platform_handler() {
+  let (directory, _runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let handler = RecordingHandler::new(completed_attachment(
+    UploadSource::Path(trace.clone()),
+    Some("application/vnd.bitdrift.perfetto-trace".into()),
+  ));
+  let registry = RegisteredCommandDispatcher::default();
+  registry.register(STACK_SAMPLING_COMMAND_KEY.into(), handler.clone());
+  let (upload_tx, mut upload_rx) = mpsc::unbounded_channel();
+  let artifact_id = Uuid::new_v4();
+  let mut artifacts = MockClient::new();
+  artifacts
+    .expect_enqueue_command_upload()
+    .times(1)
+    .returning(
+      move |source, type_id, _, _, _, _, content_type, persisted_tx, completion_tx| {
+        let UploadSource::Path(path) = source else {
+          panic!("expected the trace to be uploaded from its path");
+        };
+        upload_tx.send((path, type_id, content_type)).unwrap();
+        persisted_tx.unwrap().send(Ok(5)).unwrap();
+        completion_tx.unwrap().send(Ok(())).unwrap();
+        Ok(artifact_id)
+      },
+    );
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(artifacts),
+  );
+  let command_id = Uuid::new_v4();
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    command_id,
+    stack_sampling_arguments(),
+    &dispatcher,
+  )]);
+  assert_eq!(
+    acknowledge_update(&mut updates)
+      .await
+      .update_sequence_number,
+    1
+  );
+
+  // The attachment goes out under the well-known artifact type, from the handler's file.
+  let (path, type_id, content_type) = upload_rx.recv().await.unwrap();
+  assert_eq!(path, trace);
+  assert_eq!(type_id, "stack_sampling_trace");
+  assert_eq!(
+    content_type.as_deref(),
+    Some("application/vnd.bitdrift.perfetto-trace")
+  );
+  let completed = acknowledge_update(&mut updates).await;
+  assert_eq!(completed.update_sequence_number, 2);
+  assert!(matches!(
+    completed.update_type,
+    Some(device_command_update::Update_type::Completed(_))
+  ));
+
+  // The handler saw the well-known key, the command ID and the arguments untouched.
+  let invocations = handler.invocations.lock();
+  assert_eq!(invocations.len(), 1);
+  assert_eq!(
+    invocations[0].registered_command_id,
+    STACK_SAMPLING_COMMAND_KEY
+  );
+  assert_eq!(invocations[0].command_id, Some(command_id));
+  assert_eq!(invocations[0].arguments, stack_sampling_arguments());
+}
+
+#[tokio::test]
+async fn direct_stack_sampling_without_a_platform_handler_fails_as_unsupported() {
+  let (directory, _runtime, policy) = command_runtime();
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    RegisteredCommandDispatcher::default(),
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(MockClient::new()),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  let update = acknowledge_update(&mut updates).await;
+  assert_eq!(update.update_sequence_number, 1);
+  assert_eq!(
+    failed_error(update),
+    "stack sampling is not supported on this platform"
+  );
+}
+
+#[tokio::test]
+async fn direct_stack_sampling_staging_failure_deletes_the_handed_over_file() {
+  let (directory, _runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  registry.register(
+    STACK_SAMPLING_COMMAND_KEY.into(),
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let mut artifacts = MockClient::new();
+  artifacts
+    .expect_enqueue_command_upload()
+    .times(1)
+    .returning(|_, _, _, _, _, _, _, _, _| Err(bd_artifact_upload::EnqueueError::QueueFull));
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(artifacts),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  acknowledge_update(&mut updates).await;
+  let update = acknowledge_update(&mut updates).await;
+  assert_eq!(update.update_sequence_number, 2);
+  assert_eq!(failed_error(update), "upload queue full");
+  assert!(!trace.exists(), "a file the uploader never took is deleted");
+}
+
+#[tokio::test(start_paused = true)]
+async fn direct_stack_sampling_uses_its_own_execution_timeout() {
+  let (directory, _runtime, policy) = command_runtime();
+  let (handler, mut started_rx, dropped_rx) = pending_handler();
+  let registry = RegisteredCommandDispatcher::default();
+  registry.register(STACK_SAMPLING_COMMAND_KEY.into(), handler);
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(MockClient::new()),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  acknowledge_update(&mut updates).await;
+  started_rx.recv().await.unwrap();
+
+  // The generic five second deadline does not apply to the built-in capture...
+  tokio::time::advance(Duration::seconds(6).unsigned_abs()).await;
+  assert_eq!(
+    updates.try_recv().unwrap_err(),
+    mpsc::error::TryRecvError::Empty
+  );
+  // ...its own fifteen second one does.
+  tokio::time::advance(Duration::seconds(10).unsigned_abs()).await;
+  assert_timeout_update(acknowledge_update(&mut updates).await);
+  dropped_rx.await.unwrap();
+}
+
+#[tokio::test]
+async fn workflow_stack_sampling_is_passed_through_and_the_handed_over_file_is_removed() {
+  let (directory, runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let handler = RecordingHandler::new(completed_attachment(
+    UploadSource::Path(trace.clone()),
+    Some("application/vnd.bitdrift.perfetto-trace".into()),
+  ));
+  let registry = RegisteredCommandDispatcher::default();
+  registry.register(STACK_SAMPLING_COMMAND_KEY.into(), handler.clone());
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+
+  let WorkflowCommandOutcome::SucceededWithAttachment { fields, .. } = dispatcher
+    .execute(
+      stack_sampling_selector(stack_sampling_arguments()),
+      "session".into(),
+    )
+    .await
+  else {
+    panic!("expected a workflow attachment");
+  };
+  assert_eq!(fields.get("handler_field"), Some(&"handler_value".into()));
+  assert!(
+    !trace.exists(),
+    "the workflow store keeps its own copy, so the handed over file is removed"
+  );
+  let invocations = handler.invocations.lock();
+  assert_eq!(
+    invocations[0].registered_command_id,
+    STACK_SAMPLING_COMMAND_KEY
+  );
+  assert_eq!(invocations[0].command_id, None);
+  assert_eq!(invocations[0].session_id, "session");
+  assert_eq!(invocations[0].arguments, stack_sampling_arguments());
+}
+
+#[tokio::test]
+async fn workflow_stack_sampling_without_a_platform_handler_fails_as_unsupported() {
+  let (directory, runtime, policy) = command_runtime();
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    RegisteredCommandDispatcher::default(),
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+  let WorkflowCommandOutcome::Failed { message, .. } = dispatcher
+    .execute(stack_sampling_selector(HashMap::new()), "session".into())
+    .await
+  else {
+    panic!("expected a failure");
+  };
+  assert_eq!(
+    message.as_deref(),
+    Some("stack sampling is not supported on this platform")
+  );
 }
 
 fn command_runtime() -> (TempDir, Arc<ConfigLoader>, CommandExecutionPolicy) {
