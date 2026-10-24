@@ -948,10 +948,11 @@ impl WorkflowCommandExecutor {
         },
       )
       .await;
-    let handed_over = attachment_path(&result);
-    let outcome = workflow_command_outcome(result, &self.attachment_store).await;
-    discard_handed_over_file(handed_over).await;
-    outcome
+    // The guard deletes the handler's file when it drops: after the store has taken its copy,
+    // or at once if this future is cancelled during admission. The unlink is synchronous, so no
+    // cancellable await sits between an admitted attachment and the outcome that references it.
+    let _handed_over = HandedOverFile::from_result(&result);
+    workflow_command_outcome(result, &self.attachment_store).await
   }
 }
 
@@ -985,37 +986,69 @@ impl PlatformCommand {
   }
 }
 
-/// The file a completed result hands over to the SDK, if its attachment is a path.
-fn attachment_path(result: &CommandResult) -> Option<PathBuf> {
-  match result {
-    CommandResult::Completed {
-      attachment: Some(attachment),
-      ..
-    } => attachment_path_of(attachment),
-    _ => None,
+/// A file a handler handed to the SDK with its result. The SDK deletes it once it is no longer
+/// needed: this guard does so when dropped, unless [`HandedOverFile::taken`] recorded that the
+/// uploader consumed the file (it deletes its own sources, and the path may be reused by a later
+/// capture). Dropping on cancellation covers every await in between. A relative path is left
+/// alone: each consumer resolves it against its own root.
+struct HandedOverFile {
+  path: Option<PathBuf>,
+}
+
+impl HandedOverFile {
+  fn from_result(result: &CommandResult) -> Self {
+    match result {
+      CommandResult::Completed {
+        attachment: Some(attachment),
+        ..
+      } => Self::from_attachment(attachment),
+      _ => Self { path: None },
+    }
+  }
+
+  fn from_attachment(attachment: &CommandAttachment) -> Self {
+    Self {
+      path: match &attachment.source {
+        UploadSource::Path(path) if path.is_absolute() => Some(path.clone()),
+        _ => None,
+      },
+    }
+  }
+
+  /// The uploader has persisted the file and owns its deletion from here on.
+  fn taken(mut self) {
+    self.path = None;
   }
 }
 
-/// A relative path is left alone: each consumer resolves it against its own root.
-fn attachment_path_of(attachment: &CommandAttachment) -> Option<PathBuf> {
-  match &attachment.source {
-    UploadSource::Path(path) if path.is_absolute() => Some(path.clone()),
-    _ => None,
+impl Drop for HandedOverFile {
+  fn drop(&mut self) {
+    // A single unlink of a small file, kept synchronous so there is no cancellation point.
+    if let Some(path) = self.path.take()
+      && let Err(error) = std::fs::remove_file(&path)
+      && error.kind() != std::io::ErrorKind::NotFound
+    {
+      log::debug!(
+        "failed to remove command attachment file {}: {error}",
+        path.display()
+      );
+    }
   }
 }
 
-/// A handler that attaches a file hands it to the SDK, which deletes it once it is no longer
-/// needed. The uploader does that itself when it consumes a direct upload; this covers the
-/// copies the workflow store takes and uploads that were never enqueued.
-async fn discard_handed_over_file(path: Option<PathBuf>) {
-  let Some(path) = path else { return };
-  if let Err(error) = tokio::fs::remove_file(&path).await
-    && error.kind() != std::io::ErrorKind::NotFound
-  {
-    log::debug!(
-      "failed to remove command attachment file {}: {error}",
-      path.display()
-    );
+/// Why staging a direct attachment failed, split by whether the uploader had already persisted
+/// the source: after that point it has deleted the file itself, and the path must not be touched
+/// again because a later capture may reuse it.
+enum StagingFailure {
+  BeforePersistence(anyhow::Error),
+  AfterPersistence(anyhow::Error),
+}
+
+impl StagingFailure {
+  fn into_error(self) -> anyhow::Error {
+    match self {
+      Self::BeforePersistence(error) | Self::AfterPersistence(error) => error,
+    }
   }
 }
 
@@ -1450,8 +1483,9 @@ async fn execute_platform_device_command(
     CommandResult::Completed { fields, attachment } => {
       let attachment = match attachment {
         Some(attachment) => {
-          let handed_over = attachment_path_of(&attachment);
-          match stage_device_command_attachment(
+          // Deleted on drop (including cancellation) unless the uploader persisted the file.
+          let handed_over = HandedOverFile::from_attachment(&attachment);
+          match stage_handed_over_attachment(
             attachment,
             platform_command.artifact_type_id,
             &command_id,
@@ -1461,12 +1495,21 @@ async fn execute_platform_device_command(
           .await
           {
             Ok((artifact_id, metadata)) => {
+              handed_over.taken();
               artifact_metadata = Some(metadata);
               artifact_attachment(artifact_id)
             },
-            Err(error) => {
-              // The uploader deletes a file it consumed; one it never took is deleted here.
-              discard_handed_over_file(handed_over).await;
+            Err(failure) => {
+              let error = match failure {
+                StagingFailure::AfterPersistence(error) => {
+                  handed_over.taken();
+                  error
+                },
+                StagingFailure::BeforePersistence(error) => {
+                  drop(handed_over);
+                  error
+                },
+              };
               return send_device_command_update(
                 &senders,
                 failed_device_command_update(
@@ -1505,28 +1548,52 @@ async fn stage_device_command_attachment(
   session_id: &str,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
 ) -> anyhow::Result<(Uuid, CommandArtifactMetadata)> {
+  stage_handed_over_attachment(attachment, type_id, command_id, session_id, artifact_client)
+    .await
+    .map_err(StagingFailure::into_error)
+}
+
+/// Like [`stage_device_command_attachment`], but tells a caller that handed over a file whether
+/// the uploader persisted (and so deleted) it before the failure.
+async fn stage_handed_over_attachment(
+  attachment: CommandAttachment,
+  type_id: &str,
+  command_id: &str,
+  session_id: &str,
+  artifact_client: Arc<dyn bd_artifact_upload::Client>,
+) -> Result<(Uuid, CommandArtifactMetadata), StagingFailure> {
   let content_type = attachment.content_type.clone();
   let (persisted_tx, persisted_rx) = oneshot::channel();
   let (completion_tx, completion_rx) = oneshot::channel();
-  let artifact_id = artifact_client.enqueue_command_upload(
-    attachment.source,
-    type_id.to_string(),
-    None,
-    session_id.to_string(),
-    Vec::new(),
-    command_id.to_string(),
-    attachment.content_type,
-    Some(persisted_tx),
-    Some(completion_tx),
-  )?;
-  let size_bytes = persisted_rx
-    .await
-    .map_err(|_| anyhow!("device command attachment persistence was interrupted"))??;
+  let artifact_id = artifact_client
+    .enqueue_command_upload(
+      attachment.source,
+      type_id.to_string(),
+      None,
+      session_id.to_string(),
+      Vec::new(),
+      command_id.to_string(),
+      attachment.content_type,
+      Some(persisted_tx),
+      Some(completion_tx),
+    )
+    .map_err(|error| StagingFailure::BeforePersistence(error.into()))?;
+  let size_bytes = match persisted_rx.await {
+    Ok(Ok(size_bytes)) => size_bytes,
+    Ok(Err(error)) => return Err(StagingFailure::BeforePersistence(error.into())),
+    Err(_) => {
+      return Err(StagingFailure::BeforePersistence(anyhow!(
+        "device command attachment persistence was interrupted"
+      )));
+    },
+  };
   let metadata = CommandArtifactMetadata::new(content_type, size_bytes);
   match completion_rx.await {
     Ok(Ok(())) => Ok((artifact_id, metadata)),
-    Ok(Err(error)) => Err(anyhow!(error)),
-    Err(_) => Err(anyhow!("device command attachment upload was interrupted")),
+    Ok(Err(error)) => Err(StagingFailure::AfterPersistence(anyhow!(error))),
+    Err(_) => Err(StagingFailure::AfterPersistence(anyhow!(
+      "device command attachment upload was interrupted"
+    ))),
   }
 }
 

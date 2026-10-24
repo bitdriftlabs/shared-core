@@ -1411,6 +1411,51 @@ async fn direct_stack_sampling_staging_failure_deletes_the_handed_over_file() {
   assert!(!trace.exists(), "a file the uploader never took is deleted");
 }
 
+#[tokio::test]
+async fn direct_stack_sampling_upload_failure_after_persistence_leaves_the_path_alone() {
+  let (directory, _runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  registry.register(
+    STACK_SAMPLING_COMMAND_KEY.into(),
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let mut artifacts = MockClient::new();
+  artifacts
+    .expect_enqueue_command_upload()
+    .times(1)
+    .returning(|_, _, _, _, _, _, _, persisted_tx, completion_tx| {
+      // The uploader persisted (and, in production, deleted) the source before the upload failed.
+      persisted_tx.unwrap().send(Ok(5)).unwrap();
+      completion_tx
+        .unwrap()
+        .send(Err("upload rejected".to_string()))
+        .unwrap();
+      Ok(Uuid::new_v4())
+    });
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(artifacts),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  acknowledge_update(&mut updates).await;
+  let update = acknowledge_update(&mut updates).await;
+  assert_eq!(update.update_sequence_number, 2);
+  assert_eq!(failed_error(update), "upload rejected");
+  // A later capture may reuse the name; the core must not delete what the uploader owns.
+  assert!(trace.exists());
+}
+
 #[tokio::test(start_paused = true)]
 async fn direct_stack_sampling_uses_its_own_execution_timeout() {
   let (directory, _runtime, policy) = command_runtime();
