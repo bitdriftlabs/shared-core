@@ -63,6 +63,13 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
       file_header: true,
     },
     ProtoConfig {
+      output_dir: "src/protos/memory",
+      inputs: &["../api/src/bitdrift_public/protobuf/memory/v1/memory_dump.proto"],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
       output_dir: "src/protos/value_matcher",
       inputs: &["../api/src/bitdrift_public/protobuf/value_matcher/v1/value_matcher.proto"],
       includes: PROTO_INCLUDES,
