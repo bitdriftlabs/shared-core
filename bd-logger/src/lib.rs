@@ -47,10 +47,10 @@ pub(crate) mod test;
 pub use crate::app_version::AppVersionExtra;
 pub use crate::async_log_buffer::{AdmissionError, FlushError};
 pub use crate::device_command::{
-  BuiltinCommandRegistration,
   CommandAttachment,
   CommandError,
   CommandInvocation,
+  CommandRegistration,
   CommandResult,
   CommandResultGuard,
   RegisteredCommandHandler,

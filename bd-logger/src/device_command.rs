@@ -744,125 +744,109 @@ impl CommandExecutionPolicy {
   }
 }
 
+//
+// CommandId
+//
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+enum CommandId {
+  Registered(String),
+  Builtin(i32),
+}
+
 /// Registry of handler definitions, not live invocations. Lookup clones the handler, so replacing
 /// or unregistering a definition does not revoke work that already obtained it.
 #[derive(Clone, Default)]
 pub struct RegisteredCommandDispatcher {
-  handlers: Arc<RwLock<HashMap<String, Arc<dyn RegisteredCommandHandler>>>>,
-  builtins: Arc<RwLock<HashMap<i32, BuiltinCommandRegistration>>>,
+  commands: Arc<RwLock<HashMap<CommandId, PlatformCommand>>>,
 }
 
 //
-// BuiltinCommandRegistration
+// CommandRegistration
 //
 
-/// SDK-owned metadata for a platform built-in. App registrations use a separate namespace.
-#[derive(Clone)]
-pub struct BuiltinCommandRegistration {
-  pub command_type: i32,
-  pub key: String,
-  pub artifact_type_id: String,
-  pub timeout: Option<time::Duration>,
-  pub handler: Arc<dyn RegisteredCommandHandler>,
-}
-
-impl BuiltinCommandRegistration {
-  pub(crate) fn validate(&self) -> anyhow::Result<()> {
-    if self.command_type <= 0
-      || self.command_type == WellKnownCommandType::DUMP_DEVICE_BUFFER as i32
-      || self.key.is_empty()
-      || self.artifact_type_id.is_empty()
-      || self.timeout.is_some_and(|timeout| !timeout.is_positive())
-    {
-      anyhow::bail!("invalid platform built-in registration");
-    }
-    Ok(())
-  }
+/// A platform handler for an app-defined command or an SDK-owned numeric built-in.
+pub enum CommandRegistration {
+  Registered(String, Arc<dyn RegisteredCommandHandler>),
+  Builtin {
+    command_type: i32,
+    key: String,
+    artifact_type_id: String,
+    timeout: Option<time::Duration>,
+    handler: Arc<dyn RegisteredCommandHandler>,
+  },
 }
 
 impl RegisteredCommandDispatcher {
-  pub fn new(handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>) -> Self {
-    Self {
-      handlers: Arc::new(RwLock::new(handlers)),
-      builtins: Arc::default(),
-    }
-  }
-
-  pub fn register_builtin(&self, registration: BuiltinCommandRegistration) -> anyhow::Result<()> {
-    registration.validate()?;
-    log::debug!(
-      "registered platform built-in {}: {}",
-      registration.command_type,
-      registration.key
-    );
-    let previous = self
-      .builtins
-      .write()
-      .insert(registration.command_type, registration);
+  pub fn register(&self, registration: CommandRegistration) -> anyhow::Result<()> {
+    let (id, command) = match registration {
+      CommandRegistration::Registered(key, handler) => (
+        CommandId::Registered(key.clone()),
+        PlatformCommand {
+          key,
+          artifact_type_id: REGISTERED_COMMAND_ARTIFACT_TYPE_ID.into(),
+          timeout: None,
+          handler,
+        },
+      ),
+      CommandRegistration::Builtin {
+        command_type,
+        key,
+        artifact_type_id,
+        timeout,
+        handler,
+      } => {
+        if command_type <= 0
+          || command_type == WellKnownCommandType::DUMP_DEVICE_BUFFER as i32
+          || key.is_empty()
+          || artifact_type_id.is_empty()
+          || timeout.is_some_and(|timeout| !timeout.is_positive())
+        {
+          anyhow::bail!("invalid platform built-in registration");
+        }
+        (
+          CommandId::Builtin(command_type),
+          PlatformCommand {
+            key,
+            artifact_type_id,
+            timeout,
+            handler,
+          },
+        )
+      },
+    };
+    log::debug!("registered platform command {id:?}: {}", command.key);
+    let previous = self.commands.write().insert(id, command);
     drop(previous);
     Ok(())
-  }
-
-  pub fn get_builtin(&self, command_type: i32) -> Option<BuiltinCommandRegistration> {
-    self.builtins.read().get(&command_type).cloned()
   }
 
   fn resolve(
     &self,
     selector: &workflow_command_selector::Command_selector,
   ) -> Option<PlatformCommand> {
-    match selector {
+    let id = match selector {
       workflow_command_selector::Command_selector::RegisteredCommand(command) => {
-        Some(PlatformCommand {
-          key: command.registered_command_id.clone(),
-          artifact_type_id: REGISTERED_COMMAND_ARTIFACT_TYPE_ID.into(),
-          timeout: None,
-          handler: self.get_handler(&command.registered_command_id)?,
-        })
+        CommandId::Registered(command.registered_command_id.clone())
       },
       workflow_command_selector::Command_selector::BuiltinCommand(command) => {
-        let registration = self.get_builtin(command.type_.value())?;
-        Some(PlatformCommand {
-          key: registration.key,
-          artifact_type_id: registration.artifact_type_id,
-          timeout: registration.timeout,
-          handler: registration.handler,
-        })
+        CommandId::Builtin(command.type_.value())
       },
-    }
-  }
-
-  pub fn register(
-    &self,
-    registered_command_id: String,
-    handler: Arc<dyn RegisteredCommandHandler>,
-  ) {
-    log::debug!("registered command handler: {registered_command_id}");
-    let previous_handler = {
-      let mut handlers = self.handlers.write();
-      handlers.insert(registered_command_id, handler)
     };
-    drop(previous_handler);
+    self.commands.read().get(&id).cloned()
   }
 
   pub fn unregister(&self, registered_command_id: &str) -> bool {
-    let removed_handler = {
-      let mut handlers = self.handlers.write();
-      handlers.remove(registered_command_id)
-    };
+    let removed_handler = self
+      .commands
+      .write()
+      .remove(&CommandId::Registered(registered_command_id.into()));
     let removed = removed_handler.is_some();
     drop(removed_handler);
     if removed {
       log::debug!("unregistered command handler: {registered_command_id}");
     }
     removed
-  }
-
-  pub fn get_handler(
-    &self,
-    registered_command_id: &str,
-  ) -> Option<Arc<dyn RegisteredCommandHandler>> {
-    self.handlers.read().get(registered_command_id).cloned()
   }
 }
 
@@ -1009,6 +993,7 @@ impl WorkflowCommandExecutor {
 
 /// A command the platform executes through a [`RegisteredCommandHandler`]: one the app
 /// registered, or a numeric built-in registered by the SDK's platform layer.
+#[derive(Clone)]
 struct PlatformCommand {
   key: String,
   /// The artifact type the backend expects the attachment under.

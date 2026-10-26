@@ -27,6 +27,7 @@ use crate::device_command::{
   CommandAttachment,
   CommandExecutionPolicy,
   CommandInvocation,
+  CommandRegistration,
   CommandResult,
   DeviceCommandDispatcher,
   DeviceCommandRegistry,
@@ -2323,14 +2324,16 @@ async fn workflow_command_processed_session_boundary_and_attribution() {
     let (result_tx, result_rx) = oneshot::channel();
     let (returned_tx, returned_rx) = oneshot::channel();
     let registry = RegisteredCommandDispatcher::default();
-    registry.register(
-      "handler".into(),
-      Arc::new(GatedAttachmentHandler {
-        started_tx,
-        result_rx: Mutex::new(Some(result_rx)),
-        returned_tx: Mutex::new(Some(returned_tx)),
-      }),
-    );
+    registry
+      .register(CommandRegistration::Registered(
+        "handler".into(),
+        Arc::new(GatedAttachmentHandler {
+          started_tx,
+          result_rx: Mutex::new(Some(result_rx)),
+          returned_tx: Mutex::new(Some(returned_tx)),
+        }),
+      ))
+      .unwrap();
     let (completion_tx, completion_rx) = mpsc::channel(1);
     buffer.workflow_command_dispatcher = WorkflowCommandDispatcher::new(
       registry,
@@ -2838,14 +2841,16 @@ async fn workflow_command_session_start_carryover_never_dispatches_invalidated_w
     let (result_tx, result_rx) = oneshot::channel();
     let (returned_tx, returned_rx) = oneshot::channel();
     let registry = RegisteredCommandDispatcher::default();
-    registry.register(
-      "handler".into(),
-      Arc::new(GatedAttachmentHandler {
-        started_tx,
-        result_rx: Mutex::new(Some(result_rx)),
-        returned_tx: Mutex::new(Some(returned_tx)),
-      }),
-    );
+    registry
+      .register(CommandRegistration::Registered(
+        "handler".into(),
+        Arc::new(GatedAttachmentHandler {
+          started_tx,
+          result_rx: Mutex::new(Some(result_rx)),
+          returned_tx: Mutex::new(Some(returned_tx)),
+        }),
+      ))
+      .unwrap();
     let (completion_tx, completion_rx) = mpsc::channel(1);
     buffer.workflow_command_dispatcher = WorkflowCommandDispatcher::new(
       registry,
@@ -2947,13 +2952,15 @@ async fn workflow_command_first_ingress_initializes_session_without_rewinds() {
     let (started_tx, started_rx) = oneshot::channel();
     let (result_tx, result_rx) = oneshot::channel();
     let registry = RegisteredCommandDispatcher::default();
-    registry.register(
-      "handler".into(),
-      Arc::new(GatedDirectCommandHandler {
-        started_tx: Mutex::new(Some(started_tx)),
-        result_rx: Mutex::new(Some(result_rx)),
-      }),
-    );
+    registry
+      .register(CommandRegistration::Registered(
+        "handler".into(),
+        Arc::new(GatedDirectCommandHandler {
+          started_tx: Mutex::new(Some(started_tx)),
+          result_rx: Mutex::new(Some(result_rx)),
+        }),
+      ))
+      .unwrap();
     let (completion_tx, completion_rx) = mpsc::channel(1);
     buffer.workflow_command_dispatcher = WorkflowCommandDispatcher::new(
       registry,
@@ -3099,13 +3106,15 @@ async fn direct_commands_use_processed_session_boundary_without_rewinding_loggin
     let (started_tx, started_rx) = oneshot::channel();
     let (result_tx, result_rx) = oneshot::channel();
     let registry = RegisteredCommandDispatcher::default();
-    registry.register(
-      "handler".into(),
-      Arc::new(GatedDirectCommandHandler {
-        started_tx: Mutex::new(Some(started_tx)),
-        result_rx: Mutex::new(Some(result_rx)),
-      }),
-    );
+    registry
+      .register(CommandRegistration::Registered(
+        "handler".into(),
+        Arc::new(GatedDirectCommandHandler {
+          started_tx: Mutex::new(Some(started_tx)),
+          result_rx: Mutex::new(Some(result_rx)),
+        }),
+      ))
+      .unwrap();
     let command_state = Arc::new(DeviceCommandState::new(Arc::new(SystemTimeProvider)));
     let (upload_tx, mut updates) = mpsc::channel(16);
     let (trigger_tx, _trigger_rx) = mpsc::channel(1);
@@ -3371,14 +3380,16 @@ async fn workflow_command_span_includes_handler_and_admission_but_not_background
   let (result_tx, result_rx) = oneshot::channel();
   let (returned_tx, returned_rx) = oneshot::channel();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register(
-    "handler".into(),
-    Arc::new(GatedAttachmentHandler {
-      started_tx,
-      result_rx: Mutex::new(Some(result_rx)),
-      returned_tx: Mutex::new(Some(returned_tx)),
-    }),
-  );
+  registry
+    .register(CommandRegistration::Registered(
+      "handler".into(),
+      Arc::new(GatedAttachmentHandler {
+        started_tx,
+        result_rx: Mutex::new(Some(result_rx)),
+        returned_tx: Mutex::new(Some(returned_tx)),
+      }),
+    ))
+    .unwrap();
   let (completion_tx, completion_rx) = mpsc::channel(1);
   let attachment_store = buffer.workflow_attachment_store();
   let store = attachment_store.get().await.unwrap();

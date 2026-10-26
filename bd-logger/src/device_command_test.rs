@@ -9,11 +9,14 @@ use super::{
   CommandAttachment,
   CommandError,
   CommandExecutionPolicy,
+  CommandId,
   CommandInvocation,
+  CommandRegistration,
   CommandResult,
   DeviceCommandDispatcher,
   DeviceCommandExecution,
   DeviceCommandStatus,
+  PlatformCommand,
   RegisteredCommandDispatcher,
   RegisteredCommandHandler,
   TestHooks,
@@ -95,23 +98,57 @@ use time::{Duration, OffsetDateTime};
 use tokio::sync::{Notify, mpsc, oneshot};
 use uuid::Uuid;
 
+// Deliberately absent from WellKnownCommandType to exercise future numeric built-in registration.
+const FUTURE_BUILTIN_COMMAND_TYPE: i32 = 4711;
+
+impl RegisteredCommandDispatcher {
+  fn get_builtin(&self, command_type: i32) -> Option<PlatformCommand> {
+    self
+      .commands
+      .read()
+      .get(&CommandId::Builtin(command_type))
+      .cloned()
+  }
+
+  fn get_handler(&self, id: &str) -> Option<Arc<dyn RegisteredCommandHandler>> {
+    self
+      .commands
+      .read()
+      .get(&CommandId::Registered(id.into()))
+      .map(|command| command.handler.clone())
+  }
+}
+
 #[test]
 fn builtin_registration_isolated_from_app_namespace() {
   let dispatcher = RegisteredCommandDispatcher::default();
   dispatcher
-    .register_builtin(super::BuiltinCommandRegistration {
-      command_type: 4711,
+    .register(CommandRegistration::Builtin {
+      command_type: FUTURE_BUILTIN_COMMAND_TYPE,
       key: "same_name".into(),
       artifact_type_id: "builtin_artifact".into(),
       timeout: None,
       handler: Arc::new(Handler),
     })
     .unwrap();
-  dispatcher.register("same_name".into(), Arc::new(Handler));
-  assert!(dispatcher.unregister("same_name"));
-  assert!(dispatcher.get_handler("same_name").is_none());
+  for id in [
+    "same_name".to_string(),
+    FUTURE_BUILTIN_COMMAND_TYPE.to_string(),
+  ] {
+    dispatcher
+      .register(CommandRegistration::Registered(
+        id.clone(),
+        Arc::new(Handler),
+      ))
+      .unwrap();
+    assert!(dispatcher.unregister(&id));
+    assert!(dispatcher.get_handler(&id).is_none());
+  }
   assert_eq!(
-    dispatcher.get_builtin(4711).unwrap().artifact_type_id,
+    dispatcher
+      .get_builtin(FUTURE_BUILTIN_COMMAND_TYPE)
+      .unwrap()
+      .artifact_type_id,
     "builtin_artifact"
   );
 }
@@ -119,18 +156,59 @@ fn builtin_registration_isolated_from_app_namespace() {
 #[test]
 fn builtin_registration_rejects_invalid_metadata_and_core_override() {
   let dispatcher = RegisteredCommandDispatcher::default();
-  for command_type in [-1, 0, WellKnownCommandType::DUMP_DEVICE_BUFFER as i32] {
+  dispatcher
+    .register(CommandRegistration::Builtin {
+      command_type: FUTURE_BUILTIN_COMMAND_TYPE,
+      key: "original".into(),
+      artifact_type_id: "original_artifact".into(),
+      timeout: Some(Duration::seconds(15)),
+      handler: Arc::new(Handler),
+    })
+    .unwrap();
+  for (command_type, key, artifact_type_id, timeout) in [
+    (-1, "test", "test", None),
+    (
+      WellKnownCommandType::TYPE_UNSPECIFIED as i32,
+      "test",
+      "test",
+      None,
+    ),
+    (
+      WellKnownCommandType::DUMP_DEVICE_BUFFER as i32,
+      "test",
+      "test",
+      None,
+    ),
+    (FUTURE_BUILTIN_COMMAND_TYPE, "", "test", None),
+    (FUTURE_BUILTIN_COMMAND_TYPE, "test", "", None),
+    (
+      FUTURE_BUILTIN_COMMAND_TYPE,
+      "test",
+      "test",
+      Some(Duration::ZERO),
+    ),
+    (
+      FUTURE_BUILTIN_COMMAND_TYPE,
+      "test",
+      "test",
+      Some(Duration::seconds(-1)),
+    ),
+  ] {
     assert!(
       dispatcher
-        .register_builtin(super::BuiltinCommandRegistration {
+        .register(CommandRegistration::Builtin {
           command_type,
-          key: "test".into(),
-          artifact_type_id: "test".into(),
-          timeout: None,
+          key: key.into(),
+          artifact_type_id: artifact_type_id.into(),
+          timeout,
           handler: Arc::new(Handler),
         })
         .is_err()
     );
+    let original = dispatcher.get_builtin(FUTURE_BUILTIN_COMMAND_TYPE).unwrap();
+    assert_eq!(original.key, "original");
+    assert_eq!(original.artifact_type_id, "original_artifact");
+    assert_eq!(original.timeout, Some(Duration::seconds(15)));
   }
 }
 
@@ -141,7 +219,7 @@ fn register_stack_sampling(
   handler: Arc<dyn RegisteredCommandHandler>,
 ) {
   registry
-    .register_builtin(super::BuiltinCommandRegistration {
+    .register(CommandRegistration::Builtin {
       command_type: WellKnownCommandType::STACK_SAMPLING_TRACE as i32,
       key: STACK_SAMPLING_COMMAND_KEY.into(),
       artifact_type_id: "stack_sampling_trace".into(),
@@ -261,7 +339,7 @@ fn register_screenshot(
   handler: RemoteScreenshotCaptureHandler,
 ) {
   registry
-    .register_builtin(super::BuiltinCommandRegistration {
+    .register(CommandRegistration::Builtin {
       command_type: WellKnownCommandType::TAKE_SCREENSHOT as i32,
       key: "take_screenshot".into(),
       artifact_type_id: "screenshot".into(),
@@ -446,7 +524,9 @@ async fn direct_processed_session_change_cancels_accepted_wait_and_running_handl
     let (directory, _runtime, policy) = command_runtime();
     let (handler, mut started_rx, dropped_rx) = pending_handler();
     let registry = RegisteredCommandDispatcher::default();
-    registry.register("pending".into(), handler);
+    registry
+      .register(CommandRegistration::Registered("pending".into(), handler))
+      .unwrap();
     let (mut dispatcher, mut updates) = direct_dispatcher(
       directory.path(),
       policy,
@@ -564,13 +644,13 @@ async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or
     "terminal_ack_session_reset",
   ] {
     let (directory, _runtime, policy) = command_runtime();
-    let registry = RegisteredCommandDispatcher::new(
-      [(
+    let registry = RegisteredCommandDispatcher::default();
+    registry
+      .register(CommandRegistration::Registered(
         "pending".into(),
-        Arc::new(Handler) as Arc<dyn RegisteredCommandHandler>,
-      )]
-      .into(),
-    );
+        Arc::new(Handler),
+      ))
+      .unwrap();
     let (mut dispatcher, mut updates) = direct_dispatcher(
       directory.path(),
       policy,
@@ -804,7 +884,9 @@ async fn direct_registered_command_timeout_reports_one_terminal_failure() {
   let (directory, _runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), handler);
+  registry
+    .register(CommandRegistration::Registered("pending".into(), handler))
+    .unwrap();
   let (mut dispatcher, mut updates) = direct_dispatcher(
     directory.path(),
     policy,
@@ -998,7 +1080,9 @@ async fn direct_command_admission_resumes_only_after_original_capacity_expiry() 
   let (directory, _runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), handler);
+  registry
+    .register(CommandRegistration::Registered("pending".into(), handler))
+    .unwrap();
   let (mut dispatcher, mut updates) = direct_dispatcher(
     directory.path(),
     policy,
@@ -1113,7 +1197,9 @@ async fn direct_command_execution_ends_with_original_sdk_dispatcher() {
   let (directory, _runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), handler);
+  registry
+    .register(CommandRegistration::Registered("pending".into(), handler))
+    .unwrap();
   let (dispatcher, mut updates) = direct_dispatcher(
     directory.path(),
     policy,
@@ -1143,7 +1229,9 @@ async fn workflow_registered_command_timeout_reports_failure() {
   let (directory, runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), handler);
+  registry
+    .register(CommandRegistration::Registered("pending".into(), handler))
+    .unwrap();
   let dispatcher = workflow_dispatcher(
     directory.path(),
     runtime,
@@ -1268,7 +1356,12 @@ impl RegisteredCommandHandler for AttachmentHandler {
 async fn command_execution_timeout_excludes_attachment_upload() {
   let (directory, _runtime, policy) = command_runtime();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), Arc::new(AttachmentHandler));
+  registry
+    .register(CommandRegistration::Registered(
+      "pending".into(),
+      Arc::new(AttachmentHandler),
+    ))
+    .unwrap();
   let (upload_started_tx, mut upload_started_rx) = mpsc::unbounded_channel();
   let artifact_id = Uuid::new_v4();
   let mut artifacts = MockClient::new();
@@ -1679,8 +1772,8 @@ async fn serialized_unknown_builtin_id_executes_without_enum_knowledge() {
   let (directory, runtime, policy) = command_runtime();
   let registry = RegisteredCommandDispatcher::default();
   registry
-    .register_builtin(super::BuiltinCommandRegistration {
-      command_type: 4711,
+    .register(CommandRegistration::Builtin {
+      command_type: FUTURE_BUILTIN_COMMAND_TYPE,
       key: "future_builtin".into(),
       artifact_type_id: "future_artifact".into(),
       timeout: None,
@@ -1690,7 +1783,7 @@ async fn serialized_unknown_builtin_id_executes_without_enum_knowledge() {
   let selector = WorkflowCommandSelector {
     command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
       workflow_command_selector::BuiltinCommand {
-        type_: EnumOrUnknown::from_i32(4711),
+        type_: EnumOrUnknown::from_i32(FUTURE_BUILTIN_COMMAND_TYPE),
         ..Default::default()
       },
     )),
@@ -2038,10 +2131,14 @@ impl RegisteredCommandHandler for ReenterOnDrop {
 
 impl Drop for ReenterOnDrop {
   fn drop(&mut self) {
-    assert!(self.dispatcher.handlers.try_write().is_some());
+    assert!(self.dispatcher.commands.try_write().is_some());
     self
       .dispatcher
-      .register("reentered".to_string(), Arc::new(Handler));
+      .register(CommandRegistration::Registered(
+        "reentered".to_string(),
+        Arc::new(Handler),
+      ))
+      .unwrap();
     self.drops.fetch_add(1, Ordering::SeqCst);
   }
 }
@@ -2051,23 +2148,32 @@ fn replacing_or_removing_handler_allows_destructor_to_reenter() {
   let dispatcher = RegisteredCommandDispatcher::default();
   let drops = Arc::new(AtomicUsize::new(0));
 
-  dispatcher.register(
-    "custom".to_string(),
-    Arc::new(ReenterOnDrop {
-      dispatcher: dispatcher.clone(),
-      drops: drops.clone(),
-    }),
-  );
-  dispatcher.register("custom".to_string(), Arc::new(Handler));
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      Arc::new(ReenterOnDrop {
+        dispatcher: dispatcher.clone(),
+        drops: drops.clone(),
+      }),
+    ))
+    .unwrap();
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      Arc::new(Handler),
+    ))
+    .unwrap();
   assert_eq!(drops.load(Ordering::SeqCst), 1);
 
-  dispatcher.register(
-    "custom".to_string(),
-    Arc::new(ReenterOnDrop {
-      dispatcher: dispatcher.clone(),
-      drops: drops.clone(),
-    }),
-  );
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      Arc::new(ReenterOnDrop {
+        dispatcher: dispatcher.clone(),
+        drops: drops.clone(),
+      }),
+    ))
+    .unwrap();
   assert!(dispatcher.unregister("custom"));
   assert_eq!(drops.load(Ordering::SeqCst), 2);
   assert!(dispatcher.get_handler("reentered").is_some());
@@ -2075,16 +2181,26 @@ fn replacing_or_removing_handler_allows_destructor_to_reenter() {
 
 #[test]
 fn cloned_command_dispatchers_share_registrations() {
-  let dispatcher = RegisteredCommandDispatcher::new(HashMap::new());
+  let dispatcher = RegisteredCommandDispatcher::default();
   let clone = dispatcher.clone();
   let original: Arc<dyn RegisteredCommandHandler> = Arc::new(Handler);
   let replacement: Arc<dyn RegisteredCommandHandler> = Arc::new(Handler);
 
-  dispatcher.register("custom".to_string(), original.clone());
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      original.clone(),
+    ))
+    .unwrap();
   let selected = clone.get_handler("custom").unwrap();
   assert!(Arc::ptr_eq(&selected, &original));
 
-  clone.register("custom".to_string(), replacement.clone());
+  clone
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      replacement.clone(),
+    ))
+    .unwrap();
   assert!(Arc::ptr_eq(
     &dispatcher.get_handler("custom").unwrap(),
     &replacement
@@ -2298,7 +2414,12 @@ async fn workflow_registered_handler_preserves_attachment_content_type() {
     ConfigLoader::new(directory.path()),
   );
   let dispatcher = RegisteredCommandDispatcher::default();
-  dispatcher.register("custom".to_string(), Arc::new(AttachmentHandler));
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      Arc::new(AttachmentHandler),
+    ))
+    .unwrap();
   let result = dispatcher
     .get_handler("custom")
     .unwrap()

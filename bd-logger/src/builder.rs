@@ -13,8 +13,8 @@ use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
 use crate::device_command::{
-  BuiltinCommandRegistration,
   CommandExecutionPolicy,
+  CommandRegistration,
   RegisteredCommandDispatcher,
 };
 use crate::directory_lock::DirectoryLock;
@@ -25,12 +25,7 @@ use crate::logger::{Logger, PendingEntityIdUpdate, TestHooks};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
 use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
-use crate::{
-  InitParams,
-  LogAttributesOverrides,
-  RegisteredCommandHandler,
-  StartupReplayEligibility,
-};
+use crate::{InitParams, LogAttributesOverrides, StartupReplayEligibility};
 use bd_api::upload::DeviceCommandState;
 use bd_api::{
   AggregatedNetworkQualityProvider,
@@ -71,7 +66,6 @@ use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::{Future, FutureExt, try_join};
 use parking_lot::Mutex;
-use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
@@ -199,8 +193,7 @@ pub struct LoggerBuilder {
   internal_logger: bool,
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
-  command_handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
-  builtin_commands: Vec<BuiltinCommandRegistration>,
+  command_dispatcher: RegisteredCommandDispatcher,
   test_hooks: Option<Arc<dyn TestHooks>>,
   startup_replay_eligibility: StartupReplayEligibility,
 }
@@ -216,8 +209,7 @@ impl LoggerBuilder {
       internal_logger: false,
       time_provider: None,
       crash_report_hook: None,
-      command_handlers: HashMap::new(),
-      builtin_commands: Vec::new(),
+      command_dispatcher: RegisteredCommandDispatcher::default(),
       test_hooks: None,
       startup_replay_eligibility: StartupReplayEligibility::Unknown,
     }
@@ -282,24 +274,9 @@ impl LoggerBuilder {
     self
   }
 
-  /// Registers a platform handler for an application-defined command.
-  #[must_use]
-  pub fn with_command_handler(
-    mut self,
-    registered_command_id: String,
-    handler: Arc<dyn RegisteredCommandHandler>,
-  ) -> Self {
-    self.command_handlers.insert(registered_command_id, handler);
-    self
-  }
-
-  /// Installs an SDK-owned platform built-in before command execution starts.
-  pub fn with_builtin_command(
-    mut self,
-    registration: BuiltinCommandRegistration,
-  ) -> anyhow::Result<Self> {
-    registration.validate()?;
-    self.builtin_commands.push(registration);
+  /// Registers an app command or SDK-owned built-in before command execution starts.
+  pub fn with_command(self, registration: CommandRegistration) -> anyhow::Result<Self> {
+    self.command_dispatcher.register(registration)?;
     Ok(self)
   }
 
@@ -421,10 +398,7 @@ impl LoggerBuilder {
     let sdk_status_tracker = bd_client_common::sdk_status::SdkStatusTracker::new();
     let pending_trigger_uploads = PendingTriggerUploadsStore::new(&self.params.sdk_directory);
     let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
-    let command_dispatcher = RegisteredCommandDispatcher::new(self.command_handlers);
-    for registration in self.builtin_commands {
-      command_dispatcher.register_builtin(registration)?;
-    }
+    let command_dispatcher = self.command_dispatcher;
     let command_execution_policy = CommandExecutionPolicy::new(&runtime_loader);
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
