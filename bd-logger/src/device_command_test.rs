@@ -44,6 +44,7 @@ use bd_log_primitives::{
   COMMAND_OUTCOME_MESSAGE,
   DataValue,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
+  LOG_FIELD_NAME_COMMAND_DETAILS,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
   LOG_FIELD_NAME_DURATION_MS,
   LOG_FIELD_NAME_RESULT,
@@ -74,7 +75,12 @@ use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::test::no_timeout;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::{OffsetDateTimeExt, SystemTimeProvider, TestTimeProvider};
-use bd_workflows::workflow::{CommandArtifactMetadata, CommandSpan, WorkflowCommandOutcome};
+use bd_workflows::workflow::{
+  CommandArtifactMetadata,
+  CommandSpan,
+  WorkflowCommandOutcome,
+  command_details,
+};
 use parking_lot::Mutex;
 use protobuf::{EnumOrUnknown, Message};
 use std::collections::{HashMap, VecDeque};
@@ -369,6 +375,7 @@ fn direct_execution(
     span: CommandSpan {
       id: command_id.to_owned(),
       started_at: Some(dispatcher.time_provider.now()),
+      command_details: Some(command_details(Some(&registered_selector()))),
     },
     session_id: dispatcher.session_strategy.session_id(),
     time_provider: dispatcher.time_provider.clone(),
@@ -518,6 +525,15 @@ async fn direct_processed_session_change_cancels_accepted_wait_and_running_handl
       panic!("expected cancellation span end");
     };
     assert_eq!(log.log_level, log_level::ERROR);
+    assert_eq!(
+      log
+        .fields
+        .get(LOG_FIELD_NAME_COMMAND_DETAILS)
+        .unwrap()
+        .value
+        .as_str(),
+      Some(command_details(Some(&registered_selector())).as_str()),
+    );
     for (field, expected) in [
       (LOG_FIELD_NAME_RESULT, SPAN_RESULT_CANCELED),
       (
@@ -655,6 +671,15 @@ async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or
         panic!("expected span log");
       };
       assert_eq!(log.log_type, LogType::SPAN);
+      assert_eq!(
+        log
+          .fields
+          .get(LOG_FIELD_NAME_COMMAND_DETAILS)
+          .unwrap()
+          .value
+          .as_str(),
+        Some(command_details(command.command_selector.as_ref()).as_str()),
+      );
       assert_eq!(
         log
           .fields
@@ -2089,6 +2114,7 @@ fn terminal_device_command_updates_produce_outcome_logs() {
   let span = CommandSpan {
     id: command_id.clone(),
     started_at: Some(started_at),
+    command_details: Some(command_details(Some(&registered_selector()))),
   };
   let now = started_at + Duration::milliseconds(125);
   let context = super::device_command_context(

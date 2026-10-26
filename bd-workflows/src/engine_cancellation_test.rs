@@ -22,7 +22,9 @@ use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{
   COMMAND_OUTCOME_MESSAGE,
+  DataValue,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
+  LOG_FIELD_NAME_COMMAND_DETAILS,
   LOG_FIELD_NAME_DURATION_MS,
   LOG_FIELD_NAME_RESULT,
   LOG_FIELD_NAME_SPAN_ID,
@@ -60,6 +62,13 @@ fn assert_cancelled(
   assert_eq!(log.log.session_id.as_ref(), request.session_id);
   assert_eq!(log.log.occurred_at, now);
   assert_eq!(
+    log.log.fields.get(LOG_FIELD_NAME_COMMAND_DETAILS),
+    request
+      .start_log()
+      .fields
+      .get(LOG_FIELD_NAME_COMMAND_DETAILS),
+  );
+  assert_eq!(
     log.log.fields.get(LOG_FIELD_NAME_RESULT).unwrap().as_str(),
     Some(SPAN_RESULT_CANCELED),
   );
@@ -86,6 +95,12 @@ async fn workflow_command_actions_require_accepted_matching_completion() {
     let Some(Rule_type::MatchRunCommand(command_config)) = &mut command_rule.rule_type else {
       panic!("expected command matcher");
     };
+    command_config
+      .command_selector
+      .as_mut()
+      .unwrap()
+      .arguments
+      .insert("input".to_string(), DataValue::U64(7).into_proto());
     command_config.outcome_log_matcher =
       Some(field_equals(LOG_FIELD_NAME_RESULT, SPAN_RESULT_SUCCESS)).into();
     let command = state("command").declare_transition_with_actions(
@@ -117,21 +132,38 @@ async fn workflow_command_actions_require_accepted_matching_completion() {
         .find_counter(&NameType::ActionId("own_action".into()), &labels! {})
         .is_none()
     );
+    assert_eq!(
+      request
+        .start_log()
+        .fields
+        .get(LOG_FIELD_NAME_COMMAND_DETAILS)
+        .unwrap()
+        .as_str(),
+      Some(r#"{"key":"command","args":{"input":7}}"#),
+    );
+    let fields = [(LOG_FIELD_NAME_COMMAND_DETAILS.into(), "spoofed".into())].into();
     let outcome = if succeeded {
       WorkflowCommandOutcome::Succeeded {
         message: None,
-        fields: LogFields::default(),
+        fields,
       }
     } else {
       WorkflowCommandOutcome::Failed {
         message: None,
-        fields: LogFields::default(),
+        fields,
       }
     };
     let log = engine
       .engine
       .workflow_command_outcome_log(&request.completion_token(), outcome, now)
       .unwrap();
+    assert_eq!(
+      log.fields.get(LOG_FIELD_NAME_COMMAND_DETAILS),
+      request
+        .start_log()
+        .fields
+        .get(LOG_FIELD_NAME_COMMAND_DETAILS),
+    );
     let token = request.completion_token();
     engine.engine.process_event(
       WorkflowEvent::CommandCompletion {
@@ -1015,7 +1047,17 @@ async fn workflow_command_recovery_persists_pending_pruning_but_keeps_sibling_pr
 #[tokio::test]
 async fn workflow_command_removed_recovered_config_still_delivers_cancellation() {
   let terminal = state("terminal");
-  let command = state("command").declare_transition(&terminal, workflow_command_rule());
+  let mut command_rule = workflow_command_rule();
+  let Some(Rule_type::MatchRunCommand(command_config)) = &mut command_rule.rule_type else {
+    panic!("expected command matcher");
+  };
+  command_config
+    .command_selector
+    .as_mut()
+    .unwrap()
+    .arguments
+    .insert("input".to_string(), DataValue::U64(7).into_proto());
+  let command = state("command").declare_transition(&terminal, command_rule);
   let setup = Setup::new();
   let mut engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(

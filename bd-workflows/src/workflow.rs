@@ -22,6 +22,8 @@ use crate::config::{
   WorkflowDebugMode,
 };
 use crate::generate_log::generate_log_action;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
@@ -31,6 +33,7 @@ use bd_log_primitives::{
   COMMAND_CANCELLATION_REASON_WORKFLOW_RESET,
   FieldsRef,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
+  LOG_FIELD_NAME_COMMAND_DETAILS,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
   LOG_FIELD_NAME_DURATION_MS,
   LOG_FIELD_NAME_RESULT,
@@ -52,8 +55,13 @@ use bd_log_primitives::{
   log_level,
 };
 pub use bd_log_primitives::{COMMAND_OUTCOME_MESSAGE, COMMAND_START_MESSAGE};
-use bd_proto::protos::logging::payload::LogType;
-use bd_proto::protos::workflow::workflow_command::WorkflowCommandSelector;
+use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::logging::payload::{Data, LogType};
+use bd_proto::protos::workflow::workflow_command::{
+  WellKnownCommandType,
+  WorkflowCommandSelector,
+  workflow_command_selector,
+};
 use bd_proto_util::serialization::TimestampMicros;
 use bd_state::state_value_as_cow;
 use bd_time::OffsetDateTimeExt;
@@ -61,8 +69,135 @@ use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransition
 use itertools::Itertools;
 use sha2::Digest;
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use time::OffsetDateTime;
 use uuid::Uuid;
+
+/// Encodes invocation inputs without introducing a general JSON encoder into the mobile SDK.
+#[must_use]
+pub fn command_details(selector: Option<&WorkflowCommandSelector>) -> String {
+  let mut output = String::from("{\"key\":");
+  match selector.and_then(|selector| selector.command_selector.as_ref()) {
+    Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
+      write_command_json_string(&mut output, &command.registered_command_id);
+    },
+    Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
+      match command.type_.enum_value() {
+        Ok(WellKnownCommandType::TAKE_SCREENSHOT) => output.push_str("\"take_screenshot\""),
+        Ok(WellKnownCommandType::DUMP_DEVICE_BUFFER) => output.push_str("\"dump_device_buffer\""),
+        Ok(WellKnownCommandType::TYPE_UNSPECIFIED) | Err(_) => {
+          let _ = write!(output, "\"unknown_builtin_{}\"", command.type_.value());
+        },
+      }
+    },
+    None => output.push_str("null"),
+  }
+  output.push_str(",\"args\":");
+  if let Some(selector) = selector {
+    write_command_json_map(&mut output, &selector.arguments);
+  } else {
+    output.push_str("{}");
+  }
+  output.push('}');
+  output
+}
+
+fn write_command_json_string(output: &mut String, value: &str) {
+  output.push('"');
+  for character in value.chars() {
+    match character {
+      '"' => output.push_str("\\\""),
+      '\\' => output.push_str("\\\\"),
+      '\0' ..= '\u{1f}' => {
+        let byte = character as u8;
+        output.push_str("\\u00");
+        output.push(char::from(b'0' + (byte >> 4)));
+        let digit = byte & 0xf;
+        output.push(char::from(
+          if digit < 10 {
+            b'0' + digit
+          } else {
+            b'a' + digit - 10
+          },
+        ));
+      },
+      _ => output.push(character),
+    }
+  }
+  output.push('"');
+}
+
+fn write_command_json_map(output: &mut String, values: &HashMap<String, Data>) {
+  output.push('{');
+  for (index, (key, value)) in values
+    .iter()
+    .sorted_unstable_by_key(|(key, _)| *key)
+    .enumerate()
+  {
+    if index != 0 {
+      output.push(',');
+    }
+    write_command_json_string(output, key);
+    output.push(':');
+    write_command_json_data(output, value);
+  }
+  output.push('}');
+}
+
+fn write_command_json_data(output: &mut String, value: &Data) {
+  match value.data_type.as_ref() {
+    Some(Data_type::StringData(value)) => write_command_json_string(output, value),
+    Some(Data_type::BinaryData(value)) => {
+      output.push_str("{\"base64\":\"");
+      STANDARD.encode_string(value.payload.as_slice(), output);
+      output.push_str("\"}");
+    },
+    Some(Data_type::IntData(value)) => {
+      let _ = write!(output, "{value}");
+    },
+    Some(Data_type::SintData(value)) => {
+      let _ = write!(output, "{value}");
+    },
+    Some(Data_type::DoubleData(value)) => {
+      if value.is_finite() {
+        if *value == 0.0 {
+          output.push_str(
+            if value.is_sign_negative() {
+              "-0.0"
+            } else {
+              "0.0"
+            },
+          );
+        } else {
+          let _ = write!(output, "{value}");
+        }
+      } else {
+        output.push_str(
+          if value.is_nan() {
+            "\"NaN\""
+          } else if value.is_sign_negative() {
+            "\"-Infinity\""
+          } else {
+            "\"Infinity\""
+          },
+        );
+      }
+    },
+    Some(Data_type::BoolData(value)) => output.push_str(if *value { "true" } else { "false" }),
+    Some(Data_type::MapData(value)) => write_command_json_map(output, &value.entries),
+    Some(Data_type::ArrayData(value)) => {
+      output.push('[');
+      for (index, value) in value.items.iter().enumerate() {
+        if index != 0 {
+          output.push(',');
+        }
+        write_command_json_data(output, value);
+      }
+      output.push(']');
+    },
+    None => output.push_str("null"),
+  }
+}
 
 //
 // CommandSpan
@@ -74,6 +209,8 @@ pub struct CommandSpan {
   pub id: String,
   /// Legacy recovered pending state may lack a start time; omit duration rather than invent one.
   pub started_at: Option<OffsetDateTime>,
+  /// Immutable invocation JSON; absent only when recovering legacy pending state.
+  pub command_details: Option<String>,
 }
 
 impl CommandSpan {
@@ -88,6 +225,12 @@ impl CommandSpan {
       (LOG_FIELD_NAME_SPAN_TYPE.into(), phase.into()),
     ]
     .into();
+    if let Some(details) = &self.command_details {
+      fields.insert(
+        LOG_FIELD_NAME_COMMAND_DETAILS.into(),
+        details.clone().into(),
+      );
+    }
     if phase == SPAN_TYPE_END {
       if let Some(started_at) = self.started_at {
         let duration = now - started_at;
@@ -213,6 +356,7 @@ pub struct WorkflowCommandRequest {
   pub session_id: String,
   pub started_at: OffsetDateTime,
   completion_token: WorkflowCommandCompletionToken,
+  command_details: String,
 }
 
 impl WorkflowCommandRequest {
@@ -221,12 +365,14 @@ impl WorkflowCommandRequest {
     session_id: String,
     completion_token: WorkflowCommandCompletionToken,
     started_at: OffsetDateTime,
+    command_details: String,
   ) -> Self {
     Self {
       command_selector,
       session_id,
       started_at,
       completion_token,
+      command_details,
     }
   }
 
@@ -240,6 +386,7 @@ impl WorkflowCommandRequest {
     CommandSpan {
       id: self.completion_token.0.clone(),
       started_at: Some(self.started_at),
+      command_details: Some(self.command_details.clone()),
     }
     .start_log(self.session_id.clone(), self.started_at)
   }
@@ -252,6 +399,7 @@ impl WorkflowCommandRequest {
       &CommandSpan {
         id: self.completion_token.0.clone(),
         started_at: Some(self.started_at),
+        command_details: Some(self.command_details.clone()),
       },
     )
   }
@@ -1747,6 +1895,8 @@ pub(crate) struct PendingCommand {
   pub(crate) completion_received: bool,
   #[field(id = 4)]
   pub(crate) started_at: Option<TimestampMicros>,
+  #[field(id = 5)]
+  pub(crate) command_details: Option<String>,
 }
 
 impl Traversal {
@@ -2085,6 +2235,7 @@ impl Traversal {
     }
 
     let completion_token = WorkflowCommandCompletionToken(Uuid::new_v4().to_string());
+    let details = command_details(Some(command_selector));
     // Record the invocation and charge its cooldown at launch, including failed/cancelled work.
     // RunCommand requests dispatch only; the transition's other actions wait for matching
     // completion.
@@ -2093,6 +2244,7 @@ impl Traversal {
       transition_index: index,
       completion_received: false,
       started_at: Some(TimestampMicros(now)),
+      command_details: Some(details.clone()),
     });
     command_last_started_at_ns.insert(matcher_id, now_ns);
     result
@@ -2101,6 +2253,7 @@ impl Traversal {
         command_selector: command_selector.clone(),
         completion_token,
         started_at: now,
+        command_details: details,
       }));
   }
 
@@ -2517,6 +2670,7 @@ pub(crate) struct TriggeredActionRunCommand {
   pub(crate) command_selector: WorkflowCommandSelector,
   pub(crate) completion_token: WorkflowCommandCompletionToken,
   pub(crate) started_at: OffsetDateTime,
+  pub(crate) command_details: String,
 }
 
 //

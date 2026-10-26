@@ -25,6 +25,7 @@ use crate::workflow::{
   WorkflowEvent,
   WorkflowResult,
   WorkflowResultStats,
+  command_details,
 };
 use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
@@ -33,6 +34,7 @@ use bd_log_primitives::{
   COMMAND_START_MESSAGE,
   DataValue,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
+  LOG_FIELD_NAME_COMMAND_DETAILS,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
   LOG_FIELD_NAME_DURATION_MS,
   LOG_FIELD_NAME_RESULT,
@@ -48,10 +50,12 @@ use bd_log_primitives::{
   SPAN_TYPE_START,
   log_level,
 };
-use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::logging::payload::{ArrayData, BinaryData, Data, LogType, MapData};
 use bd_proto::protos::workflow::workflow as workflow_proto;
 use bd_proto::protos::workflow::workflow::workflow::action::Action_type;
 use bd_proto::protos::workflow::workflow_command::{
+  WellKnownCommandType,
   WorkflowCommandSelector,
   workflow_command_selector,
 };
@@ -79,6 +83,7 @@ use bd_test_helpers::workflow::{
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use pretty_assertions::assert_eq;
 use protobuf::MessageField;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Cursor;
 use std::vec;
@@ -91,11 +96,204 @@ fn test_global_init() {
 }
 
 #[test]
+fn command_details_encode_selectors_and_escape_strings() {
+  let text = (0 ..= 127).map(char::from).collect::<String>()
+    + "\u{e9}\u{2028}\u{2029}\u{1f680}\",\"injected\":true";
+  let selector = WorkflowCommandSelector {
+    command_selector: Some(
+      workflow_command_selector::Command_selector::RegisteredCommand(
+        workflow_command_selector::RegisteredCommand {
+          registered_command_id: text.clone(),
+          ..Default::default()
+        },
+      ),
+    ),
+    arguments: HashMap::from([(
+      text.clone(),
+      Data {
+        data_type: Some(Data_type::StringData(text.clone())),
+        ..Default::default()
+      },
+    )]),
+    ..Default::default()
+  };
+  assert_eq!(
+    serde_json::from_str::<Value>(&command_details(Some(&selector))).unwrap(),
+    json!({"key": text, "args": {text.clone(): text}})
+  );
+  assert_eq!(command_details(None), r#"{"key":null,"args":{}}"#);
+  for (command, key) in [
+    (WellKnownCommandType::TAKE_SCREENSHOT, "take_screenshot"),
+    (
+      WellKnownCommandType::DUMP_DEVICE_BUFFER,
+      "dump_device_buffer",
+    ),
+    (WellKnownCommandType::TYPE_UNSPECIFIED, "unknown_builtin_0"),
+  ] {
+    let selector = WorkflowCommandSelector {
+      command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
+        workflow_command_selector::BuiltinCommand {
+          type_: command.into(),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    };
+    assert_eq!(
+      serde_json::from_str::<Value>(&command_details(Some(&selector))).unwrap(),
+      json!({"key": key, "args": {}})
+    );
+  }
+}
+
+#[test]
+fn command_details_encode_values_and_sort_nested_maps() {
+  let values = vec![
+    (Data_type::StringData(String::new()), json!("")),
+    (Data_type::IntData(u64::MAX), json!(u64::MAX)),
+    (Data_type::SintData(i64::MIN), json!(i64::MIN)),
+    (Data_type::SintData(i64::MAX), json!(i64::MAX)),
+    (Data_type::BoolData(true), json!(true)),
+    (Data_type::BoolData(false), json!(false)),
+    (Data_type::DoubleData(f64::NAN), json!("NaN")),
+    (Data_type::DoubleData(f64::INFINITY), json!("Infinity")),
+    (Data_type::DoubleData(f64::NEG_INFINITY), json!("-Infinity")),
+    (
+      Data_type::BinaryData(BinaryData::default()),
+      json!({"base64": ""}),
+    ),
+    (
+      Data_type::BinaryData(BinaryData {
+        payload: vec![0],
+        ..Default::default()
+      }),
+      json!({"base64": "AA=="}),
+    ),
+    (
+      Data_type::BinaryData(BinaryData {
+        payload: vec![0, 1],
+        ..Default::default()
+      }),
+      json!({"base64": "AAE="}),
+    ),
+    (
+      Data_type::BinaryData(BinaryData {
+        payload: vec![0, 1, 2],
+        ..Default::default()
+      }),
+      json!({"base64": "AAEC"}),
+    ),
+    (
+      Data_type::BinaryData(BinaryData {
+        payload: vec![0, 1, 2, 255],
+        ..Default::default()
+      }),
+      json!({"base64": "AAEC/w=="}),
+    ),
+  ];
+  for (value, expected) in values {
+    let selector = WorkflowCommandSelector {
+      arguments: HashMap::from([(
+        "value".to_string(),
+        Data {
+          data_type: Some(value),
+          ..Default::default()
+        },
+      )]),
+      ..Default::default()
+    };
+    assert_eq!(
+      serde_json::from_str::<Value>(&command_details(Some(&selector))).unwrap(),
+      json!({"key": null, "args": {"value": expected}})
+    );
+  }
+  let entries = HashMap::from([
+    ("z".to_string(), Data::default()),
+    (
+      "a".to_string(),
+      Data {
+        data_type: Some(Data_type::ArrayData(ArrayData {
+          items: vec![Data::default()],
+          ..Default::default()
+        })),
+        ..Default::default()
+      },
+    ),
+  ]);
+  let selector = WorkflowCommandSelector {
+    arguments: HashMap::from([(
+      "nested".to_string(),
+      Data {
+        data_type: Some(Data_type::MapData(MapData {
+          entries: entries.clone(),
+          ..Default::default()
+        })),
+        ..Default::default()
+      },
+    )]),
+    ..Default::default()
+  };
+  let encoded = command_details(Some(&selector));
+  assert_eq!(
+    encoded,
+    r#"{"key":null,"args":{"nested":{"a":[null],"z":null}}}"#
+  );
+  let mut reordered = selector;
+  let Some(Data_type::MapData(map)) = reordered
+    .arguments
+    .get_mut("nested")
+    .unwrap()
+    .data_type
+    .as_mut()
+  else {
+    panic!("expected map");
+  };
+  map.entries = entries
+    .into_iter()
+    .collect::<Vec<_>>()
+    .into_iter()
+    .rev()
+    .collect();
+  assert_eq!(command_details(Some(&reordered)), encoded);
+}
+
+#[test]
+fn command_details_encode_finite_float_boundaries() {
+  for value in [
+    0.0,
+    -0.0,
+    1.5,
+    f64::MIN,
+    f64::MAX,
+    f64::MIN_POSITIVE,
+    f64::from_bits(1),
+    1e-100,
+    1e100,
+  ] {
+    let selector = WorkflowCommandSelector {
+      arguments: HashMap::from([(
+        "value".to_string(),
+        Data {
+          data_type: Some(Data_type::DoubleData(value)),
+          ..Default::default()
+        },
+      )]),
+      ..Default::default()
+    };
+    let encoded = command_details(Some(&selector));
+    let decoded: Value = serde_json::from_str(&encoded).unwrap();
+    let number = decoded["args"]["value"].as_f64().unwrap();
+    assert_eq!(number.to_bits(), value.to_bits(), "{encoded}");
+  }
+}
+
+#[test]
 fn command_span_preserves_outcome_and_owns_reserved_fields() {
   let started_at = datetime!(2026-01-01 00:00 UTC);
   let span = CommandSpan {
     id: "invocation".into(),
     started_at: Some(started_at),
+    command_details: Some(r#"{"key":"original","args":{}}"#.into()),
   };
   let start = span.start_log("session".into(), started_at);
   assert_eq!(start.log_type, LogType::SPAN);
@@ -119,6 +317,7 @@ fn command_span_preserves_outcome_and_owns_reserved_fields() {
     fields: [
       ("count".into(), DataValue::U64(7)),
       (LOG_FIELD_NAME_SPAN_ID.into(), "spoofed".into()),
+      (LOG_FIELD_NAME_COMMAND_DETAILS.into(), "spoofed".into()),
       (LOG_FIELD_NAME_SPAN_NAME.into(), "spoofed".into()),
       (LOG_FIELD_NAME_SPAN_TYPE.into(), SPAN_TYPE_START.into()),
       ("_span_extra".into(), "spoofed".into()),
@@ -137,9 +336,21 @@ fn command_span_preserves_outcome_and_owns_reserved_fields() {
   assert_eq!(end.log_level, log_level::ERROR);
   assert_eq!(end.message.as_str(), Some(COMMAND_OUTCOME_MESSAGE));
   assert_eq!(end.session_id, start.session_id);
-  for key in [LOG_FIELD_NAME_SPAN_ID, LOG_FIELD_NAME_SPAN_NAME] {
+  for key in [
+    LOG_FIELD_NAME_SPAN_ID,
+    LOG_FIELD_NAME_SPAN_NAME,
+    LOG_FIELD_NAME_COMMAND_DETAILS,
+  ] {
     assert_eq!(end.fields.get(key), start.fields.get(key));
   }
+  assert_eq!(
+    start
+      .fields
+      .get(LOG_FIELD_NAME_COMMAND_DETAILS)
+      .unwrap()
+      .as_str(),
+    span.command_details.as_deref()
+  );
   assert_eq!(
     end.fields.get(LOG_FIELD_NAME_SPAN_TYPE).unwrap().as_str(),
     Some(SPAN_TYPE_END)
@@ -192,6 +403,7 @@ fn command_cancellation_reasons_preserve_span_identity_and_emit_canceled_result(
     let span = CommandSpan {
       id: "original-invocation".into(),
       started_at: Some(started_at),
+      command_details: Some(r#"{"key":"original","args":{}}"#.into()),
     };
     let log = reason.into_log("original-session".into(), started_at + 1.seconds(), &span);
     assert_eq!(reason.as_str(), value);
@@ -207,6 +419,10 @@ fn command_cancellation_reasons_preserve_span_identity_and_emit_canceled_result(
       (LOG_FIELD_NAME_RESULT, SPAN_RESULT_CANCELED),
       (LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON, value),
       (LOG_FIELD_NAME_COMMAND_MESSAGE, message),
+      (
+        LOG_FIELD_NAME_COMMAND_DETAILS,
+        span.command_details.as_deref().unwrap(),
+      ),
     ] {
       assert_eq!(log.fields.get(field).unwrap().as_str(), Some(expected));
     }
@@ -220,6 +436,7 @@ fn ordinary_command_outcomes_cannot_spoof_cancellation() {
   let span = CommandSpan {
     id: "invocation".into(),
     started_at: Some(now),
+    command_details: None,
   };
   for succeeded in [false, true] {
     let log = CommandOutcome {
@@ -231,11 +448,13 @@ fn ordinary_command_outcomes_cannot_spoof_cancellation() {
           "session_changed".into(),
         ),
         (LOG_FIELD_NAME_RESULT.into(), SPAN_RESULT_CANCELED.into()),
+        (LOG_FIELD_NAME_COMMAND_DETAILS.into(), "spoofed".into()),
       ]
       .into(),
       attachment: None,
     }
     .into_log("session".into(), now, &span);
+    assert!(!log.fields.contains_key(LOG_FIELD_NAME_COMMAND_DETAILS));
     assert!(
       !log
         .fields
@@ -260,6 +479,7 @@ fn command_span_handles_backward_clock_and_legacy_pending_state() {
   let span = CommandSpan {
     id: "invocation".into(),
     started_at: Some(started_at),
+    command_details: None,
   };
   assert_eq!(
     span
@@ -274,14 +494,16 @@ fn command_span_handles_backward_clock_and_legacy_pending_state() {
     transition_index: 1,
     completion_received: false,
     started_at: None,
+    command_details: None,
   };
-  let bytes = old_pending.serialize_message_to_bytes().unwrap();
-  let recovered = PendingCommand::deserialize_message_from_bytes(&bytes).unwrap();
+  let recovered =
+    PendingCommand::deserialize_message_from_bytes(b"\x0a\x0eold-invocation\x10\x01").unwrap();
   assert_eq!(recovered, old_pending);
   assert!(
     !CommandSpan {
       id: recovered.completion_token,
       started_at: recovered.started_at.map(|timestamp| timestamp.0),
+      command_details: recovered.command_details,
     }
     .fields(SPAN_TYPE_END, started_at)
     .contains_key(LOG_FIELD_NAME_DURATION_MS)
@@ -289,6 +511,7 @@ fn command_span_handles_backward_clock_and_legacy_pending_state() {
 
   let pending = PendingCommand {
     started_at: Some(TimestampMicros(started_at)),
+    command_details: Some(r#"{"key":"original","args":{"input":7}}"#.into()),
     ..old_pending
   };
   let bytes = pending.serialize_message_to_bytes().unwrap();

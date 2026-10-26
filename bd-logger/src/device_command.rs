@@ -92,6 +92,7 @@ use bd_workflows::workflow::{
   WorkflowCommandCompletionToken,
   WorkflowCommandOutcome,
   WorkflowCommandRequest,
+  command_details,
 };
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
@@ -516,6 +517,7 @@ impl DeviceCommandDispatcher {
             span: CommandSpan {
               id: command_id.clone(),
               started_at: Some(started_at),
+              command_details: Some(command_details(command.command_selector.as_ref())),
             },
             session_id: session_strategy.session_id(),
             time_provider,

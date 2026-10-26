@@ -36,6 +36,7 @@ use bd_log_primitives::{
   AnnotatedLogFields,
   COMMAND_OUTCOME_MESSAGE,
   COMMAND_START_MESSAGE,
+  LOG_FIELD_NAME_COMMAND_DETAILS,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
   LOG_FIELD_NAME_DURATION_MS,
   LOG_FIELD_NAME_RESULT,
@@ -2951,6 +2952,10 @@ fn buffer_dump_device_command_uploads_and_reports_terminal_context() {
         .map(|(_, value)| value),
       Some(DataValue::U64(dumped_count))
     );
+    assert_eq!(
+      end.field(LOG_FIELD_NAME_COMMAND_DETAILS),
+      r#"{"key":"dump_device_buffer","args":{}}"#,
+    );
     lifecycle_logs.extend(remaining);
     assert_command_span_pair(&lifecycle_logs, Some(command_id));
   });
@@ -3134,6 +3139,11 @@ fn assert_command_span_pair(logs: &[WrappedLog], expected_id: Option<&str>) {
     end.field(LOG_FIELD_NAME_SPAN_ID)
   );
   assert_ne!(start.field(LOG_FIELD_NAME_SPAN_ID), "");
+  assert_ne!(start.field(LOG_FIELD_NAME_COMMAND_DETAILS), "");
+  assert_eq!(
+    start.field(LOG_FIELD_NAME_COMMAND_DETAILS),
+    end.field(LOG_FIELD_NAME_COMMAND_DETAILS),
+  );
   if let Some(expected_id) = expected_id {
     assert_eq!(start.field(LOG_FIELD_NAME_SPAN_ID), expected_id);
   }
@@ -3431,6 +3441,10 @@ fn screenshot_device_command_stages_correlated_attachment() {
     let log = &logs[1];
     assert_eq!(log.message(), COMMAND_OUTCOME_MESSAGE);
     assert_eq!(log.field(LOG_FIELD_NAME_RESULT), SPAN_RESULT_SUCCESS);
+    assert_eq!(
+      log.field(LOG_FIELD_NAME_COMMAND_DETAILS),
+      r#"{"key":"take_screenshot","args":{}}"#,
+    );
     let attachment = log.command_attachment().unwrap();
     assert_eq!(attachment.artifact_id, artifact_id);
     assert_eq!(attachment.content_type, "image/jpeg");
