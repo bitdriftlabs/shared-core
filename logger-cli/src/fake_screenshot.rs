@@ -11,6 +11,7 @@ mod tests;
 
 use bd_logger::{
   CommandAttachment,
+  CommandError,
   CommandInvocation,
   CommandResult,
   LogFields,
@@ -32,7 +33,13 @@ impl bd_session_replay::Target for FakeScreenshotTarget {
 
 #[async_trait::async_trait]
 impl RegisteredCommandHandler for FakeScreenshotTarget {
-  async fn execute(&self, _invocation: CommandInvocation) -> CommandResult {
+  async fn execute(&self, invocation: CommandInvocation) -> CommandResult {
+    if !invocation.arguments.is_empty() {
+      return CommandResult::Failed {
+        error: CommandError::InvalidArguments("screenshot does not accept arguments".into()),
+        fields: LogFields::default(),
+      };
+    }
     CommandResult::Completed {
       fields: LogFields::default(),
       attachment: Some(CommandAttachment {

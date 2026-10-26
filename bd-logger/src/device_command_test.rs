@@ -74,6 +74,7 @@ use bd_proto::protos::workflow::workflow_command::{
 };
 use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::device_command::ExecutionTimeoutFlag;
+use bd_runtime::runtime::workflow_attachment::MaxOwnedFiles;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::test::no_timeout;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
@@ -1881,6 +1882,107 @@ async fn workflow_stack_sampling_without_a_platform_handler_fails_as_unsupported
     panic!("expected a failure");
   };
   assert_eq!(message.as_deref(), Some("command unknown"));
+}
+
+#[tokio::test]
+async fn workflow_owned_file_admission_failure_deletes_source() {
+  let (directory, runtime, policy) = command_runtime();
+  runtime
+    .update_snapshot(make_simple_update(vec![
+      (MaxBytes::path(), ValueKind::Int(1)),
+      (MaxOwnedFiles::path(), ValueKind::Int(1)),
+    ]))
+    .await
+    .unwrap();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(
+    &registry,
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+
+  let outcome = dispatcher
+    .execute(stack_sampling_selector(HashMap::new()), "session".into())
+    .await;
+  let WorkflowCommandOutcome::Failed { message, fields } = outcome else {
+    panic!("expected workflow attachment admission failure");
+  };
+  assert!(message.unwrap().contains("within size limit"));
+  assert_eq!(fields.get("handler_field"), Some(&"handler_value".into()));
+  assert!(!trace.exists());
+
+  let store = dispatcher.executor.attachment_store.get().await.unwrap();
+  let next = store
+    .admit(UploadSource::Bytes(vec![1]), None)
+    .await
+    .unwrap();
+  store.release(next.id).await.unwrap();
+  assert_eq!(
+    fs::read_dir(directory.path().join("workflow-attachments"))
+      .unwrap()
+      .count(),
+    0
+  );
+}
+
+#[tokio::test]
+async fn workflow_owned_file_admission_cancellation_deletes_source() {
+  let (directory, runtime, policy) = command_runtime();
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      MaxOwnedFiles::path(),
+      ValueKind::Int(1),
+    )]))
+    .await
+    .unwrap();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(
+    &registry,
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+  let store = dispatcher.executor.attachment_store.get().await.unwrap();
+  let permit = store.block_admissions_for_test().await;
+  let mut execution =
+    Box::pin(dispatcher.execute(stack_sampling_selector(HashMap::new()), "session".into()));
+  assert!(futures_util::poll!(&mut execution).is_pending());
+  assert!(trace.exists());
+
+  drop(execution);
+  assert!(!trace.exists());
+  drop(permit);
+
+  let next = store
+    .admit(UploadSource::Bytes(vec![1]), None)
+    .await
+    .unwrap();
+  store.release(next.id).await.unwrap();
+  assert_eq!(
+    fs::read_dir(directory.path().join("workflow-attachments"))
+      .unwrap()
+      .count(),
+    0
+  );
 }
 
 fn command_runtime() -> (TempDir, Arc<ConfigLoader>, CommandExecutionPolicy) {

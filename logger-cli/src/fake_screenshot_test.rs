@@ -8,6 +8,28 @@
 #![allow(clippy::unwrap_used)]
 
 use super::*;
+use bd_proto::protos::logging::payload::Data;
+use std::collections::HashMap;
+
+#[tokio::test]
+async fn rejects_screenshot_arguments() {
+  let result = FakeScreenshotTarget
+    .execute(CommandInvocation {
+      command_id: None,
+      registered_command_id: "take_screenshot".into(),
+      arguments: HashMap::from([("extra".into(), Data::default())]),
+      session_id: "session".into(),
+    })
+    .await;
+  let CommandResult::Failed { error, fields } = result else {
+    panic!("expected invalid screenshot arguments");
+  };
+  assert_eq!(
+    error,
+    CommandError::InvalidArguments("screenshot does not accept arguments".into())
+  );
+  assert_eq!(fields, LogFields::default());
+}
 
 #[tokio::test]
 async fn returns_a_valid_jpeg_for_device_command_capture() {
