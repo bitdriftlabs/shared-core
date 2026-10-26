@@ -35,6 +35,7 @@ use bytes::Bytes;
 use protobuf::Message;
 use snap::read::FrameDecoder;
 use std::io::Read;
+use std::slice;
 
 fn metric(kind: MetricType, timestamp: u64, value: MetricValue) -> Metric {
   Metric::new(
@@ -97,6 +98,39 @@ fn exponential_point() -> ExponentialHistogramDataPoint {
 
 #[test]
 fn exponential_histograms_keep_integer_counts_and_temporality_in_mixed_batches() {
+  assert_mixed_histogram_round_trip(&exponential_point());
+}
+
+#[test]
+fn exponential_histograms_round_trip_scales_outside_aggregation_range() {
+  for scale in [-5, 6] {
+    let mut point = exponential_point();
+    point.scale = scale;
+    assert_mixed_histogram_round_trip(&point);
+  }
+}
+
+#[test]
+fn exponential_histograms_round_trip_more_than_256_buckets() {
+  for negative in [false, true] {
+    let mut point = exponential_point();
+    point.scale = 0;
+    point.count = 257;
+    point.zero_count = 0;
+    point.positive = Some(Buckets {
+      offset: 0,
+      bucket_counts: vec![1; 257],
+      ..Default::default()
+    })
+    .into();
+    if negative {
+      point.negative = point.positive.take().into();
+    }
+    assert_mixed_histogram_round_trip(&point);
+  }
+}
+
+fn assert_mixed_histogram_round_trip(point: &ExponentialHistogramDataPoint) {
   for (compression, temporality) in [
     (OtlpCompression::None, CounterType::Delta),
     (OtlpCompression::Snappy, CounterType::Delta),
@@ -107,7 +141,7 @@ fn exponential_histograms_keep_integer_counts_and_temporality_in_mixed_batches()
       vec![
         OtlpPoint::ExponentialHistogram {
           name: "histogram".into(),
-          point: exponential_point(),
+          point: point.clone(),
           temporality,
         },
         OtlpMetric {
@@ -140,7 +174,7 @@ fn exponential_histograms_keep_integer_counts_and_temporality_in_mixed_batches()
           CounterType::Absolute => AggregationTemporality::AGGREGATION_TEMPORALITY_CUMULATIVE,
         }
       );
-      assert_eq!(histogram.data_points, [exponential_point()]);
+      assert_eq!(histogram.data_points.as_slice(), slice::from_ref(point));
     }
   }
 }
@@ -152,10 +186,11 @@ fn exponential_histograms_reject_invalid_counts_spans_and_optional_sums() {
   point.count += 1;
   invalid.push(point);
   let mut point = exponential_point();
-  point.positive.as_mut().unwrap().bucket_counts = vec![0; 257];
+  point.positive.as_mut().unwrap().offset = i32::MAX;
   invalid.push(point);
   let mut point = exponential_point();
-  point.scale = 6;
+  point.count = u64::MAX;
+  point.positive.as_mut().unwrap().bucket_counts = vec![u64::MAX];
   invalid.push(point);
   let mut point = exponential_point();
   point.start_time_unix_nano = point.time_unix_nano;
@@ -185,6 +220,34 @@ fn exponential_histograms_reject_invalid_counts_spans_and_optional_sums() {
       .is_err()
     );
   }
+}
+
+#[test]
+fn implicit_and_explicit_gauges_can_share_a_metric_name() {
+  let points = [None, Some(MetricType::Gauge)]
+    .into_iter()
+    .map(|kind| {
+      OtlpMetric {
+        metric: Metric::new(
+          MetricId::new("metric".into(), kind, vec![], false).unwrap(),
+          None,
+          180,
+          MetricValue::Simple(1.0),
+        ),
+        start_time_unix_nano: 120_000_000_000,
+        is_monotonic: false,
+      }
+      .into()
+    })
+    .collect();
+  let encoded = encode_otlp_points(points, OtlpCompression::None).unwrap();
+  let request = ExportMetricsServiceRequest::parse_from_bytes(&encoded).unwrap();
+  let metrics = &request.resource_metrics[0].scope_metrics[0].metrics;
+  assert_eq!(metrics.len(), 1);
+  let Some(Data::Gauge(gauge)) = &metrics[0].data else {
+    panic!("expected gauge");
+  };
+  assert_eq!(gauge.data_points.len(), 2);
 }
 
 #[test]

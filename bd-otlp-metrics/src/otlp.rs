@@ -84,21 +84,17 @@ fn validate_exponential_histogram(point: &ExponentialHistogramDataPoint) -> anyh
   if point.start_time_unix_nano >= point.time_unix_nano {
     anyhow::bail!("OTLP interval start must precede its end");
   }
-  if !(-4 ..= 5).contains(&point.scale)
-    || !point.zero_threshold.is_finite()
-    || point.zero_threshold < 0.0
-  {
-    anyhow::bail!("invalid OTLP exponential histogram scale or zero threshold");
+  if !point.zero_threshold.is_finite() || point.zero_threshold < 0.0 {
+    anyhow::bail!("invalid OTLP exponential histogram zero threshold");
   }
   let mut count = point.zero_count;
   for buckets in point.positive.iter().chain(point.negative.iter()) {
-    if buckets.bucket_counts.len() > 256
-      || buckets
-        .offset
-        .checked_add(i32::try_from(buckets.bucket_counts.len())?)
-        .is_none()
+    if buckets
+      .offset
+      .checked_add(i32::try_from(buckets.bucket_counts.len())?)
+      .is_none()
     {
-      anyhow::bail!("OTLP exponential histogram bucket span exceeds its limit");
+      anyhow::bail!("OTLP exponential histogram bucket span exceeds the index range");
     }
     for bucket_count in &buckets.bucket_counts {
       count = count
@@ -395,7 +391,10 @@ pub fn encode_otlp_points(
         validate_otlp_metric(sample)?;
         (
           Chars::from_bytes(sample.metric.get_id().name().clone())?,
-          Some((sample.metric.get_id().mtype(), sample.is_monotonic)),
+          Some((
+            sample.metric.get_id().mtype().unwrap_or(MetricType::Gauge),
+            sample.is_monotonic,
+          )),
           None,
         )
       },
