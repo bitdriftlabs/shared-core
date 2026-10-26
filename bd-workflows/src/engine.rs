@@ -665,6 +665,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
               traversal_index,
               session_id: session_id.to_string(),
               started_at: pending_command.started_at.map(|timestamp| timestamp.0),
+              command_details: pending_command.command_details.clone(),
               completion_received: pending_command.completion_received,
             },
           );
@@ -780,6 +781,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       &CommandSpan {
         id: token.0.clone(),
         started_at: location.started_at,
+        command_details: location.command_details.clone(),
       },
     ))
   }
@@ -1470,6 +1472,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
             self.state.session_id.clone(),
             action.completion_token,
             action.started_at,
+            action.command_details,
           )
         })
         .collect(),
@@ -1966,6 +1969,7 @@ struct PendingWorkflowCommandLocation {
   // Preserve lifecycle identity before a reset destroys the pending traversal or session.
   session_id: String,
   started_at: Option<OffsetDateTime>,
+  command_details: Option<String>,
   completion_received: bool,
 }
 
@@ -1983,6 +1987,7 @@ impl PendingWorkflowCommandLocation {
         &CommandSpan {
           id: token.clone(),
           started_at: self.started_at,
+          command_details: self.command_details,
         },
       ),
       token: WorkflowCommandCompletionToken(token),

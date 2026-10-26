@@ -12,6 +12,7 @@ doctest = false
 anyhow.workspace            = true
 arbitrary                   = { workspace = true, optional = true }
 async-trait.workspace       = true
+base64.workspace            = true
 bd-api.path                 = "../bd-api"
 bd-client-common.path       = "../bd-client-common"
 bd-client-stats.path        = "../bd-client-stats"
@@ -57,6 +58,7 @@ bd-time                     = { path = "../bd-time" }
 ctor.workspace              = true
 futures-util.workspace      = true
 pretty_assertions.workspace = true
+serde_json.workspace        = true
 tempfile.workspace          = true
 tokio-test.workspace        = true
 
