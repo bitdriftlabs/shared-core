@@ -88,7 +88,7 @@ fn span_and_command_log_wire_contract() {
       "_workflow_command_",
       "start",
       "end",
-      "Command Execution",
+      "_device_command",
       "_graphql",
       "success",
       "failure",
