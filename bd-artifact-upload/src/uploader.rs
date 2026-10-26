@@ -1034,6 +1034,7 @@ impl Uploader {
         == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
         && type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
         && existing.session_id == session_id;
+      drop(source_cleanup.take());
       if let Some(tx) = persisted_tx {
         let result = if matching_workflow_attachment {
           Ok(None)
@@ -1053,6 +1054,8 @@ impl Uploader {
         }
         tx.send(result);
       }
+      #[cfg(test)]
+      self.pause_after_persistence_ack_for_test().await;
       return;
     }
     // Previously we would always drop the oldest entry when we hit capacity, but for state
@@ -1088,9 +1091,12 @@ impl Uploader {
         }
       } else {
         self.stats.dropped.inc();
+        drop(source_cleanup.take());
         if let Some(tx) = persisted_tx.take() {
           tx.send(Err(EnqueueError::QueueFull));
         }
+        #[cfg(test)]
+        self.pause_after_persistence_ack_for_test().await;
         return;
       }
     }
@@ -1198,6 +1204,7 @@ impl Uploader {
 
     if let Err(e) = write_result {
       log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
+      drop(source_cleanup.take());
       if let Some(tx) = persisted_tx.take() {
         let error = if retained {
           retained_persistence_error(e)
@@ -1208,6 +1215,9 @@ impl Uploader {
         };
         tx.send(Err(error));
       }
+
+      #[cfg(test)]
+      self.pause_after_persistence_ack_for_test().await;
 
       #[cfg(test)]
       if let Some(hooks) = &self.test_hooks {
@@ -1277,6 +1287,7 @@ impl Uploader {
       {
         log::warn!("failed to remove unindexed artifact {uuid}: {delete_error}");
       }
+      drop(source_cleanup.take());
       if let Some(tx) = persisted_tx {
         let error = if retained {
           retained_persistence_error(error)
@@ -1285,6 +1296,8 @@ impl Uploader {
         };
         tx.send(Err(error));
       }
+      #[cfg(test)]
+      self.pause_after_persistence_ack_for_test().await;
       return;
     }
     if source_cleanup.is_some() {

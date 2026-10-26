@@ -9,7 +9,9 @@ use super::{UploadClient, Uploader};
 use crate::uploader::{
   ARTIFACT_UPLOAD_DIRECTORY,
   Client,
+  CommandFile,
   EnqueueError,
+  PersistenceAck,
   REPORT_INDEX_FILE,
   SnappedFeatureFlag,
   UploadSource,
@@ -24,6 +26,7 @@ use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::api::ArtifactPayloadEncoding;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
+use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
@@ -35,6 +38,7 @@ use flate2::Compression;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use std::collections::HashMap;
+use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -42,7 +46,7 @@ use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
 use time::ext::NumericalStdDuration;
 use time::macros::datetime;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -50,6 +54,21 @@ use uuid::Uuid;
 pub struct TestHooks {
   pub upload_complete_tx: tokio::sync::mpsc::Sender<String>,
   pub entry_received_tx: tokio::sync::mpsc::Sender<String>,
+  pub persistence_ack_tx: Option<mpsc::Sender<oneshot::Sender<()>>>,
+}
+
+impl Uploader {
+  pub(super) async fn pause_after_persistence_ack_for_test(&self) {
+    if let Some(sender) = self
+      .test_hooks
+      .as_ref()
+      .and_then(|hooks| hooks.persistence_ack_tx.as_ref())
+    {
+      let (resume_tx, resume_rx) = oneshot::channel();
+      sender.send(resume_tx).await.unwrap();
+      resume_rx.await.unwrap();
+    }
+  }
 }
 
 struct Setup {
@@ -95,6 +114,7 @@ impl Setup {
     uploader.test_hooks = Some(TestHooks {
       upload_complete_tx,
       entry_received_tx,
+      persistence_ack_tx: None,
     });
 
     let task_handle = tokio::spawn(uploader.run());
@@ -147,6 +167,7 @@ impl Setup {
     uploader.test_hooks = Some(TestHooks {
       upload_complete_tx,
       entry_received_tx,
+      persistence_ack_tx: None,
     });
 
     let task_handle = tokio::spawn(uploader.run());
@@ -1946,6 +1967,128 @@ async fn command_source_is_consumed_before_persistence_ack() {
   setup.entry_received_rx.recv().await.unwrap();
   setup.shutdown().await;
   assert_eq!(std::fs::read(source).unwrap(), b"replacement");
+}
+
+enum PersistenceFailure {
+  Capacity,
+  Payload,
+  Index,
+  DuplicateId,
+}
+
+async fn assert_command_source_consumed_before_error_ack(failure: PersistenceFailure) {
+  fs::create_dir_all(".tmp").unwrap();
+  let directory = tempfile::TempDir::with_prefix_in("command-source", ".tmp").unwrap();
+  let source_path = directory.path().canonicalize().unwrap().join("payload");
+  fs::write(&source_path, b"payload").unwrap();
+  let filesystem = Arc::new(TestFileSystem::new());
+  let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
+  let (data_upload_tx, _data_upload_rx) = mpsc::channel(1);
+  let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
+  let (mut uploader, _client) = Uploader::new(
+    filesystem.clone(),
+    data_upload_tx,
+    Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+    &runtime,
+    &Collector::default(),
+    command_metadata(),
+    shutdown.make_shutdown(),
+  );
+  uploader.initialize().await;
+  let id = Uuid::new_v4();
+  match failure {
+    PersistenceFailure::Capacity => {
+      runtime
+        .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+          artifact_upload::MaxPendingEntries::path(),
+          ValueKind::Int(0),
+        )]))
+        .await
+        .unwrap();
+    },
+    PersistenceFailure::Payload => filesystem.disk_full.store(true, Ordering::Relaxed),
+    PersistenceFailure::Index => {
+      filesystem
+        .create_dir(
+          &ARTIFACT_UPLOAD_DIRECTORY
+            .join(&*REPORT_INDEX_FILE)
+            .with_extension("tmp"),
+        )
+        .await
+        .unwrap();
+    },
+    PersistenceFailure::DuplicateId => uploader.index.push_back(Artifact {
+      name: id.to_string(),
+      ..Default::default()
+    }),
+  }
+  let (upload_complete_tx, _upload_complete_rx) = mpsc::channel(1);
+  let (entry_received_tx, _entry_received_rx) = mpsc::channel(1);
+  let (persistence_ack_tx, mut persistence_ack_rx) = mpsc::channel(1);
+  uploader.test_hooks = Some(TestHooks {
+    upload_complete_tx,
+    entry_received_tx,
+    persistence_ack_tx: Some(persistence_ack_tx),
+  });
+  let (persisted_tx, persisted_rx) = oneshot::channel();
+  let source = UploadSource::Path(source_path.clone());
+  let source_cleanup = CommandFile::from_source(&source);
+  tokio::join!(
+    uploader.track_new_upload(
+      id,
+      source,
+      "device_command_attachment".into(),
+      [].into(),
+      "session".into(),
+      None,
+      vec![],
+      Some(Uuid::new_v4().to_string()),
+      None,
+      Some(PersistenceAck::Command(persisted_tx)),
+      None,
+      source_cleanup,
+    ),
+    async {
+      let error = persisted_rx.await.unwrap().unwrap_err();
+      match failure {
+        PersistenceFailure::Capacity => assert_matches!(error, EnqueueError::QueueFull),
+        PersistenceFailure::Payload => assert!(error.to_string().contains("disk full")),
+        PersistenceFailure::Index => assert!(error.to_string().contains("failed to create file")),
+        PersistenceFailure::DuplicateId => {
+          assert!(
+            error
+              .to_string()
+              .contains("belongs to another session or artifact type")
+          );
+        },
+      }
+      let resume = persistence_ack_rx.recv().await.unwrap();
+      assert!(!source_path.exists());
+      fs::write(&source_path, b"replacement").unwrap();
+      resume.send(()).unwrap();
+    }
+  );
+  assert_eq!(fs::read(source_path).unwrap(), b"replacement");
+}
+
+#[tokio::test]
+async fn command_source_is_consumed_before_capacity_error_ack() {
+  assert_command_source_consumed_before_error_ack(PersistenceFailure::Capacity).await;
+}
+
+#[tokio::test]
+async fn command_source_is_consumed_before_payload_error_ack() {
+  assert_command_source_consumed_before_error_ack(PersistenceFailure::Payload).await;
+}
+
+#[tokio::test]
+async fn command_source_is_consumed_before_index_error_ack() {
+  assert_command_source_consumed_before_error_ack(PersistenceFailure::Index).await;
+}
+
+#[tokio::test]
+async fn command_source_is_consumed_before_duplicate_id_error_ack() {
+  assert_command_source_consumed_before_error_ack(PersistenceFailure::DuplicateId).await;
 }
 
 #[tokio::test]
