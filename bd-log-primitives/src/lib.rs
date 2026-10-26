@@ -48,6 +48,7 @@ pub const LOG_FIELD_NAME_SPAN_NAME: &str = "_span_name";
 pub const LOG_FIELD_NAME_SPAN_TYPE: &str = "_span_type";
 pub const LOG_FIELD_NAME_DURATION_MS: &str = "_duration_ms";
 pub const LOG_FIELD_NAME_COMMAND_MESSAGE: &str = "_command_message";
+pub const LOG_FIELD_NAME_COMMAND_DETAILS: &str = "_command_details";
 pub const LOG_FIELD_NAME_RESULT: &str = "_result";
 pub const LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON: &str = "_command_cancellation_reason";
 pub const LOG_FIELD_PREFIX_SPAN: &str = "_span_";
