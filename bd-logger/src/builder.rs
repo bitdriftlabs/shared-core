@@ -12,7 +12,11 @@ mod builder_test;
 use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
-use crate::device_command::{CommandExecutionPolicy, RegisteredCommandDispatcher};
+use crate::device_command::{
+  BuiltinCommandRegistration,
+  CommandExecutionPolicy,
+  RegisteredCommandDispatcher,
+};
 use crate::directory_lock::DirectoryLock;
 use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::internal::InternalLogger;
@@ -196,6 +200,7 @@ pub struct LoggerBuilder {
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
   command_handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>,
+  builtin_commands: Vec<BuiltinCommandRegistration>,
   test_hooks: Option<Arc<dyn TestHooks>>,
   startup_replay_eligibility: StartupReplayEligibility,
 }
@@ -212,6 +217,7 @@ impl LoggerBuilder {
       time_provider: None,
       crash_report_hook: None,
       command_handlers: HashMap::new(),
+      builtin_commands: Vec::new(),
       test_hooks: None,
       startup_replay_eligibility: StartupReplayEligibility::Unknown,
     }
@@ -285,6 +291,16 @@ impl LoggerBuilder {
   ) -> Self {
     self.command_handlers.insert(registered_command_id, handler);
     self
+  }
+
+  /// Installs an SDK-owned platform built-in before command execution starts.
+  pub fn with_builtin_command(
+    mut self,
+    registration: BuiltinCommandRegistration,
+  ) -> anyhow::Result<Self> {
+    registration.validate()?;
+    self.builtin_commands.push(registration);
+    Ok(self)
   }
 
   /// Sets the platform's confidence about whether startup needs to wait for prior crash replay.
@@ -406,49 +422,51 @@ impl LoggerBuilder {
     let pending_trigger_uploads = PendingTriggerUploadsStore::new(&self.params.sdk_directory);
     let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
     let command_dispatcher = RegisteredCommandDispatcher::new(self.command_handlers);
+    for registration in self.builtin_commands {
+      command_dispatcher.register_builtin(registration)?;
+    }
     let command_execution_policy = CommandExecutionPolicy::new(&runtime_loader);
 
-    let (async_log_buffer, async_log_buffer_communication_tx, remote_screenshot_capture_handler) =
-      AsyncLogBuffer::<LoggerReplay>::new(
-        UninitializedLoggingContext::new(
-          &self.params.sdk_directory,
-          &runtime_loader,
-          scope.clone(),
-          stats,
-          trigger_upload_tx.clone(),
-          remote_flush_streaming_rx,
-          data_upload_tx.clone(),
-          flush_buffers_tx,
-          flusher_trigger.clone(),
-          1024 * 1024,
-          is_tracing_active.clone(),
-          process_local_pending_flush_state.clone(),
-          self.test_hooks.clone(),
-        ),
-        LoggerReplay,
-        session_strategy.clone(),
-        self.params.metadata_provider.clone(),
-        self.params.initial_ootb_fields,
-        self.params.initial_custom_fields,
-        self.params.resource_utilization_target,
-        self.params.session_replay_target,
-        self.params.events_listener_target,
-        command_dispatcher.clone(),
-        command_execution_policy.clone(),
-        config_update_rx,
-        report_proc_rx,
-        shutdown_handle.clone(),
+    let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
+      UninitializedLoggingContext::new(
+        &self.params.sdk_directory,
         &runtime_loader,
-        log_network_quality_provider,
-        aggregated_network_quality_provider,
-        self.params.device.id(),
-        &self.params.store,
-        time_provider.clone(),
-        init_lifecycle.clone(),
-        sdk_status_tracker.clone(),
+        scope.clone(),
+        stats,
+        trigger_upload_tx.clone(),
+        remote_flush_streaming_rx,
         data_upload_tx.clone(),
-        self.startup_replay_eligibility,
-      );
+        flush_buffers_tx,
+        flusher_trigger.clone(),
+        1024 * 1024,
+        is_tracing_active.clone(),
+        process_local_pending_flush_state.clone(),
+        self.test_hooks.clone(),
+      ),
+      LoggerReplay,
+      session_strategy.clone(),
+      self.params.metadata_provider.clone(),
+      self.params.initial_ootb_fields,
+      self.params.initial_custom_fields,
+      self.params.resource_utilization_target,
+      self.params.session_replay_target,
+      self.params.events_listener_target,
+      command_dispatcher.clone(),
+      command_execution_policy.clone(),
+      config_update_rx,
+      report_proc_rx,
+      shutdown_handle.clone(),
+      &runtime_loader,
+      log_network_quality_provider,
+      aggregated_network_quality_provider,
+      self.params.device.id(),
+      &self.params.store,
+      time_provider.clone(),
+      init_lifecycle.clone(),
+      sdk_status_tracker.clone(),
+      data_upload_tx.clone(),
+      self.startup_replay_eligibility,
+    );
     let workflow_attachment_cleanup_ready = async_log_buffer.workflow_attachment_cleanup_ready();
 
     let data_upload_tx_clone = data_upload_tx.clone();
@@ -664,7 +682,6 @@ impl LoggerBuilder {
           artifact_client,
           command_dispatcher,
           command_execution_policy,
-          remote_screenshot_capture_handler,
           command_state.clone(),
           time_provider.clone(),
           &scope.scope("config"),

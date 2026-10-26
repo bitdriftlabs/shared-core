@@ -1113,13 +1113,6 @@ pub mod device_command {
     "device_command.execution_timeout_ms",
     time::Duration::seconds(5)
   );
-  // A stack sample runs for its requested duration and then waits for the platform profiler to
-  // write the trace, so the built-in command gets a longer deadline than app handlers.
-  duration_feature_flag!(
-    StackSamplingTimeoutFlag,
-    "device_command.stack_sampling.execution_timeout_ms",
-    time::Duration::seconds(15)
-  );
 }
 
 pub mod workflow_attachment {

@@ -23,8 +23,6 @@ use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, session_replay
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::oneshot;
 use tokio::time::{Interval, MissedTickBehavior};
 
 #[cfg(test)]
@@ -37,8 +35,6 @@ fn test_global_init() {
 // Target
 //
 
-pub type DeviceCommandScreenshotCompletion = Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>;
-
 // An interface implementing the act of capturing user screens.
 pub trait Target {
   // Instruct the target to capture a privacy-preserving and bandwidth-efficient representation
@@ -47,81 +43,6 @@ pub trait Target {
   // asynchronously, as accessing the application view hierarchy requires executing on the main
   // thread, and the `capture_screen` method is always called from a non-main thread.
   fn capture_screen(&self);
-
-  // Instruct the target to capture a screenshot for a remote device command. Targets that do not
-  // support returning screenshot bytes explicitly reject the request rather than leaving the
-  // command pending.
-  fn capture_device_command_screenshot(&self, completion: DeviceCommandScreenshotCompletion) {
-    completion(Err("remote screenshot capture is unavailable".to_string()));
-  }
-}
-
-//
-// RemoteScreenshotCaptureHandler
-//
-
-#[derive(Clone)]
-pub struct RemoteScreenshotCaptureHandler {
-  target: Arc<dyn Target + Send + Sync>,
-  active_capture_id: Arc<AtomicU64>,
-  next_capture_id: Arc<AtomicU64>,
-}
-
-struct ActiveCaptureGuard {
-  active_capture_id: Arc<AtomicU64>,
-  capture_id: u64,
-}
-
-impl Drop for ActiveCaptureGuard {
-  fn drop(&mut self) {
-    let _ = self.active_capture_id.compare_exchange(
-      self.capture_id,
-      0,
-      Ordering::AcqRel,
-      Ordering::Acquire,
-    );
-  }
-}
-
-impl RemoteScreenshotCaptureHandler {
-  pub fn new(target: Arc<dyn Target + Send + Sync>) -> Self {
-    Self {
-      target,
-      active_capture_id: Arc::new(AtomicU64::new(0)),
-      next_capture_id: Arc::new(AtomicU64::new(1)),
-    }
-  }
-
-  /// Waits for the platform callback. The caller owns the execution deadline; dropping this future
-  /// releases the capture slot without allowing an older callback to release a newer capture.
-  pub async fn capture(&self) -> Result<Vec<u8>, String> {
-    let capture_id = self.next_capture_id.fetch_add(1, Ordering::Relaxed);
-    if self
-      .active_capture_id
-      .compare_exchange(0, capture_id, Ordering::AcqRel, Ordering::Acquire)
-      .is_err()
-    {
-      return Err("a remote screenshot capture is already in progress".to_string());
-    }
-
-    let _active_capture_guard = ActiveCaptureGuard {
-      active_capture_id: self.active_capture_id.clone(),
-      capture_id,
-    };
-    let (completion_tx, completion_rx) = oneshot::channel();
-    let active_capture_id = self.active_capture_id.clone();
-    self
-      .target
-      .capture_device_command_screenshot(Box::new(move |result| {
-        let _ =
-          active_capture_id.compare_exchange(capture_id, 0, Ordering::AcqRel, Ordering::Acquire);
-        let _ = completion_tx.send(result);
-      }));
-
-    completion_rx
-      .await
-      .map_err(|_| "remote screenshot capture was interrupted".to_string())?
-  }
 }
 
 //
@@ -139,10 +60,7 @@ pub struct Recorder {
 }
 
 impl Recorder {
-  pub fn new(
-    target: Box<dyn Target + Send + Sync>,
-    runtime_loader: &Arc<ConfigLoader>,
-  ) -> (Self, RemoteScreenshotCaptureHandler) {
+  pub fn new(target: Box<dyn Target + Send + Sync>, runtime_loader: &Arc<ConfigLoader>) -> Self {
     let mut is_periodic_reporting_enabled_flag =
       session_replay::PeriodicScreensEnabledFlag::register(runtime_loader);
     let is_periodic_reporting_enabled = *is_periodic_reporting_enabled_flag.read_mark_update();
@@ -151,21 +69,14 @@ impl Recorder {
       *session_replay::ReportingIntervalFlag::register(runtime_loader).read_mark_update();
 
     let target: Arc<dyn Target + Send + Sync> = target.into();
-    let remote_screenshot_capture_handler = RemoteScreenshotCaptureHandler::new(target.clone());
-
-    (
-      Self {
-        target,
-        is_periodic_reporting_enabled_flag,
-        is_periodic_reporting_enabled,
-        reporting_interval_rate_flag: session_replay::ReportingIntervalFlag::register(
-          runtime_loader,
-        ),
-        reporting_interval_rate,
-        reporting_interval: None,
-      },
-      remote_screenshot_capture_handler,
-    )
+    Self {
+      target,
+      is_periodic_reporting_enabled_flag,
+      is_periodic_reporting_enabled,
+      reporting_interval_rate_flag: session_replay::ReportingIntervalFlag::register(runtime_loader),
+      reporting_interval_rate,
+      reporting_interval: None,
+    }
   }
 
   fn create_interval(interval: time::Duration, fire_immediately: bool) -> tokio::time::Interval {

@@ -1891,6 +1891,64 @@ async fn enqueue_upload_acknowledges_after_disk_persist() {
 }
 
 #[tokio::test]
+async fn rejected_command_upload_deletes_owned_source() {
+  let mut setup = Setup::new(2).await;
+  setup.task_handle.abort();
+  assert!((&mut setup.task_handle).await.unwrap_err().is_cancelled());
+  std::fs::create_dir_all(".tmp").unwrap();
+  let directory = tempfile::TempDir::with_prefix_in("command-source", ".tmp").unwrap();
+  let source = directory.path().canonicalize().unwrap().join("payload");
+  std::fs::write(&source, b"payload").unwrap();
+  assert!(matches!(
+    setup.client.enqueue_command_upload(
+      UploadSource::Path(source.clone()),
+      "device_command_attachment".into(),
+      None,
+      "session".into(),
+      vec![],
+      Uuid::new_v4().to_string(),
+      None,
+      None,
+      None,
+    ),
+    Err(EnqueueError::Closed)
+  ));
+  assert!(!source.exists());
+}
+
+#[tokio::test]
+async fn command_source_is_consumed_before_persistence_ack() {
+  let mut setup = Setup::new(2).await;
+  std::fs::create_dir_all(".tmp").unwrap();
+  let directory = tempfile::TempDir::with_prefix_in("command-source", ".tmp").unwrap();
+  let source = directory.path().canonicalize().unwrap().join("payload");
+  std::fs::write(&source, b"payload").unwrap();
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  let (completed_tx, completed_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::Path(source.clone()),
+      "device_command_attachment".into(),
+      None,
+      "session".into(),
+      vec![],
+      Uuid::new_v4().to_string(),
+      None,
+      Some(persisted_tx),
+      Some(completed_tx),
+    )
+    .unwrap();
+  assert_eq!(persisted_rx.await.unwrap().unwrap(), 7);
+  assert!(!source.exists());
+  std::fs::write(&source, b"replacement").unwrap();
+  drop(completed_rx);
+  setup.entry_received_rx.recv().await.unwrap();
+  setup.shutdown().await;
+  assert_eq!(std::fs::read(source).unwrap(), b"replacement");
+}
+
+#[tokio::test]
 async fn enqueue_upload_from_path_acknowledges_after_disk_persist_and_removes_source() {
   let mut setup = Setup::new(2).await;
 

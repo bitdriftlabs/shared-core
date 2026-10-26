@@ -400,6 +400,13 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     start_in_sleep_mode: false,
   })
   .with_command_handler(COMMAND_NAME.to_string(), Arc::new(FakePerfettoCommand))
+  .with_builtin_command(bd_logger::BuiltinCommandRegistration {
+    command_type: 2,
+    key: "take_screenshot".into(),
+    artifact_type_id: "screenshot".into(),
+    timeout: None,
+    handler: Arc::new(FakeScreenshotTarget),
+  })?
   .build()?;
 
   let logger = LoggerHolder::new(logger, session_strategy, future, shutdown_trigger);

@@ -141,7 +141,7 @@ use debug_data_request::{WorkflowDebugData, WorkflowStateDebugData};
 use flate2::write::ZlibDecoder;
 use parking_lot::{Mutex, ReentrantMutex};
 use pretty_assertions::assert_eq;
-use protobuf::Message;
+use protobuf::{EnumOrUnknown, Message};
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 use std::ops::Add;
@@ -226,20 +226,27 @@ impl RegisteredCommandHandler for BlockingDeviceCommandHandler {
   }
 }
 
-impl bd_session_replay::Target for TestScreenshotTarget {
-  fn capture_screen(&self) {}
-
-  fn capture_device_command_screenshot(
-    &self,
-    completion: bd_session_replay::DeviceCommandScreenshotCompletion,
-  ) {
-    completion(
-      self
-        .results
-        .lock()
-        .pop_front()
-        .expect("screenshot target invoked more than expected"),
-    );
+#[async_trait::async_trait]
+impl RegisteredCommandHandler for TestScreenshotTarget {
+  async fn execute(&self, _invocation: CommandInvocation) -> CommandResult {
+    match self
+      .results
+      .lock()
+      .pop_front()
+      .expect("screenshot target invoked more than expected")
+    {
+      Ok(bytes) => CommandResult::Completed {
+        fields: LogFields::default(),
+        attachment: Some(CommandAttachment {
+          source: bd_artifact_upload::UploadSource::Bytes(bytes),
+          content_type: Some("image/jpeg".into()),
+        }),
+      },
+      Err(message) => CommandResult::Failed {
+        error: CommandError::HandlerFailed(message),
+        fields: LogFields::default(),
+      },
+    }
   }
 }
 
@@ -3151,7 +3158,7 @@ fn assert_command_span_pair(logs: &[WrappedLog], expected_id: Option<&str>) {
 }
 
 fn builtin_command_selector(
-  type_: WellKnownCommandType,
+  type_: impl Into<EnumOrUnknown<WellKnownCommandType>>,
 ) -> protobuf::MessageField<WorkflowCommandSelector> {
   Some(WorkflowCommandSelector {
     command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
@@ -3239,18 +3246,13 @@ fn workflow_command_rule_with_arguments(
 }
 
 fn workflow_screenshot_command_rule() -> Rule {
+  workflow_builtin_command_rule(WellKnownCommandType::TAKE_SCREENSHOT)
+}
+
+fn workflow_builtin_command_rule(type_: impl Into<EnumOrUnknown<WellKnownCommandType>>) -> Rule {
   Rule {
     rule_type: Some(Rule_type::MatchRunCommand(MatchRunCommand {
-      command_selector: Some(WorkflowCommandSelector {
-        command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
-          workflow_command_selector::BuiltinCommand {
-            type_: WellKnownCommandType::TAKE_SCREENSHOT.into(),
-            ..Default::default()
-          },
-        )),
-        ..Default::default()
-      })
-      .into(),
+      command_selector: builtin_command_selector(type_),
       minimum_execution_interval: Some(protobuf::well_known_types::duration::Duration {
         seconds: 60,
         ..Default::default()
@@ -3265,6 +3267,13 @@ fn workflow_screenshot_command_rule() -> Rule {
 fn screenshot_device_command_configuration(
   command_id: &str,
 ) -> bd_proto::protos::client::api::ConfigurationUpdate {
+  builtin_device_command_configuration(command_id, WellKnownCommandType::TAKE_SCREENSHOT)
+}
+
+fn builtin_device_command_configuration(
+  command_id: &str,
+  type_: impl Into<EnumOrUnknown<WellKnownCommandType>>,
+) -> bd_proto::protos::client::api::ConfigurationUpdate {
   configuration_update(
     "screenshot-command",
     StateOfTheWorld {
@@ -3273,7 +3282,7 @@ fn screenshot_device_command_configuration(
           stream_id: command_id.to_string().into(),
           device_command: Some(DeviceCommandRequest {
             command_id: command_id.to_string().into(),
-            command_selector: builtin_command_selector(WellKnownCommandType::TAKE_SCREENSHOT),
+            command_selector: builtin_command_selector(type_),
             ..Default::default()
           })
           .into(),
@@ -3347,11 +3356,20 @@ fn screenshot_device_command_stages_correlated_attachment() {
   let screenshot = vec![0xff, 0xd8, 1, 2, 3, 0xff, 0xd9];
   let mut setup = Setup::new_with_options(SetupOptions {
     static_metadata: Arc::new(CommandMetadata),
-    session_replay_target: Some(Box::new(TestScreenshotTarget {
-      results: Mutex::new(VecDeque::from([Ok(screenshot.clone())])),
-    })),
     ..Default::default()
   });
+  setup
+    .logger_handle
+    .register_builtin_command(crate::BuiltinCommandRegistration {
+      command_type: WellKnownCommandType::TAKE_SCREENSHOT as i32,
+      key: "take_screenshot".into(),
+      artifact_type_id: "screenshot".into(),
+      timeout: None,
+      handler: Arc::new(TestScreenshotTarget {
+        results: Mutex::new(VecDeque::from([Ok(screenshot.clone())])),
+      }),
+    })
+    .unwrap();
 
   assert!(
     setup
@@ -3422,18 +3440,25 @@ fn screenshot_device_command_stages_correlated_attachment() {
 }
 
 #[test]
-fn screenshot_device_command_reports_capture_and_validation_failures() {
+fn screenshot_device_command_reports_platform_handler_failures() {
   let capture_command_id = "b4a6e1e7-4bf8-434e-b42b-fde1a3d9d0cb";
   let invalid_image_command_id = "c4a6e1e7-4bf8-434e-b42b-fde1a3d9d0cb";
-  let mut setup = Setup::new_with_options(SetupOptions {
-    session_replay_target: Some(Box::new(TestScreenshotTarget {
-      results: Mutex::new(VecDeque::from([
-        Err("capture failed".to_string()),
-        Ok(vec![0xff, 0xd8, 1, 2, 3]),
-      ])),
-    })),
-    ..Default::default()
-  });
+  let mut setup = Setup::new();
+  setup
+    .logger_handle
+    .register_builtin_command(crate::BuiltinCommandRegistration {
+      command_type: WellKnownCommandType::TAKE_SCREENSHOT as i32,
+      key: "take_screenshot".into(),
+      artifact_type_id: "screenshot".into(),
+      timeout: None,
+      handler: Arc::new(TestScreenshotTarget {
+        results: Mutex::new(VecDeque::from([
+          Err("capture failed".to_string()),
+          Err("screenshot is not a JPEG image".to_string()),
+        ])),
+      }),
+    })
+    .unwrap();
 
   for (command_id, expected_error) in [
     (capture_command_id, "capture failed"),
@@ -3992,6 +4017,93 @@ fn registered_custom_device_command_stages_correlated_attachment() {
 }
 
 #[test]
+fn serialized_configuration_dispatches_unknown_builtin_for_direct_and_workflow_commands() {
+  let (invoked_tx, invoked_rx) = mpsc::channel();
+  let handler = Arc::new(ArgumentCapturingDeviceCommandHandler {
+    arguments: Mutex::new(vec![]),
+    invoked_tx,
+  });
+  let mut setup = Setup::new();
+  setup
+    .logger_handle
+    .register_builtin_command(crate::BuiltinCommandRegistration {
+      command_type: 4711,
+      key: "future_platform_command".into(),
+      artifact_type_id: "future_artifact".into(),
+      timeout: None,
+      handler: handler.clone(),
+    })
+    .unwrap();
+  assert!(
+    setup
+      .send_configuration_update(builtin_device_command_configuration(
+        "3a91cf11-8ad9-4096-9648-726d8a210b18",
+        EnumOrUnknown::from_i32(4711),
+      ))
+      .is_none()
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 1,
+      update_type: Some(device_command_update::Update_type::Accepted(_)),
+      ..
+    })
+  );
+  assert_matches!(
+    setup.server.blocking_next_device_command_update(),
+    Some(DeviceCommandUpdate {
+      update_sequence_number: 2,
+      update_type: Some(device_command_update::Update_type::Completed(_)),
+      ..
+    })
+  );
+  invoked_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+  let terminal = state("terminal");
+  let command = state("command").declare_transition(
+    &terminal,
+    workflow_builtin_command_rule(EnumOrUnknown::from_i32(4711)),
+  );
+  let start = state("start").declare_transition(&command, rule!(message_equals("start")));
+  assert!(
+    setup
+      .send_configuration_update(config_helper::configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          workflows: vec![WorkflowBuilder::new("workflow", &[&start, &command, &terminal]).build()],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+  setup.upload_individual_logs();
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start".into(),
+    [].into(),
+    [].into(),
+  );
+  setup.log_then_wait_for_workflow_event(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "run command".into(),
+    [].into(),
+    [].into(),
+  );
+  invoked_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+  assert_eq!(
+    *handler.arguments.lock(),
+    vec![HashMap::new(), HashMap::new()]
+  );
+}
+
+#[test]
 fn runtime_workflow_command_uses_registered_handler() {
   let registered_command_id = "com.example.runtime.workflow";
   let (invoked_tx, invoked_rx) = mpsc::channel();
@@ -4251,12 +4363,19 @@ fn workflow_registered_command_delivers_arguments() {
 #[test]
 fn workflow_screenshot_command_uploads_attachment() {
   let screenshot = vec![0xff, 0xd8, 1, 2, 3, 0xff, 0xd9];
-  let mut setup = Setup::new_with_options(SetupOptions {
-    session_replay_target: Some(Box::new(TestScreenshotTarget {
-      results: Mutex::new(VecDeque::from([Ok(screenshot.clone())])),
-    })),
-    ..Default::default()
-  });
+  let mut setup = Setup::new();
+  setup
+    .logger_handle
+    .register_builtin_command(crate::BuiltinCommandRegistration {
+      command_type: WellKnownCommandType::TAKE_SCREENSHOT as i32,
+      key: "take_screenshot".into(),
+      artifact_type_id: "screenshot".into(),
+      timeout: None,
+      handler: Arc::new(TestScreenshotTarget {
+        results: Mutex::new(VecDeque::from([Ok(screenshot.clone())])),
+      }),
+    })
+    .unwrap();
   let session_id = setup.logger_handle.session_id().unwrap();
   let terminal = state("terminal");
   let command = state("command").declare_transition(&terminal, workflow_screenshot_command_rule());

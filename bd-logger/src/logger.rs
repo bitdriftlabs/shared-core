@@ -17,7 +17,11 @@ use crate::async_log_buffer::{
   FlushError,
   LogAttributesOverrides,
 };
-use crate::device_command::{RegisteredCommandDispatcher, RegisteredCommandHandler};
+use crate::device_command::{
+  BuiltinCommandRegistration,
+  RegisteredCommandDispatcher,
+  RegisteredCommandHandler,
+};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
@@ -203,6 +207,14 @@ pub struct LoggerHandle {
 }
 
 impl LoggerHandle {
+  /// Installs an SDK-owned numeric built-in without affecting app registrations.
+  pub fn register_builtin_command(
+    &self,
+    registration: BuiltinCommandRegistration,
+  ) -> anyhow::Result<()> {
+    self.command_dispatcher.register_builtin(registration)
+  }
+
   /// Registers a command handler for this logger, replacing any handler with the same ID.
   /// Commands that have already selected a handler continue running with that handler.
   pub fn register_command_handler(

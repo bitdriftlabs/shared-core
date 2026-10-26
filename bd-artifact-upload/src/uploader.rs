@@ -143,6 +143,37 @@ struct NewUpload {
   completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   #[approximate_size(skip)]
   source_lease: Option<OwnedSemaphorePermit>,
+  #[approximate_size(skip)]
+  source_cleanup: Option<CommandFile>,
+}
+
+//
+// CommandFile
+//
+
+#[derive(Debug)]
+struct CommandFile(PathBuf);
+
+impl CommandFile {
+  fn from_source(source: &UploadSource) -> Option<Self> {
+    match source {
+      UploadSource::Path(path) if path.is_absolute() => Some(Self(path.clone())),
+      _ => None,
+    }
+  }
+}
+
+impl Drop for CommandFile {
+  fn drop(&mut self) {
+    if let Err(error) = std::fs::remove_file(&self.0)
+      && error.kind() != std::io::ErrorKind::NotFound
+    {
+      log::debug!(
+        "failed to remove owned command file {}: {error}",
+        self.0.display()
+      );
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -290,7 +321,8 @@ pub trait Client: Send + Sync {
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError>;
 
-  /// Command persistence acknowledgements report the uncompressed payload size in bytes.
+  /// Takes ownership of absolute path sources even on rejection. Persistence acknowledgements
+  /// report the uncompressed payload size; dropping the caller's waits does not cancel the upload.
   fn enqueue_command_upload(
     &self,
     source: UploadSource,
@@ -328,6 +360,9 @@ impl UploadClient {
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<Uuid, EnqueueError> {
+    let source_cleanup = command_id
+      .as_ref()
+      .and_then(|_| CommandFile::from_source(&source));
     let result = self
       .upload_tx
       .try_send(NewUpload {
@@ -343,6 +378,7 @@ impl UploadClient {
         persisted_tx,
         completion_tx,
         source_lease,
+        source_cleanup,
       })
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
 
@@ -723,6 +759,7 @@ impl Uploader {
             persisted_tx,
             completion_tx,
             source_lease,
+            source_cleanup,
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
           self
@@ -738,6 +775,7 @@ impl Uploader {
               content_type,
               persisted_tx,
               completion_tx,
+              source_cleanup,
             )
             .await;
           drop(source_lease);
@@ -985,6 +1023,7 @@ impl Uploader {
     content_type: Option<String>,
     mut persisted_tx: Option<PersistenceAck>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+    mut source_cleanup: Option<CommandFile>,
   ) {
     if let Some(existing) = self
       .index
@@ -1247,6 +1286,11 @@ impl Uploader {
         tx.send(Err(error));
       }
       return;
+    }
+    if source_cleanup.is_some() {
+      // Consume the source before publishing persistence, with no cancellable unlink handoff.
+      drop(source_cleanup.take());
+      path_source = None;
     }
     if let Some((source_path, false)) = path_source
       && let Err(error) = self.file_system.delete_file(&source_path).await

@@ -16,7 +16,6 @@ use super::{
   DeviceCommandStatus,
   RegisteredCommandDispatcher,
   RegisteredCommandHandler,
-  STACK_SAMPLING_COMMAND_KEY,
   TestHooks,
   WorkflowCommandDispatcher,
   artifact_attachment,
@@ -26,7 +25,6 @@ use super::{
   failed_device_command_update_with_fields,
   no_attachment,
   send_device_command_update,
-  workflow_builtin_command_outcome,
   workflow_command_outcome,
 };
 use crate::async_log_buffer::Sender as LogSender;
@@ -74,15 +72,11 @@ use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::device_command::ExecutionTimeoutFlag;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::test::no_timeout;
-use bd_session_replay::{
-  DeviceCommandScreenshotCompletion,
-  RemoteScreenshotCaptureHandler,
-  Target,
-};
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::{OffsetDateTimeExt, SystemTimeProvider, TestTimeProvider};
 use bd_workflows::workflow::{CommandArtifactMetadata, CommandSpan, WorkflowCommandOutcome};
 use parking_lot::Mutex;
+use protobuf::{EnumOrUnknown, Message};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::future::{Future, pending, poll_fn};
@@ -94,6 +88,62 @@ use tempfile::TempDir;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::{Notify, mpsc, oneshot};
 use uuid::Uuid;
+
+#[test]
+fn builtin_registration_isolated_from_app_namespace() {
+  let dispatcher = RegisteredCommandDispatcher::default();
+  dispatcher
+    .register_builtin(super::BuiltinCommandRegistration {
+      command_type: 4711,
+      key: "same_name".into(),
+      artifact_type_id: "builtin_artifact".into(),
+      timeout: None,
+      handler: Arc::new(Handler),
+    })
+    .unwrap();
+  dispatcher.register("same_name".into(), Arc::new(Handler));
+  assert!(dispatcher.unregister("same_name"));
+  assert!(dispatcher.get_handler("same_name").is_none());
+  assert_eq!(
+    dispatcher.get_builtin(4711).unwrap().artifact_type_id,
+    "builtin_artifact"
+  );
+}
+
+#[test]
+fn builtin_registration_rejects_invalid_metadata_and_core_override() {
+  let dispatcher = RegisteredCommandDispatcher::default();
+  for command_type in [-1, 0, WellKnownCommandType::DUMP_DEVICE_BUFFER as i32] {
+    assert!(
+      dispatcher
+        .register_builtin(super::BuiltinCommandRegistration {
+          command_type,
+          key: "test".into(),
+          artifact_type_id: "test".into(),
+          timeout: None,
+          handler: Arc::new(Handler),
+        })
+        .is_err()
+    );
+  }
+}
+
+const STACK_SAMPLING_COMMAND_KEY: &str = "stack_sampling_trace";
+
+fn register_stack_sampling(
+  registry: &RegisteredCommandDispatcher,
+  handler: Arc<dyn RegisteredCommandHandler>,
+) {
+  registry
+    .register_builtin(super::BuiltinCommandRegistration {
+      command_type: WellKnownCommandType::STACK_SAMPLING_TRACE as i32,
+      key: STACK_SAMPLING_COMMAND_KEY.into(),
+      artifact_type_id: "stack_sampling_trace".into(),
+      timeout: Some(Duration::seconds(15)),
+      handler,
+    })
+    .unwrap();
+}
 
 struct Handler;
 
@@ -159,9 +209,63 @@ fn pending_handler() -> (
 
 struct ScreenshotTarget;
 
-impl Target for ScreenshotTarget {
-  fn capture_screen(&self) {}
+type DeviceCommandScreenshotCompletion = Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>;
+
+trait Target: Send + Sync {
+  fn capture_device_command_screenshot(&self, completion: DeviceCommandScreenshotCompletion) {
+    completion(Err("remote screenshot capture is unavailable".into()));
+  }
 }
+
+struct RemoteScreenshotCaptureHandler(Arc<dyn Target>);
+
+impl RemoteScreenshotCaptureHandler {
+  fn new(target: Arc<dyn Target>) -> Self {
+    Self(target)
+  }
+}
+
+#[async_trait::async_trait]
+impl RegisteredCommandHandler for RemoteScreenshotCaptureHandler {
+  async fn execute(&self, _invocation: CommandInvocation) -> CommandResult {
+    let (sender, receiver) = oneshot::channel();
+    self
+      .0
+      .capture_device_command_screenshot(Box::new(move |result| {
+        let _ = sender.send(result);
+      }));
+    match receiver.await.unwrap() {
+      Ok(bytes) => CommandResult::Completed {
+        fields: LogFields::default(),
+        attachment: Some(CommandAttachment {
+          source: UploadSource::Bytes(bytes),
+          content_type: Some("image/jpeg".into()),
+        }),
+      },
+      Err(message) => CommandResult::Failed {
+        error: CommandError::HandlerFailed(message),
+        fields: LogFields::default(),
+      },
+    }
+  }
+}
+
+fn register_screenshot(
+  registry: &RegisteredCommandDispatcher,
+  handler: RemoteScreenshotCaptureHandler,
+) {
+  registry
+    .register_builtin(super::BuiltinCommandRegistration {
+      command_type: WellKnownCommandType::TAKE_SCREENSHOT as i32,
+      key: "take_screenshot".into(),
+      artifact_type_id: "screenshot".into(),
+      timeout: None,
+      handler: Arc::new(handler),
+    })
+    .unwrap();
+}
+
+impl Target for ScreenshotTarget {}
 
 struct DeferredScreenshotTarget {
   started_tx: mpsc::UnboundedSender<()>,
@@ -169,8 +273,6 @@ struct DeferredScreenshotTarget {
 }
 
 impl Target for DeferredScreenshotTarget {
-  fn capture_screen(&self) {}
-
   fn capture_device_command_screenshot(&self, completion: DeviceCommandScreenshotCompletion) {
     self.completions.lock().push_back(completion);
     self.started_tx.send(()).unwrap();
@@ -234,6 +336,7 @@ fn direct_dispatcher(
   screenshot_handler: RemoteScreenshotCaptureHandler,
   artifacts: Arc<dyn Client>,
 ) -> (DeviceCommandDispatcher, mpsc::Receiver<DataUpload>) {
+  register_screenshot(&registry, screenshot_handler);
   let (upload_tx, upload_rx) = mpsc::channel(16);
   let (trigger_tx, _trigger_rx) = mpsc::channel(1);
   let logs = EventBuffer::new(EventBufferLimits {
@@ -250,7 +353,6 @@ fn direct_dispatcher(
       artifacts,
       registry,
       policy,
-      screenshot_handler,
       Arc::new(DeviceCommandState::new(Arc::new(SystemTimeProvider))),
       Arc::new(SystemTimeProvider),
     ),
@@ -631,13 +733,13 @@ fn workflow_dispatcher(
   registry: RegisteredCommandDispatcher,
   screenshot_handler: RemoteScreenshotCaptureHandler,
 ) -> WorkflowCommandDispatcher {
+  register_screenshot(&registry, screenshot_handler);
   let (completion_tx, _completion_rx) = mpsc::channel(16);
   WorkflowCommandDispatcher::new(
     registry,
     policy,
     completion_tx,
     AttachmentStoreHandle::new(directory.to_owned(), runtime),
-    screenshot_handler,
   )
 }
 
@@ -1288,7 +1390,7 @@ async fn direct_stack_sampling_is_passed_through_to_the_platform_handler() {
     Some("application/vnd.bitdrift.perfetto-trace".into()),
   ));
   let registry = RegisteredCommandDispatcher::default();
-  registry.register(STACK_SAMPLING_COMMAND_KEY.into(), handler.clone());
+  register_stack_sampling(&registry, handler.clone());
   let (upload_tx, mut upload_rx) = mpsc::unbounded_channel();
   let artifact_id = Uuid::new_v4();
   let mut artifacts = MockClient::new();
@@ -1369,10 +1471,7 @@ async fn direct_stack_sampling_without_a_platform_handler_fails_as_unsupported()
   )]);
   let update = acknowledge_update(&mut updates).await;
   assert_eq!(update.update_sequence_number, 1);
-  assert_eq!(
-    failed_error(update),
-    "stack sampling is not supported on this platform"
-  );
+  assert_eq!(failed_error(update), "command unknown");
 }
 
 #[tokio::test]
@@ -1380,8 +1479,8 @@ async fn direct_stack_sampling_staging_failure_deletes_the_handed_over_file() {
   let (directory, _runtime, policy) = command_runtime();
   let trace = write_trace(directory.path());
   let registry = RegisteredCommandDispatcher::default();
-  registry.register(
-    STACK_SAMPLING_COMMAND_KEY.into(),
+  register_stack_sampling(
+    &registry,
     RecordingHandler::new(completed_attachment(
       UploadSource::Path(trace.clone()),
       None,
@@ -1391,7 +1490,13 @@ async fn direct_stack_sampling_staging_failure_deletes_the_handed_over_file() {
   artifacts
     .expect_enqueue_command_upload()
     .times(1)
-    .returning(|_, _, _, _, _, _, _, _, _| Err(bd_artifact_upload::EnqueueError::QueueFull));
+    .returning(|source, _, _, _, _, _, _, _, _| {
+      let UploadSource::Path(path) = source else {
+        panic!("expected path")
+      };
+      fs::remove_file(path).unwrap();
+      Err(bd_artifact_upload::EnqueueError::QueueFull)
+    });
   let (dispatcher, mut updates) = direct_dispatcher(
     directory.path(),
     policy,
@@ -1416,8 +1521,8 @@ async fn direct_stack_sampling_upload_failure_after_persistence_leaves_the_path_
   let (directory, _runtime, policy) = command_runtime();
   let trace = write_trace(directory.path());
   let registry = RegisteredCommandDispatcher::default();
-  registry.register(
-    STACK_SAMPLING_COMMAND_KEY.into(),
+  register_stack_sampling(
+    &registry,
     RecordingHandler::new(completed_attachment(
       UploadSource::Path(trace.clone()),
       None,
@@ -1461,7 +1566,7 @@ async fn direct_stack_sampling_uses_its_own_execution_timeout() {
   let (directory, _runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register(STACK_SAMPLING_COMMAND_KEY.into(), handler);
+  register_stack_sampling(&registry, handler);
   let (dispatcher, mut updates) = direct_dispatcher(
     directory.path(),
     policy,
@@ -1490,6 +1595,116 @@ async fn direct_stack_sampling_uses_its_own_execution_timeout() {
 }
 
 #[tokio::test]
+async fn cancelling_direct_file_upload_after_persistence_preserves_reused_path() {
+  let (directory, _runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(
+    &registry,
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let (persisted_tx, persisted_rx) = oneshot::channel();
+  let persisted_tx = Mutex::new(Some(persisted_tx));
+  let mut artifacts = MockClient::new();
+  artifacts
+    .expect_enqueue_command_upload()
+    .times(1)
+    .returning(move |source, _, _, _, _, _, _, persistence, completion| {
+      let UploadSource::Path(path) = source else {
+        panic!("expected path")
+      };
+      fs::remove_file(&path).unwrap();
+      fs::write(path, b"next capture").unwrap();
+      persistence.unwrap().send(Ok(5)).unwrap();
+      persisted_tx
+        .lock()
+        .take()
+        .unwrap()
+        .send(completion.unwrap())
+        .unwrap();
+      Ok(Uuid::new_v4())
+    });
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(artifacts),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  acknowledge_update(&mut updates).await;
+  let _upload_ack = persisted_rx.await.unwrap();
+  let tasks = dispatcher.execution_tasks.lock().take().unwrap();
+  for task in tasks {
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+  }
+  assert_eq!(fs::read(trace).unwrap(), b"next capture");
+}
+
+#[tokio::test]
+async fn serialized_unknown_builtin_id_executes_without_enum_knowledge() {
+  let (directory, runtime, policy) = command_runtime();
+  let registry = RegisteredCommandDispatcher::default();
+  registry
+    .register_builtin(super::BuiltinCommandRegistration {
+      command_type: 4711,
+      key: "future_builtin".into(),
+      artifact_type_id: "future_artifact".into(),
+      timeout: None,
+      handler: Arc::new(Handler),
+    })
+    .unwrap();
+  let selector = WorkflowCommandSelector {
+    command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
+      workflow_command_selector::BuiltinCommand {
+        type_: EnumOrUnknown::from_i32(4711),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  };
+  let decoded =
+    WorkflowCommandSelector::parse_from_bytes(&selector.write_to_bytes().unwrap()).unwrap();
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+  assert!(matches!(
+    dispatcher.execute(decoded, "session".into()).await,
+    WorkflowCommandOutcome::Succeeded { .. }
+  ));
+}
+
+#[test]
+fn unconsumed_native_result_deletes_owned_file() {
+  let (directory, _runtime, _policy) = command_runtime();
+  let path = write_trace(directory.path());
+  let (sender, receiver) = oneshot::channel();
+  assert!(
+    sender
+      .send(super::CommandResultGuard::new(completed_attachment(
+        UploadSource::Path(path.clone()),
+        None,
+      )))
+      .is_ok()
+  );
+  assert!(path.exists());
+  drop(receiver);
+  assert!(!path.exists());
+}
+
+#[tokio::test]
 async fn workflow_stack_sampling_is_passed_through_and_the_handed_over_file_is_removed() {
   let (directory, runtime, policy) = command_runtime();
   let trace = write_trace(directory.path());
@@ -1498,7 +1713,7 @@ async fn workflow_stack_sampling_is_passed_through_and_the_handed_over_file_is_r
     Some("application/vnd.bitdrift.perfetto-trace".into()),
   ));
   let registry = RegisteredCommandDispatcher::default();
-  registry.register(STACK_SAMPLING_COMMAND_KEY.into(), handler.clone());
+  register_stack_sampling(&registry, handler.clone());
   let dispatcher = workflow_dispatcher(
     directory.path(),
     runtime,
@@ -1547,10 +1762,7 @@ async fn workflow_stack_sampling_without_a_platform_handler_fails_as_unsupported
   else {
     panic!("expected a failure");
   };
-  assert_eq!(
-    message.as_deref(),
-    Some("stack sampling is not supported on this platform")
-  );
+  assert_eq!(message.as_deref(), Some("command unknown"));
 }
 
 fn command_runtime() -> (TempDir, Arc<ConfigLoader>, CommandExecutionPolicy) {
@@ -1573,6 +1785,7 @@ async fn registered_command_execution_preserves_success() {
         arguments: HashMap::new(),
         session_id: "session".into(),
       },
+      None,
     )
     .await;
   assert!(matches!(
@@ -1983,10 +2196,6 @@ async fn workflow_screenshot_preserves_jpeg_content_type() {
   struct ScreenshotTarget;
 
   impl Target for ScreenshotTarget {
-    fn capture_screen(&self) {
-      panic!("unexpected periodic screen capture");
-    }
-
     fn capture_device_command_screenshot(&self, completion: DeviceCommandScreenshotCompletion) {
       completion(Ok(vec![0xff, 0xd8, 0xff, 0xd9]));
     }
@@ -1997,14 +2206,16 @@ async fn workflow_screenshot_preserves_jpeg_content_type() {
     directory.path().to_owned(),
     ConfigLoader::new(directory.path()),
   );
-  let outcome = workflow_builtin_command_outcome(
-    workflow_command_selector::BuiltinCommand {
-      type_: WellKnownCommandType::TAKE_SCREENSHOT.into(),
-      ..Default::default()
-    },
-    &HashMap::new(),
-    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
-    &CommandExecutionPolicy::new(&ConfigLoader::new(directory.path())),
+  let handler = RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget));
+  let outcome = workflow_command_outcome(
+    handler
+      .execute(CommandInvocation {
+        command_id: None,
+        registered_command_id: "take_screenshot".into(),
+        arguments: HashMap::new(),
+        session_id: "session".into(),
+      })
+      .await,
     &store,
   )
   .await;
