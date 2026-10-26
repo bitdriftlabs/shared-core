@@ -307,6 +307,8 @@ pub struct WellKnownCommandOptions {
     pub description: ::std::string::String,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions.argument_definitions)
     pub argument_definitions: ::std::vec::Vec<DeviceCommandArgumentDefinition>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions.is_privacy_sensitive)
+    pub is_privacy_sensitive: bool,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -324,7 +326,7 @@ impl WellKnownCommandOptions {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "key",
@@ -340,6 +342,11 @@ impl WellKnownCommandOptions {
             "argument_definitions",
             |m: &WellKnownCommandOptions| { &m.argument_definitions },
             |m: &mut WellKnownCommandOptions| { &mut m.argument_definitions },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "is_privacy_sensitive",
+            |m: &WellKnownCommandOptions| { &m.is_privacy_sensitive },
+            |m: &mut WellKnownCommandOptions| { &mut m.is_privacy_sensitive },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<WellKnownCommandOptions>(
             "WellKnownCommandOptions",
@@ -368,6 +375,9 @@ impl ::protobuf::Message for WellKnownCommandOptions {
                 26 => {
                     self.argument_definitions.push(is.read_message()?);
                 },
+                32 => {
+                    self.is_privacy_sensitive = is.read_bool()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -390,6 +400,9 @@ impl ::protobuf::Message for WellKnownCommandOptions {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
+        if self.is_privacy_sensitive != false {
+            my_size += 1 + 1;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -405,6 +418,9 @@ impl ::protobuf::Message for WellKnownCommandOptions {
         for v in &self.argument_definitions {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
         };
+        if self.is_privacy_sensitive != false {
+            os.write_bool(4, self.is_privacy_sensitive)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -425,6 +441,7 @@ impl ::protobuf::Message for WellKnownCommandOptions {
         self.key.clear();
         self.description.clear();
         self.argument_definitions.clear();
+        self.is_privacy_sensitive = false;
         self.special_fields.clear();
     }
 
@@ -433,6 +450,7 @@ impl ::protobuf::Message for WellKnownCommandOptions {
             key: ::std::string::String::new(),
             description: ::std::string::String::new(),
             argument_definitions: ::std::vec::Vec::new(),
+            is_privacy_sensitive: false,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -1101,32 +1119,34 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01(\x08R\x08optional\"a\n\x04Type\x12\x14\n\x10TYPE_UNSPECIFIED\x10\0\
     \x12\n\n\x06STRING\x10\x01\x12\n\n\x06BINARY\x10\x02\x12\n\n\x06UINT64\
     \x10\x03\x12\n\n\x06DOUBLE\x10\x04\x12\t\n\x05INT64\x10\x05\x12\x08\n\
-    \x04BOOL\x10\x06\"\xc7\x01\n\x17WellKnownCommandOptions\x12\x10\n\x03key\
+    \x04BOOL\x10\x06\"\xf9\x01\n\x17WellKnownCommandOptions\x12\x10\n\x03key\
     \x18\x01\x20\x01(\tR\x03key\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\
     \x0bdescription\x12x\n\x14argument_definitions\x18\x03\x20\x03(\x0b2E.bi\
     tdrift_public.protobuf.workflow.v1.DeviceCommandArgumentDefinitionR\x13a\
-    rgumentDefinitions\"\xc1\x05\n\x17WorkflowCommandSelector\x12w\n\x0fbuil\
-    tin_command\x18\x01\x20\x01(\x0b2L.bitdrift_public.protobuf.workflow.v1.\
-    WorkflowCommandSelector.BuiltinCommandH\0R\x0ebuiltinCommand\x12\x80\x01\
-    \n\x12registered_command\x18\x02\x20\x01(\x0b2O.bitdrift_public.protobuf\
-    .workflow.v1.WorkflowCommandSelector.RegisteredCommandH\0R\x11registered\
-    Command\x12j\n\targuments\x18\x03\x20\x03(\x0b2L.bitdrift_public.protobu\
-    f.workflow.v1.WorkflowCommandSelector.ArgumentsEntryR\targuments\x1aP\n\
-    \x11RegisteredCommand\x12;\n\x15registered_command_id\x18\x01\x20\x01(\t\
-    R\x13registeredCommandIdB\x07\xfaB\x04r\x02\x10\x01\x1aj\n\x0eBuiltinCom\
-    mand\x12X\n\x04type\x18\x01\x20\x01(\x0e2:.bitdrift_public.protobuf.work\
-    flow.v1.WellKnownCommandTypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\x10\x01\
-    \x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
-    \x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging\
-    .v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01\
-    *\xe7\x01\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_UNSPECIFIED\x10\0\
-    \x12V\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1a>\xc2\xf3\x18:\n\x12dump_device\
-    _buffer\x12$Requests\x20the\x20device's\x20buffered\x20logs.\x12a\n\x0fT\
-    AKE_SCREENSHOT\x10\x02\x1aL\xc2\xf3\x18H\n\x0ftake_screenshot\x125Captur\
-    es\x20the\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20image.:\
-    \x9f\x01\n\x1awell_known_command_options\x18\xb8\x8e\x03\x20\x01(\x0b2=.\
-    bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions\x12!.google\
-    .protobuf.EnumValueOptionsR\x17wellKnownCommandOptionsb\x06proto3\
+    rgumentDefinitions\x120\n\x14is_privacy_sensitive\x18\x04\x20\x01(\x08R\
+    \x12isPrivacySensitive\"\xc1\x05\n\x17WorkflowCommandSelector\x12w\n\x0f\
+    builtin_command\x18\x01\x20\x01(\x0b2L.bitdrift_public.protobuf.workflow\
+    .v1.WorkflowCommandSelector.BuiltinCommandH\0R\x0ebuiltinCommand\x12\x80\
+    \x01\n\x12registered_command\x18\x02\x20\x01(\x0b2O.bitdrift_public.prot\
+    obuf.workflow.v1.WorkflowCommandSelector.RegisteredCommandH\0R\x11regist\
+    eredCommand\x12j\n\targuments\x18\x03\x20\x03(\x0b2L.bitdrift_public.pro\
+    tobuf.workflow.v1.WorkflowCommandSelector.ArgumentsEntryR\targuments\x1a\
+    P\n\x11RegisteredCommand\x12;\n\x15registered_command_id\x18\x01\x20\x01\
+    (\tR\x13registeredCommandIdB\x07\xfaB\x04r\x02\x10\x01\x1aj\n\x0eBuiltin\
+    Command\x12X\n\x04type\x18\x01\x20\x01(\x0e2:.bitdrift_public.protobuf.w\
+    orkflow.v1.WellKnownCommandTypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\x10\
+    \x01\x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
+    y\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.loggin\
+    g.v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\x12\x03\xf8B\
+    \x01*\xe9\x01\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_UNSPECIFIED\
+    \x10\0\x12V\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1a>\xc2\xf3\x18:\n\x12dump_\
+    device_buffer\x12$Requests\x20the\x20device's\x20buffered\x20logs.\x12c\
+    \n\x0fTAKE_SCREENSHOT\x10\x02\x1aN\xc2\xf3\x18J\n\x0ftake_screenshot\x12\
+    5Captures\x20the\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20\
+    image.\x20\x01:\x9f\x01\n\x1awell_known_command_options\x18\xb8\x8e\x03\
+    \x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.WellKnownCommandOpt\
+    ions\x12!.google.protobuf.EnumValueOptionsR\x17wellKnownCommandOptionsb\
+    \x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
