@@ -58,7 +58,7 @@ bd-time                     = { path = "../bd-time" }
 ctor.workspace              = true
 futures-util.workspace      = true
 pretty_assertions.workspace = true
-serde_json.workspace        = true
+serde_json                  = { workspace = true, features = ["float_roundtrip"] }
 tempfile.workspace          = true
 tokio-test.workspace        = true
 
