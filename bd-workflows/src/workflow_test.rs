@@ -128,6 +128,10 @@ fn command_details_encode_selectors_and_escape_strings() {
       WellKnownCommandType::DUMP_DEVICE_BUFFER,
       "dump_device_buffer",
     ),
+    (
+      WellKnownCommandType::STACK_SAMPLING_TRACE,
+      "stack_sampling_trace",
+    ),
     (WellKnownCommandType::TYPE_UNSPECIFIED, "unknown_builtin_0"),
   ] {
     let selector = WorkflowCommandSelector {
