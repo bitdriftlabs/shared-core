@@ -53,7 +53,7 @@ impl ProfilingTarget for DeferredTarget {
 async fn default_target_fails_as_unsupported() {
   let handler = ProfilingHandler::new(Arc::new(NoopProfilingTarget));
   let error = handler
-    .capture_stack_sample(time::Duration::seconds(3), 100, 2048, "bitdrift".into())
+    .capture_stack_sample(time::Duration::seconds(3), 100, 2048)
     .await
     .unwrap_err();
   assert_eq!(error.code, 0);
@@ -72,7 +72,7 @@ async fn completion_resolves_the_capture_and_releases_the_slot() {
     let handler = handler.clone();
     async move {
       handler
-        .capture_stack_sample(time::Duration::seconds(3), 100, 2048, "bitdrift".into())
+        .capture_stack_sample(time::Duration::seconds(3), 100, 2048)
         .await
     }
   });
@@ -84,7 +84,6 @@ async fn completion_resolves_the_capture_and_releases_the_slot() {
       duration: time::Duration::seconds(3),
       frequency_hz: 100,
       buffer_size_kb: 2048,
-      tag: "bitdrift".into(),
     }]
   );
   let completion = target.completions.lock().pop_front().unwrap();
@@ -101,7 +100,7 @@ async fn completion_resolves_the_capture_and_releases_the_slot() {
   // The slot is free again, so a second capture is accepted with a new request ID.
   let second = tokio::spawn(async move {
     handler
-      .capture_stack_sample(time::Duration::seconds(1), 50, 256, "bitdrift".into())
+      .capture_stack_sample(time::Duration::seconds(1), 50, 256)
       .await
   });
   started_rx.recv().await.unwrap();
@@ -122,7 +121,7 @@ async fn relative_trace_path_is_rejected_without_touching_the_file_system() {
     let handler = handler.clone();
     async move {
       handler
-        .capture_stack_sample(time::Duration::seconds(3), 100, 2048, "bitdrift".into())
+        .capture_stack_sample(time::Duration::seconds(3), 100, 2048)
         .await
     }
   });
@@ -145,14 +144,14 @@ async fn concurrent_capture_is_rejected_without_reaching_the_target() {
     let handler = handler.clone();
     async move {
       handler
-        .capture_stack_sample(time::Duration::seconds(3), 100, 2048, "bitdrift".into())
+        .capture_stack_sample(time::Duration::seconds(3), 100, 2048)
         .await
     }
   });
   started_rx.recv().await.unwrap();
 
   let error = handler
-    .capture_stack_sample(time::Duration::seconds(3), 100, 2048, "bitdrift".into())
+    .capture_stack_sample(time::Duration::seconds(3), 100, 2048)
     .await
     .unwrap_err();
   assert_eq!(error.name, "already_executing");
@@ -176,7 +175,7 @@ async fn dropping_an_unfinished_capture_cancels_it_and_deletes_the_late_trace() 
     let handler = handler.clone();
     async move {
       handler
-        .capture_stack_sample(time::Duration::seconds(3), 100, 2048, "bitdrift".into())
+        .capture_stack_sample(time::Duration::seconds(3), 100, 2048)
         .await
     }
   });
@@ -193,7 +192,7 @@ async fn dropping_an_unfinished_capture_cancels_it_and_deletes_the_late_trace() 
   assert!(!late.exists());
   let second = tokio::spawn(async move {
     handler
-      .capture_stack_sample(time::Duration::seconds(3), 100, 2048, "bitdrift".into())
+      .capture_stack_sample(time::Duration::seconds(3), 100, 2048)
       .await
   });
   started_rx.recv().await.unwrap();

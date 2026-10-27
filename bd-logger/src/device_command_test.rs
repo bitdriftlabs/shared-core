@@ -1987,7 +1987,6 @@ fn stack_sampling_params_apply_defaults_and_clamps() {
       duration: Duration::milliseconds(3_000),
       frequency_hz: 100,
       buffer_size_kb: 2_048,
-      tag: "bitdrift".into(),
     }
   );
   let clamped = stack_sampling_params(
@@ -2005,7 +2004,6 @@ fn stack_sampling_params_apply_defaults_and_clamps() {
       duration: Duration::milliseconds(7_500),
       frequency_hz: 250,
       buffer_size_kb: 256,
-      tag: "bitdrift".into(),
     }
   );
   let short = stack_sampling_params(
@@ -2023,42 +2021,6 @@ fn stack_sampling_params_apply_defaults_and_clamps() {
     .unwrap_err(),
     CommandError::InvalidArguments("argument duration_ms must be an integer".into())
   );
-  assert_eq!(
-    stack_sampling_params(
-      &HashMap::from([("tag".to_string(), string_argument("app.trace_01"))]),
-      limits,
-    )
-    .unwrap()
-    .tag,
-    "app.trace_01"
-  );
-  assert_eq!(
-    stack_sampling_params(
-      &HashMap::from([("tag".to_string(), string_argument(""))]),
-      limits,
-    )
-    .unwrap()
-    .tag,
-    "bitdrift"
-  );
-  for bad in ["../escape", "with space", &"x".repeat(65)] {
-    assert!(matches!(
-      stack_sampling_params(
-        &HashMap::from([("tag".to_string(), string_argument(bad))]),
-        limits,
-      )
-      .unwrap_err(),
-      CommandError::InvalidArguments(_)
-    ));
-  }
-  assert!(matches!(
-    stack_sampling_params(
-      &HashMap::from([("tag".to_string(), signed_argument(7))]),
-      limits,
-    )
-    .unwrap_err(),
-    CommandError::InvalidArguments(_)
-  ));
   assert!(matches!(
     stack_sampling_params(
       &HashMap::new(),
@@ -2119,7 +2081,6 @@ async fn direct_stack_sampling_command_uploads_the_trace_and_reports_applied_par
   assert_eq!(request.duration, Duration::seconds(10));
   assert_eq!(request.frequency_hz, 50);
   assert_eq!(request.buffer_size_kb, 2_048);
-  assert_eq!(request.tag, "bitdrift");
   let trace = write_trace(directory.path(), "trace.perfetto");
   target.complete(Ok(StackSampleOutcome {
     path: trace.clone(),
@@ -2142,7 +2103,6 @@ async fn direct_stack_sampling_command_uploads_the_trace_and_reports_applied_par
   assert_field(fields, "duration_ms", "10000");
   assert_field(fields, "frequency_hz", "50");
   assert_field(fields, "buffer_size_kb", "2048");
-  assert_field(fields, "tag", "bitdrift");
   assert_eq!(
     completed.attachment.into_option(),
     Some(artifact_attachment(artifact_id))

@@ -32,8 +32,6 @@ pub struct StackSampleRequest {
   pub duration: time::Duration,
   pub frequency_hz: u32,
   pub buffer_size_kb: u32,
-  /// Recorded with the capture by the platform profiler, which exposes it to the app.
-  pub tag: String,
 }
 
 /// A recorded trace as the platform reports it: an absolute path the core takes ownership of.
@@ -165,7 +163,6 @@ impl ProfilingHandler {
     duration: time::Duration,
     frequency_hz: u32,
     buffer_size_kb: u32,
-    tag: String,
   ) -> Result<OwnedTrace, StackSampleError> {
     let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
     if self
@@ -194,7 +191,6 @@ impl ProfilingHandler {
         duration,
         frequency_hz,
         buffer_size_kb,
-        tag,
       },
       Box::new(move |result| {
         completed.store(true, Ordering::Release);

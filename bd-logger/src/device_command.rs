@@ -127,10 +127,6 @@ const STACK_SAMPLING_DEFAULT_FREQUENCY_HZ: u32 = 100;
 const STACK_SAMPLING_FREQUENCY_HZ: RangeInclusive<u32> = 10 ..= 250;
 const STACK_SAMPLING_DEFAULT_BUFFER_KB: u32 = 2048;
 const STACK_SAMPLING_BUFFER_KB: RangeInclusive<u32> = 256 ..= 16384;
-/// Lets an app that observes platform profiling results recognise the SDK's captures.
-const STACK_SAMPLING_DEFAULT_TAG: &str = "bitdrift";
-/// The platform puts the tag in the output file name, so it must stay a safe file-name fragment.
-const STACK_SAMPLING_MAX_TAG_LEN: usize = 64;
 
 //
 // TestHooks
@@ -750,7 +746,6 @@ impl CommandExecutionPolicy {
           params.duration,
           params.frequency_hz,
           params.buffer_size_kb,
-          params.tag.clone(),
         ),
       )
       .await
@@ -1272,7 +1267,6 @@ pub struct StackSamplingParams {
   duration: time::Duration,
   frequency_hz: u32,
   buffer_size_kb: u32,
-  tag: String,
 }
 
 impl StackSamplingParams {
@@ -1289,7 +1283,6 @@ impl StackSamplingParams {
         "buffer_size_kb".into(),
         self.buffer_size_kb.to_string().into(),
       ),
-      ("tag".into(), self.tag.clone().into()),
     ]
     .into()
   }
@@ -1354,34 +1347,6 @@ fn optional_integer_argument(
   }
 }
 
-fn stack_sampling_tag(arguments: &HashMap<String, Data>) -> Result<String, CommandError> {
-  let tag = match arguments
-    .get("tag")
-    .and_then(|data| data.data_type.as_ref())
-  {
-    None => return Ok(STACK_SAMPLING_DEFAULT_TAG.to_string()),
-    Some(Data_type::StringData(tag)) if tag.is_empty() => {
-      return Ok(STACK_SAMPLING_DEFAULT_TAG.to_string());
-    },
-    Some(Data_type::StringData(tag)) => tag,
-    Some(_) => {
-      return Err(CommandError::InvalidArguments(
-        "argument tag must be a string".to_string(),
-      ));
-    },
-  };
-  let safe = tag.len() <= STACK_SAMPLING_MAX_TAG_LEN
-    && tag
-      .bytes()
-      .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'));
-  if !safe {
-    return Err(CommandError::InvalidArguments(format!(
-      "argument tag must be at most {STACK_SAMPLING_MAX_TAG_LEN} letters, digits, '.', '_' or '-'"
-    )));
-  }
-  Ok(tag.clone())
-}
-
 fn clamped_u32(value: Option<i64>, default: u32, range: &RangeInclusive<u32>) -> u32 {
   value.map_or(default, |value| {
     u32::try_from(value.clamp(i64::from(*range.start()), i64::from(*range.end())))
@@ -1420,7 +1385,6 @@ pub fn stack_sampling_params(
       STACK_SAMPLING_DEFAULT_BUFFER_KB,
       &STACK_SAMPLING_BUFFER_KB,
     ),
-    tag: stack_sampling_tag(arguments)?,
   })
 }
 
