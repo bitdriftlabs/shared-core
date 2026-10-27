@@ -22,6 +22,7 @@ use bd_test_helpers::config_helper::{
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::test_api_server::{StreamAction, start_server};
 use protobuf::Message;
+use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
 use time::OffsetDateTime;
@@ -86,7 +87,13 @@ async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
   // Upload each log as soon as it is available, using the runtime acknowledgment as a gate.
   stream
     .stream_action(StreamAction::SendRuntime(make_update(
-      vec![("log_uploader.batch_size", ValueKind::Int(1))],
+      vec![
+        ("log_uploader.batch_size", ValueKind::Int(1)),
+        // The explicit flush below starts this interval, so the stop-time stats upload is held
+        // back and only the periodic upload that follows it can send the final snapshot.
+        ("stats.minimum_upload_interval_ms", ValueKind::Int(5_000)),
+        ("stats.upload_flush_interval_ms", ValueKind::Int(500)),
+      ],
       "driver-runtime".into(),
     )))
     .await;
@@ -143,6 +150,17 @@ async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
   let worker = driver.worker.abort_handle();
   driver.stop().await.unwrap();
   assert!(worker.is_finished());
+  // Shutting down before the stop-time stats upload is acknowledged would leave its snapshot
+  // behind.
+  assert_eq!(stats_snapshot_files(directory.path()), Vec::<String>::new());
+}
+
+fn stats_snapshot_files(directory: &Path) -> Vec<String> {
+  std::fs::read_dir(directory.join("stats_uploads"))
+    .unwrap()
+    .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+    .filter(|name| !name.starts_with("pending_aggregation_index"))
+    .collect()
 }
 
 #[tokio::test]
