@@ -554,6 +554,7 @@ impl FileManager {
   }
 
   /// Returns the IDs of every persisted snapshot, including the active aggregation snapshot.
+  #[cfg(feature = "logger-cli")]
   pub async fn snapshot_ids(&self) -> anyhow::Result<HashSet<String>> {
     let mut inner = self.inner.lock().await;
     let initialized = inner.get_initialized().await?;

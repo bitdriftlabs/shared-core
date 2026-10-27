@@ -57,7 +57,6 @@ pub use crate::logger::{ChannelPair, InitParams};
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 use bd_buffer::AbslCode;
 pub use bd_client_common::sdk_status::{InitializationState, SdkStatus, SdkStatusTracker};
-pub use bd_client_stats::FlushTrigger;
 pub use bd_device::Device;
 pub use bd_event_buffer::ProviderSnapshot;
 pub use bd_events::ListenerTarget as EventsListenerTarget;

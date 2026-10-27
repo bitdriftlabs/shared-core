@@ -9,7 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [features]
-logger-cli-observer = []
+logger-cli = []
 
 [dependencies]
 anyhow.workspace            = true
