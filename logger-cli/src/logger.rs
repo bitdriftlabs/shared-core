@@ -15,7 +15,7 @@ use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
 use crate::types::{Platform, RuntimeValueType};
 use bd_log_primitives::LogFields;
-use bd_logger::{Block, CaptureSession, InitParams, Logger, MetadataProvider};
+use bd_logger::{Block, CaptureSession, FlushTrigger, InitParams, Logger, MetadataProvider};
 use bd_proto::protos::logging::payload::LogType as ProtoLogType;
 use bd_session::{Strategy, StrategyWithWorker, configuration};
 use bd_time::TimeProvider;
@@ -73,6 +73,7 @@ pub struct LoggerHolder {
   pub logger: Arc<Mutex<Logger>>,
   session_strategy: Arc<Strategy>,
   future: Mutex<Option<LoggerFuture>>,
+  stats_flush_trigger: FlushTrigger,
   _shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
 }
 
@@ -81,18 +82,25 @@ impl LoggerHolder {
     logger: Logger,
     session_strategy: Arc<Strategy>,
     future: LoggerFuture,
+    stats_flush_trigger: FlushTrigger,
     shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
   ) -> Self {
     Self {
       logger: Arc::new(Mutex::new(logger)),
       session_strategy,
       future: Mutex::new(Some(future)),
+      stats_flush_trigger,
       _shutdown_trigger: shutdown_trigger,
     }
   }
 
   pub(crate) fn take_future(&self) -> Option<LoggerFuture> {
     self.future.lock().take()
+  }
+
+  /// Persists current stats and waits until the backend acknowledges every persisted snapshot.
+  pub(crate) async fn drain_stats_uploads(&self) -> anyhow::Result<()> {
+    self.stats_flush_trigger.drain_uploads().await
   }
 
   pub fn start(&self) {
@@ -370,7 +378,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     model: args.model.clone(),
   });
 
-  let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
+  let (logger, _, future, stats_flush_trigger) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
     api_key: args.api_key.clone(),
     target_domain: args.api_url.clone(),
@@ -402,7 +410,13 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
   .with_command_handler(COMMAND_NAME.to_string(), Arc::new(FakePerfettoCommand))
   .build()?;
 
-  let logger = LoggerHolder::new(logger, session_strategy, future, shutdown_trigger);
+  let logger = LoggerHolder::new(
+    logger,
+    session_strategy,
+    future,
+    stats_flush_trigger,
+    shutdown_trigger,
+  );
   if let Some(entity_id) = args.entity_id.as_deref() {
     // Queue the entity update before the async startup begins so builder initialization replays
     // it into durable state ahead of the API init flow.

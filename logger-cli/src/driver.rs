@@ -29,6 +29,9 @@ use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 
+// Bounds the final stats upload: one ACK round trip per persisted snapshot.
+const STOP_STATS_DRAIN_DEADLINE: Duration = Duration::from_secs(30);
+
 pub struct Driver {
   holder: LoggerHolder,
   worker: JoinHandle<anyhow::Result<()>>,
@@ -95,13 +98,29 @@ impl Driver {
     Ok(())
   }
 
+  /// Persist current stats and wait until the backend acknowledges every stats snapshot on disk.
+  /// Unlike `flush`, this bypasses the explicit-flush upload throttle, so the last metrics
+  /// interval is uploaded now rather than at the next periodic upload.
+  pub async fn drain_stats(&self, deadline: Duration) -> anyhow::Result<()> {
+    tokio::time::timeout(deadline, self.holder.drain_stats_uploads())
+      .await
+      .map_err(|_| anyhow::anyhow!("stats uploads were not acknowledged within {deadline:?}"))?
+  }
+
   pub async fn stop(self) -> anyhow::Result<()> {
-    // Always shut down the worker, including when the flush failed.
+    // Always shut down the worker, including when the flush or drain failed. Logs are flushed
+    // first so workflow metrics derived from them are recorded before stats are drained.
     let flushed = self.flush().await;
+    let drained = if flushed.is_ok() {
+      self.drain_stats(STOP_STATS_DRAIN_DEADLINE).await
+    } else {
+      Ok(())
+    };
     self.holder.logger.lock().shutdown(false);
     drop(self.holder);
     let stopped = stop_worker(self.worker, Duration::from_secs(30)).await;
     flushed?;
+    drained?;
     stopped?;
     Ok(())
   }

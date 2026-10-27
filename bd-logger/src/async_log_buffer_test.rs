@@ -408,7 +408,7 @@ impl Setup {
     let (_remote_flush_streaming_tx, remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (flush_buffers_tx, _) = tokio::sync::mpsc::channel(1);
-    let (flush_stats_trigger, _) = FlushTrigger::new();
+    let (flush_stats_trigger, ..) = FlushTrigger::new();
 
     UninitializedLoggingContext::new(
       self.tmp_dir.path(),

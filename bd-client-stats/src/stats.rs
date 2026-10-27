@@ -19,7 +19,7 @@ use crate::observer::{
   UploadAttemptObservation,
   with_observer,
 };
-use crate::{FlushEpoch, FlushTrigger, Stats};
+use crate::{FlushEpoch, FlushTrigger, Stats, UploadDrainRequest};
 use analytics::StatsPipelineAnalyticsReport as HandshakeStatsPipelineAnalyticsReport;
 use async_trait::async_trait;
 use bd_api::DataUpload;
@@ -56,7 +56,7 @@ use itertools::Itertools;
 use sha2::{Digest, Sha256};
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
@@ -80,6 +80,7 @@ enum UploadContext {
   Periodic(PendingUploadMetadata),
   Flush(PendingUploadMetadata),
   Startup(PendingUploadMetadata),
+  Drain(PendingUploadMetadata),
 }
 
 // Completion ownership before a request is accepted by the data-upload channel. In this state the
@@ -87,6 +88,7 @@ enum UploadContext {
 enum PendingUploadContext {
   Periodic,
   Flush,
+  Drain,
 }
 
 // Identifies the files covered by a request. FileManager uses these IDs to retain the claim until
@@ -124,6 +126,21 @@ enum DiskFlushOutcome {
   Deferred,
   Durable,
   Failed,
+}
+
+// A caller waiting for the backend to acknowledge every snapshot that was persisted when it asked.
+// Snapshots written later are uploaded opportunistically but do not hold the caller.
+struct UploadDrain {
+  remaining_file_ids: HashSet<String>,
+  completion_tx: UploadDrainRequest,
+}
+
+// Drains wait for ACKs of specific persisted files. One drain upload is in flight at a time; its
+// completion, or that of any other upload, re-evaluates which files are still outstanding.
+#[derive(Default)]
+struct UploadDrains {
+  waiting: Vec<UploadDrain>,
+  upload_in_flight: bool,
 }
 
 // State for the leading/trailing disk-flush debounce window. A caller that arrives during an open
@@ -270,6 +287,7 @@ impl UploadContext {
       Self::Periodic(..) => "periodic",
       Self::Flush(..) => "explicit flush",
       Self::Startup(..) => "handshake",
+      Self::Drain(..) => "upload drain",
     }
   }
 
@@ -277,7 +295,10 @@ impl UploadContext {
   // finish or release files before it performs request-type-specific bookkeeping.
   const fn metadata(&self) -> &PendingUploadMetadata {
     match self {
-      Self::Periodic(metadata) | Self::Flush(metadata) | Self::Startup(metadata) => metadata,
+      Self::Periodic(metadata)
+      | Self::Flush(metadata)
+      | Self::Startup(metadata)
+      | Self::Drain(metadata) => metadata,
     }
   }
 }
@@ -287,6 +308,7 @@ impl PendingUploadContext {
     match self {
       Self::Periodic => "periodic",
       Self::Flush => "explicit flush",
+      Self::Drain => "upload drain",
     }
   }
 
@@ -296,6 +318,7 @@ impl PendingUploadContext {
     match self {
       Self::Periodic => UploadContext::Periodic(metadata),
       Self::Flush => UploadContext::Flush(metadata),
+      Self::Drain => UploadContext::Drain(metadata),
     }
   }
 }
@@ -687,6 +710,7 @@ pub struct Flusher {
   shutdown: ComponentShutdown,
   periodic_schedule: Box<dyn PeriodicSchedule>,
   flush_rx: tokio::sync::mpsc::Receiver<()>,
+  drain_rx: mpsc::Receiver<UploadDrainRequest>,
   flush_trigger: FlushTrigger,
   flush_time_histogram: Histogram,
   data_flush_tx: mpsc::Sender<DataUpload>,
@@ -715,6 +739,7 @@ pub struct Flusher {
   // duplicate upload attempts without delaying local durability for later flush callers.
   periodic_in_flight: bool,
   flush_in_flight: bool,
+  drains: UploadDrains,
   // This uses system time to allow integration tests to work. It should really use monotonic time.
   last_flush_upload_time: Option<time::OffsetDateTime>,
   time_provider: Arc<dyn TimeProvider>,
@@ -735,6 +760,7 @@ impl Flusher {
     shutdown: ComponentShutdown,
     periodic_schedule: Box<dyn PeriodicSchedule>,
     flush_rx: tokio::sync::mpsc::Receiver<()>,
+    drain_rx: mpsc::Receiver<UploadDrainRequest>,
     flush_time_histogram: Histogram,
     data_flush_tx: mpsc::Sender<DataUpload>,
     file_manager: Arc<FileManager>,
@@ -753,6 +779,7 @@ impl Flusher {
       shutdown,
       periodic_schedule,
       flush_rx,
+      drain_rx,
       flush_trigger,
       flush_time_histogram,
       data_flush_tx,
@@ -768,6 +795,7 @@ impl Flusher {
       periodic_backlog_drain_pending: false,
       periodic_in_flight: false,
       flush_in_flight: false,
+      drains: UploadDrains::default(),
       last_flush_upload_time: None,
       time_provider,
       minimum_upload_interval,
@@ -825,6 +853,9 @@ impl Flusher {
         Some(()) = self.flush_rx.recv() => {
           self.handle_flush_request().await;
         },
+        Some(completion_tx) = self.drain_rx.recv() => {
+          self.handle_drain_request(completion_tx).await;
+        },
         // The deadline is present only during a debounce window. Its handler makes a trailing
         // write before releasing request completions or starting a deferred periodic upload.
         () = maybe_await(&mut self.disk_flush.deadline) => {
@@ -832,6 +863,7 @@ impl Flusher {
         },
         () = self.shutdown.cancelled() => {
           // A deferred request may never enter the API channel; its persisted retry count remains.
+          // Dropping pending drains reports shutdown to their callers.
           self.flush_trigger.fail_open_epoch();
           return;
         },
@@ -876,6 +908,8 @@ impl Flusher {
         log::debug!("skipping periodic stats upload because its disk flush failed");
       },
     }
+    // A drain upload may have been refused by the global upload limiter; retry on the next tick.
+    self.advance_drains().await;
     #[cfg(test)]
     let _ignored = self.test_hooks.sender.upload_tick_complete_tx.try_send(());
   }
@@ -908,6 +942,97 @@ impl Flusher {
     // All callers have already joined the trigger's open epoch. A write atomically rotates that
     // epoch before I/O, so callers that arrive during the write wait for the next physical write.
     let _ = self.flush_to_disk_with_debounce().await;
+  }
+
+  async fn handle_drain_request(&mut self, completion_tx: UploadDrainRequest) {
+    // Write directly instead of joining a debounce window: the drain must cover every metric
+    // recorded before the request, and a single extra write is bounded by the caller.
+    if !self.flush_to_disk().await {
+      let _ignored = completion_tx.send(Err(anyhow::anyhow!(
+        "stats flush failed before upload drain"
+      )));
+      return;
+    }
+    match self.file_manager.snapshot_ids().await {
+      Ok(remaining_file_ids) => {
+        log::debug!(
+          "draining stats uploads for {} persisted snapshots",
+          remaining_file_ids.len()
+        );
+        self.drains.waiting.push(UploadDrain {
+          remaining_file_ids,
+          completion_tx,
+        });
+        self.advance_drains().await;
+      },
+      Err(error) => {
+        let _ignored = completion_tx.send(Err(anyhow::anyhow!(
+          "listing stats snapshots to drain: {error}"
+        )));
+      },
+    }
+  }
+
+  // Completes drains whose files have all been acknowledged (and therefore deleted), then starts
+  // the next drain upload if one is needed and the shared retained-upload slot is free.
+  async fn advance_drains(&mut self) {
+    if self.drains.waiting.is_empty() {
+      return;
+    }
+    let persisted_file_ids = match self.file_manager.snapshot_ids().await {
+      Ok(persisted_file_ids) => persisted_file_ids,
+      Err(error) => {
+        self.fail_drains(&format!("listing stats snapshots to drain: {error}"));
+        return;
+      },
+    };
+    let (completed, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.drains.waiting)
+      .into_iter()
+      .filter(|drain| !drain.completion_tx.is_closed())
+      .map(|mut drain| {
+        drain
+          .remaining_file_ids
+          .retain(|file_id| persisted_file_ids.contains(file_id));
+        drain
+      })
+      .partition(|drain| drain.remaining_file_ids.is_empty());
+    self.drains.waiting = waiting;
+    for drain in completed {
+      log::debug!("stats upload drain completed");
+      let _ignored = drain.completion_tx.send(Ok(()));
+    }
+
+    if self.drains.waiting.is_empty()
+      || self.drains.upload_in_flight
+      || self.pending_data_upload.is_some()
+    {
+      return;
+    }
+    // Drained files are the oldest in the index, so the oldest eligible file is one of them unless
+    // all of them are already claimed by another upload, whose completion re-enters here.
+    let Some(prepared_upload) = self
+      .upload_from_disk(false, UploadReason::UPLOAD_REASON_EVENT_TRIGGERED)
+      .await
+    else {
+      log::debug!("stats upload drain waiting for in-flight or throttled uploads");
+      return;
+    };
+    self.drains.upload_in_flight = true;
+    if matches!(
+      self
+        .dispatch_prepared_upload(prepared_upload, PendingUploadContext::Drain)
+        .await,
+      UploadDispatch::Closed
+    ) {
+      self.drains.upload_in_flight = false;
+      self.fail_drains("stats upload channel closed before drain completed");
+    }
+  }
+
+  fn fail_drains(&mut self, reason: &str) {
+    for drain in self.drains.waiting.drain(..) {
+      let _ignored = drain.completion_tx.send(Err(anyhow::anyhow!("{reason}")));
+    }
   }
 
   async fn handle_flush_upload(&mut self) {
@@ -1050,7 +1175,12 @@ impl Flusher {
             callback();
           }
         },
+        UploadContext::Drain(..) => {
+          self.drains.upload_in_flight = false;
+          self.fail_drains("stats upload stream closed before the drain upload was acknowledged");
+        },
       }
+      self.advance_drains().await;
       #[cfg(test)]
       self
         .test_hooks
@@ -1075,6 +1205,13 @@ impl Flusher {
       self.last_flush_upload_time = None;
     }
 
+    if matches!(context, UploadContext::Drain(..)) {
+      self.drains.upload_in_flight = false;
+      if !upload_response.success {
+        self.fail_drains("backend rejected the stats drain upload");
+      }
+    }
+
     self
       .process_pending_upload_completion(&upload_response, context.metadata())
       .await;
@@ -1088,6 +1225,9 @@ impl Flusher {
         callback();
       }
     }
+
+    // Any acknowledged upload may have deleted files that a drain is waiting for.
+    self.advance_drains().await;
 
     #[cfg(test)]
     self
@@ -1132,7 +1272,7 @@ impl Flusher {
       UploadContext::Flush(..) => {
         self.flush_in_flight = false;
       },
-      UploadContext::Startup(..) => {},
+      UploadContext::Startup(..) | UploadContext::Drain(..) => {},
     }
   }
 

@@ -4705,3 +4705,70 @@ async fn minimum_upload_interval() {
 
   setup.shutdown().await.unwrap();
 }
+
+#[tokio::test(start_paused = true)]
+async fn upload_drain_bypasses_minimum_interval_and_waits_for_ack() {
+  let mut setup = Setup::new().await;
+  setup
+    .runtime_loader
+    .update_snapshot(make_simple_update(vec![(
+      bd_runtime::runtime::stats::MinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+
+  // An explicit flush upload starts the minimum interval.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 1);
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx);
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let upload = setup.next_stat_upload().await;
+  respond_to_stats_upload(upload, Some(true));
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  rx.recv().await.unwrap();
+
+  // A drain uploads the newly recorded metric despite the interval and waits for its ACK.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 2);
+  let trigger = setup.explicit_flush_trigger.clone();
+  let drain = tokio::spawn(async move { trigger.drain_uploads().await });
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let upload = setup.next_stat_upload().await;
+  {
+    let helper = StatsRequestHelper::new(upload.payload.clone());
+    assert_eq!(
+      helper.get_workflow_counter("id1", labels!("foo" => "bar")),
+      Some(2)
+    );
+  }
+  assert!(!drain.is_finished());
+  respond_to_stats_upload(upload, Some(true));
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  drain.await.unwrap().unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn upload_drain_reports_rejected_upload() {
+  let mut setup = Setup::new().await;
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 1);
+  let trigger = setup.explicit_flush_trigger.clone();
+  let drain = tokio::spawn(async move { trigger.drain_uploads().await });
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let upload = setup.next_stat_upload().await;
+  respond_to_stats_upload(upload, Some(false));
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  assert_eq!(
+    drain.await.unwrap().unwrap_err().to_string(),
+    "backend rejected the stats drain upload"
+  );
+
+  setup.shutdown().await.unwrap();
+}

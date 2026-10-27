@@ -36,7 +36,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
 #[cfg(test)]
 #[ctor::ctor(unsafe)]
@@ -135,6 +135,9 @@ impl FlushEpoch {
   }
 }
 
+// Completed by the flusher once every snapshot persisted for the request has been acknowledged.
+pub type UploadDrainRequest = oneshot::Sender<anyhow::Result<()>>;
+
 //
 // FlushTriggerState
 //
@@ -151,6 +154,7 @@ struct FlushTriggerState {
 #[derive(Clone)]
 pub struct FlushTrigger {
   flush_tx: Sender<()>,
+  drain_tx: Sender<UploadDrainRequest>,
   state: Arc<Mutex<FlushTriggerState>>,
 }
 
@@ -164,18 +168,25 @@ impl std::fmt::Debug for FlushTrigger {
 
 impl FlushTrigger {
   #[must_use]
-  pub fn new() -> (Self, tokio::sync::mpsc::Receiver<()>) {
+  pub fn new() -> (
+    Self,
+    tokio::sync::mpsc::Receiver<()>,
+    tokio::sync::mpsc::Receiver<UploadDrainRequest>,
+  ) {
     let (flush_tx, flush_rx) = tokio::sync::mpsc::channel(1);
+    let (drain_tx, drain_rx) = tokio::sync::mpsc::channel(1);
 
     (
       Self {
         flush_tx,
+        drain_tx,
         state: Arc::new(Mutex::new(FlushTriggerState {
           open_epoch: FlushEpoch::new(),
           wake_scheduled: false,
         })),
       },
       flush_rx,
+      drain_rx,
     )
   }
 
@@ -201,6 +212,22 @@ impl FlushTrigger {
         anyhow::bail!("stats flusher shut down before flush was requested")
       },
     }
+  }
+
+  /// Persists current stats and waits until the backend acknowledges every snapshot persisted at
+  /// that point. Unlike `flush`, this waits for upload ACKs and is not limited by the explicit
+  /// flush minimum upload interval, so it suits a final drain before shutdown. The global upload
+  /// limiter still applies and an unsuccessful ACK fails the drain; callers should bound the wait.
+  pub async fn drain_uploads(&self) -> anyhow::Result<()> {
+    let (completion_tx, completion_rx) = oneshot::channel();
+    self
+      .drain_tx
+      .send(completion_tx)
+      .await
+      .map_err(|_| anyhow::anyhow!("stats flusher shut down before upload drain was requested"))?;
+    completion_rx
+      .await
+      .map_err(|_| anyhow::anyhow!("stats flusher shut down before upload drain completed"))?
   }
 
   pub fn blocking_flush_for_test(&self) -> anyhow::Result<FlushCompletion> {
@@ -285,7 +312,7 @@ impl Stats {
     >,
   ) -> FlushHandles {
     let flush_time_histogram = self.collector.scope("stats").histogram("flush_time");
-    let (flush_trigger, flush_rx) = FlushTrigger::new();
+    let (flush_trigger, flush_rx, drain_rx) = FlushTrigger::new();
     // HandshakeStats is owned by the API task while Flusher runs in a sibling task. Each
     // API-originated upload creates a fresh tracked request whose sender belongs to the stream
     // StateTracker, but its receiver must be consumed by Flusher to complete or abandon claimed
@@ -300,6 +327,7 @@ impl Stats {
         shutdown,
         periodic_schedule,
         flush_rx,
+        drain_rx,
         flush_time_histogram,
         data_flush_tx,
         fs.clone(),

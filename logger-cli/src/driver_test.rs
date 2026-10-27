@@ -22,6 +22,7 @@ use bd_test_helpers::config_helper::{
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::test_api_server::{StreamAction, start_server};
 use protobuf::Message;
+use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
 use time::OffsetDateTime;
@@ -143,6 +144,17 @@ async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
   let worker = driver.worker.abort_handle();
   driver.stop().await.unwrap();
   assert!(worker.is_finished());
+  // The earlier explicit flush started the stats minimum upload interval, so only the stop-time
+  // drain can upload and acknowledge the final snapshot before shutdown.
+  assert_eq!(stats_snapshot_files(directory.path()), Vec::<String>::new());
+}
+
+fn stats_snapshot_files(directory: &Path) -> Vec<String> {
+  std::fs::read_dir(directory.join("stats_uploads"))
+    .unwrap()
+    .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+    .filter(|name| !name.starts_with("pending_aggregation_index"))
+    .collect()
 }
 
 #[tokio::test]

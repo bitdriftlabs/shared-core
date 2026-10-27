@@ -553,6 +553,19 @@ impl FileManager {
     result
   }
 
+  /// Returns the IDs of every persisted snapshot, including the active aggregation snapshot.
+  pub async fn snapshot_ids(&self) -> anyhow::Result<HashSet<String>> {
+    let mut inner = self.inner.lock().await;
+    let initialized = inner.get_initialized().await?;
+    Ok(
+      initialized
+        .index
+        .iter()
+        .map(|file| file.name.clone())
+        .collect(),
+    )
+  }
+
   // Read an existing snapshot from disk to merge into, or create a new one.
   pub async fn get_or_create_snapshot(&self) -> anyhow::Result<StatsUploadRequestHandle> {
     let mut inner = self.inner.lock().await;

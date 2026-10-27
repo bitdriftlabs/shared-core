@@ -407,7 +407,7 @@ impl Setup {
 
     let stats = bd_client_stats::Stats::new(self.collector.clone());
 
-    let (_flush_trigger, stats_flush_rx) = FlushTrigger::new();
+    let (_flush_trigger, stats_flush_rx, _) = FlushTrigger::new();
     let workflows_pending_flush_state = Arc::clone(&process_local_pending_flush_state);
 
     let (mut workflows_engine, buffers_to_flush_rx) =
