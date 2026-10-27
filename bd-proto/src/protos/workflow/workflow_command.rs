@@ -1143,13 +1143,13 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
     y\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.loggin\
     g.v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\x12\x03\xf8B\
-    \x01*\x88\x08\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_UNSPECIFIED\
+    \x01*\xdf\x05\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_UNSPECIFIED\
     \x10\0\x12V\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1a>\xc2\xf3\x18:\n\x12dump_\
     device_buffer\x12$Requests\x20the\x20device's\x20buffered\x20logs.\x12c\
     \n\x0fTAKE_SCREENSHOT\x10\x02\x1aN\xc2\xf3\x18J\n\x0ftake_screenshot\x12\
     5Captures\x20the\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20\
-    image.\x20\x01\x12\x9c\x06\n\x14STACK_SAMPLING_TRACE\x10\x03\x1a\x81\x06\
-    \xc2\xf3\x18\xfc\x05\n\x14stack_sampling_trace\x12TCaptures\x20a\x20Perf\
+    image.\x20\x01\x12\xf3\x03\n\x14STACK_SAMPLING_TRACE\x10\x03\x1a\xd8\x03\
+    \xc2\xf3\x18\xd3\x03\n\x14stack_sampling_trace\x12TCaptures\x20a\x20Perf\
     etto\x20stack\x20sampling\x20trace\x20of\x20the\x20application's\x20proc\
     ess\x20(Android\x2015+).\x1a\x9f\x01\n\x0bduration_ms\x10\x05\x1a\x8b\
     \x01How\x20long\x20to\x20sample,\x20in\x20milliseconds.\x20Defaults\x20t\
@@ -1159,16 +1159,10 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     z.\x20Defaults\x20to\x20100;\x20the\x20client\x20clamps\x20it\x20to\x201\
     0-250.\x20\x01\x1ac\n\x0ebuffer_size_kb\x10\x05\x1aMTrace\x20buffer\x20s\
     ize\x20in\x20KB.\x20Defaults\x20to\x202048;\x20the\x20client\x20clamps\
-    \x20it\x20to\x20256-16384.\x20\x01\x1a\xa6\x02\n\x03tag\x10\x01\x1a\x9a\
-    \x02Tag\x20recorded\x20with\x20the\x20capture.\x20The\x20system\x20puts\
-    \x20it\x20in\x20the\x20output\x20file\x20name\x20and\x20reports\x20it\
-    \x20through\x20ProfilingResult.getTag(),\x20so\x20an\x20app\x20that\x20o\
-    bserves\x20profiling\x20results\x20can\x20tell\x20these\x20captures\x20a\
-    part.\x20Defaults\x20to\x20\"bitdrift\";\x20letters,\x20digits,\x20'.',\
-    \x20'_'\x20and\x20'-'\x20only,\x20at\x20most\x2064\x20characters.\x20\
-    \x01:\x9f\x01\n\x1awell_known_command_options\x18\xb8\x8e\x03\x20\x01(\
-    \x0b2=.bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions\x12!\
-    .google.protobuf.EnumValueOptionsR\x17wellKnownCommandOptionsb\x06proto3\
+    \x20it\x20to\x20256-16384.\x20\x01:\x9f\x01\n\x1awell_known_command_opti\
+    ons\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.\
+    WellKnownCommandOptions\x12!.google.protobuf.EnumValueOptionsR\x17wellKn\
+    ownCommandOptionsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
