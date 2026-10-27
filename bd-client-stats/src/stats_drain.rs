@@ -52,8 +52,9 @@ impl FlushTrigger {
   /// Persists current stats and waits until the backend acknowledges every snapshot persisted at
   /// that point. Unlike `flush`, this waits for upload ACKs and is not limited by the explicit
   /// flush minimum upload interval, so it suits a final drain before shutdown. The global upload
-  /// limiter still applies. A rejected or abandoned upload, or a snapshot discarded before it was
-  /// acknowledged, fails the drain; callers should bound the wait.
+  /// limiter still applies. The drain fails if its own upload is rejected or abandoned, or if a
+  /// snapshot is discarded before it was acknowledged. A rejected upload from another source leaves
+  /// its snapshots on disk for the drain to retry. Callers should bound the wait.
   pub async fn drain_uploads(&self) -> anyhow::Result<()> {
     let (completion_tx, completion_rx) = oneshot::channel();
     self
