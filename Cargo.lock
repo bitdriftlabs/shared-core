@@ -4993,7 +4993,7 @@ dependencies = [
 [[package]]
 name = "ripsaw"
 version = "1.0.0"
-source = "git+https://github.com/bitdriftlabs/ripsaw.git#6823a84d5db2763fb5a651ebe9f5ea68637ad1b9"
+source = "git+https://github.com/bitdriftlabs/ripsaw.git#c3d0d6555795bf8c72c21f0740f6547e36ce8cc2"
 dependencies = [
  "bytes",
  "cfg-if",
