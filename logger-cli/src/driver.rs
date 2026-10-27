@@ -23,16 +23,20 @@ use bd_logger::{
   log_level,
 };
 use bd_proto::protos::logging::payload::LogType;
-use std::collections::HashMap;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 
-// Bounds the final stats upload: one ACK round trip per persisted snapshot.
-const STOP_STATS_DRAIN_DEADLINE: Duration = Duration::from_secs(30);
+// The stop-time stats upload can be held back by the 30 s explicit-flush minimum interval, in which
+// case the next periodic upload (every 60 s by default) sends it.
+const STOP_STATS_UPLOAD_DEADLINE: Duration = Duration::from_secs(120);
+const STATS_UPLOAD_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 pub struct Driver {
+  directory: PathBuf,
   holder: LoggerHolder,
   worker: JoinHandle<anyhow::Result<()>>,
 }
@@ -44,6 +48,7 @@ impl Driver {
       .take_future()
       .ok_or_else(|| anyhow::anyhow!("logger already started"))?;
     Ok(Self {
+      directory: directory.to_path_buf(),
       holder,
       worker: tokio::spawn(future),
     })
@@ -98,21 +103,30 @@ impl Driver {
     Ok(())
   }
 
-  /// Persist current stats and wait until the backend acknowledges every stats snapshot on disk.
-  /// Unlike `flush`, this bypasses the explicit-flush upload throttle, so the last metrics
-  /// interval is uploaded now rather than at the next periodic upload.
-  pub async fn drain_stats(&self, deadline: Duration) -> anyhow::Result<()> {
-    tokio::time::timeout(deadline, self.holder.drain_stats_uploads())
-      .await
-      .map_err(|_| anyhow::anyhow!("stats uploads were not acknowledged within {deadline:?}"))?
+  /// Wait until the stats snapshots currently on disk have been uploaded. The SDK deletes a
+  /// snapshot only after the backend acknowledges it, so this watches the stats directory.
+  /// Snapshots written after the call starts do not hold it.
+  pub async fn wait_for_stats_uploads(&self, deadline: Duration) -> anyhow::Result<()> {
+    let stats_directory = self.directory.join("stats_uploads");
+    let pending = stats_snapshot_files(&stats_directory)?;
+    tokio::time::timeout(deadline, async {
+      while !pending.is_disjoint(&stats_snapshot_files(&stats_directory)?) {
+        tokio::time::sleep(STATS_UPLOAD_POLL_INTERVAL).await;
+      }
+      Ok(())
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("stats snapshots were not acknowledged within {deadline:?}"))?
   }
 
   pub async fn stop(self) -> anyhow::Result<()> {
-    // Always shut down the worker, including when the flush or drain failed. Logs are flushed
-    // first so workflow metrics derived from them are recorded before stats are drained.
+    // Always shut down the worker, including when the flush or upload wait failed. The flush
+    // persists stats and starts their upload, which must be acknowledged before shutdown.
     let flushed = self.flush().await;
-    let drained = if flushed.is_ok() {
-      self.drain_stats(STOP_STATS_DRAIN_DEADLINE).await
+    let uploaded = if flushed.is_ok() {
+      self
+        .wait_for_stats_uploads(STOP_STATS_UPLOAD_DEADLINE)
+        .await
     } else {
       Ok(())
     };
@@ -120,10 +134,30 @@ impl Driver {
     drop(self.holder);
     let stopped = stop_worker(self.worker, Duration::from_secs(30)).await;
     flushed?;
-    drained?;
+    uploaded?;
     stopped?;
     Ok(())
   }
+}
+
+// Returns the stats snapshot file names in `directory`, excluding the SDK's index files.
+fn stats_snapshot_files(directory: &Path) -> anyhow::Result<HashSet<OsString>> {
+  let entries = match std::fs::read_dir(directory) {
+    Ok(entries) => entries,
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
+    Err(error) => return Err(error.into()),
+  };
+  let mut files = HashSet::new();
+  for entry in entries {
+    let name = entry?.file_name();
+    if !name
+      .to_string_lossy()
+      .starts_with("pending_aggregation_index")
+    {
+      files.insert(name);
+    }
+  }
+  Ok(files)
 }
 
 async fn wait_for_configuration(

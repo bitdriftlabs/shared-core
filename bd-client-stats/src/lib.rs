@@ -15,7 +15,7 @@
 )]
 
 mod file_manager;
-#[cfg(feature = "logger-cli")]
+#[cfg(feature = "logger-cli-observer")]
 pub mod observer;
 pub mod stats;
 pub mod test;
@@ -151,8 +151,6 @@ struct FlushTriggerState {
 #[derive(Clone)]
 pub struct FlushTrigger {
   flush_tx: Sender<()>,
-  #[cfg(feature = "logger-cli")]
-  drain: stats::drain::UploadDrainChannel,
   state: Arc<Mutex<FlushTriggerState>>,
 }
 
@@ -172,8 +170,6 @@ impl FlushTrigger {
     (
       Self {
         flush_tx,
-        #[cfg(feature = "logger-cli")]
-        drain: stats::drain::UploadDrainChannel::new(),
         state: Arc::new(Mutex::new(FlushTriggerState {
           open_epoch: FlushEpoch::new(),
           wake_scheduled: false,

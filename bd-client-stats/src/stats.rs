@@ -9,42 +9,8 @@
 #[path = "./stats_test.rs"]
 mod stats_test;
 
-#[cfg(feature = "logger-cli")]
-#[path = "./stats_drain.rs"]
-pub(crate) mod drain;
-
-// Upload drains exist only for logger-cli; this keeps the flusher's select loop shape without them.
-#[cfg(not(feature = "logger-cli"))]
-mod drain {
-  pub(super) enum DrainEvent {}
-
-  pub(super) struct UploadDrains;
-
-  impl UploadDrains {
-    pub(super) const fn new(_: &crate::FlushTrigger) -> Self {
-      Self
-    }
-
-    #[expect(clippy::unused_self, reason = "mirrors the logger-cli drain API")]
-    pub(super) fn next_event(&self) -> std::future::Pending<DrainEvent> {
-      std::future::pending()
-    }
-  }
-
-  impl super::Flusher {
-    #[expect(
-      clippy::unused_self,
-      clippy::needless_pass_by_value,
-      reason = "mirrors the logger-cli drain API"
-    )]
-    pub(super) fn handle_drain_event(&self, event: DrainEvent) -> std::future::Ready<()> {
-      match event {}
-    }
-  }
-}
-
 use crate::file_manager::{FileManager, PendingUpload, StatsPipelineAnalyticsReport};
-#[cfg(feature = "logger-cli")]
+#[cfg(feature = "logger-cli-observer")]
 use crate::observer::{
   ObservedMetric,
   ObservedMetricValue,
@@ -74,7 +40,7 @@ use bd_proto::protos::client::api::{
   debug_data_request,
   handshake_response,
 };
-#[cfg(feature = "logger-cli")]
+#[cfg(feature = "logger-cli-observer")]
 use bd_proto::protos::client::metric::metric::Data as ProtoMetricData;
 use bd_proto::protos::client::metric::metric::Metric_name_type;
 use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
@@ -114,8 +80,6 @@ enum UploadContext {
   Periodic(PendingUploadMetadata),
   Flush(PendingUploadMetadata),
   Startup(PendingUploadMetadata),
-  #[cfg(feature = "logger-cli")]
-  Drain(PendingUploadMetadata),
 }
 
 // Completion ownership before a request is accepted by the data-upload channel. In this state the
@@ -123,8 +87,6 @@ enum UploadContext {
 enum PendingUploadContext {
   Periodic,
   Flush,
-  #[cfg(feature = "logger-cli")]
-  Drain,
 }
 
 // Identifies the files covered by a request. FileManager uses these IDs to retain the claim until
@@ -308,8 +270,6 @@ impl UploadContext {
       Self::Periodic(..) => "periodic",
       Self::Flush(..) => "explicit flush",
       Self::Startup(..) => "handshake",
-      #[cfg(feature = "logger-cli")]
-      Self::Drain(..) => "upload drain",
     }
   }
 
@@ -318,8 +278,6 @@ impl UploadContext {
   const fn metadata(&self) -> &PendingUploadMetadata {
     match self {
       Self::Periodic(metadata) | Self::Flush(metadata) | Self::Startup(metadata) => metadata,
-      #[cfg(feature = "logger-cli")]
-      Self::Drain(metadata) => metadata,
     }
   }
 }
@@ -329,8 +287,6 @@ impl PendingUploadContext {
     match self {
       Self::Periodic => "periodic",
       Self::Flush => "explicit flush",
-      #[cfg(feature = "logger-cli")]
-      Self::Drain => "upload drain",
     }
   }
 
@@ -340,8 +296,6 @@ impl PendingUploadContext {
     match self {
       Self::Periodic => UploadContext::Periodic(metadata),
       Self::Flush => UploadContext::Flush(metadata),
-      #[cfg(feature = "logger-cli")]
-      Self::Drain => UploadContext::Drain(metadata),
     }
   }
 }
@@ -761,7 +715,6 @@ pub struct Flusher {
   // duplicate upload attempts without delaying local durability for later flush callers.
   periodic_in_flight: bool,
   flush_in_flight: bool,
-  drains: drain::UploadDrains,
   // This uses system time to allow integration tests to work. It should really use monotonic time.
   last_flush_upload_time: Option<time::OffsetDateTime>,
   time_provider: Arc<dyn TimeProvider>,
@@ -795,7 +748,6 @@ impl Flusher {
     api_upload_completion_rx: mpsc::Receiver<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
     flush_trigger: FlushTrigger,
   ) -> Self {
-    let drains = drain::UploadDrains::new(&flush_trigger);
     Self {
       stats,
       shutdown,
@@ -816,7 +768,6 @@ impl Flusher {
       periodic_backlog_drain_pending: false,
       periodic_in_flight: false,
       flush_in_flight: false,
-      drains,
       last_flush_upload_time: None,
       time_provider,
       minimum_upload_interval,
@@ -873,9 +824,6 @@ impl Flusher {
         },
         Some(()) = self.flush_rx.recv() => {
           self.handle_flush_request().await;
-        },
-        event = self.drains.next_event() => {
-          self.handle_drain_event(event).await;
         },
         // The deadline is present only during a debounce window. Its handler makes a trailing
         // write before releasing request completions or starting a deferred periodic upload.
@@ -1102,11 +1050,7 @@ impl Flusher {
             callback();
           }
         },
-        #[cfg(feature = "logger-cli")]
-        UploadContext::Drain(..) => self.finish_drain_upload(None),
       }
-      #[cfg(feature = "logger-cli")]
-      self.advance_drains().await;
       #[cfg(test)]
       self
         .test_hooks
@@ -1134,17 +1078,6 @@ impl Flusher {
     self
       .process_pending_upload_completion(&upload_response, context.metadata())
       .await;
-
-    #[cfg(feature = "logger-cli")]
-    {
-      if upload_response.success {
-        self.record_drain_ack(&context.metadata().source_file_ids);
-      }
-      if matches!(context, UploadContext::Drain(..)) {
-        self.finish_drain_upload(Some(upload_response.success));
-      }
-      self.advance_drains().await;
-    }
 
     if matches!(context, UploadContext::Startup(..)) {
       log::debug!(
@@ -1200,8 +1133,6 @@ impl Flusher {
         self.flush_in_flight = false;
       },
       UploadContext::Startup(..) => {},
-      #[cfg(feature = "logger-cli")]
-      UploadContext::Drain(..) => {},
     }
   }
 
@@ -1343,7 +1274,7 @@ impl Flusher {
     // 2. Attempt to write the new delta snapshot to disk.
     let delta_snapshot = self.create_delta_snapshot();
 
-    #[cfg(feature = "logger-cli")]
+    #[cfg(feature = "logger-cli-observer")]
     with_observer(|observer| {
       let metrics = snapshot_action_metrics(&delta_snapshot);
       if !metrics.is_empty() {
@@ -1630,10 +1561,6 @@ impl Flusher {
     {
       log::debug!("failed to release pending stats upload: {error}");
     }
-    #[cfg(feature = "logger-cli")]
-    if matches!(context, PendingUploadContext::Drain) {
-      self.finish_drain_upload(None);
-    }
     #[cfg(test)]
     let _ignored = self.test_hooks.sender.upload_abandoned_tx.try_send(());
   }
@@ -1643,7 +1570,7 @@ impl Flusher {
     upload_response: &UploadResponse,
     metadata: &PendingUploadMetadata,
   ) {
-    #[cfg(feature = "logger-cli")]
+    #[cfg(feature = "logger-cli-observer")]
     with_observer(|observer| {
       observer.on_upload_ack(UploadAckObservation {
         upload_uuid: upload_response.uuid.clone(),
@@ -1808,7 +1735,7 @@ impl SnapshotHelper {
   }
 }
 
-#[cfg(feature = "logger-cli")]
+#[cfg(feature = "logger-cli-observer")]
 fn observed_metric_value(metric: &MetricData) -> Option<ObservedMetricValue> {
   match metric.to_proto().ok()? {
     ProtoMetricData::Counter(counter) => Some(ObservedMetricValue::Counter(counter.value)),
@@ -1821,7 +1748,7 @@ fn observed_metric_value(metric: &MetricData) -> Option<ObservedMetricValue> {
   }
 }
 
-#[cfg(feature = "logger-cli")]
+#[cfg(feature = "logger-cli-observer")]
 fn proto_metric_value(data: &ProtoMetricData) -> ObservedMetricValue {
   match data {
     ProtoMetricData::Counter(counter) => ObservedMetricValue::Counter(counter.value),
@@ -1834,7 +1761,7 @@ fn proto_metric_value(data: &ProtoMetricData) -> ObservedMetricValue {
   }
 }
 
-#[cfg(feature = "logger-cli")]
+#[cfg(feature = "logger-cli-observer")]
 fn snapshot_action_metrics(snapshot: &SnapshotHelper) -> Vec<ObservedMetric> {
   let mut observed_metrics = Vec::new();
   for ((_, name), metrics) in &snapshot.metrics {
@@ -1862,7 +1789,7 @@ fn snapshot_action_metrics(snapshot: &SnapshotHelper) -> Vec<ObservedMetric> {
   observed_metrics
 }
 
-#[cfg(feature = "logger-cli")]
+#[cfg(feature = "logger-cli-observer")]
 fn request_action_metrics(request: &StatsUploadRequest) -> Vec<ObservedMetric> {
   let mut observed_metrics = Vec::new();
   for snapshot in &request.snapshot {
@@ -1892,7 +1819,7 @@ fn request_action_metrics(request: &StatsUploadRequest) -> Vec<ObservedMetric> {
   observed_metrics
 }
 
-#[cfg(feature = "logger-cli")]
+#[cfg(feature = "logger-cli-observer")]
 fn observe_upload_attempt(request: &StatsUploadRequest, upload_reason: UploadReason) {
   with_observer(|observer| {
     let metrics = request_action_metrics(request);
@@ -1906,5 +1833,5 @@ fn observe_upload_attempt(request: &StatsUploadRequest, upload_reason: UploadRea
   });
 }
 
-#[cfg(not(feature = "logger-cli"))]
+#[cfg(not(feature = "logger-cli-observer"))]
 fn observe_upload_attempt(_request: &StatsUploadRequest, _upload_reason: UploadReason) {}

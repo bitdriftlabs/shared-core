@@ -10,12 +10,7 @@ rust_library_with_feature_variants(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
-    # The monorepo builds no mobile SDK, so it always includes the logger-cli hooks that the
-    # SDK's Cargo build leaves out.
-    crate_features = [
-        "default",
-        "logger-cli",
-    ],
+    crate_features = ["default"],
     crate_name = "bd_client_stats",
     crate_root = "src/lib.rs",
     edition = "2024",
@@ -26,6 +21,7 @@ rust_library_with_feature_variants(
                 "//shared-core/bd-stats-common": "//shared-core/bd-stats-common:bd-stats-common-fuzz",
             },
         },
+        "logger-cli": {"crate_features": ["logger-cli-observer"]},
     },
 )
 

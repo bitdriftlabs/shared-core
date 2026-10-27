@@ -87,7 +87,13 @@ async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
   // Upload each log as soon as it is available, using the runtime acknowledgment as a gate.
   stream
     .stream_action(StreamAction::SendRuntime(make_update(
-      vec![("log_uploader.batch_size", ValueKind::Int(1))],
+      vec![
+        ("log_uploader.batch_size", ValueKind::Int(1)),
+        // The explicit flush below starts this interval, so the stop-time stats upload is held
+        // back and only the periodic upload that follows it can send the final snapshot.
+        ("stats.minimum_upload_interval_ms", ValueKind::Int(5_000)),
+        ("stats.upload_flush_interval_ms", ValueKind::Int(500)),
+      ],
       "driver-runtime".into(),
     )))
     .await;
@@ -144,8 +150,8 @@ async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
   let worker = driver.worker.abort_handle();
   driver.stop().await.unwrap();
   assert!(worker.is_finished());
-  // The earlier explicit flush started the stats minimum upload interval, so only the stop-time
-  // drain can upload and acknowledge the final snapshot before shutdown.
+  // Shutting down before the stop-time stats upload is acknowledged would leave its snapshot
+  // behind.
   assert_eq!(stats_snapshot_files(directory.path()), Vec::<String>::new());
 }
 
