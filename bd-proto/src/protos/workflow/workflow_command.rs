@@ -165,7 +165,7 @@ pub mod device_command_availability {
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.PlatformSupport.min_os_version)
         pub min_os_version: ::std::option::Option<::std::string::String>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.PlatformSupport.min_config_version)
-        pub min_config_version: ::std::option::Option<i64>,
+        pub min_config_version: i64,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.PlatformSupport.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -195,7 +195,7 @@ pub mod device_command_availability {
                 |m: &PlatformSupport| { &m.min_os_version },
                 |m: &mut PlatformSupport| { &mut m.min_os_version },
             ));
-            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "min_config_version",
                 |m: &PlatformSupport| { &m.min_config_version },
                 |m: &mut PlatformSupport| { &mut m.min_config_version },
@@ -225,7 +225,7 @@ pub mod device_command_availability {
                         self.min_os_version = ::std::option::Option::Some(is.read_string()?);
                     },
                     24 => {
-                        self.min_config_version = ::std::option::Option::Some(is.read_int64()?);
+                        self.min_config_version = is.read_int64()?;
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -245,8 +245,8 @@ pub mod device_command_availability {
             if let Some(v) = self.min_os_version.as_ref() {
                 my_size += ::protobuf::rt::string_size(2, &v);
             }
-            if let Some(v) = self.min_config_version {
-                my_size += ::protobuf::rt::int64_size(3, v);
+            if self.min_config_version != 0 {
+                my_size += ::protobuf::rt::int64_size(3, self.min_config_version);
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
@@ -260,8 +260,8 @@ pub mod device_command_availability {
             if let Some(v) = self.min_os_version.as_ref() {
                 os.write_string(2, v)?;
             }
-            if let Some(v) = self.min_config_version {
-                os.write_int64(3, v)?;
+            if self.min_config_version != 0 {
+                os.write_int64(3, self.min_config_version)?;
             }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
@@ -282,7 +282,7 @@ pub mod device_command_availability {
         fn clear(&mut self) {
             self.platform = ::protobuf::EnumOrUnknown::new(Platform::PLATFORM_UNSPECIFIED);
             self.min_os_version = ::std::option::Option::None;
-            self.min_config_version = ::std::option::Option::None;
+            self.min_config_version = 0;
             self.special_fields.clear();
         }
 
@@ -290,7 +290,7 @@ pub mod device_command_availability {
             static instance: PlatformSupport = PlatformSupport {
                 platform: ::protobuf::EnumOrUnknown::from_i32(0),
                 min_os_version: ::std::option::Option::None,
-                min_config_version: ::std::option::Option::None,
+                min_config_version: 0,
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -1504,71 +1504,70 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n;bitdrift_public/protobuf/workflow/v1/workflow_command.proto\x12$bitdr\
     ift_public.protobuf.workflow.v1\x1a1bitdrift_public/protobuf/logging/v1/\
     payload.proto\x1a\x20google/protobuf/descriptor.proto\x1a\x17validate/va\
-    lidate.proto\"\x86\x04\n\x19DeviceCommandAvailability\x12\x8a\x01\n\x13s\
+    lidate.proto\"\xea\x03\n\x19DeviceCommandAvailability\x12\x8a\x01\n\x13s\
     upported_platforms\x18\x01\x20\x03(\x0b2O.bitdrift_public.protobuf.workf\
     low.v1.DeviceCommandAvailability.PlatformSupportR\x12supportedPlatformsB\
-    \x08\xfaB\x05\x92\x01\x02\x10\x02\x1a\x9d\x02\n\x0fPlatformSupport\x12n\
+    \x08\xfaB\x05\x92\x01\x02\x10\x02\x1a\x81\x02\n\x0fPlatformSupport\x12n\
     \n\x08platform\x18\x01\x20\x01(\x0e2H.bitdrift_public.protobuf.workflow.\
     v1.DeviceCommandAvailability.PlatformR\x08platformB\x08\xfaB\x05\x82\x01\
     \x02\x10\x01\x124\n\x0emin_os_version\x18\x02\x20\x01(\tH\0R\x0cminOsVer\
-    sionB\t\xfaB\x06r\x04\x10\x01\x18@\x88\x01\x01\x12:\n\x12min_config_vers\
-    ion\x18\x03\x20\x01(\x03H\x01R\x10minConfigVersionB\x07\xfaB\x04\"\x02\
-    \x20\0\x88\x01\x01B\x11\n\x0f_min_os_versionB\x15\n\x13_min_config_versi\
-    on\"<\n\x08Platform\x12\x18\n\x14PLATFORM_UNSPECIFIED\x10\0\x12\x0b\n\
-    \x07ANDROID\x10\x01\x12\t\n\x05APPLE\x10\x02\"\xbd\x03\n\x1fDeviceComman\
-    dArgumentDefinition\x12\x1e\n\x04name\x18\x01\x20\x01(\tR\x04nameB\n\xfa\
-    B\x07r\x05\x10\x01\x18\x80\x01\x12h\n\x04type\x18\x02\x20\x01(\x0e2J.bit\
-    drift_public.protobuf.workflow.v1.DeviceCommandArgumentDefinition.TypeR\
-    \x04typeB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12,\n\x0bdescription\x18\x03\
-    \x20\x01(\tR\x0bdescriptionB\n\xfaB\x07r\x05\x10\x01\x18\xe8\x07\x12\x1a\
-    \n\x08optional\x18\x04\x20\x01(\x08R\x08optional\x12c\n\x0cavailability\
+    sionB\t\xfaB\x06r\x04\x10\x01\x18@\x88\x01\x01\x125\n\x12min_config_vers\
+    ion\x18\x03\x20\x01(\x03R\x10minConfigVersionB\x07\xfaB\x04\"\x02\x20\0B\
+    \x11\n\x0f_min_os_version\"<\n\x08Platform\x12\x18\n\x14PLATFORM_UNSPECI\
+    FIED\x10\0\x12\x0b\n\x07ANDROID\x10\x01\x12\t\n\x05APPLE\x10\x02\"\xbd\
+    \x03\n\x1fDeviceCommandArgumentDefinition\x12\x1e\n\x04name\x18\x01\x20\
+    \x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\x80\x01\x12h\n\x04type\x18\
+    \x02\x20\x01(\x0e2J.bitdrift_public.protobuf.workflow.v1.DeviceCommandAr\
+    gumentDefinition.TypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12,\n\
+    \x0bdescription\x18\x03\x20\x01(\tR\x0bdescriptionB\n\xfaB\x07r\x05\x10\
+    \x01\x18\xe8\x07\x12\x1a\n\x08optional\x18\x04\x20\x01(\x08R\x08optional\
+    \x12c\n\x0cavailability\x18\x05\x20\x01(\x0b2?.bitdrift_public.protobuf.\
+    workflow.v1.DeviceCommandAvailabilityR\x0cavailability\"a\n\x04Type\x12\
+    \x14\n\x10TYPE_UNSPECIFIED\x10\0\x12\n\n\x06STRING\x10\x01\x12\n\n\x06BI\
+    NARY\x10\x02\x12\n\n\x06UINT64\x10\x03\x12\n\n\x06DOUBLE\x10\x04\x12\t\n\
+    \x05INT64\x10\x05\x12\x08\n\x04BOOL\x10\x06\"\xde\x02\n\x17WellKnownComm\
+    andOptions\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x20\n\x0bdesc\
+    ription\x18\x02\x20\x01(\tR\x0bdescription\x12x\n\x14argument_definition\
+    s\x18\x03\x20\x03(\x0b2E.bitdrift_public.protobuf.workflow.v1.DeviceComm\
+    andArgumentDefinitionR\x13argumentDefinitions\x120\n\x14is_privacy_sensi\
+    tive\x18\x04\x20\x01(\x08R\x12isPrivacySensitive\x12c\n\x0cavailability\
     \x18\x05\x20\x01(\x0b2?.bitdrift_public.protobuf.workflow.v1.DeviceComma\
-    ndAvailabilityR\x0cavailability\"a\n\x04Type\x12\x14\n\x10TYPE_UNSPECIFI\
-    ED\x10\0\x12\n\n\x06STRING\x10\x01\x12\n\n\x06BINARY\x10\x02\x12\n\n\x06\
-    UINT64\x10\x03\x12\n\n\x06DOUBLE\x10\x04\x12\t\n\x05INT64\x10\x05\x12\
-    \x08\n\x04BOOL\x10\x06\"\xde\x02\n\x17WellKnownCommandOptions\x12\x10\n\
-    \x03key\x18\x01\x20\x01(\tR\x03key\x12\x20\n\x0bdescription\x18\x02\x20\
-    \x01(\tR\x0bdescription\x12x\n\x14argument_definitions\x18\x03\x20\x03(\
-    \x0b2E.bitdrift_public.protobuf.workflow.v1.DeviceCommandArgumentDefinit\
-    ionR\x13argumentDefinitions\x120\n\x14is_privacy_sensitive\x18\x04\x20\
-    \x01(\x08R\x12isPrivacySensitive\x12c\n\x0cavailability\x18\x05\x20\x01(\
-    \x0b2?.bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailabilityR\
-    \x0cavailability\"\xc1\x05\n\x17WorkflowCommandSelector\x12w\n\x0fbuilti\
-    n_command\x18\x01\x20\x01(\x0b2L.bitdrift_public.protobuf.workflow.v1.Wo\
-    rkflowCommandSelector.BuiltinCommandH\0R\x0ebuiltinCommand\x12\x80\x01\n\
-    \x12registered_command\x18\x02\x20\x01(\x0b2O.bitdrift_public.protobuf.w\
-    orkflow.v1.WorkflowCommandSelector.RegisteredCommandH\0R\x11registeredCo\
-    mmand\x12j\n\targuments\x18\x03\x20\x03(\x0b2L.bitdrift_public.protobuf.\
-    workflow.v1.WorkflowCommandSelector.ArgumentsEntryR\targuments\x1aP\n\
-    \x11RegisteredCommand\x12;\n\x15registered_command_id\x18\x01\x20\x01(\t\
-    R\x13registeredCommandIdB\x07\xfaB\x04r\x02\x10\x01\x1aj\n\x0eBuiltinCom\
-    mand\x12X\n\x04type\x18\x01\x20\x01(\x0e2:.bitdrift_public.protobuf.work\
-    flow.v1.WellKnownCommandTypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\x10\x01\
-    \x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
-    \x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging\
-    .v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01\
-    *\x9d\x06\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_UNSPECIFIED\x10\0\
-    \x12o\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1aW\xc2\xf3\x18S\n\x12dump_device\
-    _buffer\x12$Requests\x20the\x20device's\x20buffered\x20logs.*\x17\n\t\
-    \x08\x01\x12\x036.0\x181\n\n\x08\x02\x12\x0415.0\x181\x12|\n\x0fTAKE_SCR\
-    EENSHOT\x10\x02\x1ag\xc2\xf3\x18c\n\x0ftake_screenshot\x125Captures\x20t\
-    he\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20image.\x20\x01\
-    *\x17\n\t\x08\x01\x12\x036.0\x181\n\n\x08\x02\x12\x0415.0\x181\x12\xff\
-    \x03\n\x14STACK_SAMPLING_TRACE\x10\x03\x1a\xe4\x03\xc2\xf3\x18\xdf\x03\n\
-    \x14stack_sampling_trace\x12TCaptures\x20a\x20Perfetto\x20stack\x20sampl\
-    ing\x20trace\x20of\x20the\x20application's\x20process\x20(Android\x2015+\
-    ).\x1a\x9f\x01\n\x0bduration_ms\x10\x05\x1a\x8b\x01How\x20long\x20to\x20\
-    sample,\x20in\x20milliseconds.\x20Defaults\x20to\x203000.\x20The\x20clie\
-    nt\x20clamps\x20it\x20to\x20its\x20configured\x20maximum\x20and\x20to\
-    \x20the\x20command\x20execution\x20timeout.\x20\x01\x1a^\n\x0cfrequency_\
-    hz\x10\x05\x1aJSampling\x20frequency\x20in\x20Hz.\x20Defaults\x20to\x201\
-    00;\x20the\x20client\x20clamps\x20it\x20to\x2010-250.\x20\x01\x1ac\n\x0e\
-    buffer_size_kb\x10\x05\x1aMTrace\x20buffer\x20size\x20in\x20KB.\x20Defau\
-    lts\x20to\x202048;\x20the\x20client\x20clamps\x20it\x20to\x20256-16384.\
-    \x20\x01*\n\n\x08\x08\x01\x12\x0215\x181:\x9f\x01\n\x1awell_known_comman\
-    d_options\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workfl\
-    ow.v1.WellKnownCommandOptions\x12!.google.protobuf.EnumValueOptionsR\x17\
-    wellKnownCommandOptionsb\x06proto3\
+    ndAvailabilityR\x0cavailability\"\xc1\x05\n\x17WorkflowCommandSelector\
+    \x12w\n\x0fbuiltin_command\x18\x01\x20\x01(\x0b2L.bitdrift_public.protob\
+    uf.workflow.v1.WorkflowCommandSelector.BuiltinCommandH\0R\x0ebuiltinComm\
+    and\x12\x80\x01\n\x12registered_command\x18\x02\x20\x01(\x0b2O.bitdrift_\
+    public.protobuf.workflow.v1.WorkflowCommandSelector.RegisteredCommandH\0\
+    R\x11registeredCommand\x12j\n\targuments\x18\x03\x20\x03(\x0b2L.bitdrift\
+    _public.protobuf.workflow.v1.WorkflowCommandSelector.ArgumentsEntryR\tar\
+    guments\x1aP\n\x11RegisteredCommand\x12;\n\x15registered_command_id\x18\
+    \x01\x20\x01(\tR\x13registeredCommandIdB\x07\xfaB\x04r\x02\x10\x01\x1aj\
+    \n\x0eBuiltinCommand\x12X\n\x04type\x18\x01\x20\x01(\x0e2:.bitdrift_publ\
+    ic.protobuf.workflow.v1.WellKnownCommandTypeR\x04typeB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\
+    \x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.p\
+    rotobuf.logging.v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\
+    \x12\x03\xf8B\x01*\x8f\x06\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_U\
+    NSPECIFIED\x10\0\x12o\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1aW\xc2\xf3\x18S\
+    \n\x12dump_device_buffer\x12$Requests\x20the\x20device's\x20buffered\x20\
+    logs.*\x17\n\t\x08\x01\x12\x036.0\x181\n\n\x08\x02\x12\x0415.0\x181\x12|\
+    \n\x0fTAKE_SCREENSHOT\x10\x02\x1ag\xc2\xf3\x18c\n\x0ftake_screenshot\x12\
+    5Captures\x20the\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20\
+    image.\x20\x01*\x17\n\t\x08\x01\x12\x038.0\x181\n\n\x08\x02\x12\x0415.0\
+    \x181\x12\xf1\x03\n\x14STACK_SAMPLING_TRACE\x10\x03\x1a\xd6\x03\xc2\xf3\
+    \x18\xd1\x03\n\x14stack_sampling_trace\x12FCaptures\x20a\x20Perfetto\x20\
+    stack\x20sampling\x20trace\x20of\x20the\x20application's\x20process.\x1a\
+    \x9f\x01\n\x0bduration_ms\x10\x05\x1a\x8b\x01How\x20long\x20to\x20sample\
+    ,\x20in\x20milliseconds.\x20Defaults\x20to\x203000.\x20The\x20client\x20\
+    clamps\x20it\x20to\x20its\x20configured\x20maximum\x20and\x20to\x20the\
+    \x20command\x20execution\x20timeout.\x20\x01\x1a^\n\x0cfrequency_hz\x10\
+    \x05\x1aJSampling\x20frequency\x20in\x20Hz.\x20Defaults\x20to\x20100;\
+    \x20the\x20client\x20clamps\x20it\x20to\x2010-250.\x20\x01\x1ac\n\x0ebuf\
+    fer_size_kb\x10\x05\x1aMTrace\x20buffer\x20size\x20in\x20KB.\x20Defaults\
+    \x20to\x202048;\x20the\x20client\x20clamps\x20it\x20to\x20256-16384.\x20\
+    \x01*\n\n\x08\x08\x01\x12\x0215\x182:\x9f\x01\n\x1awell_known_command_op\
+    tions\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v\
+    1.WellKnownCommandOptions\x12!.google.protobuf.EnumValueOptionsR\x17well\
+    KnownCommandOptionsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

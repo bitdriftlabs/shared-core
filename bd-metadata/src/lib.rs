@@ -49,7 +49,8 @@ use std::collections::HashMap;
 // Version 48: Added JSON path extraction for workflow fields.
 // Version 49: Added SDK-instance-scoped device commands with reconnect-safe update replay and
 //             explicit acknowledgement dispositions.
-pub const CONFIGURATION_VERSION: &str = "49";
+// Version 50: Android stack trace built-in command support.
+pub const CONFIGURATION_VERSION: &str = "50";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
