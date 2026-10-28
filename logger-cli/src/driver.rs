@@ -23,13 +23,20 @@ use bd_logger::{
   log_level,
 };
 use bd_proto::protos::logging::payload::LogType;
-use std::collections::HashMap;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 
+// The stop-time stats upload can be held back by the 30 s explicit-flush minimum interval, in which
+// case the next periodic upload (every 60 s by default) sends it.
+const STOP_STATS_UPLOAD_DEADLINE: Duration = Duration::from_secs(120);
+const STATS_UPLOAD_POLL_INTERVAL: Duration = Duration::from_millis(250);
+
 pub struct Driver {
+  directory: PathBuf,
   holder: LoggerHolder,
   worker: JoinHandle<anyhow::Result<()>>,
 }
@@ -41,6 +48,7 @@ impl Driver {
       .take_future()
       .ok_or_else(|| anyhow::anyhow!("logger already started"))?;
     Ok(Self {
+      directory: directory.to_path_buf(),
       holder,
       worker: tokio::spawn(future),
     })
@@ -95,16 +103,61 @@ impl Driver {
     Ok(())
   }
 
+  /// Wait until the stats snapshots currently on disk have been uploaded. The SDK deletes a
+  /// snapshot only after the backend acknowledges it, so this watches the stats directory.
+  /// Snapshots written after the call starts do not hold it.
+  pub async fn wait_for_stats_uploads(&self, deadline: Duration) -> anyhow::Result<()> {
+    let stats_directory = self.directory.join("stats_uploads");
+    let pending = stats_snapshot_files(&stats_directory)?;
+    tokio::time::timeout(deadline, async {
+      while !pending.is_disjoint(&stats_snapshot_files(&stats_directory)?) {
+        tokio::time::sleep(STATS_UPLOAD_POLL_INTERVAL).await;
+      }
+      Ok(())
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("stats snapshots were not acknowledged within {deadline:?}"))?
+  }
+
   pub async fn stop(self) -> anyhow::Result<()> {
-    // Always shut down the worker, including when the flush failed.
+    // Always shut down the worker, including when the flush or upload wait failed. The flush
+    // persists stats and starts their upload, which must be acknowledged before shutdown.
     let flushed = self.flush().await;
+    let uploaded = if flushed.is_ok() {
+      self
+        .wait_for_stats_uploads(STOP_STATS_UPLOAD_DEADLINE)
+        .await
+    } else {
+      Ok(())
+    };
     self.holder.logger.lock().shutdown(false);
     drop(self.holder);
     let stopped = stop_worker(self.worker, Duration::from_secs(30)).await;
     flushed?;
+    uploaded?;
     stopped?;
     Ok(())
   }
+}
+
+// Returns the stats snapshot file names in `directory`, excluding the SDK's index files.
+fn stats_snapshot_files(directory: &Path) -> anyhow::Result<HashSet<OsString>> {
+  let entries = match std::fs::read_dir(directory) {
+    Ok(entries) => entries,
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
+    Err(error) => return Err(error.into()),
+  };
+  let mut files = HashSet::new();
+  for entry in entries {
+    let name = entry?.file_name();
+    if !name
+      .to_string_lossy()
+      .starts_with("pending_aggregation_index")
+    {
+      files.insert(name);
+    }
+  }
+  Ok(files)
 }
 
 async fn wait_for_configuration(
