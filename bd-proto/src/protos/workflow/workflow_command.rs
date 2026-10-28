@@ -31,6 +31,357 @@
 /// of protobuf runtime.
 const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_4_0_0_ALPHA_0;
 
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeviceCommandAvailability {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.supported_platforms)
+    pub supported_platforms: ::std::vec::Vec<device_command_availability::PlatformSupport>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeviceCommandAvailability {
+    fn default() -> &'a DeviceCommandAvailability {
+        <DeviceCommandAvailability as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeviceCommandAvailability {
+    pub fn new() -> DeviceCommandAvailability {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "supported_platforms",
+            |m: &DeviceCommandAvailability| { &m.supported_platforms },
+            |m: &mut DeviceCommandAvailability| { &mut m.supported_platforms },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandAvailability>(
+            "DeviceCommandAvailability",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeviceCommandAvailability {
+    const NAME: &'static str = "DeviceCommandAvailability";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.supported_platforms.push(is.read_message()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.supported_platforms {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.supported_platforms {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeviceCommandAvailability {
+        DeviceCommandAvailability::new()
+    }
+
+    fn clear(&mut self) {
+        self.supported_platforms.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeviceCommandAvailability {
+        static instance: DeviceCommandAvailability = DeviceCommandAvailability {
+            supported_platforms: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeviceCommandAvailability {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeviceCommandAvailability").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeviceCommandAvailability {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeviceCommandAvailability {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DeviceCommandAvailability`
+pub mod device_command_availability {
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.PlatformSupport)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct PlatformSupport {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.PlatformSupport.platform)
+        pub platform: ::protobuf::EnumOrUnknown<Platform>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.PlatformSupport.min_os_version)
+        pub min_os_version: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.PlatformSupport.min_config_version)
+        pub min_config_version: i64,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.PlatformSupport.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a PlatformSupport {
+        fn default() -> &'a PlatformSupport {
+            <PlatformSupport as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl PlatformSupport {
+        pub fn new() -> PlatformSupport {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "platform",
+                |m: &PlatformSupport| { &m.platform },
+                |m: &mut PlatformSupport| { &mut m.platform },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "min_os_version",
+                |m: &PlatformSupport| { &m.min_os_version },
+                |m: &mut PlatformSupport| { &mut m.min_os_version },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "min_config_version",
+                |m: &PlatformSupport| { &m.min_config_version },
+                |m: &mut PlatformSupport| { &mut m.min_config_version },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<PlatformSupport>(
+                "DeviceCommandAvailability.PlatformSupport",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for PlatformSupport {
+        const NAME: &'static str = "PlatformSupport";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.platform = is.read_enum_or_unknown()?;
+                    },
+                    18 => {
+                        self.min_os_version = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    24 => {
+                        self.min_config_version = is.read_int64()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.platform != ::protobuf::EnumOrUnknown::new(Platform::PLATFORM_UNSPECIFIED) {
+                my_size += ::protobuf::rt::int32_size(1, self.platform.value());
+            }
+            if let Some(v) = self.min_os_version.as_ref() {
+                my_size += ::protobuf::rt::string_size(2, &v);
+            }
+            if self.min_config_version != 0 {
+                my_size += ::protobuf::rt::int64_size(3, self.min_config_version);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.platform != ::protobuf::EnumOrUnknown::new(Platform::PLATFORM_UNSPECIFIED) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.platform))?;
+            }
+            if let Some(v) = self.min_os_version.as_ref() {
+                os.write_string(2, v)?;
+            }
+            if self.min_config_version != 0 {
+                os.write_int64(3, self.min_config_version)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> PlatformSupport {
+            PlatformSupport::new()
+        }
+
+        fn clear(&mut self) {
+            self.platform = ::protobuf::EnumOrUnknown::new(Platform::PLATFORM_UNSPECIFIED);
+            self.min_os_version = ::std::option::Option::None;
+            self.min_config_version = 0;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static PlatformSupport {
+            static instance: PlatformSupport = PlatformSupport {
+                platform: ::protobuf::EnumOrUnknown::from_i32(0),
+                min_os_version: ::std::option::Option::None,
+                min_config_version: 0,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for PlatformSupport {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DeviceCommandAvailability.PlatformSupport").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for PlatformSupport {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for PlatformSupport {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+    // @@protoc_insertion_point(enum:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.Platform)
+    pub enum Platform {
+        // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.Platform.PLATFORM_UNSPECIFIED)
+        PLATFORM_UNSPECIFIED = 0,
+        // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.Platform.ANDROID)
+        ANDROID = 1,
+        // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.DeviceCommandAvailability.Platform.APPLE)
+        APPLE = 2,
+    }
+
+    impl ::protobuf::Enum for Platform {
+        const NAME: &'static str = "Platform";
+
+        fn value(&self) -> i32 {
+            *self as i32
+        }
+
+        fn from_i32(value: i32) -> ::std::option::Option<Platform> {
+            match value {
+                0 => ::std::option::Option::Some(Platform::PLATFORM_UNSPECIFIED),
+                1 => ::std::option::Option::Some(Platform::ANDROID),
+                2 => ::std::option::Option::Some(Platform::APPLE),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        fn from_str(str: &str) -> ::std::option::Option<Platform> {
+            match str {
+                "PLATFORM_UNSPECIFIED" => ::std::option::Option::Some(Platform::PLATFORM_UNSPECIFIED),
+                "ANDROID" => ::std::option::Option::Some(Platform::ANDROID),
+                "APPLE" => ::std::option::Option::Some(Platform::APPLE),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        const VALUES: &'static [Platform] = &[
+            Platform::PLATFORM_UNSPECIFIED,
+            Platform::ANDROID,
+            Platform::APPLE,
+        ];
+    }
+
+    impl ::protobuf::EnumFull for Platform {
+        fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().enum_by_package_relative_name("DeviceCommandAvailability.Platform").unwrap()).clone()
+        }
+
+        fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+            let index = *self as usize;
+            Self::enum_descriptor().value_by_index(index)
+        }
+    }
+
+    impl ::std::default::Default for Platform {
+        fn default() -> Self {
+            Platform::PLATFORM_UNSPECIFIED
+        }
+    }
+
+    impl Platform {
+        pub(in super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+            ::protobuf::reflect::GeneratedEnumDescriptorData::new::<Platform>("DeviceCommandAvailability.Platform")
+        }
+    }
+}
+
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.DeviceCommandArgumentDefinition)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct DeviceCommandArgumentDefinition {
@@ -43,6 +394,8 @@ pub struct DeviceCommandArgumentDefinition {
     pub description: ::std::string::String,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.DeviceCommandArgumentDefinition.optional)
     pub optional: bool,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.DeviceCommandArgumentDefinition.availability)
+    pub availability: ::protobuf::MessageField<DeviceCommandAvailability>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.DeviceCommandArgumentDefinition.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -60,7 +413,7 @@ impl DeviceCommandArgumentDefinition {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut fields = ::std::vec::Vec::with_capacity(5);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "name",
@@ -81,6 +434,11 @@ impl DeviceCommandArgumentDefinition {
             "optional",
             |m: &DeviceCommandArgumentDefinition| { &m.optional },
             |m: &mut DeviceCommandArgumentDefinition| { &mut m.optional },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DeviceCommandAvailability>(
+            "availability",
+            |m: &DeviceCommandArgumentDefinition| { &m.availability },
+            |m: &mut DeviceCommandArgumentDefinition| { &mut m.availability },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeviceCommandArgumentDefinition>(
             "DeviceCommandArgumentDefinition",
@@ -112,6 +470,9 @@ impl ::protobuf::Message for DeviceCommandArgumentDefinition {
                 32 => {
                     self.optional = is.read_bool()?;
                 },
+                42 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.availability)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -136,6 +497,10 @@ impl ::protobuf::Message for DeviceCommandArgumentDefinition {
         if self.optional != false {
             my_size += 1 + 1;
         }
+        if let Some(v) = self.availability.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -153,6 +518,9 @@ impl ::protobuf::Message for DeviceCommandArgumentDefinition {
         }
         if self.optional != false {
             os.write_bool(4, self.optional)?;
+        }
+        if let Some(v) = self.availability.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -175,6 +543,7 @@ impl ::protobuf::Message for DeviceCommandArgumentDefinition {
         self.type_ = ::protobuf::EnumOrUnknown::new(device_command_argument_definition::Type::TYPE_UNSPECIFIED);
         self.description.clear();
         self.optional = false;
+        self.availability.clear();
         self.special_fields.clear();
     }
 
@@ -184,6 +553,7 @@ impl ::protobuf::Message for DeviceCommandArgumentDefinition {
             type_: ::protobuf::EnumOrUnknown::from_i32(0),
             description: ::std::string::String::new(),
             optional: false,
+            availability: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -309,6 +679,8 @@ pub struct WellKnownCommandOptions {
     pub argument_definitions: ::std::vec::Vec<DeviceCommandArgumentDefinition>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions.is_privacy_sensitive)
     pub is_privacy_sensitive: bool,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions.availability)
+    pub availability: ::protobuf::MessageField<DeviceCommandAvailability>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -326,7 +698,7 @@ impl WellKnownCommandOptions {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut fields = ::std::vec::Vec::with_capacity(5);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "key",
@@ -347,6 +719,11 @@ impl WellKnownCommandOptions {
             "is_privacy_sensitive",
             |m: &WellKnownCommandOptions| { &m.is_privacy_sensitive },
             |m: &mut WellKnownCommandOptions| { &mut m.is_privacy_sensitive },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DeviceCommandAvailability>(
+            "availability",
+            |m: &WellKnownCommandOptions| { &m.availability },
+            |m: &mut WellKnownCommandOptions| { &mut m.availability },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<WellKnownCommandOptions>(
             "WellKnownCommandOptions",
@@ -378,6 +755,9 @@ impl ::protobuf::Message for WellKnownCommandOptions {
                 32 => {
                     self.is_privacy_sensitive = is.read_bool()?;
                 },
+                42 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.availability)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -403,6 +783,10 @@ impl ::protobuf::Message for WellKnownCommandOptions {
         if self.is_privacy_sensitive != false {
             my_size += 1 + 1;
         }
+        if let Some(v) = self.availability.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -420,6 +804,9 @@ impl ::protobuf::Message for WellKnownCommandOptions {
         };
         if self.is_privacy_sensitive != false {
             os.write_bool(4, self.is_privacy_sensitive)?;
+        }
+        if let Some(v) = self.availability.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -442,6 +829,7 @@ impl ::protobuf::Message for WellKnownCommandOptions {
         self.description.clear();
         self.argument_definitions.clear();
         self.is_privacy_sensitive = false;
+        self.availability.clear();
         self.special_fields.clear();
     }
 
@@ -451,6 +839,7 @@ impl ::protobuf::Message for WellKnownCommandOptions {
             description: ::std::string::String::new(),
             argument_definitions: ::std::vec::Vec::new(),
             is_privacy_sensitive: false,
+            availability: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -1042,6 +1431,8 @@ pub enum WellKnownCommandType {
     DUMP_DEVICE_BUFFER = 1,
     // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.WellKnownCommandType.TAKE_SCREENSHOT)
     TAKE_SCREENSHOT = 2,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.WellKnownCommandType.STACK_SAMPLING_TRACE)
+    STACK_SAMPLING_TRACE = 3,
 }
 
 impl ::protobuf::Enum for WellKnownCommandType {
@@ -1056,6 +1447,7 @@ impl ::protobuf::Enum for WellKnownCommandType {
             0 => ::std::option::Option::Some(WellKnownCommandType::TYPE_UNSPECIFIED),
             1 => ::std::option::Option::Some(WellKnownCommandType::DUMP_DEVICE_BUFFER),
             2 => ::std::option::Option::Some(WellKnownCommandType::TAKE_SCREENSHOT),
+            3 => ::std::option::Option::Some(WellKnownCommandType::STACK_SAMPLING_TRACE),
             _ => ::std::option::Option::None
         }
     }
@@ -1065,6 +1457,7 @@ impl ::protobuf::Enum for WellKnownCommandType {
             "TYPE_UNSPECIFIED" => ::std::option::Option::Some(WellKnownCommandType::TYPE_UNSPECIFIED),
             "DUMP_DEVICE_BUFFER" => ::std::option::Option::Some(WellKnownCommandType::DUMP_DEVICE_BUFFER),
             "TAKE_SCREENSHOT" => ::std::option::Option::Some(WellKnownCommandType::TAKE_SCREENSHOT),
+            "STACK_SAMPLING_TRACE" => ::std::option::Option::Some(WellKnownCommandType::STACK_SAMPLING_TRACE),
             _ => ::std::option::Option::None
         }
     }
@@ -1073,6 +1466,7 @@ impl ::protobuf::Enum for WellKnownCommandType {
         WellKnownCommandType::TYPE_UNSPECIFIED,
         WellKnownCommandType::DUMP_DEVICE_BUFFER,
         WellKnownCommandType::TAKE_SCREENSHOT,
+        WellKnownCommandType::STACK_SAMPLING_TRACE,
     ];
 }
 
@@ -1110,43 +1504,70 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n;bitdrift_public/protobuf/workflow/v1/workflow_command.proto\x12$bitdr\
     ift_public.protobuf.workflow.v1\x1a1bitdrift_public/protobuf/logging/v1/\
     payload.proto\x1a\x20google/protobuf/descriptor.proto\x1a\x17validate/va\
-    lidate.proto\"\xd8\x02\n\x1fDeviceCommandArgumentDefinition\x12\x1e\n\
-    \x04name\x18\x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\x80\
-    \x01\x12h\n\x04type\x18\x02\x20\x01(\x0e2J.bitdrift_public.protobuf.work\
-    flow.v1.DeviceCommandArgumentDefinition.TypeR\x04typeB\x08\xfaB\x05\x82\
-    \x01\x02\x10\x01\x12,\n\x0bdescription\x18\x03\x20\x01(\tR\x0bdescriptio\
-    nB\n\xfaB\x07r\x05\x10\x01\x18\xe8\x07\x12\x1a\n\x08optional\x18\x04\x20\
-    \x01(\x08R\x08optional\"a\n\x04Type\x12\x14\n\x10TYPE_UNSPECIFIED\x10\0\
-    \x12\n\n\x06STRING\x10\x01\x12\n\n\x06BINARY\x10\x02\x12\n\n\x06UINT64\
-    \x10\x03\x12\n\n\x06DOUBLE\x10\x04\x12\t\n\x05INT64\x10\x05\x12\x08\n\
-    \x04BOOL\x10\x06\"\xf9\x01\n\x17WellKnownCommandOptions\x12\x10\n\x03key\
-    \x18\x01\x20\x01(\tR\x03key\x12\x20\n\x0bdescription\x18\x02\x20\x01(\tR\
-    \x0bdescription\x12x\n\x14argument_definitions\x18\x03\x20\x03(\x0b2E.bi\
-    tdrift_public.protobuf.workflow.v1.DeviceCommandArgumentDefinitionR\x13a\
-    rgumentDefinitions\x120\n\x14is_privacy_sensitive\x18\x04\x20\x01(\x08R\
-    \x12isPrivacySensitive\"\xc1\x05\n\x17WorkflowCommandSelector\x12w\n\x0f\
-    builtin_command\x18\x01\x20\x01(\x0b2L.bitdrift_public.protobuf.workflow\
-    .v1.WorkflowCommandSelector.BuiltinCommandH\0R\x0ebuiltinCommand\x12\x80\
-    \x01\n\x12registered_command\x18\x02\x20\x01(\x0b2O.bitdrift_public.prot\
-    obuf.workflow.v1.WorkflowCommandSelector.RegisteredCommandH\0R\x11regist\
-    eredCommand\x12j\n\targuments\x18\x03\x20\x03(\x0b2L.bitdrift_public.pro\
-    tobuf.workflow.v1.WorkflowCommandSelector.ArgumentsEntryR\targuments\x1a\
-    P\n\x11RegisteredCommand\x12;\n\x15registered_command_id\x18\x01\x20\x01\
-    (\tR\x13registeredCommandIdB\x07\xfaB\x04r\x02\x10\x01\x1aj\n\x0eBuiltin\
-    Command\x12X\n\x04type\x18\x01\x20\x01(\x0e2:.bitdrift_public.protobuf.w\
-    orkflow.v1.WellKnownCommandTypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\x10\
-    \x01\x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
-    y\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.loggin\
-    g.v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\x12\x03\xf8B\
-    \x01*\xe9\x01\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_UNSPECIFIED\
-    \x10\0\x12V\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1a>\xc2\xf3\x18:\n\x12dump_\
-    device_buffer\x12$Requests\x20the\x20device's\x20buffered\x20logs.\x12c\
-    \n\x0fTAKE_SCREENSHOT\x10\x02\x1aN\xc2\xf3\x18J\n\x0ftake_screenshot\x12\
+    lidate.proto\"\xea\x03\n\x19DeviceCommandAvailability\x12\x8a\x01\n\x13s\
+    upported_platforms\x18\x01\x20\x03(\x0b2O.bitdrift_public.protobuf.workf\
+    low.v1.DeviceCommandAvailability.PlatformSupportR\x12supportedPlatformsB\
+    \x08\xfaB\x05\x92\x01\x02\x10\x02\x1a\x81\x02\n\x0fPlatformSupport\x12n\
+    \n\x08platform\x18\x01\x20\x01(\x0e2H.bitdrift_public.protobuf.workflow.\
+    v1.DeviceCommandAvailability.PlatformR\x08platformB\x08\xfaB\x05\x82\x01\
+    \x02\x10\x01\x124\n\x0emin_os_version\x18\x02\x20\x01(\tH\0R\x0cminOsVer\
+    sionB\t\xfaB\x06r\x04\x10\x01\x18@\x88\x01\x01\x125\n\x12min_config_vers\
+    ion\x18\x03\x20\x01(\x03R\x10minConfigVersionB\x07\xfaB\x04\"\x02\x20\0B\
+    \x11\n\x0f_min_os_version\"<\n\x08Platform\x12\x18\n\x14PLATFORM_UNSPECI\
+    FIED\x10\0\x12\x0b\n\x07ANDROID\x10\x01\x12\t\n\x05APPLE\x10\x02\"\xbd\
+    \x03\n\x1fDeviceCommandArgumentDefinition\x12\x1e\n\x04name\x18\x01\x20\
+    \x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\x80\x01\x12h\n\x04type\x18\
+    \x02\x20\x01(\x0e2J.bitdrift_public.protobuf.workflow.v1.DeviceCommandAr\
+    gumentDefinition.TypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12,\n\
+    \x0bdescription\x18\x03\x20\x01(\tR\x0bdescriptionB\n\xfaB\x07r\x05\x10\
+    \x01\x18\xe8\x07\x12\x1a\n\x08optional\x18\x04\x20\x01(\x08R\x08optional\
+    \x12c\n\x0cavailability\x18\x05\x20\x01(\x0b2?.bitdrift_public.protobuf.\
+    workflow.v1.DeviceCommandAvailabilityR\x0cavailability\"a\n\x04Type\x12\
+    \x14\n\x10TYPE_UNSPECIFIED\x10\0\x12\n\n\x06STRING\x10\x01\x12\n\n\x06BI\
+    NARY\x10\x02\x12\n\n\x06UINT64\x10\x03\x12\n\n\x06DOUBLE\x10\x04\x12\t\n\
+    \x05INT64\x10\x05\x12\x08\n\x04BOOL\x10\x06\"\xde\x02\n\x17WellKnownComm\
+    andOptions\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x20\n\x0bdesc\
+    ription\x18\x02\x20\x01(\tR\x0bdescription\x12x\n\x14argument_definition\
+    s\x18\x03\x20\x03(\x0b2E.bitdrift_public.protobuf.workflow.v1.DeviceComm\
+    andArgumentDefinitionR\x13argumentDefinitions\x120\n\x14is_privacy_sensi\
+    tive\x18\x04\x20\x01(\x08R\x12isPrivacySensitive\x12c\n\x0cavailability\
+    \x18\x05\x20\x01(\x0b2?.bitdrift_public.protobuf.workflow.v1.DeviceComma\
+    ndAvailabilityR\x0cavailability\"\xc1\x05\n\x17WorkflowCommandSelector\
+    \x12w\n\x0fbuiltin_command\x18\x01\x20\x01(\x0b2L.bitdrift_public.protob\
+    uf.workflow.v1.WorkflowCommandSelector.BuiltinCommandH\0R\x0ebuiltinComm\
+    and\x12\x80\x01\n\x12registered_command\x18\x02\x20\x01(\x0b2O.bitdrift_\
+    public.protobuf.workflow.v1.WorkflowCommandSelector.RegisteredCommandH\0\
+    R\x11registeredCommand\x12j\n\targuments\x18\x03\x20\x03(\x0b2L.bitdrift\
+    _public.protobuf.workflow.v1.WorkflowCommandSelector.ArgumentsEntryR\tar\
+    guments\x1aP\n\x11RegisteredCommand\x12;\n\x15registered_command_id\x18\
+    \x01\x20\x01(\tR\x13registeredCommandIdB\x07\xfaB\x04r\x02\x10\x01\x1aj\
+    \n\x0eBuiltinCommand\x12X\n\x04type\x18\x01\x20\x01(\x0e2:.bitdrift_publ\
+    ic.protobuf.workflow.v1.WellKnownCommandTypeR\x04typeB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\
+    \x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.p\
+    rotobuf.logging.v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\
+    \x12\x03\xf8B\x01*\x8f\x06\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_U\
+    NSPECIFIED\x10\0\x12o\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1aW\xc2\xf3\x18S\
+    \n\x12dump_device_buffer\x12$Requests\x20the\x20device's\x20buffered\x20\
+    logs.*\x17\n\t\x08\x01\x12\x036.0\x181\n\n\x08\x02\x12\x0415.0\x181\x12|\
+    \n\x0fTAKE_SCREENSHOT\x10\x02\x1ag\xc2\xf3\x18c\n\x0ftake_screenshot\x12\
     5Captures\x20the\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20\
-    image.\x20\x01:\x9f\x01\n\x1awell_known_command_options\x18\xb8\x8e\x03\
-    \x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.WellKnownCommandOpt\
-    ions\x12!.google.protobuf.EnumValueOptionsR\x17wellKnownCommandOptionsb\
-    \x06proto3\
+    image.\x20\x01*\x17\n\t\x08\x01\x12\x038.0\x181\n\n\x08\x02\x12\x0415.0\
+    \x181\x12\xf1\x03\n\x14STACK_SAMPLING_TRACE\x10\x03\x1a\xd6\x03\xc2\xf3\
+    \x18\xd1\x03\n\x14stack_sampling_trace\x12FCaptures\x20a\x20Perfetto\x20\
+    stack\x20sampling\x20trace\x20of\x20the\x20application's\x20process.\x1a\
+    \x9f\x01\n\x0bduration_ms\x10\x05\x1a\x8b\x01How\x20long\x20to\x20sample\
+    ,\x20in\x20milliseconds.\x20Defaults\x20to\x203000.\x20The\x20client\x20\
+    clamps\x20it\x20to\x20its\x20configured\x20maximum\x20and\x20to\x20the\
+    \x20command\x20execution\x20timeout.\x20\x01\x1a^\n\x0cfrequency_hz\x10\
+    \x05\x1aJSampling\x20frequency\x20in\x20Hz.\x20Defaults\x20to\x20100;\
+    \x20the\x20client\x20clamps\x20it\x20to\x2010-250.\x20\x01\x1ac\n\x0ebuf\
+    fer_size_kb\x10\x05\x1aMTrace\x20buffer\x20size\x20in\x20KB.\x20Defaults\
+    \x20to\x202048;\x20the\x20client\x20clamps\x20it\x20to\x20256-16384.\x20\
+    \x01*\n\n\x08\x08\x01\x12\x0215\x182:\x9f\x01\n\x1awell_known_command_op\
+    tions\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v\
+    1.WellKnownCommandOptions\x12!.google.protobuf.EnumValueOptionsR\x17well\
+    KnownCommandOptionsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1167,14 +1588,17 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::payload::file_descriptor().clone());
             deps.push(::protobuf::descriptor::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(5);
+            let mut messages = ::std::vec::Vec::with_capacity(7);
+            messages.push(DeviceCommandAvailability::generated_message_descriptor_data());
             messages.push(DeviceCommandArgumentDefinition::generated_message_descriptor_data());
             messages.push(WellKnownCommandOptions::generated_message_descriptor_data());
             messages.push(WorkflowCommandSelector::generated_message_descriptor_data());
+            messages.push(device_command_availability::PlatformSupport::generated_message_descriptor_data());
             messages.push(workflow_command_selector::RegisteredCommand::generated_message_descriptor_data());
             messages.push(workflow_command_selector::BuiltinCommand::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(2);
+            let mut enums = ::std::vec::Vec::with_capacity(3);
             enums.push(WellKnownCommandType::generated_enum_descriptor_data());
+            enums.push(device_command_availability::Platform::generated_enum_descriptor_data());
             enums.push(device_command_argument_definition::Type::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),

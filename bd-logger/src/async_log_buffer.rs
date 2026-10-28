@@ -623,11 +623,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
     data_upload_tx: mpsc::Sender<DataUpload>,
     startup_replay_eligibility: StartupReplayEligibility,
-  ) -> (
-    Self,
-    Sender,
-    bd_session_replay::RemoteScreenshotCaptureHandler,
-  ) {
+  ) -> (Self, Sender) {
     uninitialized_logging_context
       .startup_replay_eligibility_initialized(startup_replay_eligibility);
     let workflow_attachment_store = AttachmentStoreHandle::new(
@@ -672,7 +668,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // was built, while EventBuffer still applies it only at its next admission.
     event_buffer.set_pending_limits(event_buffer_limit_watches.read_mark_update());
 
-    let (session_replay_recorder, remote_screenshot_capture_handler) =
+    let session_replay_recorder =
       bd_session_replay::Recorder::new(session_replay_target, runtime_loader);
 
     let internal_periodic_fields_reporter =
@@ -707,7 +703,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           command_execution_policy,
           workflow_command_completion_tx,
           workflow_attachment_store.clone(),
-          remote_screenshot_capture_handler.clone(),
         ),
         device_commands: device_commands.clone(),
         workflow_attachment_store,
@@ -762,7 +757,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         session_strategy,
         device_commands,
       ),
-      remote_screenshot_capture_handler,
     )
   }
 

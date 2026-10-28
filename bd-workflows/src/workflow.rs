@@ -85,6 +85,9 @@ pub fn command_details(selector: Option<&WorkflowCommandSelector>) -> String {
       match command.type_.enum_value() {
         Ok(WellKnownCommandType::TAKE_SCREENSHOT) => output.push_str("\"take_screenshot\""),
         Ok(WellKnownCommandType::DUMP_DEVICE_BUFFER) => output.push_str("\"dump_device_buffer\""),
+        Ok(WellKnownCommandType::STACK_SAMPLING_TRACE) => {
+          output.push_str("\"stack_sampling_trace\"");
+        },
         Ok(WellKnownCommandType::TYPE_UNSPECIFIED) | Err(_) => {
           let _ = write!(output, "\"unknown_builtin_{}\"", command.type_.value());
         },

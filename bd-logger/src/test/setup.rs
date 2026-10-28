@@ -8,6 +8,7 @@
 use crate::logger::{Block, CaptureSession};
 use crate::{
   AnnotatedLogFields,
+  CommandRegistration,
   InitParams,
   LogAttributesOverrides,
   LogLevel,
@@ -317,7 +318,12 @@ impl Setup {
       workflow_event_processed_tx,
     })));
     for (registered_command_id, handler) in options.command_handlers {
-      logger_builder = logger_builder.with_command_handler(registered_command_id, handler);
+      logger_builder = logger_builder
+        .with_command(CommandRegistration::Registered(
+          registered_command_id,
+          handler,
+        ))
+        .unwrap();
     }
     let (logger, _, flush_trigger) = logger_builder.build_dedicated_thread().unwrap();
 

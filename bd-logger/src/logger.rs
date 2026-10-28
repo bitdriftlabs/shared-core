@@ -17,7 +17,7 @@ use crate::async_log_buffer::{
   FlushError,
   LogAttributesOverrides,
 };
-use crate::device_command::{RegisteredCommandDispatcher, RegisteredCommandHandler};
+use crate::device_command::{CommandRegistration, RegisteredCommandDispatcher};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
@@ -203,22 +203,16 @@ pub struct LoggerHandle {
 }
 
 impl LoggerHandle {
-  /// Registers a command handler for this logger, replacing any handler with the same ID.
+  /// Registers a command, replacing any handler with the same ID in its namespace.
   /// Commands that have already selected a handler continue running with that handler.
-  pub fn register_command_handler(
-    &self,
-    registered_command_id: String,
-    handler: Arc<dyn RegisteredCommandHandler>,
-  ) {
-    self
-      .command_dispatcher
-      .register(registered_command_id, handler);
+  pub fn register_command(&self, registration: CommandRegistration) -> anyhow::Result<()> {
+    self.command_dispatcher.register(registration)
   }
 
-  /// Unregisters a handler for this logger. Returns whether a handler was removed.
+  /// Unregisters an app command, returning whether a handler was removed. Built-ins are unaffected.
   /// Commands that have already selected the handler continue running with it.
   #[must_use]
-  pub fn unregister_command_handler(&self, registered_command_id: &str) -> bool {
+  pub fn unregister_command(&self, registered_command_id: &str) -> bool {
     self.command_dispatcher.unregister(registered_command_id)
   }
 

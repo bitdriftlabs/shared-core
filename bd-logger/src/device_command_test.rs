@@ -9,11 +9,14 @@ use super::{
   CommandAttachment,
   CommandError,
   CommandExecutionPolicy,
+  CommandId,
   CommandInvocation,
+  CommandRegistration,
   CommandResult,
   DeviceCommandDispatcher,
   DeviceCommandExecution,
   DeviceCommandStatus,
+  PlatformCommand,
   RegisteredCommandDispatcher,
   RegisteredCommandHandler,
   TestHooks,
@@ -25,7 +28,6 @@ use super::{
   failed_device_command_update_with_fields,
   no_attachment,
   send_device_command_update,
-  workflow_builtin_command_outcome,
   workflow_command_outcome,
 };
 use crate::async_log_buffer::Sender as LogSender;
@@ -64,7 +66,7 @@ use bd_log_primitives::{
 };
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
 use bd_proto::protos::client::api::{DeviceCommandUpdate, device_command_update};
-use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::logging::payload::{Data, LogType};
 use bd_proto::protos::workflow::workflow_command::{
   WellKnownCommandType,
   WorkflowCommandSelector,
@@ -72,13 +74,9 @@ use bd_proto::protos::workflow::workflow_command::{
 };
 use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::device_command::ExecutionTimeoutFlag;
+use bd_runtime::runtime::workflow_attachment::MaxOwnedFiles;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::test::no_timeout;
-use bd_session_replay::{
-  DeviceCommandScreenshotCompletion,
-  RemoteScreenshotCaptureHandler,
-  Target,
-};
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::{OffsetDateTimeExt, SystemTimeProvider, TestTimeProvider};
 use bd_workflows::workflow::{
@@ -88,10 +86,11 @@ use bd_workflows::workflow::{
   command_details,
 };
 use parking_lot::Mutex;
+use protobuf::{EnumOrUnknown, Message};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::future::{Future, pending, poll_fn};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::task::Poll;
@@ -99,6 +98,137 @@ use tempfile::TempDir;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::{Notify, mpsc, oneshot};
 use uuid::Uuid;
+
+// Deliberately absent from WellKnownCommandType to exercise future numeric built-in registration.
+const FUTURE_BUILTIN_COMMAND_TYPE: i32 = 4711;
+
+impl RegisteredCommandDispatcher {
+  fn get_builtin(&self, command_type: i32) -> Option<PlatformCommand> {
+    self
+      .commands
+      .read()
+      .get(&CommandId::Builtin(command_type))
+      .cloned()
+  }
+
+  fn get_handler(&self, id: &str) -> Option<Arc<dyn RegisteredCommandHandler>> {
+    self
+      .commands
+      .read()
+      .get(&CommandId::Registered(id.into()))
+      .map(|command| command.handler.clone())
+  }
+}
+
+#[test]
+fn builtin_registration_isolated_from_app_namespace() {
+  let dispatcher = RegisteredCommandDispatcher::default();
+  dispatcher
+    .register(CommandRegistration::Builtin {
+      command_type: FUTURE_BUILTIN_COMMAND_TYPE,
+      key: "same_name".into(),
+      artifact_type_id: "builtin_artifact".into(),
+      timeout: None,
+      handler: Arc::new(Handler),
+    })
+    .unwrap();
+  for id in [
+    "same_name".to_string(),
+    FUTURE_BUILTIN_COMMAND_TYPE.to_string(),
+  ] {
+    dispatcher
+      .register(CommandRegistration::Registered(
+        id.clone(),
+        Arc::new(Handler),
+      ))
+      .unwrap();
+    assert!(dispatcher.unregister(&id));
+    assert!(dispatcher.get_handler(&id).is_none());
+  }
+  assert_eq!(
+    dispatcher
+      .get_builtin(FUTURE_BUILTIN_COMMAND_TYPE)
+      .unwrap()
+      .artifact_type_id,
+    "builtin_artifact"
+  );
+}
+
+#[test]
+fn builtin_registration_rejects_invalid_metadata_and_core_override() {
+  let dispatcher = RegisteredCommandDispatcher::default();
+  dispatcher
+    .register(CommandRegistration::Builtin {
+      command_type: FUTURE_BUILTIN_COMMAND_TYPE,
+      key: "original".into(),
+      artifact_type_id: "original_artifact".into(),
+      timeout: Some(Duration::seconds(15)),
+      handler: Arc::new(Handler),
+    })
+    .unwrap();
+  for (command_type, key, artifact_type_id, timeout) in [
+    (-1, "test", "test", None),
+    (
+      WellKnownCommandType::TYPE_UNSPECIFIED as i32,
+      "test",
+      "test",
+      None,
+    ),
+    (
+      WellKnownCommandType::DUMP_DEVICE_BUFFER as i32,
+      "test",
+      "test",
+      None,
+    ),
+    (FUTURE_BUILTIN_COMMAND_TYPE, "", "test", None),
+    (FUTURE_BUILTIN_COMMAND_TYPE, "test", "", None),
+    (
+      FUTURE_BUILTIN_COMMAND_TYPE,
+      "test",
+      "test",
+      Some(Duration::ZERO),
+    ),
+    (
+      FUTURE_BUILTIN_COMMAND_TYPE,
+      "test",
+      "test",
+      Some(Duration::seconds(-1)),
+    ),
+  ] {
+    assert!(
+      dispatcher
+        .register(CommandRegistration::Builtin {
+          command_type,
+          key: key.into(),
+          artifact_type_id: artifact_type_id.into(),
+          timeout,
+          handler: Arc::new(Handler),
+        })
+        .is_err()
+    );
+    let original = dispatcher.get_builtin(FUTURE_BUILTIN_COMMAND_TYPE).unwrap();
+    assert_eq!(original.key, "original");
+    assert_eq!(original.artifact_type_id, "original_artifact");
+    assert_eq!(original.timeout, Some(Duration::seconds(15)));
+  }
+}
+
+const STACK_SAMPLING_COMMAND_KEY: &str = "stack_sampling_trace";
+
+fn register_stack_sampling(
+  registry: &RegisteredCommandDispatcher,
+  handler: Arc<dyn RegisteredCommandHandler>,
+) {
+  registry
+    .register(CommandRegistration::Builtin {
+      command_type: WellKnownCommandType::STACK_SAMPLING_TRACE as i32,
+      key: STACK_SAMPLING_COMMAND_KEY.into(),
+      artifact_type_id: "stack_sampling_trace".into(),
+      timeout: Some(Duration::seconds(15)),
+      handler,
+    })
+    .unwrap();
+}
 
 struct Handler;
 
@@ -164,9 +294,63 @@ fn pending_handler() -> (
 
 struct ScreenshotTarget;
 
-impl Target for ScreenshotTarget {
-  fn capture_screen(&self) {}
+type DeviceCommandScreenshotCompletion = Box<dyn FnOnce(Result<Vec<u8>, String>) + Send>;
+
+trait Target: Send + Sync {
+  fn capture_device_command_screenshot(&self, completion: DeviceCommandScreenshotCompletion) {
+    completion(Err("remote screenshot capture is unavailable".into()));
+  }
 }
+
+struct RemoteScreenshotCaptureHandler(Arc<dyn Target>);
+
+impl RemoteScreenshotCaptureHandler {
+  fn new(target: Arc<dyn Target>) -> Self {
+    Self(target)
+  }
+}
+
+#[async_trait::async_trait]
+impl RegisteredCommandHandler for RemoteScreenshotCaptureHandler {
+  async fn execute(&self, _invocation: CommandInvocation) -> CommandResult {
+    let (sender, receiver) = oneshot::channel();
+    self
+      .0
+      .capture_device_command_screenshot(Box::new(move |result| {
+        let _ = sender.send(result);
+      }));
+    match receiver.await.unwrap() {
+      Ok(bytes) => CommandResult::Completed {
+        fields: LogFields::default(),
+        attachment: Some(CommandAttachment {
+          source: UploadSource::Bytes(bytes),
+          content_type: Some("image/jpeg".into()),
+        }),
+      },
+      Err(message) => CommandResult::Failed {
+        error: CommandError::HandlerFailed(message),
+        fields: LogFields::default(),
+      },
+    }
+  }
+}
+
+fn register_screenshot(
+  registry: &RegisteredCommandDispatcher,
+  handler: RemoteScreenshotCaptureHandler,
+) {
+  registry
+    .register(CommandRegistration::Builtin {
+      command_type: WellKnownCommandType::TAKE_SCREENSHOT as i32,
+      key: "take_screenshot".into(),
+      artifact_type_id: "screenshot".into(),
+      timeout: None,
+      handler: Arc::new(handler),
+    })
+    .unwrap();
+}
+
+impl Target for ScreenshotTarget {}
 
 struct DeferredScreenshotTarget {
   started_tx: mpsc::UnboundedSender<()>,
@@ -174,8 +358,6 @@ struct DeferredScreenshotTarget {
 }
 
 impl Target for DeferredScreenshotTarget {
-  fn capture_screen(&self) {}
-
   fn capture_device_command_screenshot(&self, completion: DeviceCommandScreenshotCompletion) {
     self.completions.lock().push_back(completion);
     self.started_tx.send(()).unwrap();
@@ -239,6 +421,7 @@ fn direct_dispatcher(
   screenshot_handler: RemoteScreenshotCaptureHandler,
   artifacts: Arc<dyn Client>,
 ) -> (DeviceCommandDispatcher, mpsc::Receiver<DataUpload>) {
+  register_screenshot(&registry, screenshot_handler);
   let (upload_tx, upload_rx) = mpsc::channel(16);
   let (trigger_tx, _trigger_rx) = mpsc::channel(1);
   let logs = EventBuffer::new(EventBufferLimits {
@@ -255,7 +438,6 @@ fn direct_dispatcher(
       artifacts,
       registry,
       policy,
-      screenshot_handler,
       Arc::new(DeviceCommandState::new(Arc::new(SystemTimeProvider))),
       Arc::new(SystemTimeProvider),
     ),
@@ -343,7 +525,9 @@ async fn direct_processed_session_change_cancels_accepted_wait_and_running_handl
     let (directory, _runtime, policy) = command_runtime();
     let (handler, mut started_rx, dropped_rx) = pending_handler();
     let registry = RegisteredCommandDispatcher::default();
-    registry.register("pending".into(), handler);
+    registry
+      .register(CommandRegistration::Registered("pending".into(), handler))
+      .unwrap();
     let (mut dispatcher, mut updates) = direct_dispatcher(
       directory.path(),
       policy,
@@ -461,13 +645,13 @@ async fn direct_command_spans_are_correlated_and_not_repeated_by_ack_failures_or
     "terminal_ack_session_reset",
   ] {
     let (directory, _runtime, policy) = command_runtime();
-    let registry = RegisteredCommandDispatcher::new(
-      [(
+    let registry = RegisteredCommandDispatcher::default();
+    registry
+      .register(CommandRegistration::Registered(
         "pending".into(),
-        Arc::new(Handler) as Arc<dyn RegisteredCommandHandler>,
-      )]
-      .into(),
-    );
+        Arc::new(Handler),
+      ))
+      .unwrap();
     let (mut dispatcher, mut updates) = direct_dispatcher(
       directory.path(),
       policy,
@@ -655,13 +839,13 @@ fn workflow_dispatcher(
   registry: RegisteredCommandDispatcher,
   screenshot_handler: RemoteScreenshotCaptureHandler,
 ) -> WorkflowCommandDispatcher {
+  register_screenshot(&registry, screenshot_handler);
   let (completion_tx, _completion_rx) = mpsc::channel(16);
   WorkflowCommandDispatcher::new(
     registry,
     policy,
     completion_tx,
     AttachmentStoreHandle::new(directory.to_owned(), runtime),
-    screenshot_handler,
   )
 }
 
@@ -701,7 +885,9 @@ async fn direct_registered_command_timeout_reports_one_terminal_failure() {
   let (directory, _runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), handler);
+  registry
+    .register(CommandRegistration::Registered("pending".into(), handler))
+    .unwrap();
   let (mut dispatcher, mut updates) = direct_dispatcher(
     directory.path(),
     policy,
@@ -895,7 +1081,9 @@ async fn direct_command_admission_resumes_only_after_original_capacity_expiry() 
   let (directory, _runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), handler);
+  registry
+    .register(CommandRegistration::Registered("pending".into(), handler))
+    .unwrap();
   let (mut dispatcher, mut updates) = direct_dispatcher(
     directory.path(),
     policy,
@@ -1010,7 +1198,9 @@ async fn direct_command_execution_ends_with_original_sdk_dispatcher() {
   let (directory, _runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), handler);
+  registry
+    .register(CommandRegistration::Registered("pending".into(), handler))
+    .unwrap();
   let (dispatcher, mut updates) = direct_dispatcher(
     directory.path(),
     policy,
@@ -1040,7 +1230,9 @@ async fn workflow_registered_command_timeout_reports_failure() {
   let (directory, runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), handler);
+  registry
+    .register(CommandRegistration::Registered("pending".into(), handler))
+    .unwrap();
   let dispatcher = workflow_dispatcher(
     directory.path(),
     runtime,
@@ -1165,7 +1357,12 @@ impl RegisteredCommandHandler for AttachmentHandler {
 async fn command_execution_timeout_excludes_attachment_upload() {
   let (directory, _runtime, policy) = command_runtime();
   let registry = RegisteredCommandDispatcher::default();
-  registry.register("pending".into(), Arc::new(AttachmentHandler));
+  registry
+    .register(CommandRegistration::Registered(
+      "pending".into(),
+      Arc::new(AttachmentHandler),
+    ))
+    .unwrap();
   let (upload_started_tx, mut upload_started_rx) = mpsc::unbounded_channel();
   let artifact_id = Uuid::new_v4();
   let mut artifacts = MockClient::new();
@@ -1219,6 +1416,575 @@ impl Drop for DropSignal {
   }
 }
 
+//
+// Stack sampling pass-through
+//
+
+/// Records what the platform handler was invoked with and answers with one prepared result.
+struct RecordingHandler {
+  invocations: Mutex<Vec<CommandInvocation>>,
+  result: Mutex<Option<CommandResult>>,
+}
+
+impl RecordingHandler {
+  fn new(result: CommandResult) -> Arc<Self> {
+    Arc::new(Self {
+      invocations: Mutex::default(),
+      result: Mutex::new(Some(result)),
+    })
+  }
+}
+
+#[async_trait::async_trait]
+impl RegisteredCommandHandler for RecordingHandler {
+  async fn execute(&self, invocation: CommandInvocation) -> CommandResult {
+    self.invocations.lock().push(invocation);
+    self.result.lock().take().expect("one invocation")
+  }
+}
+
+fn text_argument(value: &str) -> Data {
+  let mut data = Data::new();
+  data.set_string_data(value.to_string());
+  data
+}
+
+fn stack_sampling_arguments() -> HashMap<String, Data> {
+  HashMap::from([
+    ("duration_ms".to_string(), text_argument("5000")),
+    ("tag".to_string(), text_argument("checkout")),
+  ])
+}
+
+fn stack_sampling_selector(arguments: HashMap<String, Data>) -> WorkflowCommandSelector {
+  WorkflowCommandSelector {
+    command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
+      workflow_command_selector::BuiltinCommand {
+        type_: WellKnownCommandType::STACK_SAMPLING_TRACE.into(),
+        ..Default::default()
+      },
+    )),
+    arguments,
+    ..Default::default()
+  }
+}
+
+fn stack_sampling_request(
+  command_id: Uuid,
+  arguments: HashMap<String, Data>,
+  dispatcher: &DeviceCommandDispatcher,
+) -> DeviceCommandRequest {
+  DeviceCommandRequest {
+    command_id: command_id.to_string().into(),
+    command_selector: Some(stack_sampling_selector(arguments)).into(),
+    sdk_instance_id: dispatcher.command_state.sdk_instance_id.clone().into(),
+    expires_at: (OffsetDateTime::now_utc() + Duration::days(1)).into_proto(),
+    ..Default::default()
+  }
+}
+
+fn write_trace(directory: &Path) -> PathBuf {
+  let path = directory.join("trace.perfetto");
+  fs::write(&path, b"trace").unwrap();
+  path
+}
+
+fn failed_error(update: DeviceCommandUpdate) -> String {
+  let Some(device_command_update::Update_type::Failed(failed)) = update.update_type else {
+    panic!("expected a failed command update");
+  };
+  let fields = &failed.context.as_ref().unwrap().fields;
+  match DataValue::from_proto(fields.get("error").unwrap().clone()) {
+    Some(DataValue::String(error)) => error,
+    other => panic!("expected a string error, got {other:?}"),
+  }
+}
+
+#[tokio::test]
+async fn direct_stack_sampling_is_passed_through_to_the_platform_handler() {
+  let (directory, _runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let handler = RecordingHandler::new(completed_attachment(
+    UploadSource::Path(trace.clone()),
+    Some("application/vnd.bitdrift.perfetto-trace".into()),
+  ));
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(&registry, handler.clone());
+  let (upload_tx, mut upload_rx) = mpsc::unbounded_channel();
+  let artifact_id = Uuid::new_v4();
+  let mut artifacts = MockClient::new();
+  artifacts
+    .expect_enqueue_command_upload()
+    .times(1)
+    .returning(
+      move |source, type_id, _, _, _, _, content_type, persisted_tx, completion_tx| {
+        let UploadSource::Path(path) = source else {
+          panic!("expected the trace to be uploaded from its path");
+        };
+        upload_tx.send((path, type_id, content_type)).unwrap();
+        persisted_tx.unwrap().send(Ok(5)).unwrap();
+        completion_tx.unwrap().send(Ok(())).unwrap();
+        Ok(artifact_id)
+      },
+    );
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(artifacts),
+  );
+  let command_id = Uuid::new_v4();
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    command_id,
+    stack_sampling_arguments(),
+    &dispatcher,
+  )]);
+  assert_eq!(
+    acknowledge_update(&mut updates)
+      .await
+      .update_sequence_number,
+    1
+  );
+
+  // The attachment goes out under the well-known artifact type, from the handler's file.
+  let (path, type_id, content_type) = upload_rx.recv().await.unwrap();
+  assert_eq!(path, trace);
+  assert_eq!(type_id, "stack_sampling_trace");
+  assert_eq!(
+    content_type.as_deref(),
+    Some("application/vnd.bitdrift.perfetto-trace")
+  );
+  let completed = acknowledge_update(&mut updates).await;
+  assert_eq!(completed.update_sequence_number, 2);
+  assert!(matches!(
+    completed.update_type,
+    Some(device_command_update::Update_type::Completed(_))
+  ));
+
+  // The handler saw the well-known key, the command ID and the arguments untouched.
+  let invocations = handler.invocations.lock();
+  assert_eq!(invocations.len(), 1);
+  assert_eq!(
+    invocations[0].registered_command_id,
+    STACK_SAMPLING_COMMAND_KEY
+  );
+  assert_eq!(invocations[0].command_id, Some(command_id));
+  assert_eq!(invocations[0].arguments, stack_sampling_arguments());
+}
+
+#[tokio::test]
+async fn direct_stack_sampling_without_a_platform_handler_fails_as_unsupported() {
+  let (directory, _runtime, policy) = command_runtime();
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    RegisteredCommandDispatcher::default(),
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(MockClient::new()),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  let update = acknowledge_update(&mut updates).await;
+  assert_eq!(update.update_sequence_number, 1);
+  assert_eq!(failed_error(update), "command unknown");
+}
+
+#[tokio::test]
+async fn direct_stack_sampling_staging_failure_deletes_the_handed_over_file() {
+  let (directory, _runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(
+    &registry,
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let mut artifacts = MockClient::new();
+  artifacts
+    .expect_enqueue_command_upload()
+    .times(1)
+    .returning(|source, _, _, _, _, _, _, _, _| {
+      let UploadSource::Path(path) = source else {
+        panic!("expected path")
+      };
+      fs::remove_file(path).unwrap();
+      Err(bd_artifact_upload::EnqueueError::QueueFull)
+    });
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(artifacts),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  acknowledge_update(&mut updates).await;
+  let update = acknowledge_update(&mut updates).await;
+  assert_eq!(update.update_sequence_number, 2);
+  assert_eq!(failed_error(update), "upload queue full");
+  assert!(!trace.exists(), "a file the uploader never took is deleted");
+}
+
+#[tokio::test]
+async fn direct_stack_sampling_upload_failure_after_persistence_leaves_the_path_alone() {
+  let (directory, _runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(
+    &registry,
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let mut artifacts = MockClient::new();
+  artifacts
+    .expect_enqueue_command_upload()
+    .times(1)
+    .returning(|_, _, _, _, _, _, _, persisted_tx, completion_tx| {
+      // The uploader persisted (and, in production, deleted) the source before the upload failed.
+      persisted_tx.unwrap().send(Ok(5)).unwrap();
+      completion_tx
+        .unwrap()
+        .send(Err("upload rejected".to_string()))
+        .unwrap();
+      Ok(Uuid::new_v4())
+    });
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(artifacts),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  acknowledge_update(&mut updates).await;
+  let update = acknowledge_update(&mut updates).await;
+  assert_eq!(update.update_sequence_number, 2);
+  assert_eq!(failed_error(update), "upload rejected");
+  // A later capture may reuse the name; the core must not delete what the uploader owns.
+  assert!(trace.exists());
+}
+
+#[tokio::test(start_paused = true)]
+async fn direct_stack_sampling_uses_its_own_execution_timeout() {
+  let (directory, _runtime, policy) = command_runtime();
+  let (handler, mut started_rx, dropped_rx) = pending_handler();
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(&registry, handler);
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(MockClient::new()),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  acknowledge_update(&mut updates).await;
+  started_rx.recv().await.unwrap();
+
+  // The generic five second deadline does not apply to the built-in capture...
+  tokio::time::advance(Duration::seconds(6).unsigned_abs()).await;
+  assert_eq!(
+    updates.try_recv().unwrap_err(),
+    mpsc::error::TryRecvError::Empty
+  );
+  // ...its own fifteen second one does.
+  tokio::time::advance(Duration::seconds(10).unsigned_abs()).await;
+  assert_timeout_update(acknowledge_update(&mut updates).await);
+  dropped_rx.await.unwrap();
+}
+
+#[tokio::test]
+async fn cancelling_direct_file_upload_after_persistence_preserves_reused_path() {
+  let (directory, _runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(
+    &registry,
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let (persisted_tx, persisted_rx) = oneshot::channel();
+  let persisted_tx = Mutex::new(Some(persisted_tx));
+  let mut artifacts = MockClient::new();
+  artifacts
+    .expect_enqueue_command_upload()
+    .times(1)
+    .returning(move |source, _, _, _, _, _, _, persistence, completion| {
+      let UploadSource::Path(path) = source else {
+        panic!("expected path")
+      };
+      fs::remove_file(&path).unwrap();
+      fs::write(path, b"next capture").unwrap();
+      persistence.unwrap().send(Ok(5)).unwrap();
+      persisted_tx
+        .lock()
+        .take()
+        .unwrap()
+        .send(completion.unwrap())
+        .unwrap();
+      Ok(Uuid::new_v4())
+    });
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(artifacts),
+  );
+  dispatcher.dispatch_configuration(vec![stack_sampling_request(
+    Uuid::new_v4(),
+    HashMap::new(),
+    &dispatcher,
+  )]);
+  acknowledge_update(&mut updates).await;
+  let _upload_ack = persisted_rx.await.unwrap();
+  let tasks = dispatcher.execution_tasks.lock().take().unwrap();
+  for task in tasks {
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+  }
+  assert_eq!(fs::read(trace).unwrap(), b"next capture");
+}
+
+#[tokio::test]
+async fn serialized_unknown_builtin_id_executes_without_enum_knowledge() {
+  let (directory, runtime, policy) = command_runtime();
+  let registry = RegisteredCommandDispatcher::default();
+  registry
+    .register(CommandRegistration::Builtin {
+      command_type: FUTURE_BUILTIN_COMMAND_TYPE,
+      key: "future_builtin".into(),
+      artifact_type_id: "future_artifact".into(),
+      timeout: None,
+      handler: Arc::new(Handler),
+    })
+    .unwrap();
+  let selector = WorkflowCommandSelector {
+    command_selector: Some(workflow_command_selector::Command_selector::BuiltinCommand(
+      workflow_command_selector::BuiltinCommand {
+        type_: EnumOrUnknown::from_i32(FUTURE_BUILTIN_COMMAND_TYPE),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  };
+  let decoded =
+    WorkflowCommandSelector::parse_from_bytes(&selector.write_to_bytes().unwrap()).unwrap();
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+  assert!(matches!(
+    dispatcher.execute(decoded, "session".into()).await,
+    WorkflowCommandOutcome::Succeeded { .. }
+  ));
+}
+
+#[test]
+fn unconsumed_native_result_deletes_owned_file() {
+  let (directory, _runtime, _policy) = command_runtime();
+  let path = write_trace(directory.path());
+  let (sender, receiver) = oneshot::channel();
+  assert!(
+    sender
+      .send(super::CommandResultGuard::new(completed_attachment(
+        UploadSource::Path(path.clone()),
+        None,
+      )))
+      .is_ok()
+  );
+  assert!(path.exists());
+  drop(receiver);
+  assert!(!path.exists());
+}
+
+#[tokio::test]
+async fn workflow_stack_sampling_is_passed_through_and_the_handed_over_file_is_removed() {
+  let (directory, runtime, policy) = command_runtime();
+  let trace = write_trace(directory.path());
+  let handler = RecordingHandler::new(completed_attachment(
+    UploadSource::Path(trace.clone()),
+    Some("application/vnd.bitdrift.perfetto-trace".into()),
+  ));
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(&registry, handler.clone());
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+
+  let WorkflowCommandOutcome::SucceededWithAttachment { fields, .. } = dispatcher
+    .execute(
+      stack_sampling_selector(stack_sampling_arguments()),
+      "session".into(),
+    )
+    .await
+  else {
+    panic!("expected a workflow attachment");
+  };
+  assert_eq!(fields.get("handler_field"), Some(&"handler_value".into()));
+  assert!(
+    !trace.exists(),
+    "the workflow store keeps its own copy, so the handed over file is removed"
+  );
+  let invocations = handler.invocations.lock();
+  assert_eq!(
+    invocations[0].registered_command_id,
+    STACK_SAMPLING_COMMAND_KEY
+  );
+  assert_eq!(invocations[0].command_id, None);
+  assert_eq!(invocations[0].session_id, "session");
+  assert_eq!(invocations[0].arguments, stack_sampling_arguments());
+}
+
+#[tokio::test]
+async fn workflow_stack_sampling_without_a_platform_handler_fails_as_unsupported() {
+  let (directory, runtime, policy) = command_runtime();
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    RegisteredCommandDispatcher::default(),
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+  let WorkflowCommandOutcome::Failed { message, .. } = dispatcher
+    .execute(stack_sampling_selector(HashMap::new()), "session".into())
+    .await
+  else {
+    panic!("expected a failure");
+  };
+  assert_eq!(message.as_deref(), Some("command unknown"));
+}
+
+#[tokio::test]
+async fn workflow_owned_file_admission_failure_deletes_source() {
+  let (directory, runtime, policy) = command_runtime();
+  runtime
+    .update_snapshot(make_simple_update(vec![
+      (MaxBytes::path(), ValueKind::Int(1)),
+      (MaxOwnedFiles::path(), ValueKind::Int(1)),
+    ]))
+    .await
+    .unwrap();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(
+    &registry,
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+
+  let outcome = dispatcher
+    .execute(stack_sampling_selector(HashMap::new()), "session".into())
+    .await;
+  let WorkflowCommandOutcome::Failed { message, fields } = outcome else {
+    panic!("expected workflow attachment admission failure");
+  };
+  assert!(message.unwrap().contains("within size limit"));
+  assert_eq!(fields.get("handler_field"), Some(&"handler_value".into()));
+  assert!(!trace.exists());
+
+  let store = dispatcher.executor.attachment_store.get().await.unwrap();
+  let next = store
+    .admit(UploadSource::Bytes(vec![1]), None)
+    .await
+    .unwrap();
+  store.release(next.id).await.unwrap();
+  assert_eq!(
+    fs::read_dir(directory.path().join("workflow-attachments"))
+      .unwrap()
+      .count(),
+    0
+  );
+}
+
+#[tokio::test]
+async fn workflow_owned_file_admission_cancellation_deletes_source() {
+  let (directory, runtime, policy) = command_runtime();
+  runtime
+    .update_snapshot(make_simple_update(vec![(
+      MaxOwnedFiles::path(),
+      ValueKind::Int(1),
+    )]))
+    .await
+    .unwrap();
+  let trace = write_trace(directory.path());
+  let registry = RegisteredCommandDispatcher::default();
+  register_stack_sampling(
+    &registry,
+    RecordingHandler::new(completed_attachment(
+      UploadSource::Path(trace.clone()),
+      None,
+    )),
+  );
+  let dispatcher = workflow_dispatcher(
+    directory.path(),
+    runtime,
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+  );
+  let store = dispatcher.executor.attachment_store.get().await.unwrap();
+  let permit = store.block_admissions_for_test().await;
+  let mut execution =
+    Box::pin(dispatcher.execute(stack_sampling_selector(HashMap::new()), "session".into()));
+  assert!(futures_util::poll!(&mut execution).is_pending());
+  assert!(trace.exists());
+
+  drop(execution);
+  assert!(!trace.exists());
+  drop(permit);
+
+  let next = store
+    .admit(UploadSource::Bytes(vec![1]), None)
+    .await
+    .unwrap();
+  store.release(next.id).await.unwrap();
+  assert_eq!(
+    fs::read_dir(directory.path().join("workflow-attachments"))
+      .unwrap()
+      .count(),
+    0
+  );
+}
+
 fn command_runtime() -> (TempDir, Arc<ConfigLoader>, CommandExecutionPolicy) {
   fs::create_dir_all(".tmp").unwrap();
   let directory = TempDir::with_prefix_in("command", ".tmp").unwrap();
@@ -1239,6 +2005,7 @@ async fn registered_command_execution_preserves_success() {
         arguments: HashMap::new(),
         session_id: "session".into(),
       },
+      None,
     )
     .await;
   assert!(matches!(
@@ -1466,10 +2233,14 @@ impl RegisteredCommandHandler for ReenterOnDrop {
 
 impl Drop for ReenterOnDrop {
   fn drop(&mut self) {
-    assert!(self.dispatcher.handlers.try_write().is_some());
+    assert!(self.dispatcher.commands.try_write().is_some());
     self
       .dispatcher
-      .register("reentered".to_string(), Arc::new(Handler));
+      .register(CommandRegistration::Registered(
+        "reentered".to_string(),
+        Arc::new(Handler),
+      ))
+      .unwrap();
     self.drops.fetch_add(1, Ordering::SeqCst);
   }
 }
@@ -1479,23 +2250,32 @@ fn replacing_or_removing_handler_allows_destructor_to_reenter() {
   let dispatcher = RegisteredCommandDispatcher::default();
   let drops = Arc::new(AtomicUsize::new(0));
 
-  dispatcher.register(
-    "custom".to_string(),
-    Arc::new(ReenterOnDrop {
-      dispatcher: dispatcher.clone(),
-      drops: drops.clone(),
-    }),
-  );
-  dispatcher.register("custom".to_string(), Arc::new(Handler));
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      Arc::new(ReenterOnDrop {
+        dispatcher: dispatcher.clone(),
+        drops: drops.clone(),
+      }),
+    ))
+    .unwrap();
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      Arc::new(Handler),
+    ))
+    .unwrap();
   assert_eq!(drops.load(Ordering::SeqCst), 1);
 
-  dispatcher.register(
-    "custom".to_string(),
-    Arc::new(ReenterOnDrop {
-      dispatcher: dispatcher.clone(),
-      drops: drops.clone(),
-    }),
-  );
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      Arc::new(ReenterOnDrop {
+        dispatcher: dispatcher.clone(),
+        drops: drops.clone(),
+      }),
+    ))
+    .unwrap();
   assert!(dispatcher.unregister("custom"));
   assert_eq!(drops.load(Ordering::SeqCst), 2);
   assert!(dispatcher.get_handler("reentered").is_some());
@@ -1503,16 +2283,26 @@ fn replacing_or_removing_handler_allows_destructor_to_reenter() {
 
 #[test]
 fn cloned_command_dispatchers_share_registrations() {
-  let dispatcher = RegisteredCommandDispatcher::new(HashMap::new());
+  let dispatcher = RegisteredCommandDispatcher::default();
   let clone = dispatcher.clone();
   let original: Arc<dyn RegisteredCommandHandler> = Arc::new(Handler);
   let replacement: Arc<dyn RegisteredCommandHandler> = Arc::new(Handler);
 
-  dispatcher.register("custom".to_string(), original.clone());
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      original.clone(),
+    ))
+    .unwrap();
   let selected = clone.get_handler("custom").unwrap();
   assert!(Arc::ptr_eq(&selected, &original));
 
-  clone.register("custom".to_string(), replacement.clone());
+  clone
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      replacement.clone(),
+    ))
+    .unwrap();
   assert!(Arc::ptr_eq(
     &dispatcher.get_handler("custom").unwrap(),
     &replacement
@@ -1650,10 +2440,6 @@ async fn workflow_screenshot_preserves_jpeg_content_type() {
   struct ScreenshotTarget;
 
   impl Target for ScreenshotTarget {
-    fn capture_screen(&self) {
-      panic!("unexpected periodic screen capture");
-    }
-
     fn capture_device_command_screenshot(&self, completion: DeviceCommandScreenshotCompletion) {
       completion(Ok(vec![0xff, 0xd8, 0xff, 0xd9]));
     }
@@ -1664,14 +2450,16 @@ async fn workflow_screenshot_preserves_jpeg_content_type() {
     directory.path().to_owned(),
     ConfigLoader::new(directory.path()),
   );
-  let outcome = workflow_builtin_command_outcome(
-    workflow_command_selector::BuiltinCommand {
-      type_: WellKnownCommandType::TAKE_SCREENSHOT.into(),
-      ..Default::default()
-    },
-    &HashMap::new(),
-    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
-    &CommandExecutionPolicy::new(&ConfigLoader::new(directory.path())),
+  let handler = RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget));
+  let outcome = workflow_command_outcome(
+    handler
+      .execute(CommandInvocation {
+        command_id: None,
+        registered_command_id: "take_screenshot".into(),
+        arguments: HashMap::new(),
+        session_id: "session".into(),
+      })
+      .await,
     &store,
   )
   .await;
@@ -1728,7 +2516,12 @@ async fn workflow_registered_handler_preserves_attachment_content_type() {
     ConfigLoader::new(directory.path()),
   );
   let dispatcher = RegisteredCommandDispatcher::default();
-  dispatcher.register("custom".to_string(), Arc::new(AttachmentHandler));
+  dispatcher
+    .register(CommandRegistration::Registered(
+      "custom".to_string(),
+      Arc::new(AttachmentHandler),
+    ))
+    .unwrap();
   let result = dispatcher
     .get_handler("custom")
     .unwrap()

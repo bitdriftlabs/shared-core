@@ -20,10 +20,9 @@ mod tests;
 
 use std::collections::HashMap;
 
-// The configuration version of the client is a version number maintained independently from the
-// release version of SDK which is used to allow the server to send different configurations to
-// different clients. This should be incremented whenever we want to be able to send different
-// configuration to a client, e.g. if newer clients support config that older clients would reject.
+// The configuration version allows the server to send different configurations to different
+// clients. Native SDK release minor versions must match this number. Increment it whenever newer
+// clients support configurations that older clients would reject.
 // Version 27: Added double matching support.
 // Version 28: Added support for generate log action and client report uploads.
 // Version 29: Added support for out of the band artifact uploads.
@@ -50,7 +49,8 @@ use std::collections::HashMap;
 // Version 48: Added JSON path extraction for workflow fields.
 // Version 49: Added SDK-instance-scoped device commands with reconnect-safe update replay and
 //             explicit acknowledgement dispositions.
-const CONFIGURATION_VERSION: &str = "49";
+// Version 50: Android stack trace built-in command support.
+pub const CONFIGURATION_VERSION: &str = "50";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

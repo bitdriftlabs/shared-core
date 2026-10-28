@@ -11,7 +11,7 @@
 //! Fresh server configuration admits an invocation through `DeviceCommandState`, which owns
 //! live-SDK deduplication and update tracking. An admitted worker registers its session owner and
 //! emits a span start. Valid requests wait for the backend's Accepted acknowledgement before
-//! invoking a handler, capturing a screenshot, or starting a prepared buffer upload. The span
+//! invoking a handler or starting a prepared buffer upload. The span
 //! includes those waits and result uploading, but ends when the local terminal outcome is chosen,
 //! before the final update acknowledgement. Reconnects and configuration replacement do not
 //! restart or cancel admitted execution; cached configuration must not execute commands after
@@ -36,9 +36,9 @@
 //!
 //! # Cancellation limits and teardown
 //! Cancellation drops the executor future; native registered-handler bridges use that drop to
-//! request cooperative cancellation. [`CommandExecutionPolicy`] also drops timed-out handler or
-//! screenshot futures, but reports an ordinary timeout failure rather than a session/reset
-//! cancellation. Neither path rolls back screenshot, flush, or upload work already handed off.
+//! request cooperative cancellation. [`CommandExecutionPolicy`] also drops timed-out handler
+//! futures, but reports an ordinary timeout failure rather than a session/reset cancellation.
+//! Neither path rolls back native capture, flush, or upload work already handed off.
 //! Span logging is best-effort: SDK teardown may leave a start without an end. On restart,
 //! persisted pending workflow traversals are cancelled, not re-executed, while sibling progress is
 //! retained.
@@ -101,6 +101,7 @@ use protobuf::Message;
 use std::collections::HashMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use time::OffsetDateTime;
@@ -109,7 +110,6 @@ use tokio::sync::{oneshot, watch};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-const MAX_SCREENSHOT_BYTES: usize = 2 * 1024 * 1024;
 const REGISTERED_COMMAND_ARTIFACT_TYPE_ID: &str = "device_command_attachment";
 
 //
@@ -134,7 +134,6 @@ pub struct DeviceCommandDispatcher {
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   command_dispatcher: RegisteredCommandDispatcher,
   execution_policy: CommandExecutionPolicy,
-  remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   command_state: Arc<DeviceCommandState>,
   // At most one waiter for capacity, replaced by the next fresh configuration.
   admission_task: Arc<Mutex<Option<JoinHandle<()>>>>,
@@ -388,7 +387,6 @@ impl DeviceCommandDispatcher {
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     command_dispatcher: RegisteredCommandDispatcher,
     execution_policy: CommandExecutionPolicy,
-    remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
     command_state: Arc<DeviceCommandState>,
     time_provider: Arc<dyn TimeProvider>,
   ) -> Self {
@@ -403,7 +401,6 @@ impl DeviceCommandDispatcher {
       artifact_client,
       command_dispatcher,
       execution_policy,
-      remote_screenshot_capture_handler,
       command_state,
       admission_task: Arc::default(),
       test_hooks: None,
@@ -508,7 +505,6 @@ impl DeviceCommandDispatcher {
     let artifact_client = self.artifact_client.clone();
     let command_dispatcher = self.command_dispatcher.clone();
     let execution_policy = self.execution_policy.clone();
-    let remote_screenshot_capture_handler = self.remote_screenshot_capture_handler.clone();
     let time_provider = self.time_provider.clone();
     Box::pin(async move {
       let started_at = time_provider.now();
@@ -536,7 +532,6 @@ impl DeviceCommandDispatcher {
         artifact_client,
         command_dispatcher,
         execution_policy,
-        remote_screenshot_capture_handler,
       ));
       let result = {
         // A closed sender is not cancellation: pruning a finished registry entry also closes it.
@@ -636,6 +631,36 @@ pub enum CommandResult {
   },
 }
 
+//
+// CommandResultGuard
+//
+
+/// Owns a native result until the executor consumes it, including while queued in a channel.
+pub struct CommandResultGuard(Option<CommandResult>);
+
+impl CommandResultGuard {
+  #[must_use]
+  pub fn new(result: CommandResult) -> Self {
+    Self(Some(result))
+  }
+
+  #[must_use]
+  pub fn into_inner(mut self) -> CommandResult {
+    self.0.take().unwrap_or_else(|| CommandResult::Failed {
+      error: CommandError::Other("command result already consumed".into()),
+      fields: LogFields::default(),
+    })
+  }
+}
+
+impl Drop for CommandResultGuard {
+  fn drop(&mut self) {
+    if let Some(result) = &self.0 {
+      drop(HandedOverFile::from_result(result));
+    }
+  }
+}
+
 /// Handles an opaque command selected by its registered command ID.
 /// Direct and workflow invocations have a runtime-configurable execution timeout, defaulting to
 /// five seconds. Handlers must yield to allow deadlines and cancellation to be observed.
@@ -664,6 +689,18 @@ impl CommandExecutionPolicy {
     F: Future<Output = Result<T, CommandError>>,
   {
     let timeout = *self.timeout.read();
+    self.execute_within(command, timeout, execution).await
+  }
+
+  async fn execute_within<F, T>(
+    &self,
+    command: &str,
+    timeout: time::Duration,
+    execution: F,
+  ) -> Result<T, CommandError>
+  where
+    F: Future<Output = Result<T, CommandError>>,
+  {
     if timeout.is_zero() {
       return Err(CommandError::Timeout);
     }
@@ -685,14 +722,19 @@ impl CommandExecutionPolicy {
     &self,
     handler: Arc<dyn RegisteredCommandHandler>,
     invocation: CommandInvocation,
+    timeout: Option<time::Duration>,
   ) -> CommandResult {
     let registered_command_id = invocation.registered_command_id.clone();
-    match self
-      .execute(&registered_command_id, async move {
-        Ok(handler.execute(invocation).await)
-      })
-      .await
-    {
+    let execution = async move { Ok(handler.execute(invocation).await) };
+    let result = match timeout {
+      Some(timeout) => {
+        self
+          .execute_within(&registered_command_id, timeout, execution)
+          .await
+      },
+      None => self.execute(&registered_command_id, execution).await,
+    };
+    match result {
       Ok(result) => result,
       Err(error) => CommandResult::Failed {
         error,
@@ -700,64 +742,111 @@ impl CommandExecutionPolicy {
       },
     }
   }
+}
 
-  async fn capture_screenshot(
-    &self,
-    handler: bd_session_replay::RemoteScreenshotCaptureHandler,
-  ) -> Result<Vec<u8>, CommandError> {
-    self
-      .execute("screenshot", async move {
-        handler.capture().await.map_err(CommandError::HandlerFailed)
-      })
-      .await
-  }
+//
+// CommandId
+//
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+enum CommandId {
+  Registered(String),
+  Builtin(i32),
 }
 
 /// Registry of handler definitions, not live invocations. Lookup clones the handler, so replacing
 /// or unregistering a definition does not revoke work that already obtained it.
 #[derive(Clone, Default)]
 pub struct RegisteredCommandDispatcher {
-  handlers: Arc<RwLock<HashMap<String, Arc<dyn RegisteredCommandHandler>>>>,
+  commands: Arc<RwLock<HashMap<CommandId, PlatformCommand>>>,
+}
+
+//
+// CommandRegistration
+//
+
+/// A platform handler for an app-defined command or an SDK-owned numeric built-in.
+pub enum CommandRegistration {
+  Registered(String, Arc<dyn RegisteredCommandHandler>),
+  Builtin {
+    command_type: i32,
+    key: String,
+    artifact_type_id: String,
+    timeout: Option<time::Duration>,
+    handler: Arc<dyn RegisteredCommandHandler>,
+  },
 }
 
 impl RegisteredCommandDispatcher {
-  pub fn new(handlers: HashMap<String, Arc<dyn RegisteredCommandHandler>>) -> Self {
-    Self {
-      handlers: Arc::new(RwLock::new(handlers)),
-    }
+  pub fn register(&self, registration: CommandRegistration) -> anyhow::Result<()> {
+    let (id, command) = match registration {
+      CommandRegistration::Registered(key, handler) => (
+        CommandId::Registered(key.clone()),
+        PlatformCommand {
+          key,
+          artifact_type_id: REGISTERED_COMMAND_ARTIFACT_TYPE_ID.into(),
+          timeout: None,
+          handler,
+        },
+      ),
+      CommandRegistration::Builtin {
+        command_type,
+        key,
+        artifact_type_id,
+        timeout,
+        handler,
+      } => {
+        if command_type <= 0
+          || command_type == WellKnownCommandType::DUMP_DEVICE_BUFFER as i32
+          || key.is_empty()
+          || artifact_type_id.is_empty()
+          || timeout.is_some_and(|timeout| !timeout.is_positive())
+        {
+          anyhow::bail!("invalid platform built-in registration");
+        }
+        (
+          CommandId::Builtin(command_type),
+          PlatformCommand {
+            key,
+            artifact_type_id,
+            timeout,
+            handler,
+          },
+        )
+      },
+    };
+    log::debug!("registered platform command {id:?}: {}", command.key);
+    let previous = self.commands.write().insert(id, command);
+    drop(previous);
+    Ok(())
   }
 
-  pub fn register(
+  fn resolve(
     &self,
-    registered_command_id: String,
-    handler: Arc<dyn RegisteredCommandHandler>,
-  ) {
-    log::debug!("registered command handler: {registered_command_id}");
-    let previous_handler = {
-      let mut handlers = self.handlers.write();
-      handlers.insert(registered_command_id, handler)
+    selector: &workflow_command_selector::Command_selector,
+  ) -> Option<PlatformCommand> {
+    let id = match selector {
+      workflow_command_selector::Command_selector::RegisteredCommand(command) => {
+        CommandId::Registered(command.registered_command_id.clone())
+      },
+      workflow_command_selector::Command_selector::BuiltinCommand(command) => {
+        CommandId::Builtin(command.type_.value())
+      },
     };
-    drop(previous_handler);
+    self.commands.read().get(&id).cloned()
   }
 
   pub fn unregister(&self, registered_command_id: &str) -> bool {
-    let removed_handler = {
-      let mut handlers = self.handlers.write();
-      handlers.remove(registered_command_id)
-    };
+    let removed_handler = self
+      .commands
+      .write()
+      .remove(&CommandId::Registered(registered_command_id.into()));
     let removed = removed_handler.is_some();
     drop(removed_handler);
     if removed {
       log::debug!("unregistered command handler: {registered_command_id}");
     }
     removed
-  }
-
-  pub fn get_handler(
-    &self,
-    registered_command_id: &str,
-  ) -> Option<Arc<dyn RegisteredCommandHandler>> {
-    self.handlers.read().get(registered_command_id).cloned()
   }
 }
 
@@ -782,7 +871,6 @@ struct WorkflowCommandExecutor {
   command_dispatcher: RegisteredCommandDispatcher,
   execution_policy: CommandExecutionPolicy,
   attachment_store: AttachmentStoreHandle,
-  remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
 }
 
 impl WorkflowCommandDispatcher {
@@ -791,14 +879,12 @@ impl WorkflowCommandDispatcher {
     execution_policy: CommandExecutionPolicy,
     completion_tx: Sender<WorkflowCommandCompletion>,
     attachment_store: AttachmentStoreHandle,
-    remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
   ) -> Self {
     Self {
       executor: WorkflowCommandExecutor {
         command_dispatcher,
         execution_policy,
         attachment_store,
-        remote_screenshot_capture_handler,
       },
       completion_tx,
       executions: Arc::default(),
@@ -864,77 +950,99 @@ impl WorkflowCommandExecutor {
     session_id: String,
   ) -> WorkflowCommandOutcome {
     let arguments = command_selector.arguments;
-    match command_selector.command_selector {
-      Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
-        if let Some(handler) = self
-          .command_dispatcher
-          .get_handler(&command.registered_command_id)
-        {
-          let result = self
-            .execution_policy
-            .execute_registered(
-              handler,
-              CommandInvocation {
-                command_id: None,
-                registered_command_id: command.registered_command_id,
-                arguments,
-                session_id,
-              },
-            )
-            .await;
-          workflow_command_outcome(result, &self.attachment_store).await
-        } else {
-          workflow_command_failure(CommandError::CommandUnknown)
-        }
+    if let Some(command) = command_selector
+      .command_selector
+      .as_ref()
+      .and_then(|selector| self.command_dispatcher.resolve(selector))
+    {
+      return self
+        .execute_platform_command(command, arguments, session_id)
+        .await;
+    }
+    workflow_command_failure(CommandError::CommandUnknown)
+  }
+
+  /// Runs a command through the handler the platform registered for it. Workflow attachments are
+  /// copied into the attachment store, so a file the handler handed over is deleted afterwards.
+  async fn execute_platform_command(
+    &self,
+    platform_command: PlatformCommand,
+    arguments: HashMap<String, Data>,
+    session_id: String,
+  ) -> WorkflowCommandOutcome {
+    let result = self
+      .execution_policy
+      .execute_registered(
+        platform_command.handler,
+        CommandInvocation {
+          command_id: None,
+          registered_command_id: platform_command.key,
+          arguments,
+          session_id,
+        },
+        platform_command.timeout,
+      )
+      .await;
+    // The guard deletes the handler's file when it drops: after the store has taken its copy,
+    // or at once if this future is cancelled during admission. The unlink is synchronous, so no
+    // cancellable await sits between an admitted attachment and the outcome that references it.
+    let _handed_over = HandedOverFile::from_result(&result);
+    workflow_command_outcome(result, &self.attachment_store).await
+  }
+}
+
+/// A command the platform executes through a [`RegisteredCommandHandler`]: one the app
+/// registered, or a numeric built-in registered by the SDK's platform layer.
+#[derive(Clone)]
+struct PlatformCommand {
+  key: String,
+  /// The artifact type the backend expects the attachment under.
+  artifact_type_id: String,
+  timeout: Option<time::Duration>,
+  handler: Arc<dyn RegisteredCommandHandler>,
+}
+
+/// A file a handler handed to the SDK with its result. The SDK deletes it once it is no longer
+/// needed: workflow admission copies the payload, then this guard deletes the original.
+/// Direct uploads instead transfer ownership to the uploader at enqueue. A relative path is left
+/// alone: each consumer resolves it against its own root.
+struct HandedOverFile {
+  path: Option<PathBuf>,
+}
+
+impl HandedOverFile {
+  fn from_result(result: &CommandResult) -> Self {
+    match result {
+      CommandResult::Completed {
+        attachment: Some(attachment),
+        ..
+      } => Self::from_attachment(attachment),
+      _ => Self { path: None },
+    }
+  }
+
+  fn from_attachment(attachment: &CommandAttachment) -> Self {
+    Self {
+      path: match &attachment.source {
+        UploadSource::Path(path) if path.is_absolute() => Some(path.clone()),
+        _ => None,
       },
-      Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
-        workflow_builtin_command_outcome(
-          command,
-          &arguments,
-          self.remote_screenshot_capture_handler.clone(),
-          &self.execution_policy,
-          &self.attachment_store,
-        )
-        .await
-      },
-      None => workflow_command_failure(CommandError::CommandUnknown),
     }
   }
 }
 
-async fn workflow_builtin_command_outcome(
-  command: workflow_command_selector::BuiltinCommand,
-  arguments: &HashMap<String, Data>,
-  remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
-  execution_policy: &CommandExecutionPolicy,
-  attachment_store: &AttachmentStoreHandle,
-) -> WorkflowCommandOutcome {
-  match command.type_.enum_value() {
-    Ok(WellKnownCommandType::TAKE_SCREENSHOT) if arguments.is_empty() => {
-      match execution_policy
-        .capture_screenshot(remote_screenshot_capture_handler)
-        .await
-      {
-        Ok(screenshot) if let Err(error) = validate_screenshot(&screenshot) => {
-          workflow_command_failure(CommandError::Other(error.into()))
-        },
-        Ok(screenshot) => {
-          workflow_command_outcome(
-            CommandResult::Completed {
-              fields: LogFields::default(),
-              attachment: Some(CommandAttachment {
-                source: UploadSource::Bytes(screenshot),
-                content_type: Some("image/jpeg".to_string()),
-              }),
-            },
-            attachment_store,
-          )
-          .await
-        },
-        Err(error) => workflow_command_failure(error),
-      }
-    },
-    _ => workflow_command_failure(CommandError::CommandUnknown),
+impl Drop for HandedOverFile {
+  fn drop(&mut self) {
+    // A single unlink of a small file, kept synchronous so there is no cancellation point.
+    if let Some(path) = self.path.take()
+      && let Err(error) = std::fs::remove_file(&path)
+      && error.kind() != std::io::ErrorKind::NotFound
+    {
+      log::debug!(
+        "failed to remove command attachment file {}: {error}",
+        path.display()
+      );
+    }
   }
 }
 
@@ -1006,38 +1114,30 @@ async fn execute_device_command(
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
   command_dispatcher: RegisteredCommandDispatcher,
   execution_policy: CommandExecutionPolicy,
-  remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
 ) -> anyhow::Result<()> {
   let command_id = command.command_id.to_string();
   let selector = command.command_selector.into_option().unwrap_or_default();
   let arguments = selector.arguments;
+  if let Some(platform_command) = selector
+    .command_selector
+    .as_ref()
+    .and_then(|selector| command_dispatcher.resolve(selector))
+  {
+    return execute_platform_device_command(
+      command_id,
+      platform_command,
+      arguments,
+      senders,
+      artifact_client,
+      execution_policy,
+    )
+    .await;
+  }
   match selector.command_selector {
-    Some(workflow_command_selector::Command_selector::RegisteredCommand(command)) => {
-      execute_custom_device_command(
-        command_id,
-        command.registered_command_id.clone(),
-        arguments,
-        senders,
-        artifact_client,
-        command_dispatcher,
-        execution_policy,
-      )
-      .await
-    },
     Some(workflow_command_selector::Command_selector::BuiltinCommand(command)) => {
       match command.type_.enum_value() {
         Ok(WellKnownCommandType::DUMP_DEVICE_BUFFER) if arguments.is_empty() => {
           execute_buffer_dump_device_command(command_id, senders, trigger_upload_tx).await
-        },
-        Ok(WellKnownCommandType::TAKE_SCREENSHOT) if arguments.is_empty() => {
-          execute_screenshot_device_command(
-            command_id,
-            senders,
-            artifact_client,
-            execution_policy,
-            remote_screenshot_capture_handler,
-          )
-          .await
         },
         _ => {
           send_device_command_update(
@@ -1048,7 +1148,7 @@ async fn execute_device_command(
         },
       }
     },
-    None => {
+    _ => {
       send_device_command_update(
         &senders,
         failed_device_command_update(&command_id, 1, CommandError::CommandUnknown),
@@ -1056,100 +1156,6 @@ async fn execute_device_command(
       .await
     },
   }
-}
-
-async fn execute_screenshot_device_command(
-  command_id: String,
-  senders: Arc<DeviceCommandExecution>,
-  artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  execution_policy: CommandExecutionPolicy,
-  remote_screenshot_capture_handler: bd_session_replay::RemoteScreenshotCaptureHandler,
-) -> anyhow::Result<()> {
-  send_device_command_update(
-    &senders,
-    DeviceCommandUpdate {
-      command_id: command_id.clone(),
-      update_sequence_number: 1,
-      update_type: Some(device_command_update::Update_type::Accepted(
-        device_command_update::Accepted::default(),
-      )),
-      ..Default::default()
-    },
-  )
-  .await?;
-
-  let session_id = match &senders.session_id {
-    Ok(session_id) => session_id.to_string(),
-    Err(error) => {
-      send_device_command_update(
-        &senders,
-        failed_device_command_update(&command_id, 2, CommandError::Other(error.to_string())),
-      )
-      .await?;
-      return Ok(());
-    },
-  };
-  let screenshot = match execution_policy
-    .capture_screenshot(remote_screenshot_capture_handler)
-    .await
-  {
-    Ok(screenshot) if let Err(error) = validate_screenshot(&screenshot) => {
-      send_device_command_update(
-        &senders,
-        failed_device_command_update(&command_id, 2, CommandError::Other(error.into())),
-      )
-      .await?;
-      return Ok(());
-    },
-    Ok(screenshot) => screenshot,
-    Err(error) => {
-      send_device_command_update(
-        &senders,
-        failed_device_command_update(&command_id, 2, error),
-      )
-      .await?;
-      return Ok(());
-    },
-  };
-
-  let attachment = CommandAttachment {
-    source: UploadSource::Bytes(screenshot),
-    content_type: Some("image/jpeg".to_string()),
-  };
-  let update = match stage_device_command_attachment(
-    attachment,
-    "screenshot",
-    &command_id,
-    &session_id,
-    artifact_client,
-  )
-  .await
-  {
-    Ok((artifact_id, metadata)) => {
-      return send_device_command_update_with_artifact(
-        &senders,
-        completed_device_command_update(&command_id, false, None, artifact_attachment(artifact_id)),
-        Some(metadata),
-      )
-      .await;
-    },
-    Err(error) => {
-      failed_device_command_update(&command_id, 2, CommandError::Other(error.to_string()))
-    },
-  };
-  send_device_command_update(&senders, update).await
-}
-
-fn validate_screenshot(bytes: &[u8]) -> Result<(), &'static str> {
-  // This is deliberately a cheap, best-effort client-side guard. The server owns full artifact
-  // validation and rejects malformed payloads that still satisfy the JPEG framing check below.
-  if bytes.len() > MAX_SCREENSHOT_BYTES {
-    return Err("screenshot exceeds the maximum artifact size");
-  }
-  if !bytes.starts_with(&[0xff, 0xd8]) || !bytes.ends_with(&[0xff, 0xd9]) {
-    return Err("screenshot is not a JPEG image");
-  }
-  Ok(())
 }
 
 async fn execute_buffer_dump_device_command(
@@ -1250,13 +1256,12 @@ async fn execute_buffer_dump_device_command(
   send_device_command_update(&senders, update).await
 }
 
-async fn execute_custom_device_command(
+async fn execute_platform_device_command(
   command_id: String,
-  registered_command_id: String,
+  platform_command: PlatformCommand,
   arguments: HashMap<String, Data>,
   senders: Arc<DeviceCommandExecution>,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  command_dispatcher: RegisteredCommandDispatcher,
   execution_policy: CommandExecutionPolicy,
 ) -> anyhow::Result<()> {
   let Ok(command_id_uuid) = Uuid::parse_str(&command_id) else {
@@ -1267,14 +1272,6 @@ async fn execute_custom_device_command(
         1,
         CommandError::Other("invalid device command id".into()),
       ),
-    )
-    .await?;
-    return Ok(());
-  };
-  let Some(handler) = command_dispatcher.get_handler(&registered_command_id) else {
-    send_device_command_update(
-      &senders,
-      failed_device_command_update(&command_id, 1, CommandError::CommandUnknown),
     )
     .await?;
     return Ok(());
@@ -1306,13 +1303,14 @@ async fn execute_custom_device_command(
   };
   let result = execution_policy
     .execute_registered(
-      handler,
+      platform_command.handler,
       CommandInvocation {
         command_id: Some(command_id_uuid),
-        registered_command_id,
+        registered_command_id: platform_command.key,
         arguments,
         session_id: session_id.clone(),
       },
+      platform_command.timeout,
     )
     .await;
 
@@ -1323,7 +1321,7 @@ async fn execute_custom_device_command(
         Some(attachment) => {
           match stage_device_command_attachment(
             attachment,
-            REGISTERED_COMMAND_ARTIFACT_TYPE_ID,
+            &platform_command.artifact_type_id,
             &command_id,
             &session_id,
             artifact_client,
@@ -1387,9 +1385,15 @@ async fn stage_device_command_attachment(
     Some(persisted_tx),
     Some(completion_tx),
   )?;
-  let size_bytes = persisted_rx
-    .await
-    .map_err(|_| anyhow!("device command attachment persistence was interrupted"))??;
+  let size_bytes = match persisted_rx.await {
+    Ok(Ok(size_bytes)) => size_bytes,
+    Ok(Err(error)) => return Err(error.into()),
+    Err(_) => {
+      return Err(anyhow!(
+        "device command attachment persistence was interrupted"
+      ));
+    },
+  };
   let metadata = CommandArtifactMetadata::new(content_type, size_bytes);
   match completion_rx.await {
     Ok(Ok(())) => Ok((artifact_id, metadata)),

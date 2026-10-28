@@ -15,8 +15,9 @@ use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
 use crate::types::{Platform, RuntimeValueType};
 use bd_log_primitives::LogFields;
-use bd_logger::{Block, CaptureSession, InitParams, Logger, MetadataProvider};
+use bd_logger::{Block, CaptureSession, CommandRegistration, InitParams, Logger, MetadataProvider};
 use bd_proto::protos::logging::payload::LogType as ProtoLogType;
+use bd_proto::protos::workflow::workflow_command::WellKnownCommandType;
 use bd_session::{Strategy, StrategyWithWorker, configuration};
 use bd_time::TimeProvider;
 use parking_lot::Mutex;
@@ -399,7 +400,17 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     static_metadata,
     start_in_sleep_mode: false,
   })
-  .with_command_handler(COMMAND_NAME.to_string(), Arc::new(FakePerfettoCommand))
+  .with_command(CommandRegistration::Registered(
+    COMMAND_NAME.to_string(),
+    Arc::new(FakePerfettoCommand),
+  ))?
+  .with_command(CommandRegistration::Builtin {
+    command_type: WellKnownCommandType::TAKE_SCREENSHOT as i32,
+    key: "take_screenshot".into(),
+    artifact_type_id: "screenshot".into(),
+    timeout: None,
+    handler: Arc::new(FakeScreenshotTarget),
+  })?
   .build()?;
 
   let logger = LoggerHolder::new(logger, session_strategy, future, shutdown_trigger);
