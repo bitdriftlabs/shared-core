@@ -43,6 +43,8 @@ pub struct MemoryDump {
     pub heap: ::protobuf::MessageField<Heap>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.MemoryDump.images)
     pub images: ::std::vec::Vec<Image>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.MemoryDump.system_identity)
+    pub system_identity: ::protobuf::MessageField<SystemIdentity>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.memory.v1.MemoryDump.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -60,7 +62,7 @@ impl MemoryDump {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut fields = ::std::vec::Vec::with_capacity(5);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, Counters>(
             "counters",
@@ -81,6 +83,11 @@ impl MemoryDump {
             "images",
             |m: &MemoryDump| { &m.images },
             |m: &mut MemoryDump| { &mut m.images },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, SystemIdentity>(
+            "system_identity",
+            |m: &MemoryDump| { &m.system_identity },
+            |m: &mut MemoryDump| { &mut m.system_identity },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<MemoryDump>(
             "MemoryDump",
@@ -112,6 +119,9 @@ impl ::protobuf::Message for MemoryDump {
                 34 => {
                     self.images.push(is.read_message()?);
                 },
+                42 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.system_identity)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -140,6 +150,10 @@ impl ::protobuf::Message for MemoryDump {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
+        if let Some(v) = self.system_identity.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -158,6 +172,9 @@ impl ::protobuf::Message for MemoryDump {
         for v in &self.images {
             ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
         };
+        if let Some(v) = self.system_identity.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -179,6 +196,7 @@ impl ::protobuf::Message for MemoryDump {
         self.regions.clear();
         self.heap.clear();
         self.images.clear();
+        self.system_identity.clear();
         self.special_fields.clear();
     }
 
@@ -188,6 +206,7 @@ impl ::protobuf::Message for MemoryDump {
             regions: ::protobuf::MessageField::none(),
             heap: ::protobuf::MessageField::none(),
             images: ::std::vec::Vec::new(),
+            system_identity: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -208,6 +227,182 @@ impl ::std::fmt::Display for MemoryDump {
 }
 
 impl ::protobuf::reflect::ProtobufValue for MemoryDump {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.memory.v1.SystemIdentity)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct SystemIdentity {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.SystemIdentity.product_type)
+    pub product_type: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.SystemIdentity.os_build)
+    pub os_build: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.SystemIdentity.cache_architecture)
+    pub cache_architecture: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.memory.v1.SystemIdentity.shared_cache_uuid)
+    pub shared_cache_uuid: ::std::vec::Vec<u8>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.memory.v1.SystemIdentity.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a SystemIdentity {
+    fn default() -> &'a SystemIdentity {
+        <SystemIdentity as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl SystemIdentity {
+    pub fn new() -> SystemIdentity {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "product_type",
+            |m: &SystemIdentity| { &m.product_type },
+            |m: &mut SystemIdentity| { &mut m.product_type },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "os_build",
+            |m: &SystemIdentity| { &m.os_build },
+            |m: &mut SystemIdentity| { &mut m.os_build },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "cache_architecture",
+            |m: &SystemIdentity| { &m.cache_architecture },
+            |m: &mut SystemIdentity| { &mut m.cache_architecture },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "shared_cache_uuid",
+            |m: &SystemIdentity| { &m.shared_cache_uuid },
+            |m: &mut SystemIdentity| { &mut m.shared_cache_uuid },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SystemIdentity>(
+            "SystemIdentity",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for SystemIdentity {
+    const NAME: &'static str = "SystemIdentity";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.product_type = is.read_string()?;
+                },
+                18 => {
+                    self.os_build = is.read_string()?;
+                },
+                26 => {
+                    self.cache_architecture = is.read_string()?;
+                },
+                34 => {
+                    self.shared_cache_uuid = is.read_bytes()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.product_type.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.product_type);
+        }
+        if !self.os_build.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.os_build);
+        }
+        if !self.cache_architecture.is_empty() {
+            my_size += ::protobuf::rt::string_size(3, &self.cache_architecture);
+        }
+        if !self.shared_cache_uuid.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(4, &self.shared_cache_uuid);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.product_type.is_empty() {
+            os.write_string(1, &self.product_type)?;
+        }
+        if !self.os_build.is_empty() {
+            os.write_string(2, &self.os_build)?;
+        }
+        if !self.cache_architecture.is_empty() {
+            os.write_string(3, &self.cache_architecture)?;
+        }
+        if !self.shared_cache_uuid.is_empty() {
+            os.write_bytes(4, &self.shared_cache_uuid)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> SystemIdentity {
+        SystemIdentity::new()
+    }
+
+    fn clear(&mut self) {
+        self.product_type.clear();
+        self.os_build.clear();
+        self.cache_architecture.clear();
+        self.shared_cache_uuid.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static SystemIdentity {
+        static instance: SystemIdentity = SystemIdentity {
+            product_type: ::std::string::String::new(),
+            os_build: ::std::string::String::new(),
+            cache_architecture: ::std::string::String::new(),
+            shared_cache_uuid: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for SystemIdentity {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("SystemIdentity").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for SystemIdentity {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for SystemIdentity {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
@@ -3094,87 +3289,92 @@ impl ::protobuf::reflect::ProtobufValue for ZoneRow {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n4bitdrift_public/protobuf/memory/v1/memory_dump.proto\x12\"bitdrift_pu\
-    blic.protobuf.memory.v1\"\x9e\x02\n\nMemoryDump\x12H\n\x08counters\x18\
+    blic.protobuf.memory.v1\"\xfb\x02\n\nMemoryDump\x12H\n\x08counters\x18\
     \x01\x20\x01(\x0b2,.bitdrift_public.protobuf.memory.v1.CountersR\x08coun\
     ters\x12E\n\x07regions\x18\x02\x20\x01(\x0b2+.bitdrift_public.protobuf.m\
     emory.v1.RegionsR\x07regions\x12<\n\x04heap\x18\x03\x20\x01(\x0b2(.bitdr\
     ift_public.protobuf.memory.v1.HeapR\x04heap\x12A\n\x06images\x18\x04\x20\
-    \x03(\x0b2).bitdrift_public.protobuf.memory.v1.ImageR\x06images\"/\n\x05\
-    Image\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12\x12\n\x04uuid\
-    \x18\x02\x20\x01(\x0cR\x04uuid\"<\n\x0cImageAddress\x12\x14\n\x05image\
-    \x18\x01\x20\x01(\rR\x05image\x12\x16\n\x06offset\x18\x02\x20\x01(\x04R\
-    \x06offset\"\xa8\x04\n\x08Counters\x12%\n\x0ephys_footprint\x18\x01\x20\
-    \x01(\x04R\rphysFootprint\x123\n\x13phys_footprint_peak\x18\x02\x20\x01(\
-    \x04H\0R\x11physFootprintPeak\x88\x01\x01\x12\x1a\n\x08internal\x18\x03\
-    \x20\x01(\x04R\x08internal\x12\x1e\n\ncompressed\x18\x04\x20\x01(\x04R\n\
-    compressed\x12\x1a\n\x08external\x18\x05\x20\x01(\x04R\x08external\x12#\
-    \n\rresident_size\x18\x06\x20\x01(\x04R\x0cresidentSize\x12+\n\x0edecomp\
-    ressions\x18\x07\x20\x01(\x04H\x01R\x0edecompressions\x88\x01\x01\x127\n\
-    \x15limit_bytes_remaining\x18\x08\x20\x01(\x04H\x02R\x13limitBytesRemain\
-    ing\x88\x01\x01\x127\n\x15available_before_kill\x18\t\x20\x01(\x04H\x03R\
-    \x13availableBeforeKill\x88\x01\x01\x12E\n\x07ledgers\x18\n\x20\x01(\x0b\
-    2+.bitdrift_public.protobuf.memory.v1.LedgersR\x07ledgersB\x16\n\x14_phy\
-    s_footprint_peakB\x11\n\x0f_decompressionsB\x18\n\x16_limit_bytes_remain\
-    ingB\x18\n\x16_available_before_kill\"\xd1\x01\n\x07Ledgers\x12\x1a\n\
-    \x08graphics\x18\x01\x20\x01(\x04R\x08graphics\x12\x14\n\x05media\x18\
-    \x02\x20\x01(\x04R\x05media\x12\x18\n\x07network\x18\x03\x20\x01(\x04R\
-    \x07network\x12\x16\n\x06neural\x18\x04\x20\x01(\x04R\x06neural\x12-\n\
-    \x12purgeable_volatile\x18\x05\x20\x01(\x04R\x11purgeableVolatile\x123\n\
-    \x15purgeable_nonvolatile\x18\x06\x20\x01(\x04R\x14purgeableNonvolatile\
-    \"\xf8\x02\n\x07Regions\x12\x18\n\x07regions\x18\x01\x20\x01(\rR\x07regi\
-    ons\x12\x1c\n\ttruncated\x18\x02\x20\x01(\x08R\ttruncated\x12#\n\rprivat\
-    e_dirty\x18\x03\x20\x01(\x04R\x0cprivateDirty\x12!\n\x0cshared_dirty\x18\
-    \x04\x20\x01(\x04R\x0bsharedDirty\x12\x1e\n\ncompressed\x18\x05\x20\x01(\
-    \x04R\ncompressed\x12\x18\n\x07charged\x18\x06\x20\x01(\x04R\x07charged\
-    \x12!\n\x0cvirtual_size\x18\x07\x20\x01(\x04R\x0bvirtualSize\x12A\n\x06b\
-    y_tag\x18\x08\x20\x03(\x0b2*.bitdrift_public.protobuf.memory.v1.TagRowR\
-    \x05byTag\x12M\n\x08by_image\x18\t\x20\x03(\x0b22.bitdrift_public.protob\
-    uf.memory.v1.ImageChargeRowR\x07byImage\"\xed\x01\n\x06TagRow\x12\x12\n\
-    \x04name\x18\x01\x20\x01(\tR\x04name\x12\x10\n\x03tag\x18\x02\x20\x01(\r\
-    R\x03tag\x12\x18\n\x07regions\x18\x03\x20\x01(\rR\x07regions\x12#\n\rpri\
-    vate_dirty\x18\x04\x20\x01(\x04R\x0cprivateDirty\x12!\n\x0cshared_dirty\
-    \x18\x05\x20\x01(\x04R\x0bsharedDirty\x12\x1e\n\ncompressed\x18\x06\x20\
-    \x01(\x04R\ncompressed\x12!\n\x0cvirtual_size\x18\x07\x20\x01(\x04R\x0bv\
-    irtualSize\x12\x18\n\x07charged\x18\x08\x20\x01(\x04R\x07charged\"@\n\
-    \x0eImageChargeRow\x12\x14\n\x05image\x18\x01\x20\x01(\rR\x05image\x12\
-    \x18\n\x07charged\x18\x02\x20\x01(\x04R\x07charged\"\x8f\x06\n\x04Heap\
-    \x12\x1c\n\ttruncated\x18\x01\x20\x01(\x08R\ttruncated\x12%\n\x0eskipped\
-    _blocks\x18\x02\x20\x01(\x04R\rskippedBlocks\x12D\n\x05total\x18\x03\x20\
-    \x01(\x0b2..bitdrift_public.protobuf.memory.v1.BlockCountR\x05total\x12.\
-    \n\x13largest_block_bytes\x18\x04\x20\x01(\x04R\x11largestBlockBytes\x12\
-    D\n\x05named\x18\x05\x20\x01(\x0b2..bitdrift_public.protobuf.memory.v1.B\
-    lockCountR\x05named\x12O\n\x0bswift_boxes\x18\x06\x20\x01(\x0b2..bitdrif\
-    t_public.protobuf.memory.v1.BlockCountR\nswiftBoxes\x12F\n\x06images\x18\
-    \x07\x20\x01(\x0b2..bitdrift_public.protobuf.memory.v1.BlockCountR\x06im\
-    ages\x12J\n\x08reporter\x18\x08\x20\x01(\x0b2..bitdrift_public.protobuf.\
-    memory.v1.BlockCountR\x08reporter\x12T\n\x0cunclassified\x18\t\x20\x01(\
-    \x0b20.bitdrift_public.protobuf.memory.v1.UnclassifiedR\x0cunclassified\
-    \x12B\n\x06owners\x18\n\x20\x01(\x0b2*.bitdrift_public.protobuf.memory.v\
-    1.OwnersR\x06owners\x12D\n\x07by_type\x18\x0b\x20\x03(\x0b2+.bitdrift_pu\
-    blic.protobuf.memory.v1.TypeRowR\x06byType\x12A\n\x05zones\x18\x0c\x20\
-    \x03(\x0b2+.bitdrift_public.protobuf.memory.v1.ZoneRowR\x05zones\":\n\nB\
-    lockCount\x12\x16\n\x06blocks\x18\x01\x20\x01(\x04R\x06blocks\x12\x14\n\
-    \x05bytes\x18\x02\x20\x01(\x04R\x05bytes\"Z\n\x0cUnclassified\x12\x16\n\
-    \x06blocks\x18\x01\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\x18\x02\
-    \x20\x01(\x04R\x05bytes\x12\x1c\n\thistogram\x18\x03\x20\x03(\x04R\thist\
-    ogram\"\xc8\x01\n\x06Owners\x12\x16\n\x06blocks\x18\x01\x20\x01(\x04R\
-    \x06blocks\x12\x14\n\x05bytes\x18\x02\x20\x01(\x04R\x05bytes\x12#\n\rsha\
-    red_blocks\x18\x03\x20\x01(\x04R\x0csharedBlocks\x12%\n\x0etable_overflo\
-    w\x18\x04\x20\x01(\x04R\rtableOverflow\x12D\n\x07by_type\x18\x05\x20\x03\
-    (\x0b2+.bitdrift_public.protobuf.memory.v1.TypeRowR\x06byType\"\x9a\x02\
-    \n\x07TypeRow\x12\x14\n\x04name\x18\x01\x20\x01(\tH\0R\x04name\x12L\n\
-    \x07address\x18\x02\x20\x01(\x0b20.bitdrift_public.protobuf.memory.v1.Im\
-    ageAddressH\0R\x07address\x12D\n\x04kind\x18\x03\x20\x01(\x0e20.bitdrift\
-    _public.protobuf.memory.v1.TypeRow.KindR\x04kind\x12\x16\n\x06blocks\x18\
-    \x04\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\x18\x05\x20\x01(\x04R\
-    \x05bytes\"+\n\x04Kind\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\t\n\x05CLASS\
-    \x10\x01\x12\x07\n\x03CXX\x10\x02B\n\n\x08identity\"\xb7\x01\n\x07ZoneRo\
-    w\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12\x16\n\x06blocks\x18\
-    \x02\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\x18\x03\x20\x01(\x04R\
-    \x05bytes\x12\x1e\n\nenumerated\x18\x04\x20\x01(\x08R\nenumerated\x12\
-    \x12\n\x04seen\x18\x05\x20\x01(\x08R\x04seen\x12\x18\n\x07skipped\x18\
-    \x06\x20\x01(\x08R\x07skipped\x12\x1c\n\ttruncated\x18\x07\x20\x01(\x08R\
-    \ttruncatedb\x06proto3\
+    \x03(\x0b2).bitdrift_public.protobuf.memory.v1.ImageR\x06images\x12[\n\
+    \x0fsystem_identity\x18\x05\x20\x01(\x0b22.bitdrift_public.protobuf.memo\
+    ry.v1.SystemIdentityR\x0esystemIdentity\"\xa9\x01\n\x0eSystemIdentity\
+    \x12!\n\x0cproduct_type\x18\x01\x20\x01(\tR\x0bproductType\x12\x19\n\x08\
+    os_build\x18\x02\x20\x01(\tR\x07osBuild\x12-\n\x12cache_architecture\x18\
+    \x03\x20\x01(\tR\x11cacheArchitecture\x12*\n\x11shared_cache_uuid\x18\
+    \x04\x20\x01(\x0cR\x0fsharedCacheUuid\"/\n\x05Image\x12\x12\n\x04name\
+    \x18\x01\x20\x01(\tR\x04name\x12\x12\n\x04uuid\x18\x02\x20\x01(\x0cR\x04\
+    uuid\"<\n\x0cImageAddress\x12\x14\n\x05image\x18\x01\x20\x01(\rR\x05imag\
+    e\x12\x16\n\x06offset\x18\x02\x20\x01(\x04R\x06offset\"\xa8\x04\n\x08Cou\
+    nters\x12%\n\x0ephys_footprint\x18\x01\x20\x01(\x04R\rphysFootprint\x123\
+    \n\x13phys_footprint_peak\x18\x02\x20\x01(\x04H\0R\x11physFootprintPeak\
+    \x88\x01\x01\x12\x1a\n\x08internal\x18\x03\x20\x01(\x04R\x08internal\x12\
+    \x1e\n\ncompressed\x18\x04\x20\x01(\x04R\ncompressed\x12\x1a\n\x08extern\
+    al\x18\x05\x20\x01(\x04R\x08external\x12#\n\rresident_size\x18\x06\x20\
+    \x01(\x04R\x0cresidentSize\x12+\n\x0edecompressions\x18\x07\x20\x01(\x04\
+    H\x01R\x0edecompressions\x88\x01\x01\x127\n\x15limit_bytes_remaining\x18\
+    \x08\x20\x01(\x04H\x02R\x13limitBytesRemaining\x88\x01\x01\x127\n\x15ava\
+    ilable_before_kill\x18\t\x20\x01(\x04H\x03R\x13availableBeforeKill\x88\
+    \x01\x01\x12E\n\x07ledgers\x18\n\x20\x01(\x0b2+.bitdrift_public.protobuf\
+    .memory.v1.LedgersR\x07ledgersB\x16\n\x14_phys_footprint_peakB\x11\n\x0f\
+    _decompressionsB\x18\n\x16_limit_bytes_remainingB\x18\n\x16_available_be\
+    fore_kill\"\xd1\x01\n\x07Ledgers\x12\x1a\n\x08graphics\x18\x01\x20\x01(\
+    \x04R\x08graphics\x12\x14\n\x05media\x18\x02\x20\x01(\x04R\x05media\x12\
+    \x18\n\x07network\x18\x03\x20\x01(\x04R\x07network\x12\x16\n\x06neural\
+    \x18\x04\x20\x01(\x04R\x06neural\x12-\n\x12purgeable_volatile\x18\x05\
+    \x20\x01(\x04R\x11purgeableVolatile\x123\n\x15purgeable_nonvolatile\x18\
+    \x06\x20\x01(\x04R\x14purgeableNonvolatile\"\xf8\x02\n\x07Regions\x12\
+    \x18\n\x07regions\x18\x01\x20\x01(\rR\x07regions\x12\x1c\n\ttruncated\
+    \x18\x02\x20\x01(\x08R\ttruncated\x12#\n\rprivate_dirty\x18\x03\x20\x01(\
+    \x04R\x0cprivateDirty\x12!\n\x0cshared_dirty\x18\x04\x20\x01(\x04R\x0bsh\
+    aredDirty\x12\x1e\n\ncompressed\x18\x05\x20\x01(\x04R\ncompressed\x12\
+    \x18\n\x07charged\x18\x06\x20\x01(\x04R\x07charged\x12!\n\x0cvirtual_siz\
+    e\x18\x07\x20\x01(\x04R\x0bvirtualSize\x12A\n\x06by_tag\x18\x08\x20\x03(\
+    \x0b2*.bitdrift_public.protobuf.memory.v1.TagRowR\x05byTag\x12M\n\x08by_\
+    image\x18\t\x20\x03(\x0b22.bitdrift_public.protobuf.memory.v1.ImageCharg\
+    eRowR\x07byImage\"\xed\x01\n\x06TagRow\x12\x12\n\x04name\x18\x01\x20\x01\
+    (\tR\x04name\x12\x10\n\x03tag\x18\x02\x20\x01(\rR\x03tag\x12\x18\n\x07re\
+    gions\x18\x03\x20\x01(\rR\x07regions\x12#\n\rprivate_dirty\x18\x04\x20\
+    \x01(\x04R\x0cprivateDirty\x12!\n\x0cshared_dirty\x18\x05\x20\x01(\x04R\
+    \x0bsharedDirty\x12\x1e\n\ncompressed\x18\x06\x20\x01(\x04R\ncompressed\
+    \x12!\n\x0cvirtual_size\x18\x07\x20\x01(\x04R\x0bvirtualSize\x12\x18\n\
+    \x07charged\x18\x08\x20\x01(\x04R\x07charged\"@\n\x0eImageChargeRow\x12\
+    \x14\n\x05image\x18\x01\x20\x01(\rR\x05image\x12\x18\n\x07charged\x18\
+    \x02\x20\x01(\x04R\x07charged\"\x8f\x06\n\x04Heap\x12\x1c\n\ttruncated\
+    \x18\x01\x20\x01(\x08R\ttruncated\x12%\n\x0eskipped_blocks\x18\x02\x20\
+    \x01(\x04R\rskippedBlocks\x12D\n\x05total\x18\x03\x20\x01(\x0b2..bitdrif\
+    t_public.protobuf.memory.v1.BlockCountR\x05total\x12.\n\x13largest_block\
+    _bytes\x18\x04\x20\x01(\x04R\x11largestBlockBytes\x12D\n\x05named\x18\
+    \x05\x20\x01(\x0b2..bitdrift_public.protobuf.memory.v1.BlockCountR\x05na\
+    med\x12O\n\x0bswift_boxes\x18\x06\x20\x01(\x0b2..bitdrift_public.protobu\
+    f.memory.v1.BlockCountR\nswiftBoxes\x12F\n\x06images\x18\x07\x20\x01(\
+    \x0b2..bitdrift_public.protobuf.memory.v1.BlockCountR\x06images\x12J\n\
+    \x08reporter\x18\x08\x20\x01(\x0b2..bitdrift_public.protobuf.memory.v1.B\
+    lockCountR\x08reporter\x12T\n\x0cunclassified\x18\t\x20\x01(\x0b20.bitdr\
+    ift_public.protobuf.memory.v1.UnclassifiedR\x0cunclassified\x12B\n\x06ow\
+    ners\x18\n\x20\x01(\x0b2*.bitdrift_public.protobuf.memory.v1.OwnersR\x06\
+    owners\x12D\n\x07by_type\x18\x0b\x20\x03(\x0b2+.bitdrift_public.protobuf\
+    .memory.v1.TypeRowR\x06byType\x12A\n\x05zones\x18\x0c\x20\x03(\x0b2+.bit\
+    drift_public.protobuf.memory.v1.ZoneRowR\x05zones\":\n\nBlockCount\x12\
+    \x16\n\x06blocks\x18\x01\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\x18\
+    \x02\x20\x01(\x04R\x05bytes\"Z\n\x0cUnclassified\x12\x16\n\x06blocks\x18\
+    \x01\x20\x01(\x04R\x06blocks\x12\x14\n\x05bytes\x18\x02\x20\x01(\x04R\
+    \x05bytes\x12\x1c\n\thistogram\x18\x03\x20\x03(\x04R\thistogram\"\xc8\
+    \x01\n\x06Owners\x12\x16\n\x06blocks\x18\x01\x20\x01(\x04R\x06blocks\x12\
+    \x14\n\x05bytes\x18\x02\x20\x01(\x04R\x05bytes\x12#\n\rshared_blocks\x18\
+    \x03\x20\x01(\x04R\x0csharedBlocks\x12%\n\x0etable_overflow\x18\x04\x20\
+    \x01(\x04R\rtableOverflow\x12D\n\x07by_type\x18\x05\x20\x03(\x0b2+.bitdr\
+    ift_public.protobuf.memory.v1.TypeRowR\x06byType\"\x9a\x02\n\x07TypeRow\
+    \x12\x14\n\x04name\x18\x01\x20\x01(\tH\0R\x04name\x12L\n\x07address\x18\
+    \x02\x20\x01(\x0b20.bitdrift_public.protobuf.memory.v1.ImageAddressH\0R\
+    \x07address\x12D\n\x04kind\x18\x03\x20\x01(\x0e20.bitdrift_public.protob\
+    uf.memory.v1.TypeRow.KindR\x04kind\x12\x16\n\x06blocks\x18\x04\x20\x01(\
+    \x04R\x06blocks\x12\x14\n\x05bytes\x18\x05\x20\x01(\x04R\x05bytes\"+\n\
+    \x04Kind\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\t\n\x05CLASS\x10\x01\x12\x07\
+    \n\x03CXX\x10\x02B\n\n\x08identity\"\xb7\x01\n\x07ZoneRow\x12\x12\n\x04n\
+    ame\x18\x01\x20\x01(\tR\x04name\x12\x16\n\x06blocks\x18\x02\x20\x01(\x04\
+    R\x06blocks\x12\x14\n\x05bytes\x18\x03\x20\x01(\x04R\x05bytes\x12\x1e\n\
+    \nenumerated\x18\x04\x20\x01(\x08R\nenumerated\x12\x12\n\x04seen\x18\x05\
+    \x20\x01(\x08R\x04seen\x12\x18\n\x07skipped\x18\x06\x20\x01(\x08R\x07ski\
+    pped\x12\x1c\n\ttruncated\x18\x07\x20\x01(\x08R\ttruncatedb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -3192,8 +3392,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(0);
-            let mut messages = ::std::vec::Vec::with_capacity(14);
+            let mut messages = ::std::vec::Vec::with_capacity(15);
             messages.push(MemoryDump::generated_message_descriptor_data());
+            messages.push(SystemIdentity::generated_message_descriptor_data());
             messages.push(Image::generated_message_descriptor_data());
             messages.push(ImageAddress::generated_message_descriptor_data());
             messages.push(Counters::generated_message_descriptor_data());
