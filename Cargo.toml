@@ -80,7 +80,7 @@ async-compression = { version = "0.4.51", features = ["tokio", "zlib"] }
 async-trait       = "0.1.92"
 axum              = { version = "0.8.9", features = ["http2", "macros"] }
 base64            = "0.23.1"
-base64-url        = "3.0.5"
+base64-url        = "4.0.0"
 base64ct          = { version = "1.8.3", features = ["alloc", "std"] }
 bd-workspace-hack = "0.1.1"
 num-traits        = "0.2.19"
@@ -92,7 +92,7 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.73.2"
 bytes           = "1.12.1"
 cbindgen        = "0.29.4"
-cc              = "1.9.0"
+cc              = "1.10.0"
 clap            = { version = "4.6.7", features = ["derive", "env"] }
 cmake           = "0.1.58"
 color-backtrace = "0.7.4"
@@ -127,11 +127,11 @@ libc                  = "0.2.191"
 libfuzzer-sys         = "0.4.13"
 log                   = "0.4.34"
 matches               = "0.1.10"
-memmap2               = "0.9.11"
+memmap2               = "0.9.12"
 mockall               = "0.15.0"
 nom                   = "8.0.0"
 nom-language          = "0.1.0"
-notify                = "8.2.0"
+notify                = "8.2.1"
 opentelemetry         = "0.33.1"
 
 opentelemetry-otlp = { version = "0.33.1", default-features = false, features = [
@@ -148,13 +148,13 @@ opentelemetry_sdk = { version = "0.33.1", features = [
   "experimental_trace_batch_span_processor_with_async_runtime",
 ] }
 
-ordered-float      = { version = "5.5.0", features = ["serde"] }
+ordered-float      = { version = "5.5.1", features = ["serde"] }
 parameterized      = "2.1.0"
 parking_lot        = "0.13.0"
 pretty_assertions  = "1.4.1"
 prometheus         = "0.14.0"
 proptest           = "1.12.0"
-rmcp               = { version = "3.6.0", features = ["transport-io"] }
+rmcp               = { version = "3.7.0", features = ["transport-io"] }
 thread_local       = "1.1.10"
 tracing            = "0.1.44"
 tracing-log        = "0.2.0"
@@ -173,7 +173,7 @@ regex        = "1.13.1"
 regex-lite   = "0.1.9"
 reqwest      = { version = "0.13.5", features = ["deflate", "json"] }
 ripsaw       = { git = "https://github.com/bitdriftlabs/ripsaw.git" }
-rstest       = "0.27.0"
+rstest       = "0.28.0"
 rstest_reuse = "0.7.1"
 serde        = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json   = "1.0.154"
@@ -192,7 +192,7 @@ termcolor             = "1.4.1"
 thiserror             = "2.0.21"
 tikv-jemalloc-ctl     = "0.7.0"
 time                  = { version = "0.3.55", features = ["serde-well-known", "macros", "parsing"] }
-tokio                 = { version = "1.54.0", features = ["full", "test-util"] }
+tokio                 = { version = "1.54.1", features = ["full", "test-util"] }
 tokio-rustls          = { version = "0.26.6", default-features = false }
 tokio-stream          = "0.1.19"
 tokio-test            = "0.4.6"
@@ -201,7 +201,7 @@ tower-http            = { version = "0.7.1", features = ["compression-deflate"] 
 tracing-opentelemetry = "0.34.0"
 unwrap-infallible     = "1.0.0"
 urlencoding           = "2.1.3"
-uuid                  = { version = "1.28.0", features = ["v4"] }
+uuid                  = { version = "1.29.0", features = ["v4"] }
 zstd                  = "0.14.3"
 
 [profile.bench]
