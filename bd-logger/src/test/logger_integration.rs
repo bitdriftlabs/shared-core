@@ -5952,7 +5952,7 @@ fn workflow_state_change_match_flush_buffers() {
     ConfigurationUpdateParts {
       buffer_config: vec![default_buffer_config(
         Type::TRIGGER,
-        make_buffer_matcher_matching_everything().into(),
+        make_buffer_matcher_matching_everything_except_internal_logs().into(),
       )],
       workflows: vec![WorkflowBuilder::new("flush_workflow", &[&a, &b]).build()],
       ..Default::default()
@@ -5995,6 +5995,61 @@ fn workflow_state_change_match_flush_buffers() {
     // Verify the last log is the synthetic state change log with the flush action ID
     let last_log = &log_upload.logs()[5];
     assert_eq!(last_log.message(), "State Change");
+    assert_eq!(last_log.log_type(), LogType::INTERNAL_SDK);
+    assert_eq!(last_log.field("_feature_flag_key"), "trigger_flush");
+    assert_eq!(last_log.field("_feature_flag_value"), "true");
+    assert!(!last_log.has_field("_feature_flag_previous_value"));
     assert_eq!(vec!["flush_action_id"], *last_log.workflow_action_ids());
   });
+}
+
+#[test]
+fn feature_flag_changes_emit_internal_state_change_logs() {
+  let mut setup = Setup::new();
+  setup.send_runtime_update();
+  setup.upload_individual_logs();
+  assert!(
+    setup
+      .send_configuration_update(configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![default_buffer_config(
+            Type::CONTINUOUS,
+            make_buffer_matcher_matching_everything().into(),
+          )],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+
+  for value in ["control", "treatment", "treatment"] {
+    setup
+      .logger_handle
+      .set_feature_flag_exposure("checkout".to_string(), Some(value.to_string()));
+  }
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
+    let logs = upload.logs();
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].message(), "State Change");
+    assert_eq!(logs[0].log_type(), LogType::INTERNAL_SDK);
+    assert_eq!(logs[0].field("_feature_flag_key"), "checkout");
+    assert_eq!(logs[0].field("_feature_flag_value"), "control");
+    assert!(!logs[0].has_field("_feature_flag_previous_value"));
+  });
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(upload) => {
+    let logs = upload.logs();
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].message(), "State Change");
+    assert_eq!(logs[0].log_type(), LogType::INTERNAL_SDK);
+    assert_eq!(logs[0].field("_feature_flag_key"), "checkout");
+    assert_eq!(logs[0].field("_feature_flag_value"), "treatment");
+    assert_eq!(logs[0].field("_feature_flag_previous_value"), "control");
+  });
+  assert_matches!(setup.server.blocking_next_log_upload(), None);
 }

@@ -26,6 +26,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_runtime::runtime::{ConfigLoader, IntWatch};
+use bd_state::{StateChangeType, state_value_as_cow};
 use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
@@ -516,17 +517,82 @@ impl ProcessingPipeline {
 
     Self::handle_common_pre_buffer_write(&result.triggered_flush_buffers_action_ids);
 
-    // In order to work with session capture we need there to be a log that can be emitted with the
-    // action ID for the flush action. Since state changes typically don't have associated logs, we
-    // need to rely on the mechanism to synthesize a log here. Now we pass the collected fields
-    // (global metadata) so they can be included in the synthetic log.
+    let mut synthetic_fields = fields.clone();
+    let mut written_to_buffers = TinySet::default();
+    if state_change.scope == bd_state::Scope::FeatureFlagExposure {
+      synthetic_fields.insert("_feature_flag_key".into(), state_change.key.clone().into());
+      let (value, previous_value) = match &state_change.change_type {
+        StateChangeType::Inserted { value } => (Some(value), None),
+        StateChangeType::Updated {
+          old_value,
+          new_value,
+        } => (Some(new_value), Some(old_value)),
+        StateChangeType::Removed { old_value } => (None, Some(old_value)),
+      };
+      if let Some(value) = value.and_then(state_value_as_cow) {
+        synthetic_fields.insert("_feature_flag_value".into(), value.into_owned().into());
+      }
+      if let Some(value) = previous_value.and_then(state_value_as_cow) {
+        synthetic_fields.insert(
+          "_feature_flag_previous_value".into(),
+          value.into_owned().into(),
+        );
+      }
+
+      // State changes do not pass through the log pipeline. Route this internal log directly so
+      // it does not trigger workflows a second time, while retaining the flag's admission session.
+      let mut log = EncodableLog::new(
+        Log {
+          log_level: log_level::DEBUG,
+          log_type: LogType::INTERNAL_SDK,
+          message: "State Change".into(),
+          fields: synthetic_fields.clone(),
+          matching_fields: matching_fields.clone(),
+          command_attachment: None,
+          session_id: session_id.into(),
+          occurred_at: state_change.timestamp,
+          capture_session: None,
+        },
+        (*self.min_log_compression_size.read()).into(),
+      );
+      let matching_buffers = self.buffer_selector.buffers(
+        log.log.log_type,
+        log.log.log_level,
+        &log.log.message,
+        FieldsRef::new(&log.log.fields, &log.log.matching_fields),
+        &state_reader,
+      );
+      let action_ids = result
+        .triggered_flush_buffers_action_ids
+        .iter()
+        .filter_map(|id| match id.as_ref() {
+          FlushBufferId::WorkflowActionId(workflow) => Some(workflow.as_ref()),
+          FlushBufferId::ExplicitSessionCapture(_) | FlushBufferId::RemoteCommand(_) => None,
+        })
+        .collect_vec();
+      if let Err(error) = Self::write_to_buffers(
+        &mut self.buffer_producers,
+        &matching_buffers,
+        &mut log,
+        &action_ids,
+        &mut written_to_buffers,
+      ) {
+        warn_every!(
+          15.seconds(),
+          "failed to write state change log to buffer: {error}"
+        );
+      }
+    }
+
+    // A state change that triggers capture still needs a log in the flushed buffer when ordinary
+    // routing did not place one in an uploadable buffer.
     Self::process_flush_buffers_actions(
       &result.triggered_flush_buffers_action_ids,
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
-      &result.log_destination_buffer_ids,
+      &written_to_buffers,
       &"State Change".into(),
-      (fields, None),
+      (&synthetic_fields, None),
       session_id,
       state_change.timestamp,
     );
@@ -595,7 +661,7 @@ impl ProcessingPipeline {
     // Therefore, we assume that the log ends up being uploaded only if it is directed to one of the
     // trigger buffers that is about to be flushed.
     let written_to_flushed_trigger_buffer =
-      !written_to_buffers.is_disjoint(&buffers.trigger_buffer_ids);
+      !written_to_buffers.is_disjoint(triggered_flushes_buffer_ids);
 
     let is_log_about_to_be_uploaded =
       written_to_continuous_buffer || written_to_flushed_trigger_buffer;
