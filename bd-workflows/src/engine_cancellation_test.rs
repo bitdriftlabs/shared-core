@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+// https://polyformproject.org/licenses/strict/1.0.0
 
 use super::engine_test::{timed_command_log, workflow_command_rule};
 use super::engine_test_helpers::{Setup, make_state_change_rule, make_string_match};
