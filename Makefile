@@ -15,6 +15,7 @@ protos:
 		echo "Generating protos with the in-repo Cargo binary"; \
 		cd bd-proto && cargo run --features codegen --bin generate-protos; \
 	fi
+	python3 ci/license_header.py --generated
 
 .PHONY: check-protos
 check-protos: protos

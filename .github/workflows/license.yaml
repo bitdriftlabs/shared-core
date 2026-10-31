@@ -9,6 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Test license enforcement
+      run: python3 -m unittest discover -s ci -p 'license_header_test.py'
+    - name: Check first-party licenses
+      run: ci/check_license.sh
     - uses: EmbarkStudios/cargo-deny-action@v2.0.6
       with:
         command: check licenses

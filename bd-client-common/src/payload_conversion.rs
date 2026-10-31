@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+// https://polyformproject.org/licenses/strict/1.0.0
 
 // This file contains all the trait implementations necessary to wire up de-/multiplexing of both
 // the client and server APIs. We keep this centralized to reuse helper macros to reduce some of
