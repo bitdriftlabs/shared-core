@@ -32,6 +32,14 @@ fn prepare_file_for_mmap_resizes_and_preallocates() -> anyhow::Result<()> {
 }
 
 #[test]
+fn disk_space_check_skips_unsized_filesystems() {
+  assert!(super::has_disk_space(10, 10, 100));
+  assert!(!super::has_disk_space(11, 10, 100));
+  assert!(!super::has_disk_space(1, 0, 100));
+  assert!(super::has_disk_space(1, 0, 0));
+}
+
+#[test]
 fn write_checksummed_data() {
   let data = b"100";
 
