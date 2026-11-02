@@ -27,9 +27,9 @@ use bd_proto::protos::logging::payload::LogType;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use time::OffsetDateTime;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 // The stop-time stats upload can be held back by the 30 s explicit-flush minimum interval, in which
@@ -39,6 +39,9 @@ const STOP_ARTIFACT_UPLOAD_DEADLINE: Duration = Duration::from_secs(120);
 const UPLOAD_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const REPORT_PROCESSING_DEADLINE: Duration = Duration::from_secs(30);
 const REPORT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+// The SDK deletes a report before it enqueues the `AppExit` log and before its uploader persists
+// the queued artifact, and acknowledges neither. This covers both steps, which take microseconds.
+const REPORT_SETTLE: Duration = Duration::from_millis(250);
 
 const REPORTS_DIRECTORY: &str = "reports";
 // The SDK watches this directory only if it exists at startup, and attributes reports written to
@@ -50,7 +53,9 @@ pub struct Driver {
   directory: PathBuf,
   holder: LoggerHolder,
   worker: JoinHandle<anyhow::Result<()>>,
-  next_report: AtomicU64,
+  // The SDK's report watcher keeps at most one pending notification and drops the rest, so reports
+  // are handed over one at a time. Holds the next report index.
+  reports: Mutex<u64>,
 }
 
 impl Driver {
@@ -64,7 +69,7 @@ impl Driver {
       directory: directory.to_path_buf(),
       holder,
       worker: tokio::spawn(future),
-      next_report: AtomicU64::new(0),
+      reports: Mutex::new(0),
     })
   }
 
@@ -116,10 +121,14 @@ impl Driver {
 
   /// Hands `report` to the SDK the way the platform layer reports an issue in the running process.
   /// The SDK attributes it to the current session, emits its `AppExit` log and uploads the report
-  /// out of band; [`Self::stop`] waits for that upload. Returns once the SDK has taken the report,
-  /// which is just before it enqueues the log.
+  /// out of band; [`Self::stop`] waits for that upload. Returns after the SDK has taken the report
+  /// and a short settle for the log and upload it queues without acknowledgement, so logs and
+  /// session changes that follow are ordered after the `AppExit` log in practice, not by
+  /// guarantee. Concurrent calls are serialized.
   pub async fn report_issue(&self, report: &IssueReport) -> anyhow::Result<()> {
-    let index = self.next_report.fetch_add(1, Ordering::Relaxed);
+    let mut next = self.reports.lock().await;
+    let index = *next;
+    *next += 1;
     let staged = self
       .directory
       .join(REPORTS_DIRECTORY)
@@ -137,7 +146,7 @@ impl Driver {
       while path.try_exists()? {
         tokio::time::sleep(REPORT_POLL_INTERVAL).await;
       }
-      Ok(())
+      Ok::<_, anyhow::Error>(())
     })
     .await
     .map_err(|_| {
@@ -145,7 +154,9 @@ impl Driver {
         "SDK did not take issue report {} within {REPORT_PROCESSING_DEADLINE:?}",
         path.display()
       )
-    })?
+    })??;
+    tokio::time::sleep(REPORT_SETTLE).await;
+    Ok(())
   }
 
   pub async fn flush(&self) -> anyhow::Result<()> {

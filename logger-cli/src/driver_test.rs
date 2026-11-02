@@ -177,23 +177,7 @@ async fn driver_reports_issues_in_the_current_session() {
     .await
     .unwrap();
   let session = driver.begin_session("crasher").unwrap();
-  let report = IssueReport {
-    kind: IssueKind::HandledError,
-    platform: Platform::Apple,
-    app_id: "driver-test".into(),
-    app_version: "1.2.3".into(),
-    app_build_id: "123".into(),
-    name: "CheckoutError".into(),
-    reason: "payment declined".into(),
-    frames: vec![StackFrame {
-      class_name: "Checkout".into(),
-      symbol_name: "confirm".into(),
-      file: "Checkout.swift".into(),
-      line: 12,
-    }],
-    feature_flags: Vec::new(),
-    timestamp: OffsetDateTime::now_utc(),
-  };
+  let report = handled_error("CheckoutError");
   driver.report_issue(&report).await.unwrap();
   driver.flush().await.unwrap();
 
@@ -223,6 +207,58 @@ async fn driver_reports_issues_in_the_current_session() {
     .filter(|name| name != "report_index.pb")
     .collect();
   assert_eq!(pending, Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn driver_takes_every_concurrent_issue_report() {
+  let mut server = start_server(false, None);
+  let directory = TempDir::new().unwrap();
+  let driver = start_streaming_driver(&mut server, directory.path()).await;
+  driver.begin_session("crasher").unwrap();
+  // The SDK's report watcher drops notifications that arrive while one is pending, so reports
+  // handed over together would otherwise time out unprocessed.
+  let reports = ["FirstError", "SecondError", "ThirdError"].map(handled_error);
+  let (first, second, third) = tokio::join!(
+    driver.report_issue(&reports[0]),
+    driver.report_issue(&reports[1]),
+    driver.report_issue(&reports[2]),
+  );
+  first.unwrap();
+  second.unwrap();
+  third.unwrap();
+
+  let mut uploaded = Vec::new();
+  for _ in &reports {
+    uploaded.push(server.next_artifact_upload().await.unwrap().contents);
+  }
+  let mut expected: Vec<_> = reports
+    .iter()
+    .map(|report| report.to_bytes().unwrap())
+    .collect();
+  uploaded.sort();
+  expected.sort();
+  assert_eq!(uploaded, expected);
+  driver.stop().await.unwrap();
+}
+
+fn handled_error(name: &str) -> IssueReport {
+  IssueReport {
+    kind: IssueKind::HandledError,
+    platform: Platform::Apple,
+    app_id: "driver-test".into(),
+    app_version: "1.2.3".into(),
+    app_build_id: "123".into(),
+    name: name.into(),
+    reason: "payment declined".into(),
+    frames: vec![StackFrame {
+      class_name: "Checkout".into(),
+      symbol_name: "confirm".into(),
+      file: "Checkout.swift".into(),
+      line: 12,
+    }],
+    feature_flags: Vec::new(),
+    timestamp: OffsetDateTime::UNIX_EPOCH + time::Duration::days(20_000),
+  }
 }
 
 fn stats_snapshot_files(directory: &Path) -> Vec<String> {
