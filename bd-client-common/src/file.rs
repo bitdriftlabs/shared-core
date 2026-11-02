@@ -31,7 +31,8 @@ pub fn prepare_file_for_mmap(
   let allocated_file_size = file.allocated_size()?;
   let required_disk_space = required_file_size.saturating_sub(allocated_file_size);
   let available_disk_space = fs2::available_space(file_path)?;
-  if available_disk_space < required_disk_space {
+  let total_disk_space = fs2::total_space(file_path)?;
+  if !has_disk_space(required_disk_space, available_disk_space, total_disk_space) {
     log::error!(
       "Insufficient disk space to preallocate memory-mapped file {}: required \
        {required_disk_space}, available {available_disk_space}",
@@ -57,6 +58,13 @@ pub fn prepare_file_for_mmap(
   }
 
   Ok(resized)
+}
+
+// A filesystem without a size limit, such as an unlimited tmpfs, reports zero total and available
+// space. Only filesystems that report a size can be checked up front; for the others, the
+// allocation below still fails if space runs out.
+fn has_disk_space(required: u64, available: u64, total: u64) -> bool {
+  total == 0 || available >= required
 }
 
 pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> anyhow::Result<Vec<u8>> {
