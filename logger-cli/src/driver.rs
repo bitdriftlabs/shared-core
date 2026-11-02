@@ -13,6 +13,7 @@ mod tests;
 
 use crate::issue_report::IssueReport;
 use crate::logger::{LoggerArgs, LoggerHolder, make_logger};
+use bd_artifact_upload::Uploader;
 use bd_logger::{
   AnnotatedLogField,
   Block,
@@ -184,17 +185,33 @@ impl Driver {
     .await
   }
 
-  /// Wait until the artifacts currently queued, such as issue reports, have been uploaded. The SDK
-  /// deletes an artifact once the backend acknowledges or rejects it. Artifacts queued after the
-  /// call starts do not hold it.
+  /// Wait until the artifacts currently queued, such as issue reports and workflow attachments,
+  /// have been uploaded. The SDK deletes an artifact once the backend acknowledges or rejects it.
+  /// Artifacts queued after the call starts do not hold it.
   pub async fn wait_for_artifact_uploads(&self, deadline: Duration) -> anyhow::Result<()> {
-    wait_for_uploads(
-      &self.directory.join(ARTIFACT_UPLOADS_DIRECTORY),
+    // Workflow attachments keep their payloads outside the upload directory and are tracked only
+    // by their upload index entries.
+    let pending_attachments = Uploader::pending_workflow_attachments(&self.directory).await?;
+    let uploads_directory = self.directory.join(ARTIFACT_UPLOADS_DIRECTORY);
+    let uploads = wait_for_uploads(
+      &uploads_directory,
       |name| name == "report_index.pb",
       deadline,
       "artifacts",
-    )
-    .await
+    );
+    let attachments = tokio::time::timeout(deadline, async {
+      while !pending_attachments
+        .is_disjoint(&Uploader::pending_workflow_attachments(&self.directory).await?)
+      {
+        tokio::time::sleep(UPLOAD_POLL_INTERVAL).await;
+      }
+      Ok::<_, anyhow::Error>(())
+    });
+    let (uploads, attachments) = tokio::join!(uploads, attachments);
+    uploads?;
+    attachments.map_err(|_| {
+      anyhow::anyhow!("workflow attachments were not acknowledged within {deadline:?}")
+    })?
   }
 
   pub async fn stop(self) -> anyhow::Result<()> {
