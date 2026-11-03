@@ -7,7 +7,7 @@
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
-use super::{ActionEmitMetric, JsonFieldExtraction, TagValue, ValueIncrement};
+use super::{ActionEmitMetric, JsonFieldExtraction, SankeyExtraction, TagValue, ValueIncrement};
 use bd_log_matcher::matcher::JsonPathToken;
 use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   KeyOrIndex,
@@ -25,7 +25,30 @@ use bd_proto::protos::workflow::workflow::workflow::action::{
   Tag,
 };
 use bd_proto::protos::workflow::workflow::workflow::field_extracted::{Extraction_type, JsonPath};
+use bd_proto::protos::workflow::workflow::workflow::transition_extension::{
+  SankeyDiagramValueExtraction,
+  sankey_diagram_value_extraction::Value_type,
+};
 use key_or_index::Key_or_index;
+
+#[test]
+fn sankey_log_body_selector_uses_metric_extractor() {
+  for marker in [true, false] {
+    let extraction = SankeyExtraction::new(
+      &SankeyDiagramValueExtraction {
+        sankey_diagram_id: "sankey".into(),
+        value_type: Some(Value_type::LogBodyExtracted(marker)),
+        counts_toward_sankey_extraction_limit: true,
+        ..Default::default()
+      },
+      10,
+    )
+    .unwrap();
+    assert_eq!(extraction.value, TagValue::LogBodyExtract);
+    assert_eq!(extraction.limit, 10);
+    assert!(extraction.counts_toward_sankey_values_extraction_limit);
+  }
+}
 
 #[test]
 fn compiles_json_field_extraction_for_tags_and_values() {

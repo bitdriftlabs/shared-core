@@ -493,6 +493,9 @@ impl SankeyExtraction {
         sankey_diagram_value_extraction::Value_type::FieldExtracted(extracted) => {
           TagValue::from_field_extracted(extracted)?
         },
+        sankey_diagram_value_extraction::Value_type::LogBodyExtracted(_) => {
+          TagValue::LogBodyExtract
+        },
       },
       counts_toward_sankey_values_extraction_limit: proto.counts_toward_sankey_extraction_limit,
       limit,
