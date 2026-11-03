@@ -9,6 +9,7 @@ mod fake_perfetto;
 mod fake_screenshot;
 
 pub mod driver;
+pub mod issue_report;
 pub mod logger;
 pub mod metadata;
 pub mod service;

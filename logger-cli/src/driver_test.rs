@@ -8,6 +8,7 @@
 #![allow(clippy::unwrap_used)]
 
 use super::{Driver, stop_worker, wait_for_configuration};
+use crate::issue_report::{IssueKind, IssueReport, StackFrame};
 use crate::logger::{LoggerArgs, SessionStrategyConfig};
 use crate::types::Platform;
 use bd_logger::{AdmissionError, FlushError, SdkStatusTracker};
@@ -20,7 +21,7 @@ use bd_test_helpers::config_helper::{
   make_buffer_matcher_matching_everything,
 };
 use bd_test_helpers::runtime::{ValueKind, make_update};
-use bd_test_helpers::test_api_server::{StreamAction, start_server};
+use bd_test_helpers::test_api_server::{ServerHandle, StreamAction, start_server};
 use protobuf::Message;
 use std::path::Path;
 use std::time::Duration;
@@ -58,13 +59,10 @@ async fn readiness_times_out_without_config() {
   assert!(error.is::<tokio::time::error::Elapsed>());
 }
 
-#[tokio::test]
-async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
-  let mut server = start_server(false, None);
-  let directory = TempDir::new().unwrap();
-  let driver = Driver::start(directory.path(), &args(server.port))
-    .await
-    .unwrap();
+/// Starts a driver that uploads each log as soon as it is available and stops within the test
+/// deadline.
+async fn start_streaming_driver(server: &mut ServerHandle, directory: &Path) -> Driver {
+  let driver = Driver::start(directory, &args(server.port)).await.unwrap();
   let stream = server.next_initialized_stream(false).await.unwrap();
   stream
     .stream_action(StreamAction::SendConfiguration(configuration_update(
@@ -89,7 +87,7 @@ async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
     .stream_action(StreamAction::SendRuntime(make_update(
       vec![
         ("log_uploader.batch_size", ValueKind::Int(1)),
-        // The explicit flush below starts this interval, so the stop-time stats upload is held
+        // A stop's explicit flush starts this interval, so the stop-time stats upload is held
         // back and only the periodic upload that follows it can send the final snapshot.
         ("stats.minimum_upload_interval_ms", ValueKind::Int(5_000)),
         ("stats.upload_flush_interval_ms", ValueKind::Int(500)),
@@ -98,6 +96,33 @@ async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
     )))
     .await;
   server.next_runtime_ack(&stream).await;
+  driver
+}
+
+/// Receives log uploads until a log with each wanted message has arrived.
+async fn next_logs(server: &mut ServerHandle, wanted: &[&str]) -> Vec<Log> {
+  let mut logs = Vec::new();
+  while !wanted.iter().all(|message| {
+    logs
+      .iter()
+      .any(|log: &Log| log.message.string_data() == *message)
+  }) {
+    let upload = server.next_log_upload().await.unwrap();
+    logs.extend(
+      upload
+        .proto_logs
+        .iter()
+        .map(|bytes| Log::parse_from_bytes(bytes).unwrap()),
+    );
+  }
+  logs
+}
+
+#[tokio::test]
+async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
+  let mut server = start_server(false, None);
+  let directory = TempDir::new().unwrap();
+  let driver = start_streaming_driver(&mut server, directory.path()).await;
   let at = OffsetDateTime::UNIX_EPOCH + time::Duration::days(20_000);
   let first = driver.begin_session("first").unwrap();
   assert_eq!(driver.holder.current_entity_id().as_deref(), Some("first"));
@@ -111,20 +136,7 @@ async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
   assert_eq!(driver.holder.current_entity_id().as_deref(), Some("second"));
   driver.log_at(at + time::Duration::seconds(1), "second event", [].into());
   driver.flush().await.unwrap();
-  let mut logs = Vec::new();
-  while !["first event", "second event"].iter().all(|message| {
-    logs
-      .iter()
-      .any(|log: &Log| log.message.string_data() == *message)
-  }) {
-    let upload = server.next_log_upload().await.unwrap();
-    logs.extend(
-      upload
-        .proto_logs
-        .iter()
-        .map(|bytes| Log::parse_from_bytes(bytes).unwrap()),
-    );
-  }
+  let logs = next_logs(&mut server, &["first event", "second event"]).await;
   let first_log = logs
     .iter()
     .find(|log| log.message.string_data() == "first event")
@@ -153,6 +165,168 @@ async fn driver_preserves_sessions_timestamps_and_stops_successfully() {
   // Shutting down before the stop-time stats upload is acknowledged would leave its snapshot
   // behind.
   assert_eq!(stats_snapshot_files(directory.path()), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn driver_reports_issues_in_the_current_session() {
+  let mut server = start_server(false, None);
+  let directory = TempDir::new().unwrap();
+  let driver = start_streaming_driver(&mut server, directory.path()).await;
+  driver
+    .set_feature_flag("payment_sdk_v2", Some("enabled"))
+    .await
+    .unwrap();
+  let session = driver.begin_session("crasher").unwrap();
+  let report = handled_error("CheckoutError");
+  driver.report_issue(&report).await.unwrap();
+  driver.flush().await.unwrap();
+
+  let upload = server.next_artifact_upload().await.unwrap();
+  assert_eq!(upload.session_id, session);
+  assert_eq!(upload.contents, report.to_bytes().unwrap());
+  assert!(
+    upload
+      .feature_flags
+      .iter()
+      .any(|flag| flag.name == "payment_sdk_v2" && flag.variant.as_deref() == Some("enabled"))
+  );
+  let logs = next_logs(&mut server, &["AppExit"]).await;
+  let exit = logs
+    .iter()
+    .find(|log| log.message.string_data() == "AppExit")
+    .unwrap();
+  assert_eq!(exit.session_id, session);
+  assert_eq!(field(exit, "_app_exit_reason"), "Handled Error");
+  assert_eq!(field(exit, "_app_exit_info"), "CheckoutError");
+  assert_eq!(field(exit, "_crash_artifact_id"), upload.artifact_id);
+
+  driver.stop().await.unwrap();
+  let pending: Vec<_> = std::fs::read_dir(directory.path().join("report_uploads"))
+    .unwrap()
+    .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+    .filter(|name| name != "report_index.pb")
+    .collect();
+  assert_eq!(pending, Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn driver_takes_every_concurrent_issue_report() {
+  let mut server = start_server(false, None);
+  let directory = TempDir::new().unwrap();
+  let driver = start_streaming_driver(&mut server, directory.path()).await;
+  driver.begin_session("crasher").unwrap();
+  // The SDK's report watcher drops notifications that arrive while one is pending, so reports
+  // handed over together would otherwise time out unprocessed.
+  let reports = ["FirstError", "SecondError", "ThirdError"].map(handled_error);
+  let (first, second, third) = tokio::join!(
+    driver.report_issue(&reports[0]),
+    driver.report_issue(&reports[1]),
+    driver.report_issue(&reports[2]),
+  );
+  first.unwrap();
+  second.unwrap();
+  third.unwrap();
+
+  let mut uploaded = Vec::new();
+  for _ in &reports {
+    uploaded.push(server.next_artifact_upload().await.unwrap().contents);
+  }
+  let mut expected: Vec<_> = reports
+    .iter()
+    .map(|report| report.to_bytes().unwrap())
+    .collect();
+  uploaded.sort();
+  expected.sort();
+  assert_eq!(uploaded, expected);
+  driver.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn artifact_wait_holds_until_the_report_upload_is_acknowledged() {
+  let mut server = start_server(false, None);
+  let directory = TempDir::new().unwrap();
+  let driver = start_streaming_driver(&mut server, directory.path()).await;
+  driver.begin_session("crasher").unwrap();
+  let blocked = server.block_next_artifact_upload_response();
+  driver
+    .report_issue(&handled_error("CheckoutError"))
+    .await
+    .unwrap();
+  // The upload has reached the server, so its payload stays queued until the response arrives.
+  server.next_artifact_upload().await.unwrap();
+
+  // With no time to wait, the queued upload must make the wait fail instead of returning early.
+  let pending = driver
+    .wait_for_artifact_uploads(Duration::ZERO)
+    .await
+    .unwrap_err();
+  assert!(
+    pending
+      .to_string()
+      .starts_with("artifacts were not acknowledged within 0ns"),
+    "{pending:#}"
+  );
+
+  blocked.release();
+  driver
+    .wait_for_artifact_uploads(Duration::from_secs(30))
+    .await
+    .unwrap();
+  driver.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn driver_rejects_reports_and_flags_before_ready() {
+  let server = start_server(false, None);
+  let directory = TempDir::new().unwrap();
+  let driver = Driver::start(directory.path(), &args(server.port))
+    .await
+    .unwrap();
+  // No configuration has been delivered, so the SDK could drop either without an error.
+  let not_ready = "the SDK is not ready; await Driver::ready first";
+  assert_eq!(
+    driver
+      .report_issue(&handled_error("EarlyError"))
+      .await
+      .unwrap_err()
+      .to_string(),
+    not_ready
+  );
+  assert_eq!(
+    driver
+      .set_feature_flag("payment_sdk_v2", None)
+      .await
+      .unwrap_err()
+      .to_string(),
+    not_ready
+  );
+  let worker = driver.worker.abort_handle();
+  let logger = driver.holder.logger.clone();
+  tokio::task::spawn_blocking(move || logger.lock().shutdown(true))
+    .await
+    .unwrap();
+  let _flush_error = driver.stop().await;
+  assert!(worker.is_finished());
+}
+
+fn handled_error(name: &str) -> IssueReport {
+  IssueReport {
+    kind: IssueKind::HandledError,
+    platform: Platform::Apple,
+    app_id: "driver-test".into(),
+    app_version: "1.2.3".into(),
+    app_build_id: "123".into(),
+    name: name.into(),
+    reason: "payment declined".into(),
+    frames: vec![StackFrame {
+      class_name: "Checkout".into(),
+      symbol_name: "confirm".into(),
+      file: "Checkout.swift".into(),
+      line: 12,
+    }],
+    feature_flags: Vec::new(),
+    timestamp: OffsetDateTime::UNIX_EPOCH + time::Duration::days(20_000),
+  }
 }
 
 fn stats_snapshot_files(directory: &Path) -> Vec<String> {
