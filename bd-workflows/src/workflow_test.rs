@@ -283,29 +283,48 @@ fn sankey_body_skips_non_string_messages_but_preserves_empty_strings() {
 
 #[test]
 fn sankey_body_skips_state_changes_without_skipping_field_or_fixed_values() {
-  let body_rule = make_state_change_rule(Scope::GlobalState, "key", make_is_set_match());
-  let mut workflow = sankey_body_workflow(body_rule);
-  workflow.process_log(TestLog::new("start"));
+  let finished = state("finished");
+  let initial = state("initial").declare_transition_with_all(
+    &finished,
+    make_state_change_rule(Scope::GlobalState, "key", make_is_set_match()),
+    &[make_emit_sankey_action("sankey", 2, vec![])],
+    &[
+      make_sankey_extraction("sankey", true, Value_type::LogBodyExtracted(true)),
+      make_sankey_extraction("sankey", false, Value_type::Fixed("state-fixed".into())),
+      make_sankey_extraction(
+        "sankey",
+        false,
+        make_sankey_value_field_extracted("state-field"),
+      ),
+    ],
+  );
+  let mut workflow =
+    AnnotatedWorkflow::new(WorkflowBuilder::new("sankey", &[&initial, &finished]).make_config());
   let state_change = StateChange::inserted(
     Scope::GlobalState,
     "key",
     string_value("value"),
     datetime!(2026-01-01 00:00 UTC),
   );
-  let fields = LogFields::default();
-  workflow.workflow.process_event(
+  let fields = [("state-field".into(), "state-value".into())].into();
+  let matching_fields = LogFields::default();
+  let result = workflow.workflow.process_event(
     &workflow.config,
-    WorkflowEvent::StateChange(&state_change, FieldsRef::new(&fields, &fields), "session"),
+    WorkflowEvent::StateChange(
+      &state_change,
+      FieldsRef::new(&fields, &matching_fields),
+      "session",
+    ),
     &InMemoryStateReader::default(),
     state_change.timestamp,
     0,
     MatchContext::default(),
     &mut workflow.command_last_started_at_ns,
   );
-  assert_eq!(
-    finish_sankey_body_workflow(&mut workflow).nodes,
-    ["start", "field-value", "end"]
-  );
+  let [TriggeredAction::SankeyDiagram(action)] = result.triggered_actions.as_slice() else {
+    panic!("expected a completed Sankey path");
+  };
+  assert_eq!(action.path.nodes, ["state-fixed", "state-value"]);
 }
 
 #[test]
