@@ -76,7 +76,9 @@ impl IssueKind {
 // StackFrame
 //
 
-/// One in-app frame, symbolicated as the platform layer would report it.
+/// One in-app frame with its symbol and source location already resolved. Frames carry no binary
+/// image or address, so the backend cannot symbolicate native frames (Android native crashes and
+/// Apple reports); they suit fixtures that only need readable stacks.
 #[derive(Clone, Debug)]
 pub struct StackFrame {
   pub class_name: String,
@@ -135,9 +137,11 @@ impl IssueReport {
       },
     );
 
-    let frame_type = match self.platform {
-      Platform::Android => FrameType::JVM,
-      Platform::Apple => FrameType::DWARF,
+    // Android native crashes come from C/C++ code; every other Android report has JVM frames.
+    let frame_type = match (self.platform, self.kind) {
+      (Platform::Android, IssueKind::NativeCrash) => FrameType::AndroidNative,
+      (Platform::Android, _) => FrameType::JVM,
+      (Platform::Apple, _) => FrameType::DWARF,
     };
     let error_frames = self.frames(&mut builder, frame_type);
     let name = builder.create_string(&self.name);

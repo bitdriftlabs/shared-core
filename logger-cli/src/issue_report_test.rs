@@ -109,3 +109,37 @@ fn rejects_non_numeric_android_build() {
   .unwrap_err();
   assert_eq!(error.to_string(), "android app build ID must be an integer");
 }
+
+#[test]
+fn frame_type_follows_platform_and_kind() {
+  let frame_type = |platform, kind| {
+    let bytes = IssueReport {
+      kind,
+      platform,
+      ..anr()
+    }
+    .to_bytes()
+    .unwrap();
+    let report = root_as_report(&bytes).unwrap();
+    report
+      .errors()
+      .unwrap()
+      .get(0)
+      .stack_trace()
+      .unwrap()
+      .get(0)
+      .type_()
+  };
+  assert_eq!(
+    frame_type(Platform::Android, IssueKind::NativeCrash),
+    FrameType::AndroidNative
+  );
+  assert_eq!(
+    frame_type(Platform::Android, IssueKind::JvmCrash),
+    FrameType::JVM
+  );
+  assert_eq!(
+    frame_type(Platform::Apple, IssueKind::NativeCrash),
+    FrameType::DWARF
+  );
+}
