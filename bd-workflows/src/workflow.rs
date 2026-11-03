@@ -19,6 +19,7 @@ use crate::config::{
   FieldExtractionSource,
   FlushBufferId,
   Predicate,
+  TagValue,
   WorkflowDebugMode,
 };
 use crate::generate_log::generate_log_action;
@@ -2547,6 +2548,10 @@ impl Traversal {
 
     // Sankey extractions: Can extract from state reader (e.g., feature flags) and from fields
     for extraction in &extractions.sankey_extractions {
+      if matches!(extraction.value, TagValue::LogBodyExtract) {
+        continue;
+      }
+
       let Some(extracted_value) =
         extraction
           .value

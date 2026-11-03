@@ -10,6 +10,9 @@
 mod engine_test_helpers;
 
 #[cfg(test)]
+pub(crate) use engine_test_helpers::{make_is_set_match, make_state_change_rule};
+
+#[cfg(test)]
 #[path = "./engine_test.rs"]
 mod engine_test;
 

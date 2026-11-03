@@ -50,7 +50,8 @@ use std::collections::HashMap;
 // Version 49: Added SDK-instance-scoped device commands with reconnect-safe update replay and
 //             explicit acknowledgement dispositions.
 // Version 50: Android stack trace built-in command support.
-pub const CONFIGURATION_VERSION: &str = "50";
+// Version 51: Added log body extraction for Sankey nodes.
+pub const CONFIGURATION_VERSION: &str = "51";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

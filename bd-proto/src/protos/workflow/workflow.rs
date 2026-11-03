@@ -2823,8 +2823,33 @@ pub mod workflow {
                 }
             }
 
+            // bool log_body_extracted = 5;
+
+            pub fn log_body_extracted(&self) -> bool {
+                match self.value_type {
+                    ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::LogBodyExtracted(v)) => v,
+                    _ => false,
+                }
+            }
+
+            pub fn clear_log_body_extracted(&mut self) {
+                self.value_type = ::std::option::Option::None;
+            }
+
+            pub fn has_log_body_extracted(&self) -> bool {
+                match self.value_type {
+                    ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::LogBodyExtracted(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_log_body_extracted(&mut self, v: bool) {
+                self.value_type = ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::LogBodyExtracted(v))
+            }
+
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(4);
+                let mut fields = ::std::vec::Vec::with_capacity(5);
                 let mut oneofs = ::std::vec::Vec::with_capacity(1);
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                     "sankey_diagram_id",
@@ -2843,6 +2868,12 @@ pub mod workflow {
                     SankeyDiagramValueExtraction::field_extracted,
                     SankeyDiagramValueExtraction::mut_field_extracted,
                     SankeyDiagramValueExtraction::set_field_extracted,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+                    "log_body_extracted",
+                    SankeyDiagramValueExtraction::has_log_body_extracted,
+                    SankeyDiagramValueExtraction::log_body_extracted,
+                    SankeyDiagramValueExtraction::set_log_body_extracted,
                 ));
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                     "counts_toward_sankey_extraction_limit",
@@ -2877,6 +2908,9 @@ pub mod workflow {
                         26 => {
                             self.value_type = ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::FieldExtracted(is.read_message()?));
                         },
+                        40 => {
+                            self.value_type = ::std::option::Option::Some(sankey_diagram_value_extraction::Value_type::LogBodyExtracted(is.read_bool()?));
+                        },
                         32 => {
                             self.counts_toward_sankey_extraction_limit = is.read_bool()?;
                         },
@@ -2907,6 +2941,9 @@ pub mod workflow {
                             let len = v.compute_size();
                             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                         },
+                        &sankey_diagram_value_extraction::Value_type::LogBodyExtracted(v) => {
+                            my_size += 1 + 1;
+                        },
                     };
                 }
                 my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -2929,6 +2966,9 @@ pub mod workflow {
                         &sankey_diagram_value_extraction::Value_type::FieldExtracted(ref v) => {
                             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
                         },
+                        &sankey_diagram_value_extraction::Value_type::LogBodyExtracted(v) => {
+                            os.write_bool(5, v)?;
+                        },
                     };
                 }
                 os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -2949,6 +2989,7 @@ pub mod workflow {
 
             fn clear(&mut self) {
                 self.sankey_diagram_id.clear();
+                self.value_type = ::std::option::Option::None;
                 self.value_type = ::std::option::Option::None;
                 self.value_type = ::std::option::Option::None;
                 self.counts_toward_sankey_extraction_limit = false;
@@ -2993,6 +3034,8 @@ pub mod workflow {
                 Fixed(::std::string::String),
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction.field_extracted)
                 FieldExtracted(super::super::FieldExtracted),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExtension.SankeyDiagramValueExtraction.log_body_extracted)
+                LogBodyExtracted(bool),
             }
 
             impl ::protobuf::Oneof for Value_type {
@@ -8943,7 +8986,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     TagNameB\x07\xfaB\x04r\x02\x10\x01\x12\x20\n\tkey_regex\x18\x04\x20\x01(\
     \tH\0R\x08keyRegex\x88\x01\x01\x12$\n\x0bvalue_regex\x18\x05\x20\x01(\tH\
     \x01R\nvalueRegex\x88\x01\x01B\x0c\n\n_key_regexB\x0e\n\x0c_value_regex\
-    \"\x9fD\n\x08Workflow\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfa\
+    \"\xcfD\n\x08Workflow\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfa\
     B\x04r\x02\x10\x01\x12V\n\x06states\x18\x02\x20\x03(\x0b24.bitdrift_publ\
     ic.protobuf.workflow.v1.Workflow.StateR\x06statesB\x08\xfaB\x05\x92\x01\
     \x02\x08\x01\x12V\n\texecution\x18\x03\x20\x01(\x0b28.bitdrift_public.pr\
@@ -8984,7 +9027,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     imum_execution_interval\x18\x02\x20\x01(\x0b2\x19.google.protobuf.Durati\
     onR\x18minimumExecutionIntervalB\n\xfaB\x07\xaa\x01\x04\x08\x01*\0\x12_\
     \n\x13outcome_log_matcher\x18\x03\x20\x01(\x0b2/.bitdrift_public.protobu\
-    f.matcher.v1.LogMatcherR\x11outcomeLogMatcher\x1a\x8b\x06\n\x13Transitio\
+    f.matcher.v1.LogMatcherR\x11outcomeLogMatcher\x1a\xbb\x06\n\x13Transitio\
     nExtension\x12\xa8\x01\n\x1fsankey_diagram_value_extraction\x18\x01\x20\
     \x01(\x0b2_.bitdrift_public.protobuf.workflow.v1.Workflow.TransitionExte\
     nsion.SankeyDiagramValueExtractionH\0R\x1csankeyDiagramValueExtraction\
@@ -8992,14 +9035,15 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     f.workflow.v1.Workflow.TransitionExtension.SaveTimestampH\0R\rsaveTimest\
     amp\x12P\n\nsave_field\x18\x03\x20\x01(\x0b2/.bitdrift_public.protobuf.w\
     orkflow.v1.SaveFieldH\0R\tsaveField\x1a\x1f\n\rSaveTimestamp\x12\x0e\n\
-    \x02id\x18\x01\x20\x01(\tR\x02id\x1a\xc3\x02\n\x1cSankeyDiagramValueExtr\
+    \x02id\x18\x01\x20\x01(\tR\x02id\x1a\xf3\x02\n\x1cSankeyDiagramValueExtr\
     action\x123\n\x11sankey_diagram_id\x18\x01\x20\x01(\tR\x0fsankeyDiagramI\
     dB\x07\xfaB\x04r\x02\x10\x01\x12\x1f\n\x05fixed\x18\x02\x20\x01(\tH\0R\
     \x05fixedB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x0ffield_extracted\x18\x03\
     \x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtra\
-    ctedH\0R\x0efieldExtracted\x12P\n%counts_toward_sankey_extraction_limit\
-    \x18\x04\x20\x01(\x08R!countsTowardSankeyExtractionLimitB\x11\n\nvalue_t\
-    ype\x12\x03\xf8B\x01B\x15\n\x0eextension_type\x12\x03\xf8B\x01\x1a\x89\
+    ctedH\0R\x0efieldExtracted\x12.\n\x12log_body_extracted\x18\x05\x20\x01(\
+    \x08H\0R\x10logBodyExtracted\x12P\n%counts_toward_sankey_extraction_limi\
+    t\x18\x04\x20\x01(\x08R!countsTowardSankeyExtractionLimitB\x11\n\nvalue_\
+    type\x12\x03\xf8B\x01B\x15\n\x0eextension_type\x12\x03\xf8B\x01\x1a\x89\
     \x01\n\x0cRuleLogMatch\x12Z\n\x0blog_matcher\x18\x01\x20\x01(\x0b2/.bitd\
     rift_public.protobuf.matcher.v1.LogMatcherR\nlogMatcherB\x08\xfaB\x05\
     \x8a\x01\x02\x10\x01\x12\x1d\n\x05count\x18\x02\x20\x01(\rR\x05countB\

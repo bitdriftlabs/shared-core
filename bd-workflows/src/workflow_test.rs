@@ -13,6 +13,7 @@ use crate::config::{
   ValueIncrement,
   WorkflowDebugMode,
 };
+use crate::engine::{make_is_set_match, make_state_change_rule};
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{
   CommandCancellationReason,
@@ -20,6 +21,7 @@ use crate::workflow::{
   CommandSpan,
   PendingCommand,
   Run,
+  SankeyPath,
   TriggeredAction,
   Workflow,
   WorkflowEvent,
@@ -28,11 +30,13 @@ use crate::workflow::{
   command_details,
 };
 use bd_log_matcher::builder::{field_equals, message_equals};
+use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{
   COMMAND_OUTCOME_MESSAGE,
   COMMAND_START_MESSAGE,
   DataValue,
+  FieldsRef,
   LOG_FIELD_NAME_COMMAND_CANCELLATION_REASON,
   LOG_FIELD_NAME_COMMAND_DETAILS,
   LOG_FIELD_NAME_COMMAND_MESSAGE,
@@ -41,7 +45,10 @@ use bd_log_primitives::{
   LOG_FIELD_NAME_SPAN_ID,
   LOG_FIELD_NAME_SPAN_NAME,
   LOG_FIELD_NAME_SPAN_TYPE,
+  Log,
+  LogBinaryData,
   LogFields,
+  LogMapData,
   LogMessage,
   SPAN_RESULT_CANCELED,
   SPAN_RESULT_FAILURE,
@@ -54,6 +61,7 @@ use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{ArrayData, BinaryData, Data, LogType, MapData};
 use bd_proto::protos::workflow::workflow as workflow_proto;
 use bd_proto::protos::workflow::workflow::workflow::action::Action_type;
+use bd_proto::protos::workflow::workflow::workflow::{Rule, transition_extension};
 use bd_proto::protos::workflow::workflow_command::{
   WellKnownCommandType,
   WorkflowCommandSelector,
@@ -64,13 +72,17 @@ use bd_proto_util::serialization::{
   ProtoMessageSerialize,
   TimestampMicros,
 };
+use bd_state::{InMemoryStateReader, Scope, StateChange, string_value};
 use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   WorkflowBuilder,
   make_emit_counter_action,
+  make_emit_sankey_action,
   make_flush_buffers_action,
   make_on_new_session_rule,
+  make_sankey_extraction,
+  make_sankey_value_field_extracted,
   make_save_field_extraction,
   make_save_field_extraction_with_regex,
   make_save_message_extraction,
@@ -89,6 +101,7 @@ use std::io::Cursor;
 use std::vec;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
+use transition_extension::sankey_diagram_value_extraction::Value_type;
 
 #[ctor::ctor(unsafe)]
 fn test_global_init() {
@@ -148,6 +161,151 @@ fn command_details_encode_selectors_and_escape_strings() {
       json!({"key": key, "args": {}})
     );
   }
+}
+
+fn sankey_body_workflow(body_rule: Rule) -> AnnotatedWorkflow {
+  let finished = state("finished");
+  let mut body = state("body");
+  let start = state("start").declare_transition_with_extractions(
+    &body,
+    rule!(message_equals("start")),
+    &[make_sankey_extraction(
+      "sankey",
+      false,
+      Value_type::Fixed("start".into()),
+    )],
+  );
+  body = body.clone().declare_transition_with_extractions(
+    &body,
+    body_rule,
+    &[make_sankey_extraction(
+      "sankey",
+      true,
+      Value_type::LogBodyExtracted(true),
+    )],
+  );
+  body = body.declare_transition_with_all(
+    &finished,
+    rule!(message_equals("finish")),
+    &[make_emit_sankey_action("sankey", 2, vec![])],
+    &[
+      make_sankey_extraction("sankey", false, make_sankey_value_field_extracted("field")),
+      make_sankey_extraction("sankey", false, Value_type::Fixed("end".into())),
+    ],
+  );
+  AnnotatedWorkflow::new(WorkflowBuilder::new("sankey", &[&start, &body, &finished]).make_config())
+}
+
+fn finish_sankey_body_workflow(workflow: &mut AnnotatedWorkflow) -> SankeyPath {
+  let result =
+    workflow.process_log(TestLog::new("finish").with_tags(labels! { "field" => "field-value" }));
+  let [TriggeredAction::SankeyDiagram(action)] = result.triggered_actions.as_slice() else {
+    panic!("expected a completed Sankey path");
+  };
+  action.path.clone()
+}
+
+#[test]
+fn sankey_body_values_are_exact_trimmed_and_persisted() {
+  let mut workflow = sankey_body_workflow(rule!(field_equals("kind", "body")));
+  workflow.process_log(TestLog::new("start"));
+  for message in ["discarded", "  caf\u{e9}\n", "  caf\u{e9}\n"] {
+    workflow.process_log(TestLog::new(message).with_tags(labels! { "kind" => "body" }));
+  }
+
+  let serialized = workflow.workflow.serialize_message_to_bytes().unwrap();
+  workflow.workflow = Workflow::deserialize_message_from_bytes(&serialized).unwrap();
+  let path = finish_sankey_body_workflow(&mut workflow);
+  assert_eq!(
+    path.nodes,
+    [
+      "start",
+      "  caf\u{e9}\n",
+      "  caf\u{e9}\n",
+      "field-value",
+      "end"
+    ]
+  );
+  assert!(path.is_trimmed);
+
+  let mut same_path = sankey_body_workflow(rule!(field_equals("kind", "body")));
+  same_path.process_log(TestLog::new("start"));
+  for _ in 0 .. 2 {
+    same_path.process_log(TestLog::new("  caf\u{e9}\n").with_tags(labels! { "kind" => "body" }));
+  }
+  assert_eq!(
+    finish_sankey_body_workflow(&mut same_path).path_id,
+    path.path_id
+  );
+}
+
+#[test]
+fn sankey_body_skips_non_string_messages_but_preserves_empty_strings() {
+  for message in [
+    DataValue::Bytes(LogBinaryData::new(b"binary".to_vec())),
+    DataValue::Boolean(true),
+    DataValue::Map(LogMapData::default()),
+    DataValue::String(String::new()),
+  ] {
+    let is_string = message.as_str().is_some();
+    let mut workflow = sankey_body_workflow(rule!(field_equals("kind", "body")));
+    workflow.process_log(TestLog::new("start"));
+    let log = Log {
+      message,
+      fields: [("kind".into(), "body".into())].into(),
+      matching_fields: LogFields::default(),
+      log_type: LogType::NORMAL,
+      log_level: log_level::DEBUG,
+      session_id: "session".into(),
+      occurred_at: datetime!(2026-01-01 00:00 UTC),
+      command_attachment: None,
+      capture_session: None,
+    };
+    workflow.workflow.process_event(
+      &workflow.config,
+      WorkflowEvent::Log(&log),
+      &InMemoryStateReader::default(),
+      log.occurred_at,
+      0,
+      MatchContext::default(),
+      &mut workflow.command_last_started_at_ns,
+    );
+    let path = finish_sankey_body_workflow(&mut workflow);
+    let expected = if is_string {
+      vec!["start", "", "field-value", "end"]
+    } else {
+      vec!["start", "field-value", "end"]
+    };
+    assert_eq!(path.nodes, expected);
+    assert!(!path.is_trimmed);
+  }
+}
+
+#[test]
+fn sankey_body_skips_state_changes_without_skipping_field_or_fixed_values() {
+  let body_rule = make_state_change_rule(Scope::GlobalState, "key", make_is_set_match());
+  let mut workflow = sankey_body_workflow(body_rule);
+  workflow.process_log(TestLog::new("start"));
+  let state_change = StateChange::inserted(
+    Scope::GlobalState,
+    "key",
+    string_value("value"),
+    datetime!(2026-01-01 00:00 UTC),
+  );
+  let fields = LogFields::default();
+  workflow.workflow.process_event(
+    &workflow.config,
+    WorkflowEvent::StateChange(&state_change, FieldsRef::new(&fields, &fields), "session"),
+    &InMemoryStateReader::default(),
+    state_change.timestamp,
+    0,
+    MatchContext::default(),
+    &mut workflow.command_last_started_at_ns,
+  );
+  assert_eq!(
+    finish_sankey_body_workflow(&mut workflow).nodes,
+    ["start", "field-value", "end"]
+  );
 }
 
 #[test]
