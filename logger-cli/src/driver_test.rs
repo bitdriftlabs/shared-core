@@ -241,6 +241,74 @@ async fn driver_takes_every_concurrent_issue_report() {
   driver.stop().await.unwrap();
 }
 
+#[tokio::test]
+async fn artifact_wait_holds_until_the_report_upload_is_acknowledged() {
+  let mut server = start_server(false, None);
+  let directory = TempDir::new().unwrap();
+  let driver = start_streaming_driver(&mut server, directory.path()).await;
+  driver.begin_session("crasher").unwrap();
+  let blocked = server.block_next_artifact_upload_response();
+  driver
+    .report_issue(&handled_error("CheckoutError"))
+    .await
+    .unwrap();
+  // The upload has reached the server, so its payload stays queued until the response arrives.
+  server.next_artifact_upload().await.unwrap();
+
+  // With no time to wait, the queued upload must make the wait fail instead of returning early.
+  let pending = driver
+    .wait_for_artifact_uploads(Duration::ZERO)
+    .await
+    .unwrap_err();
+  assert!(
+    pending
+      .to_string()
+      .starts_with("artifacts were not acknowledged within 0ns"),
+    "{pending:#}"
+  );
+
+  blocked.release();
+  driver
+    .wait_for_artifact_uploads(Duration::from_secs(30))
+    .await
+    .unwrap();
+  driver.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn driver_rejects_reports_and_flags_before_ready() {
+  let server = start_server(false, None);
+  let directory = TempDir::new().unwrap();
+  let driver = Driver::start(directory.path(), &args(server.port))
+    .await
+    .unwrap();
+  // No configuration has been delivered, so the SDK could drop either without an error.
+  let not_ready = "the SDK is not ready; await Driver::ready first";
+  assert_eq!(
+    driver
+      .report_issue(&handled_error("EarlyError"))
+      .await
+      .unwrap_err()
+      .to_string(),
+    not_ready
+  );
+  assert_eq!(
+    driver
+      .set_feature_flag("payment_sdk_v2", None)
+      .await
+      .unwrap_err()
+      .to_string(),
+    not_ready
+  );
+  let worker = driver.worker.abort_handle();
+  let logger = driver.holder.logger.clone();
+  tokio::task::spawn_blocking(move || logger.lock().shutdown(true))
+    .await
+    .unwrap();
+  let _flush_error = driver.stop().await;
+  assert!(worker.is_finished());
+}
+
 fn handled_error(name: &str) -> IssueReport {
   IssueReport {
     kind: IssueKind::HandledError,

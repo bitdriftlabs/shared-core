@@ -113,6 +113,7 @@ struct ServiceState {
   log_upload_response_control: LogUploadResponseControl,
   handshake_response_control: HandshakeResponseControl,
   stats_upload_response_control: StatsUploadResponseControl,
+  artifact_upload_response_control: ArtifactUploadResponseControl,
 
   event_tx: Sender<ObservedEvent>,
   handshake_request_tx: Sender<(i32, HandshakeRequest)>,
@@ -260,6 +261,48 @@ pub struct BlockedLogUploadResponse {
 }
 
 impl BlockedLogUploadResponse {
+  pub fn release(mut self) {
+    if let Some(release_tx) = self.release_tx.take() {
+      let _ignored = release_tx.send(());
+    }
+  }
+}
+
+//
+// ArtifactUploadResponseControl
+//
+
+#[derive(Clone, Default)]
+struct ArtifactUploadResponseControl {
+  pending_blocks: Arc<Mutex<VecDeque<oneshot::Receiver<()>>>>,
+}
+
+impl ArtifactUploadResponseControl {
+  fn block_next(&self) -> BlockedArtifactUploadResponse {
+    let (release_tx, release_rx) = oneshot::channel();
+    self.pending_blocks.lock().unwrap().push_back(release_rx);
+    BlockedArtifactUploadResponse {
+      release_tx: Some(release_tx),
+    }
+  }
+
+  fn next(&self) -> Option<oneshot::Receiver<()>> {
+    self.pending_blocks.lock().unwrap().pop_front()
+  }
+}
+
+//
+// BlockedArtifactUploadResponse
+//
+
+/// Holds back the response to the next artifact upload on any stream until released. While held,
+/// that stream processes no further requests, stream actions or shutdown. Dropping the handle
+/// without releasing it suppresses the response instead of sending it.
+pub struct BlockedArtifactUploadResponse {
+  release_tx: Option<oneshot::Sender<()>>,
+}
+
+impl BlockedArtifactUploadResponse {
   pub fn release(mut self) {
     if let Some(release_tx) = self.release_tx.take() {
       let _ignored = release_tx.send(());
@@ -428,6 +471,22 @@ impl RequestProcessor {
           .send(upload.clone())
           .await
           .unwrap();
+
+        if let Some(release_rx) = self.stream_state.artifact_upload_response_control.next() {
+          log::debug!(
+            "[S{}] blocking artifact upload response {} until released",
+            self.stream_id,
+            upload.upload_uuid
+          );
+          if release_rx.await.is_err() {
+            log::debug!(
+              "[S{}] blocked artifact upload response {} dropped before release",
+              self.stream_id,
+              upload.upload_uuid
+            );
+            return None;
+          }
+        }
 
         Some(ApiResponse {
           response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
@@ -936,6 +995,8 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let server_handshake_response_control = handshake_response_control.clone();
   let stats_upload_response_control = StatsUploadResponseControl::default();
   let server_stats_upload_response_control = stats_upload_response_control.clone();
+  let artifact_upload_response_control = ArtifactUploadResponseControl::default();
+  let server_artifact_upload_response_control = artifact_upload_response_control.clone();
 
   let (stream_action_tx, stream_action_rx) = channel(1);
   let (ready_tx, ready_rx) = oneshot::channel::<()>();
@@ -960,6 +1021,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           log_upload_response_control: server_log_upload_response_control.clone(),
           handshake_response_control: server_handshake_response_control.clone(),
           stats_upload_response_control: server_stats_upload_response_control.clone(),
+          artifact_upload_response_control: server_artifact_upload_response_control.clone(),
           event_tx,
           handshake_request_tx,
           shutdown_tx,
@@ -1010,6 +1072,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
     artifact_intent_rx,
     stats_upload_rx,
     stats_upload_response_control,
+    artifact_upload_response_control,
     configuration_ack_rx,
     runtime_ack_rx,
     port: local_addr.port(),
@@ -1176,6 +1239,7 @@ pub struct ServerHandle {
   log_intent_rx: Receiver<LogUploadIntentRequest>,
   stats_upload_rx: Receiver<StatsUploadRequest>,
   stats_upload_response_control: StatsUploadResponseControl,
+  artifact_upload_response_control: ArtifactUploadResponseControl,
   debug_data_rx: Receiver<DebugDataRequest>,
   device_command_update_rx: Receiver<DeviceCommandUpdate>,
 
@@ -1315,6 +1379,13 @@ impl ServerHandle {
 
   pub async fn next_artifact_upload(&mut self) -> Option<UploadArtifactRequest> {
     Self::next_request(&mut self.artifact_upload_rx).await
+  }
+
+  /// Holds back the response to the next artifact upload until the returned handle is released. See
+  /// [`BlockedArtifactUploadResponse`] for what a held response blocks.
+  #[must_use]
+  pub fn block_next_artifact_upload_response(&self) -> BlockedArtifactUploadResponse {
+    self.artifact_upload_response_control.block_next()
   }
 
   pub fn blocking_next_artifact_upload(&mut self) -> Option<UploadArtifactRequest> {
