@@ -49,6 +49,7 @@ use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::device_command_update_ack::Disposition as AckDisposition;
 use bd_proto::protos::client::api::handshake_response::StreamSettings;
 use bd_proto::protos::client::api::state_update_request::StartedSession;
+use bd_proto::protos::client::api::upload_artifact_response::State as ArtifactUploadState;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
@@ -83,6 +84,7 @@ use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
+use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::{EnumOrUnknown, Message, MessageField};
 use std::collections::{BTreeMap, HashMap};
 use std::future::{Future, poll_fn};
@@ -2777,6 +2779,57 @@ async fn unknown_stats_upload_response_fails_stream() {
     .await;
 
   assert!(setup.next_stream(2.seconds()).await.is_some());
+}
+
+#[tokio::test(start_paused = true)]
+async fn chunk_progress_cannot_complete_a_whole_file_artifact_upload() {
+  for response in [
+    UploadArtifactResponse {
+      state: ArtifactUploadState::STATE_RECEIVING.into(),
+      ..Default::default()
+    },
+    UploadArtifactResponse {
+      state: ArtifactUploadState::STATE_FINALIZED.into(),
+      ..Default::default()
+    },
+    UploadArtifactResponse {
+      state: EnumOrUnknown::from_i32(99),
+      ..Default::default()
+    },
+    UploadArtifactResponse {
+      accepted_deadline: Some(Timestamp::default()).into(),
+      ..Default::default()
+    },
+    UploadArtifactResponse {
+      received_chunks: vec![1],
+      ..Default::default()
+    },
+  ] {
+    let mut setup = Setup::new().await;
+    assert!(setup.next_stream(1.seconds()).await.is_some());
+    setup
+      .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+      .await;
+    let (tracked, receiver) = Tracked::new("pending".into(), UploadArtifactRequest::default());
+    setup
+      .send_request(DataUpload::ArtifactUpload(tracked))
+      .await;
+    assert_matches!(
+      setup.next_request(1.seconds()).await.unwrap().request_type,
+      Some(Request_type::ArtifactUpload(_))
+    );
+    setup
+      .send_response(ApiResponse {
+        response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
+          upload_uuid: "pending".into(),
+          ..response
+        })),
+        ..Default::default()
+      })
+      .await;
+    assert!(receiver.await.is_err());
+    setup.wait_for_reconnect_backoff_started().await;
+  }
 }
 
 #[tokio::test(start_paused = true)]

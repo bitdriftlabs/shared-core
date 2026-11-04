@@ -5,8 +5,50 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+//! SDK-rooted filesystem access and explicit file ownership.
+//!
+//! Atomic visibility and durability are separate operations: a rename publishes a file, while
+//! syncing the file and parent directory makes that publication crash-safe. Callers must retain
+//! published payloads when the final sync fails, because another reader may already own them.
+//! `OwnedFile` is the complementary producer-side guard: it synchronously unlinks a handed-over
+//! absolute path before an acknowledgement/cancellation boundary, or relinquishes it after a move.
+
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
+
+//
+// OwnedFile
+//
+
+/// Deletes a handed-over absolute file without introducing an async cancellation point.
+///
+/// Relative paths remain the consumer's responsibility because only that consumer knows its root.
+/// A moved file must be disarmed immediately: retaining the old path could delete a replacement
+/// created there after ownership has moved into SDK storage.
+#[derive(Debug)]
+pub struct OwnedFile(Option<PathBuf>);
+
+impl OwnedFile {
+  #[must_use]
+  pub fn new(path: &Path) -> Option<Self> {
+    path.is_absolute().then(|| Self(Some(path.to_owned())))
+  }
+
+  pub fn disarm(mut self) {
+    self.0 = None;
+  }
+}
+
+impl Drop for OwnedFile {
+  fn drop(&mut self) {
+    if let Some(path) = self.0.take()
+      && let Err(error) = std::fs::remove_file(&path)
+      && error.kind() != std::io::ErrorKind::NotFound
+    {
+      log::debug!("failed to remove owned file {}: {error}", path.display());
+    }
+  }
+}
 
 //
 // FileSystem
@@ -26,6 +68,11 @@ pub trait FileSystem: Send + Sync {
 
   async fn open_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File>;
 
+  async fn open_regular_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File>;
+
+  /// Available payload space; callers must additionally reserve metadata/free-space headroom.
+  async fn available_space(&self, directory: &Path) -> anyhow::Result<u64>;
+
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()>;
 
   async fn create_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File>;
@@ -43,6 +90,27 @@ pub trait FileSystem: Send + Sync {
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()>;
 
   async fn create_dir(&self, path: &Path) -> anyhow::Result<()>;
+}
+
+pub async fn open_regular_file_async(path: &Path) -> std::io::Result<tokio::fs::File> {
+  if !tokio::fs::symlink_metadata(path).await?.is_file() {
+    return Err(std::io::Error::new(
+      std::io::ErrorKind::InvalidData,
+      "attachment must be a regular file",
+    ));
+  }
+  let mut options = tokio::fs::OpenOptions::new();
+  options.read(true);
+  #[cfg(unix)]
+  options.custom_flags(libc::O_NOFOLLOW);
+  let file = options.open(path).await?;
+  if !file.metadata().await?.is_file() {
+    return Err(std::io::Error::new(
+      std::io::ErrorKind::InvalidData,
+      "attachment must be a regular file",
+    ));
+  }
+  Ok(file)
 }
 
 /// Writes a file through a sibling temporary path so readers never observe a partial write.
@@ -132,6 +200,14 @@ impl FileSystem for RealFileSystem {
 
   async fn open_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
     Ok(tokio::fs::File::open(self.directory.join(path)).await?)
+  }
+
+  async fn open_regular_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    Ok(open_regular_file_async(&self.directory.join(path)).await?)
+  }
+
+  async fn available_space(&self, directory: &Path) -> anyhow::Result<u64> {
+    Ok(fs2::available_space(self.directory.join(directory))?)
   }
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {

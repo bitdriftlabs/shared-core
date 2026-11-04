@@ -22,12 +22,13 @@ use tokio::sync::oneshot;
 // TestFileSystem
 //
 
-/// An in-memory test implementation of a file system, meant to somewhat mimic the behavior of a
-/// real filesystem.
+/// A temporary-directory filesystem with deterministic storage fault injection.
 pub struct TestFileSystem {
   directory: tempfile::TempDir,
   pub disk_full: AtomicBool,
+  pub fail_deletes: AtomicBool,
   pub fail_next_sync: AtomicBool,
+  pub fail_next_rename: AtomicBool,
   fail_sync_path: Mutex<Option<PathBuf>>,
   sync_gate: Mutex<Option<(PathBuf, oneshot::Sender<oneshot::Sender<()>>)>>,
 }
@@ -67,6 +68,17 @@ impl FileSystem for TestFileSystem {
       .map_err(|e| anyhow::anyhow!("failed to open file {}: {}", file_path.display(), e))
   }
 
+  async fn open_regular_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    Ok(crate::file_system::open_regular_file_async(&self.directory.path().join(path)).await?)
+  }
+
+  async fn available_space(&self, directory: &Path) -> anyhow::Result<u64> {
+    if self.disk_full.load(Ordering::Relaxed) {
+      return Ok(0);
+    }
+    Ok(fs2::available_space(self.directory.path().join(directory))?)
+  }
+
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
     if self.disk_full.load(Ordering::Relaxed) {
       anyhow::bail!("disk full");
@@ -90,6 +102,9 @@ impl FileSystem for TestFileSystem {
     if !file_path.exists() {
       return Ok(());
     }
+    if self.fail_deletes.load(Ordering::Relaxed) {
+      anyhow::bail!("injected delete failure");
+    }
 
     tokio::fs::remove_file(&file_path)
       .await
@@ -99,6 +114,9 @@ impl FileSystem for TestFileSystem {
   }
 
   async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    if self.fail_next_rename.swap(false, Ordering::Relaxed) {
+      anyhow::bail!("injected rename failure");
+    }
     let from_path = self.directory.path().join(from);
     let to_path = self.directory.path().join(to);
 
@@ -200,6 +218,14 @@ impl FileSystem for Arc<TestFileSystem> {
     self.as_ref().open_file(path).await
   }
 
+  async fn open_regular_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    self.as_ref().open_regular_file(path).await
+  }
+
+  async fn available_space(&self, directory: &Path) -> anyhow::Result<u64> {
+    self.as_ref().available_space(directory).await
+  }
+
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
     self.as_ref().write_file(path, data).await
   }
@@ -241,7 +267,9 @@ impl TestFileSystem {
     Self {
       directory: tempfile::tempdir().expect("failed to create temp dir"),
       disk_full: AtomicBool::new(false),
+      fail_deletes: AtomicBool::new(false),
       fail_next_sync: AtomicBool::new(false),
+      fail_next_rename: AtomicBool::new(false),
       fail_sync_path: Mutex::new(None),
       sync_gate: Mutex::new(None),
     }

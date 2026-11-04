@@ -131,29 +131,23 @@ async fn profile_links_survive_restart_and_use_standard_intent_and_ack() {
 
 #[test]
 fn linked_report_storage_counts_toward_queue_size() {
-  let mut upload = NewUpload {
-    uuid: Uuid::new_v4(),
-    source: UploadSource::Bytes(vec![]),
-    type_id: CRASH_PROFILE_ARTIFACT_TYPE_ID.into(),
-    state: [].into(),
-    timestamp: None,
-    session_id: String::new(),
-    feature_flags: vec![],
-    command_id: None,
-    content_type: None,
-    crash_profile: None,
-    persisted_tx: None,
-    completion_tx: None,
-    source_lease: None,
-    source_cleanup: None,
-  };
+  let mut upload = NewUpload::new(
+    UploadSource::Bytes(vec![]),
+    UploadArtifactRequest {
+      artifact_id: Uuid::new_v4().to_string(),
+      type_id: CRASH_PROFILE_ARTIFACT_TYPE_ID.into(),
+      ..Default::default()
+    },
+    PreparationMode::WholeFile,
+  );
   let without_links = upload.approximate_size_bytes();
   let mut report_id = String::with_capacity(1024);
   report_id.push_str(&Uuid::new_v4().to_string());
-  upload.crash_profile = Some(CrashProfileMetadata {
+  upload.request.crash_profile = Some(CrashProfileMetadata {
     report_ids: vec![report_id],
     ..Default::default()
-  });
+  })
+  .into();
   assert!(upload.approximate_size_bytes() >= without_links + 1024);
 }
 

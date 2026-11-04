@@ -5,13 +5,14 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{UploadClient, Uploader};
+use super::{TestHooks, UploadClient, Uploader};
 use crate::uploader::{
   ARTIFACT_UPLOAD_DIRECTORY,
   Client,
-  CommandFile,
   EnqueueError,
+  NewUpload,
   PersistenceAck,
+  PreparationMode,
   REPORT_INDEX_FILE,
   SnappedFeatureFlag,
   UploadSource,
@@ -25,7 +26,7 @@ use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_log_filter::ScrubRules;
-use bd_proto::protos::client::api::ArtifactPayloadEncoding;
+use bd_proto::protos::client::api::{ArtifactPayloadEncoding, UploadArtifactRequest};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
@@ -47,7 +48,7 @@ use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use time::OffsetDateTime;
 use time::ext::NumericalStdDuration;
 use time::macros::datetime;
@@ -56,66 +57,120 @@ use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use uuid::Uuid;
 
-#[path = "./profile_upload_test.rs"]
+#[path = "../profile_upload_test.rs"]
 mod profile_tests;
 
 fn no_scrub_rules() -> watch::Receiver<Arc<ScrubRules>> {
   watch::channel(Arc::new(ScrubRules::default())).1
 }
 
-pub struct TestHooks {
-  pub upload_complete_tx: tokio::sync::mpsc::Sender<String>,
-  pub entry_received_tx: tokio::sync::mpsc::Sender<String>,
-  pub persistence_ack_tx: Option<mpsc::Sender<oneshot::Sender<()>>>,
+// The uploader is serial, so lifecycle callbacks describe one staging attempt at a time. Keep
+// fixture notification policy here rather than adding test-only phases to the ownership ledger.
+struct UploadTestHooks {
+  initialized_tx: Option<mpsc::Sender<()>>,
+  upload_complete_tx: mpsc::Sender<String>,
+  entry_received_tx: mpsc::Sender<String>,
+  persistence_ack_tx: Option<mpsc::Sender<oneshot::Sender<()>>>,
+  preparing_whole_file: AtomicBool,
+  notify_preparation_error: AtomicBool,
 }
 
-impl Uploader {
-  pub(super) async fn pause_after_persistence_ack_for_test(&self) {
-    if let Some(sender) = self
-      .test_hooks
-      .as_ref()
-      .and_then(|hooks| hooks.persistence_ack_tx.as_ref())
-    {
+#[async_trait::async_trait]
+impl TestHooks for UploadTestHooks {
+  async fn initialized(&self) {
+    if let Some(sender) = &self.initialized_tx {
+      sender.send(()).await.unwrap();
+    }
+  }
+
+  fn whole_file_preparation_started(&self, source: &UploadSource, request: &UploadArtifactRequest) {
+    self.preparing_whole_file.store(true, Ordering::Relaxed);
+    self.notify_preparation_error.store(
+      !matches!(source, UploadSource::Bytes(_)) || super::is_compressed_attachment(request),
+      Ordering::Relaxed,
+    );
+  }
+
+  fn payload_prepared(&self) {
+    // File/command preparation errors notify the fixture, but index failures must not look like
+    // accepted entries. Successful whole-file commits always notify, including byte reports.
+    self
+      .notify_preparation_error
+      .store(false, Ordering::Relaxed);
+  }
+
+  async fn staging_completed(&self, id: &str, success: bool) {
+    let preparing_whole_file = self.preparing_whole_file.swap(false, Ordering::Relaxed);
+    let notify_preparation_error = self.notify_preparation_error.swap(false, Ordering::Relaxed);
+    if preparing_whole_file && (success || notify_preparation_error) {
+      self.entry_received_tx.send(id.to_owned()).await.unwrap();
+    }
+    if !success && let Some(sender) = &self.persistence_ack_tx {
       let (resume_tx, resume_rx) = oneshot::channel();
       sender.send(resume_tx).await.unwrap();
       resume_rx.await.unwrap();
     }
   }
+
+  async fn upload_complete(&self, id: &str) {
+    self.upload_complete_tx.send(id.to_owned()).await.unwrap();
+  }
 }
 
-struct Setup {
+pub(super) struct Setup {
   upload_complete_rx: tokio::sync::mpsc::Receiver<String>,
-  entry_received_rx: tokio::sync::mpsc::Receiver<String>,
-  client: UploadClient,
-  filesystem: Arc<TestFileSystem>,
-  data_upload_rx: tokio::sync::mpsc::Receiver<DataUpload>,
+  pub(super) entry_received_rx: tokio::sync::mpsc::Receiver<String>,
+  pub(super) client: UploadClient,
+  pub(super) filesystem: Arc<TestFileSystem>,
+  pub(super) data_upload_rx: tokio::sync::mpsc::Receiver<DataUpload>,
   data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
   shutdown: bd_shutdown::ComponentShutdownTrigger,
   task_handle: JoinHandle<()>,
-  runtime: TestConfigLoader,
+  pub(super) runtime: TestConfigLoader,
+  pub(super) time_provider: Arc<TestTimeProvider>,
   scrub_rules_tx: watch::Sender<Arc<ScrubRules>>,
 
   tmpdir: tempfile::TempDir,
 }
 
 impl Setup {
-  async fn shutdown(self) {
+  // Tests that rewrite persisted state must stop its owner first: periodic reconciliation now
+  // shares startup's inventory and can correctly remove any unindexed whole-file or chunk payload.
+  pub(super) fn abort_for_recovery(&self) {
+    self.task_handle.abort();
+  }
+
+  pub(super) async fn shutdown(self) {
     self.shutdown.shutdown().await;
     self.task_handle.await.unwrap();
   }
 
-  async fn reinitialize(self) -> Self {
-    self.shutdown.shutdown().await;
-    self.task_handle.await.unwrap();
+  pub(super) async fn reinitialize(self) -> Self {
+    self.restart(false).await
+  }
+
+  pub(super) async fn crash_and_reinitialize(self) -> Self {
+    self.restart(true).await
+  }
+
+  async fn restart(self, crash: bool) -> Self {
+    if crash {
+      self.task_handle.abort();
+      assert!(self.task_handle.await.unwrap_err().is_cancelled());
+    } else {
+      self.shutdown.shutdown().await;
+      self.task_handle.await.unwrap();
+    }
 
     let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
 
     let runtime = self.runtime;
+    let time_provider = self.time_provider;
 
     let (mut uploader, client) = super::Uploader::new(
       self.filesystem.clone(),
       self.data_upload_tx.clone(),
-      Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+      time_provider.clone(),
       &runtime,
       &Collector::default(),
       [("app_version".to_string(), "upgraded".to_string())].into(),
@@ -125,13 +180,18 @@ impl Setup {
 
     let (upload_complete_tx, upload_complete_rx) = tokio::sync::mpsc::channel(1);
     let (entry_received_tx, entry_received_rx) = tokio::sync::mpsc::channel(1);
-    uploader.test_hooks = Some(TestHooks {
+    let (initialized_tx, mut initialized_rx) = mpsc::channel(1);
+    uploader.test_hooks = Some(Arc::new(UploadTestHooks {
+      initialized_tx: Some(initialized_tx),
       upload_complete_tx,
       entry_received_tx,
       persistence_ack_tx: None,
-    });
+      preparing_whole_file: AtomicBool::new(false),
+      notify_preparation_error: AtomicBool::new(false),
+    }));
 
     let task_handle = tokio::spawn(uploader.run());
+    initialized_rx.recv().await.unwrap();
 
     Self {
       upload_complete_rx,
@@ -143,12 +203,13 @@ impl Setup {
       shutdown,
       task_handle,
       runtime,
+      time_provider,
       scrub_rules_tx: self.scrub_rules_tx,
       tmpdir: self.tmpdir,
     }
   }
 
-  async fn new(max_entries: u32) -> Self {
+  pub(super) async fn new(max_entries: u32) -> Self {
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
     let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
 
@@ -167,10 +228,11 @@ impl Setup {
       .await
       .unwrap();
 
+    let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
     let (mut uploader, client) = super::Uploader::new(
       filesystem.clone(),
       data_upload_tx.clone(),
-      Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+      time_provider.clone(),
       &config_loader,
       &Collector::default(),
       command_metadata(),
@@ -181,11 +243,14 @@ impl Setup {
     let (upload_complete_tx, upload_complete_rx) = tokio::sync::mpsc::channel(1);
     let (entry_received_tx, entry_received_rx) = tokio::sync::mpsc::channel(1);
 
-    uploader.test_hooks = Some(TestHooks {
+    uploader.test_hooks = Some(Arc::new(UploadTestHooks {
+      initialized_tx: None,
       upload_complete_tx,
       entry_received_tx,
       persistence_ack_tx: None,
-    });
+      preparing_whole_file: AtomicBool::new(false),
+      notify_preparation_error: AtomicBool::new(false),
+    }));
 
     let task_handle = tokio::spawn(uploader.run());
 
@@ -199,6 +264,7 @@ impl Setup {
       shutdown,
       task_handle,
       runtime: config_loader,
+      time_provider,
       scrub_rules_tx,
       tmpdir: tempfile::tempdir().unwrap(),
     }
@@ -229,7 +295,7 @@ async fn write_workflow_payload(setup: &Setup, id: Uuid) -> PathBuf {
   source
 }
 
-async fn wait_for_queue_revision(revision: &mut watch::Receiver<u64>, previous: u64) {
+pub(super) async fn wait_for_queue_revision(revision: &mut watch::Receiver<u64>, previous: u64) {
   let _ = timeout(
     5.std_seconds(),
     revision.wait_for(|revision| *revision > previous),
@@ -291,11 +357,11 @@ async fn index_sync_failure_is_reconciled_without_reenqueue() {
   let previous = *revision.borrow();
   setup.filesystem.disk_full.store(false, Ordering::Relaxed);
   wait_for_queue_revision(&mut revision, previous).await;
-  assert!(
+  assert_eq!(
     Uploader::pending_workflow_attachments(setup.filesystem.directory())
       .await
-      .unwrap()
-      .is_empty()
+      .unwrap(),
+    [id].into()
   );
   assert_eq!(
     setup.filesystem.read_file(&source).await.unwrap(),
@@ -2219,7 +2285,7 @@ async fn assert_command_source_consumed_before_error_ack(failure: PersistenceFai
     no_scrub_rules(),
     shutdown.make_shutdown(),
   );
-  uploader.initialize().await;
+  uploader.initialize().await.unwrap();
   let id = Uuid::new_v4();
   match failure {
     PersistenceFailure::Capacity => {
@@ -2250,50 +2316,47 @@ async fn assert_command_source_consumed_before_error_ack(failure: PersistenceFai
   let (upload_complete_tx, _upload_complete_rx) = mpsc::channel(1);
   let (entry_received_tx, _entry_received_rx) = mpsc::channel(1);
   let (persistence_ack_tx, mut persistence_ack_rx) = mpsc::channel(1);
-  uploader.test_hooks = Some(TestHooks {
+  uploader.test_hooks = Some(Arc::new(UploadTestHooks {
+    initialized_tx: None,
     upload_complete_tx,
     entry_received_tx,
     persistence_ack_tx: Some(persistence_ack_tx),
-  });
+    preparing_whole_file: AtomicBool::new(false),
+    notify_preparation_error: AtomicBool::new(false),
+  }));
   let (persisted_tx, persisted_rx) = oneshot::channel();
   let source = UploadSource::Path(source_path.clone());
-  let source_cleanup = CommandFile::from_source(&source);
-  tokio::join!(
-    uploader.track_new_upload(
-      id,
-      source,
-      "device_command_attachment".into(),
-      [].into(),
-      "session".into(),
-      None,
-      vec![],
-      Some(Uuid::new_v4().to_string()),
-      None,
-      None,
-      Some(PersistenceAck::Command(persisted_tx)),
-      None,
-      source_cleanup,
-    ),
-    async {
-      let error = persisted_rx.await.unwrap().unwrap_err();
-      match failure {
-        PersistenceFailure::Capacity => assert_matches!(error, EnqueueError::QueueFull),
-        PersistenceFailure::Payload => assert!(error.to_string().contains("disk full")),
-        PersistenceFailure::Index => assert!(error.to_string().contains("failed to create file")),
-        PersistenceFailure::DuplicateId => {
-          assert!(
-            error
-              .to_string()
-              .contains("belongs to another session or artifact type")
-          );
-        },
-      }
-      let resume = persistence_ack_rx.recv().await.unwrap();
-      assert!(!source_path.exists());
-      fs::write(&source_path, b"replacement").unwrap();
-      resume.send(()).unwrap();
-    }
+  let mut upload = NewUpload::new(
+    source,
+    bd_proto::protos::client::api::UploadArtifactRequest {
+      artifact_id: id.to_string(),
+      type_id: "device_command_attachment".into(),
+      session_id: "session".into(),
+      command_id: Some(Uuid::new_v4().to_string()),
+      ..Default::default()
+    },
+    PreparationMode::WholeFile,
   );
+  upload.persisted_tx = Some(PersistenceAck::Command(persisted_tx));
+  tokio::join!(uploader.track_upload(upload), async {
+    let error = persisted_rx.await.unwrap().unwrap_err();
+    match failure {
+      PersistenceFailure::Capacity => assert_matches!(error, EnqueueError::QueueFull),
+      PersistenceFailure::Payload => assert!(error.to_string().contains("disk full")),
+      PersistenceFailure::Index => assert!(error.to_string().contains("failed to create file")),
+      PersistenceFailure::DuplicateId => {
+        assert!(
+          error
+            .to_string()
+            .contains("belongs to another session or artifact type")
+        );
+      },
+    }
+    let resume = persistence_ack_rx.recv().await.unwrap();
+    assert!(!source_path.exists());
+    fs::write(&source_path, b"replacement").unwrap();
+    resume.send(()).unwrap();
+  });
   assert_eq!(fs::read(source_path).unwrap(), b"replacement");
 }
 
@@ -2365,6 +2428,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
   setup.filesystem.write_file(&source, &stored).await.unwrap();
 
   let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  let (abandoned_tx, abandoned_rx) = oneshot::channel();
   setup
     .client
     .enqueue_workflow_attachment(
@@ -2373,7 +2437,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       "session_id".into(),
       Some("application/vnd.example.capture".to_string()),
       Some(persisted_tx),
-      None,
+      Some(abandoned_tx),
       None,
     )
     .unwrap();
@@ -2382,6 +2446,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
     id.to_string()
   );
   persisted_rx.await.unwrap().unwrap();
+  drop(abandoned_rx);
   assert!(setup.filesystem.exists(&source).await.unwrap());
   let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
   let (duplicate_persisted_tx, duplicate_persisted_rx) = tokio::sync::oneshot::channel();
@@ -2521,6 +2586,65 @@ async fn path_upload_restores_source_if_index_persistence_fails() {
       .await
       .unwrap()
   );
+}
+
+#[tokio::test]
+async fn snapshot_copy_fallback_preserves_raw_wire_bytes() {
+  let mut setup = Setup::new(1).await;
+  let mut revision = setup.client.upload_queue_revision();
+  wait_for_queue_revision(&mut revision, 0).await;
+  let source = PathBuf::from("snapshot.zz");
+  let bytes = b"self-validating snapshot bytes";
+  setup.filesystem.write_file(&source, bytes).await.unwrap();
+  setup
+    .filesystem
+    .fail_next_rename
+    .store(true, Ordering::Relaxed);
+  let (tx, rx) = oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::Path(source.clone()),
+      "state_snapshot".into(),
+      [].into(),
+      None,
+      String::new(),
+      vec![],
+      None,
+      Some(tx),
+    )
+    .unwrap();
+  rx.await.unwrap().unwrap();
+  setup.entry_received_rx.recv().await.unwrap();
+  assert!(!setup.filesystem.exists(&source).await.unwrap());
+  let Some(DataUpload::ArtifactUploadIntent(intent)) = setup.data_upload_rx.recv().await else {
+    panic!("expected snapshot intent");
+  };
+  intent
+    .response_tx
+    .send(IntentResponse {
+      uuid: intent.uuid,
+      decision: IntentDecision::UploadImmediately,
+    })
+    .unwrap();
+  let Some(DataUpload::ArtifactUpload(upload)) = setup.data_upload_rx.recv().await else {
+    panic!("expected snapshot upload");
+  };
+  assert_eq!(upload.payload.artifact_id, id.to_string());
+  assert_eq!(upload.payload.contents, bytes);
+  assert_eq!(
+    upload.payload.payload_encoding.enum_value_or_default(),
+    ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
+  );
+  upload
+    .response_tx
+    .send(UploadResponse {
+      uuid: upload.uuid,
+      success: true,
+    })
+    .unwrap();
+  setup.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await;
 }
 
 #[tokio::test]
