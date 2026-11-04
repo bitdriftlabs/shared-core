@@ -1150,6 +1150,33 @@ pub mod attachment {
   int_feature_flag!(MaxBytes, "attachment.max_bytes", 5 * 1024 * 1024);
 }
 
+pub mod chunked_artifact_upload {
+  use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
+
+  // Definitions only: existing artifact and workflow producers do not select chunking in M1.
+  bool_feature_flag!(Enabled, "artifact_upload.chunked.enabled", false);
+  bool_feature_flag!(
+    WorkflowEnabled,
+    "artifact_upload.chunked.workflow_enabled",
+    false
+  );
+  int_feature_flag!(
+    MaxLogicalBytes,
+    "artifact_upload.chunked.max_logical_bytes",
+    MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES
+  );
+  int_feature_flag!(
+    MaxOwnedPayloadBytes,
+    "artifact_upload.chunked.max_owned_payload_bytes",
+    640 * 1024 * 1024
+  );
+  int_feature_flag!(
+    MaxAdmittedFiles,
+    "artifact_upload.chunked.max_admitted_files",
+    2
+  );
+}
+
 pub mod device_command {
   duration_feature_flag!(
     ExecutionTimeoutFlag,

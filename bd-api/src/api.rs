@@ -1384,6 +1384,12 @@ impl Api {
           )?;
         },
         Some(Response_type::ArtifactUpload(artifact_upload)) => {
+          if artifact_upload.state.value() != 0
+            || artifact_upload.accepted_deadline.is_some()
+            || !artifact_upload.received_chunks.is_empty()
+          {
+            anyhow::bail!("unexpected chunked artifact acknowledgement before transfer support");
+          }
           log::debug!(
             "received ack for artifact upload {:?}, error: {:?}",
             artifact_upload.upload_uuid,

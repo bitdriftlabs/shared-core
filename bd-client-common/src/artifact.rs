@@ -7,6 +7,9 @@
 
 //! Shared conventions for client artifact uploads.
 
+/// Hard protocol ceiling; SDK runtime policy may set a lower admission limit.
+pub const MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES: u32 = 256 * 1024 * 1024;
+
 /// Artifact type ID used for crash reports uploaded by the client.
 pub const CLIENT_REPORT_ARTIFACT_TYPE_ID: &str = "client_report";
 

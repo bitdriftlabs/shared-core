@@ -5,6 +5,14 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+//! Workflow retention owns canonical payloads; the artifact uploader only borrows them.
+//!
+//! Input opening, bounded reads and compression share the direct-upload preparation primitives.
+//! The sidecar, cancellation/claim handshake, log references and retention accounting intentionally
+//! remain here: they describe workflow lifetime, not upload-queue lifetime. Admission fsyncs both
+//! bytes and metadata before publishing an ID, and a durable uploader lease blocks cleanup until
+//! upload retirement releases it.
+
 #[cfg(test)]
 #[path = "./workflow_attachment_test.rs"]
 mod tests;
@@ -13,9 +21,15 @@ use bd_artifact_upload::{UploadSource, Uploader};
 use bd_client_common::file::{
   read_and_compress_limited_with_size,
   read_checksummed_data,
+  read_limited,
   write_checksummed_data,
 };
-use bd_client_common::file_system::{delete_file_if_exists_async, remove_dir_if_exists_async};
+use bd_client_common::file_system::{
+  RealFileSystem,
+  delete_file_if_exists_async,
+  open_regular_file_async,
+  remove_dir_if_exists_async,
+};
 use bd_proto::protos::client::artifact::WorkflowAttachmentState;
 use bd_runtime::runtime::{ConfigLoader, IntWatch, attachment, workflow_attachment};
 use bd_shutdown::ComponentShutdown;
@@ -31,7 +45,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::fs::{self, File};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -159,7 +173,6 @@ impl WorkflowAttachmentCleanupWorker {
 // TestHooks
 //
 
-#[cfg(test)]
 trait TestHooks: Send + Sync {
   fn admission_started(&self) {}
 
@@ -177,7 +190,6 @@ pub struct AttachmentStore {
   oldest_timestamp: Mutex<Option<u64>>,
   cleanup_generation: AtomicU64,
   admissions: Semaphore,
-  #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
   upload_ownership: Arc<Semaphore>,
   max_attachment_bytes: IntWatch<attachment::MaxBytes>,
@@ -282,7 +294,6 @@ impl AttachmentStore {
       oldest_timestamp: Mutex::new(None),
       cleanup_generation: AtomicU64::new(0),
       admissions: Semaphore::new(1),
-      #[cfg(test)]
       test_hooks: None,
       upload_ownership: Arc::new(Semaphore::new(1)),
       max_attachment_bytes: runtime.register_int_watch(),
@@ -387,14 +398,12 @@ impl AttachmentStore {
       if result_tx.is_closed() {
         return;
       }
-      #[cfg(test)]
       if let Some(hooks) = &store.test_hooks {
         hooks.admission_started();
       }
       let result = store.admit_async(source, content_type).await;
       let artifact_id = result.as_ref().ok().map(|attachment| attachment.id);
       let _ = result_tx.send(result);
-      #[cfg(test)]
       if let Some(hooks) = &store.test_hooks {
         hooks.admission_completed();
       }
@@ -690,34 +699,13 @@ impl AttachmentStore {
       return Err(io::Error::other("workflow attachment capacity exhausted"));
     }
 
-    let reader: Box<dyn AsyncRead + Unpin + Send> = match source {
-      UploadSource::Bytes(bytes) => {
-        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_attachment_bytes {
-          return Err(io::Error::other("workflow attachment exceeds size limit"));
-        }
-        Box::new(io::Cursor::new(bytes))
-      },
-      UploadSource::File(file) => {
-        let file = tokio::fs::File::from_std(file);
-        validate_file(&file, max_attachment_bytes).await?;
-        Box::new(file)
-      },
-      UploadSource::Path(path) => {
-        let path = if path.is_absolute() {
-          path
-        } else {
-          self.sdk_directory.join(path)
-        };
-        let file = open_regular_file_async(&path).await?;
-        validate_file(&file, max_attachment_bytes).await?;
-        Box::new(file)
-      },
-      UploadSource::Retained(_) => {
-        return Err(io::Error::other(
-          "cannot admit an already retained attachment",
-        ));
-      },
-    };
+    // Both producers enforce the same regular-file/size rules and streamed growth bound. Only
+    // publication differs: workflow bytes acquire a sidecar lease instead of a queue entry here.
+    let filesystem = RealFileSystem::new(self.sdk_directory.clone());
+    let reader = source
+      .into_reader(&filesystem, max_attachment_bytes)
+      .await
+      .map_err(io::Error::other)?;
 
     let id = Uuid::new_v4();
     let pending = self.directory.join(format!(".{id}.partial"));
@@ -771,14 +759,7 @@ impl AttachmentStore {
 async fn read_metadata(path: &Path) -> io::Result<WorkflowAttachmentState> {
   let file = open_regular_file_async(path).await?;
   let max_bytes = MAX_SIDECAR_BYTES + size_of::<u32>() as u64;
-  let mut bytes = Vec::new();
-  file.take(max_bytes + 1).read_to_end(&mut bytes).await?;
-  if bytes.len() as u64 > max_bytes {
-    return Err(io::Error::new(
-      io::ErrorKind::InvalidData,
-      "workflow attachment metadata exceeds size limit",
-    ));
-  }
+  let bytes = read_limited(file, max_bytes).await?;
   let bytes = read_checksummed_data(&bytes)
     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
   WorkflowAttachmentState::parse_from_bytes(&bytes)
@@ -851,35 +832,4 @@ async fn remove_owned_path_if_exists(path: &Path) -> io::Result<()> {
     delete_file_if_exists_async(path).await
   };
   result.map_err(io::Error::other)
-}
-
-async fn open_regular_file_async(path: &Path) -> io::Result<tokio::fs::File> {
-  if !tokio::fs::symlink_metadata(path).await?.is_file() {
-    return Err(io::Error::new(
-      io::ErrorKind::InvalidData,
-      "workflow attachment must be a regular file",
-    ));
-  }
-  let mut options = tokio::fs::OpenOptions::new();
-  options.read(true);
-  #[cfg(unix)]
-  options.custom_flags(libc::O_NOFOLLOW);
-  let file = options.open(path).await?;
-  if !file.metadata().await?.is_file() {
-    return Err(io::Error::new(
-      io::ErrorKind::InvalidData,
-      "workflow attachment must be a regular file",
-    ));
-  }
-  Ok(file)
-}
-
-async fn validate_file(file: &tokio::fs::File, max_attachment_bytes: u64) -> io::Result<()> {
-  let metadata = file.metadata().await?;
-  if !metadata.is_file() || metadata.len() > max_attachment_bytes {
-    return Err(io::Error::other(
-      "workflow attachment must be a regular file within size limit",
-    ));
-  }
-  Ok(())
 }

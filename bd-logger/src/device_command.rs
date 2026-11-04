@@ -53,6 +53,7 @@ use anyhow::anyhow;
 use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadCompletion};
 use bd_artifact_upload::UploadSource;
+use bd_client_common::file_system::OwnedFile;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -101,7 +102,6 @@ use protobuf::Message;
 use std::collections::HashMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use time::OffsetDateTime;
@@ -657,7 +657,7 @@ impl CommandResultGuard {
 impl Drop for CommandResultGuard {
   fn drop(&mut self) {
     if let Some(result) = &self.0 {
-      drop(HandedOverFile::from_result(result));
+      drop(handed_over_file(result));
     }
   }
 }
@@ -987,7 +987,7 @@ impl WorkflowCommandExecutor {
     // The guard deletes the handler's file when it drops: after the store has taken its copy,
     // or at once if this future is cancelled during admission. The unlink is synchronous, so no
     // cancellable await sits between an admitted attachment and the outcome that references it.
-    let _handed_over = HandedOverFile::from_result(&result);
+    let _handed_over = handed_over_file(&result);
     workflow_command_outcome(result, &self.attachment_store).await
   }
 }
@@ -1007,43 +1007,13 @@ struct PlatformCommand {
 /// needed: workflow admission copies the payload, then this guard deletes the original.
 /// Direct uploads instead transfer ownership to the uploader at enqueue. A relative path is left
 /// alone: each consumer resolves it against its own root.
-struct HandedOverFile {
-  path: Option<PathBuf>,
-}
-
-impl HandedOverFile {
-  fn from_result(result: &CommandResult) -> Self {
-    match result {
-      CommandResult::Completed {
-        attachment: Some(attachment),
-        ..
-      } => Self::from_attachment(attachment),
-      _ => Self { path: None },
-    }
-  }
-
-  fn from_attachment(attachment: &CommandAttachment) -> Self {
-    Self {
-      path: match &attachment.source {
-        UploadSource::Path(path) if path.is_absolute() => Some(path.clone()),
-        _ => None,
-      },
-    }
-  }
-}
-
-impl Drop for HandedOverFile {
-  fn drop(&mut self) {
-    // A single unlink of a small file, kept synchronous so there is no cancellation point.
-    if let Some(path) = self.path.take()
-      && let Err(error) = std::fs::remove_file(&path)
-      && error.kind() != std::io::ErrorKind::NotFound
-    {
-      log::debug!(
-        "failed to remove command attachment file {}: {error}",
-        path.display()
-      );
-    }
+fn handed_over_file(result: &CommandResult) -> Option<OwnedFile> {
+  match result {
+    CommandResult::Completed {
+      attachment: Some(attachment),
+      ..
+    } => attachment.source.owned_file(),
+    _ => None,
   }
 }
 

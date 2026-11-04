@@ -135,6 +135,14 @@ impl FileSystem for CountingFileSystem {
     self.inner.open_file(path).await
   }
 
+  async fn open_regular_file(&self, path: &Path) -> anyhow::Result<File> {
+    self.inner.open_regular_file(path).await
+  }
+
+  async fn available_space(&self, directory: &Path) -> anyhow::Result<u64> {
+    self.inner.available_space(directory).await
+  }
+
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
     if path
       == STATS_DIRECTORY
