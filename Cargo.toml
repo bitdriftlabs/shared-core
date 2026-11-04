@@ -9,6 +9,7 @@ members = [
   "bd-bonjson-tests",
   "bd-bounded-buffer",
   "bd-buffer",
+  "bd-chunked-artifact",
   "bd-client-common",
   "bd-client-stats",
   "bd-client-stats-store",
@@ -70,20 +71,21 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-android_logger    = "0.15.1"
-anyhow            = "1.0.104"
-arbitrary         = { version = "1.5.0", features = ["derive"] }
-arc-swap          = "1.9.2"
-assert_matches    = "1.5.0"
-assert_no_alloc   = "1.1.2"
-async-compression = { version = "0.4.51", features = ["tokio", "zlib"] }
-async-trait       = "0.1.92"
-axum              = { version = "0.8.9", features = ["http2", "macros"] }
-base64            = "0.23.1"
-base64-url        = "4.0.0"
-base64ct          = { version = "1.8.3", features = ["alloc", "std"] }
-bd-workspace-hack = "0.1.1"
-num-traits        = "0.2.19"
+android_logger      = "0.15.1"
+anyhow              = "1.0.104"
+arbitrary           = { version = "1.5.0", features = ["derive"] }
+arc-swap            = "1.9.2"
+assert_matches      = "1.5.0"
+assert_no_alloc     = "1.1.2"
+async-compression   = { version = "0.4.51", features = ["tokio", "zlib"] }
+async-trait         = "0.1.92"
+axum                = { version = "0.8.9", features = ["http2", "macros"] }
+base64              = "0.23.1"
+base64-url          = "4.0.0"
+base64ct            = { version = "1.8.3", features = ["alloc", "std"] }
+bd-chunked-artifact = { path = "bd-chunked-artifact" }
+bd-workspace-hack   = "0.1.1"
+num-traits          = "0.2.19"
 
 # This project is abandoned and needs to be replaced so is pinned for now. The maintainers just
 # deleted all the code in a 3.0 version.
