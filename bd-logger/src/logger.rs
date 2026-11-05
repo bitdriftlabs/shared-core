@@ -18,6 +18,7 @@ use crate::async_log_buffer::{
   LogAttributesOverrides,
 };
 use crate::device_command::{CommandRegistration, RegisteredCommandDispatcher};
+use crate::labels::LabelsState;
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
@@ -34,6 +35,7 @@ use bd_log_primitives::{
   log_level,
 };
 use bd_log_util::warn_every;
+use bd_metadata::labels::{self, Labels};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use bd_proto::protos::logging::payload::LogType;
@@ -58,8 +60,6 @@ pub struct Stats {
   pub(crate) session_replay_duration_histogram: bd_client_stats_store::Histogram,
   sleep_enabled: Counter,
   sleep_disabled: Counter,
-
-  app_open: Counter,
 }
 
 pub enum ReportProcessingSession {
@@ -91,7 +91,6 @@ impl Stats {
           "state" => "disabled",
         ),
       ),
-      app_open: stats_scope.counter("app_open"),
     }
   }
 }
@@ -194,6 +193,7 @@ pub struct LoggerHandle {
   app_version_repo: app_version::Repository,
   opaque_entity_updates: watch::Sender<Option<String>>,
   pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
+  labels: Arc<LabelsState>,
 
   stats: Stats,
 
@@ -203,6 +203,59 @@ pub struct LoggerHandle {
 }
 
 impl LoggerHandle {
+  fn update_labels(&self, update: impl FnOnce(&mut Labels)) -> anyhow::Result<()> {
+    let mut desired = self.labels.desired.lock();
+    let mut next = desired.clone();
+    update(&mut next);
+    labels::validate(&next)?;
+    if *desired == next {
+      return Ok(());
+    }
+    let encoded = self.labels.persist(&next)?;
+    if let Err(error) = self
+      .tx
+      .try_send_control(async_log_buffer::LoggerControl::SetLabels(encoded))
+    {
+      self.labels.persist(&desired).map_err(|rollback_error| {
+        anyhow::anyhow!(
+          "failed to queue labels update ({error:?}) and restore persisted labels: \
+           {rollback_error}"
+        )
+      })?;
+      anyhow::bail!("failed to queue labels update: {error:?}");
+    }
+    *desired = next;
+    self.labels.updates.send_replace(desired.clone());
+    Ok(())
+  }
+
+  /// Replaces the persisted labels and queues their ordered application to new telemetry.
+  pub fn replace_labels(&self, labels: Labels) -> anyhow::Result<()> {
+    self.update_labels(|next| *next = labels)
+  }
+
+  pub fn set_label(&self, key: String, value: String) -> anyhow::Result<()> {
+    self.update_labels(|next| {
+      next.insert(key, value);
+    })
+  }
+
+  pub fn remove_label(&self, key: &str) -> anyhow::Result<()> {
+    labels::validate(&Labels::from([(key.to_string(), String::new())]))?;
+    self.update_labels(|next| {
+      next.remove(key);
+    })
+  }
+
+  pub fn clear_labels(&self) -> anyhow::Result<()> {
+    self.replace_labels(Labels::new())
+  }
+
+  #[must_use]
+  pub fn current_labels(&self) -> Labels {
+    self.labels.desired.lock().clone()
+  }
+
   /// Registers a command, replacing any handler with the same ID in its namespace.
   /// Commands that have already selected a handler continue running with that handler.
   pub fn register_command(&self, registration: CommandRegistration) -> anyhow::Result<()> {
@@ -748,6 +801,7 @@ pub struct Logger {
   store: Arc<bd_key_value::Store>,
   opaque_entity_updates: watch::Sender<Option<String>>,
   pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
+  labels: Arc<LabelsState>,
 
   pub(crate) stats: Stats,
 
@@ -775,6 +829,7 @@ impl Logger {
     store: Arc<bd_key_value::Store>,
     opaque_entity_updates: watch::Sender<Option<String>>,
     pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
+    labels: Arc<LabelsState>,
     sleep_mode_active: watch::Sender<bool>,
     is_tracing_active: Arc<AtomicBool>,
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
@@ -782,9 +837,6 @@ impl Logger {
     command_dispatcher: RegisteredCommandDispatcher,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
-
-    // record initial app open for this launch's logger
-    stats.app_open.inc();
 
     Self {
       shutdown_state: Mutex::new(shutdown_state),
@@ -799,6 +851,7 @@ impl Logger {
       store,
       opaque_entity_updates,
       pending_entity_id,
+      labels,
       sleep_mode_active,
       is_tracing_active,
       sdk_status_tracker,
@@ -875,6 +928,7 @@ impl Logger {
       app_version_repo: Repository::new(self.store.clone()),
       opaque_entity_updates: self.opaque_entity_updates.clone(),
       pending_entity_id: self.pending_entity_id.clone(),
+      labels: self.labels.clone(),
       stats: self.stats.clone(),
       sleep_mode_active: self.sleep_mode_active.clone(),
       is_tracing_active: self.is_tracing_active.clone(),

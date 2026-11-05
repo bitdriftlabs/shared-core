@@ -27,12 +27,12 @@ use bd_proto::protos::client::metric::{
   DDSketchHistogram,
   InlineHistogramValues,
 };
-use bd_stats_common::{DynCounter, MetricType, NameType, make_client_sketch};
+use bd_stats_common::{Counter as _, DynCounter, MetricType, NameType, make_client_sketch};
 use parking_lot::Mutex;
 use sketches_rust::DDSketch;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -127,6 +127,45 @@ impl bd_stats_common::Counter for Counter {
 
   fn inc_by(&self, value: u64) {
     self.value.fetch_add(value, Ordering::Relaxed);
+  }
+}
+
+//
+// ProductCounter
+//
+
+#[derive(Clone)]
+pub struct ProductCounter {
+  scope: Scope,
+  name: String,
+}
+
+impl ProductCounter {
+  pub fn inc_with_origin(&self, origin: BTreeMap<String, String>) {
+    self.scope.counter_with_labels(&self.name, origin).inc();
+  }
+}
+
+impl Debug for ProductCounter {
+  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    formatter
+      .debug_struct("ProductCounter")
+      .field("name", &self.name)
+      .finish_non_exhaustive()
+  }
+}
+
+impl bd_stats_common::Counter for ProductCounter {
+  fn inc(&self) {
+    self.inc_by(1);
+  }
+
+  fn inc_by(&self, value: u64) {
+    let labels = self.scope.collector.product_metadata.lock().clone();
+    self
+      .scope
+      .counter_with_labels(&self.name, labels)
+      .inc_by(value);
   }
 }
 
@@ -327,6 +366,24 @@ impl Scope {
     self.counter_with_labels(name, BTreeMap::new())
   }
 
+  /// Product metrics retain their emission-origin identity as part of the persisted key.
+  /// Operational counters continue using `counter` without release attribution.
+  #[must_use]
+  pub fn product_counter(&self, name: &str) -> ProductCounter {
+    ProductCounter {
+      scope: self.clone(),
+      name: name.to_string(),
+    }
+  }
+
+  pub fn set_product_origin(&self, key: &str, value: String) {
+    self
+      .collector
+      .product_metadata
+      .lock()
+      .insert(key.to_string(), value);
+  }
+
   #[must_use]
   pub fn histogram(&self, name: &str) -> Histogram {
     self.histogram_with_labels(name, BTreeMap::new())
@@ -469,6 +526,7 @@ struct CollectorInner {
 #[derive(Clone)]
 pub struct Collector {
   inner: Arc<Mutex<CollectorInner>>,
+  product_metadata: Arc<Mutex<BTreeMap<String, String>>>,
 }
 
 impl Default for Collector {
@@ -486,7 +544,23 @@ impl Collector {
         histograms_by_name: HashMap::new(),
         limit,
       })),
+      product_metadata: Arc::default(),
     }
+  }
+
+  /// Capture immutable product identity at initialization, before any metrics are emitted.
+  #[must_use]
+  pub fn with_product_metadata(mut self, metadata: HashMap<String, String>) -> Self {
+    self.product_metadata = Arc::new(Mutex::new(
+      metadata
+        .into_iter()
+        .filter(|(key, value)| {
+          matches!(key.as_str(), "app_id" | "app_version" | "platform")
+            || (key == "__bd_labels" && !value.is_empty())
+        })
+        .collect(),
+    ));
+    self
   }
 
   #[must_use]

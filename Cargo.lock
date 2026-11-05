@@ -1042,6 +1042,7 @@ dependencies = [
  "bd-log-primitives",
  "bd-log-util",
  "bd-macros",
+ "bd-metadata",
  "bd-network-quality",
  "bd-noop-network",
  "bd-proto",
@@ -1108,11 +1109,13 @@ dependencies = [
 name = "bd-metadata"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "bd-test-helpers",
  "bd-workspace-hack",
  "ctor",
  "parking_lot 0.13.0",
  "pretty_assertions",
+ "serde_json",
 ]
 
 [[package]]

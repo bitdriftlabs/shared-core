@@ -696,14 +696,69 @@ pub mod matcher {
             }
         }
 
+        // string label = 2;
+
+        pub fn label(&self) -> &str {
+            match self.type_ {
+                ::std::option::Option::Some(key::Type::Label(ref v)) => v,
+                _ => "",
+            }
+        }
+
+        pub fn clear_label(&mut self) {
+            self.type_ = ::std::option::Option::None;
+        }
+
+        pub fn has_label(&self) -> bool {
+            match self.type_ {
+                ::std::option::Option::Some(key::Type::Label(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_label(&mut self, v: ::std::string::String) {
+            self.type_ = ::std::option::Option::Some(key::Type::Label(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_label(&mut self) -> &mut ::std::string::String {
+            if let ::std::option::Option::Some(key::Type::Label(_)) = self.type_ {
+            } else {
+                self.type_ = ::std::option::Option::Some(key::Type::Label(::std::string::String::new()));
+            }
+            match self.type_ {
+                ::std::option::Option::Some(key::Type::Label(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_label(&mut self) -> ::std::string::String {
+            if self.has_label() {
+                match self.type_.take() {
+                    ::std::option::Option::Some(key::Type::Label(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                ::std::string::String::new()
+            }
+        }
+
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut fields = ::std::vec::Vec::with_capacity(2);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
                 "static_device_metadata",
                 Key::has_static_device_metadata,
                 Key::static_device_metadata,
                 Key::set_static_device_metadata,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                "label",
+                Key::has_label,
+                Key::label,
+                Key::set_label,
             ));
             oneofs.push(key::Type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Key>(
@@ -727,6 +782,9 @@ pub mod matcher {
                     10 => {
                         self.type_ = ::std::option::Option::Some(key::Type::StaticDeviceMetadata(is.read_string()?));
                     },
+                    18 => {
+                        self.type_ = ::std::option::Option::Some(key::Type::Label(is.read_string()?));
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -744,6 +802,9 @@ pub mod matcher {
                     &key::Type::StaticDeviceMetadata(ref v) => {
                         my_size += ::protobuf::rt::string_size(1, &v);
                     },
+                    &key::Type::Label(ref v) => {
+                        my_size += ::protobuf::rt::string_size(2, &v);
+                    },
                 };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -756,6 +817,9 @@ pub mod matcher {
                 match v {
                     &key::Type::StaticDeviceMetadata(ref v) => {
                         os.write_string(1, v)?;
+                    },
+                    &key::Type::Label(ref v) => {
+                        os.write_string(2, v)?;
                     },
                 };
             }
@@ -776,6 +840,7 @@ pub mod matcher {
         }
 
         fn clear(&mut self) {
+            self.type_ = ::std::option::Option::None;
             self.type_ = ::std::option::Option::None;
             self.special_fields.clear();
         }
@@ -814,6 +879,8 @@ pub mod matcher {
         pub enum Type {
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Matcher.Key.static_device_metadata)
             StaticDeviceMetadata(::std::string::String),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.Matcher.Key.label)
+            Label(::std::string::String),
         }
 
         impl ::protobuf::Oneof for Type {
@@ -1931,7 +1998,7 @@ impl ::protobuf::reflect::ProtobufValue for RootMatcher {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n0bitdrift_public/protobuf/client/v1/matcher.proto\x12\"bitdrift_public\
-    .protobuf.client.v1\x1a\x17validate/validate.proto\"\x8d\r\n\x07Matcher\
+    .protobuf.client.v1\x1a\x17validate/validate.proto\"\xb0\r\n\x07Matcher\
     \x12!\n\x06always\x18\x01\x20\x01(\x08H\0R\x06alwaysB\x07\xfaB\x04j\x02\
     \x08\x01\x12K\n\x03and\x18\x02\x20\x01(\x0b27.bitdrift_public.protobuf.c\
     lient.v1.Matcher.MatcherListH\0R\x03and\x12I\n\x02or\x18\x03\x20\x01(\
@@ -1942,26 +2009,27 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     r\x12a\n\nconsistent\x18\x06\x20\x01(\x0b2?.bitdrift_public.protobuf.cli\
     ent.v1.Matcher.ConsistentHashMatchH\0R\nconsistent\x12Q\n\x06semver\x18\
     \x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.Matcher.SemVerMat\
-    chH\0R\x06semver\x1aS\n\x03Key\x12?\n\x16static_device_metadata\x18\x01\
-    \x20\x01(\tH\0R\x14staticDeviceMetadataB\x07\xfaB\x04r\x02\x10\x01B\x0b\
-    \n\x04type\x12\x03\xf8B\x01\x1a`\n\x0bMatcherList\x12Q\n\x08matchers\x18\
-    \x01\x20\x03(\x0b2+.bitdrift_public.protobuf.client.v1.MatcherR\x08match\
-    ersB\x08\xfaB\x05\x92\x01\x02\x08\x02\x1a\xe1\x01\n\x0bStringMatch\x12K\
-    \n\x03key\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.Matc\
-    her.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05value\x18\
-    \x02\x20\x01(\tR\x05value\x12[\n\nmatch_type\x18\x03\x20\x01(\x0e2<.bitd\
-    rift_public.protobuf.client.v1.Matcher.StringMatch.TypeR\tmatchType\"\
-    \x12\n\x04Type\x12\n\n\x06EQUALS\x10\0\x1a\x88\x02\n\x08IntMatch\x12K\n\
-    \x03key\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.Matche\
-    r.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05value\x18\
-    \x02\x20\x01(\x03R\x05value\x12X\n\nmatch_type\x18\x03\x20\x01(\x0e29.bi\
-    tdrift_public.protobuf.client.v1.Matcher.IntMatch.TypeR\tmatchType\"?\n\
-    \x04Type\x12\n\n\x06EQUALS\x10\0\x12\x10\n\x0cGREATER_THAN\x10\x01\x12\
-    \x19\n\x15GREATER_THAN_OR_EQUAL\x10\x02\x1a\xff\x01\n\x0bSemVerMatch\x12\
-    K\n\x03key\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.Mat\
-    cher.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05value\
-    \x18\x02\x20\x01(\tR\x05value\x12[\n\nmatch_type\x18\x03\x20\x01(\x0e2<.\
-    bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.TypeR\tmatchType\
+    chH\0R\x06semver\x1av\n\x03Key\x12?\n\x16static_device_metadata\x18\x01\
+    \x20\x01(\tH\0R\x14staticDeviceMetadataB\x07\xfaB\x04r\x02\x10\x01\x12!\
+    \n\x05label\x18\x02\x20\x01(\tH\0R\x05labelB\t\xfaB\x06r\x04\x10\x01\x18\
+    @B\x0b\n\x04type\x12\x03\xf8B\x01\x1a`\n\x0bMatcherList\x12Q\n\x08matche\
+    rs\x18\x01\x20\x03(\x0b2+.bitdrift_public.protobuf.client.v1.MatcherR\
+    \x08matchersB\x08\xfaB\x05\x92\x01\x02\x08\x02\x1a\xe1\x01\n\x0bStringMa\
+    tch\x12K\n\x03key\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client\
+    .v1.Matcher.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05v\
+    alue\x18\x02\x20\x01(\tR\x05value\x12[\n\nmatch_type\x18\x03\x20\x01(\
+    \x0e2<.bitdrift_public.protobuf.client.v1.Matcher.StringMatch.TypeR\tmat\
+    chType\"\x12\n\x04Type\x12\n\n\x06EQUALS\x10\0\x1a\x88\x02\n\x08IntMatch\
+    \x12K\n\x03key\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1\
+    .Matcher.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05valu\
+    e\x18\x02\x20\x01(\x03R\x05value\x12X\n\nmatch_type\x18\x03\x20\x01(\x0e\
+    29.bitdrift_public.protobuf.client.v1.Matcher.IntMatch.TypeR\tmatchType\
+    \"?\n\x04Type\x12\n\n\x06EQUALS\x10\0\x12\x10\n\x0cGREATER_THAN\x10\x01\
+    \x12\x19\n\x15GREATER_THAN_OR_EQUAL\x10\x02\x1a\xff\x01\n\x0bSemVerMatch\
+    \x12K\n\x03key\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1\
+    .Matcher.KeyR\x03keyB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05valu\
+    e\x18\x02\x20\x01(\tR\x05value\x12[\n\nmatch_type\x18\x03\x20\x01(\x0e2<\
+    .bitdrift_public.protobuf.client.v1.Matcher.SemVerMatch.TypeR\tmatchType\
     \"0\n\x04Type\x12\x19\n\x15GREATER_THAN_OR_EQUAL\x10\0\x12\r\n\tLESS_THA\
     N\x10\x01\x1a\xb6\x01\n\x13ConsistentHashMatch\x12K\n\x03key\x18\x01\x20\
     \x01(\x0b2/.bitdrift_public.protobuf.client.v1.Matcher.KeyR\x03keyB\x08\

@@ -62,10 +62,10 @@ use crate::workflow::{
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUploadStreaming};
 use bd_client_common::file::{read_compressed_protobuf_file, write_compressed_protobuf_file};
-use bd_client_stats_store::{Counter, Histogram, Scope};
+use bd_client_stats_store::{Counter, Histogram, ProductCounter, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_log_primitives::Log;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
+use bd_log_primitives::{FieldsRef, Log};
 use bd_runtime::runtime::workflows::{JsonPathStringMatchingEnabled, PersistenceWriteIntervalFlag};
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::{Counter as CounterTrait, Histogram as HistogramTrait, labels};
@@ -1041,7 +1041,20 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
 
   // Ordinary ingress supplies the effective session, not cross-thread strategy notifications.
   // A completion accepted before that ingress can still win after the application resets strategy.
-  fn maybe_update_session(&mut self, incoming_session_id: &str) -> bool {
+  fn record_session(&self, origin: FieldsRef<'_>) {
+    self.stats.sessions_total.inc_with_origin(
+      ["__bd_labels", "app_id", "app_version", "platform"]
+        .into_iter()
+        .filter_map(|key| {
+          origin
+            .field_value(key)
+            .map(|value| (key.to_string(), value.into_owned()))
+        })
+        .collect(),
+    );
+  }
+
+  fn maybe_update_session(&mut self, incoming_session_id: &str, origin: FieldsRef<'_>) -> bool {
     if self.state.session_id.is_empty() {
       log::debug!("workflows engine: moving from no session to session \"{incoming_session_id}\"");
       // There was no state on a disk when workflows engine was started
@@ -1052,7 +1065,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
       // all workflows in their initial states.
       self.state.session_id = incoming_session_id.to_string();
-      self.stats.sessions_total.inc();
+      self.record_session(origin);
       return true;
     } else if self.state.session_id != incoming_session_id {
       if self.previous_session_id == incoming_session_id {
@@ -1079,7 +1092,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       self.previous_session_id.clone_from(&self.state.session_id);
       self.clean_state();
       self.state.session_id = incoming_session_id.to_string();
-      self.stats.sessions_total.inc();
+      self.record_session(origin);
       return true;
     }
 
@@ -1102,7 +1115,10 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     // established session. Historical command attribution must never rewind newer progress.
     let session_start_result = match event {
       WorkflowEvent::Log(log) => {
-        let session_changed = self.maybe_update_session(&log.session_id);
+        let session_changed = self.maybe_update_session(
+          &log.session_id,
+          FieldsRef::new(&log.fields, &log.matching_fields),
+        );
         if !session_changed && !self.pending_session_start {
           None
         } else {
@@ -1122,8 +1138,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
           ))
         }
       },
-      WorkflowEvent::StateChange(_, _, session_id) => {
-        self.pending_session_start |= self.maybe_update_session(session_id);
+      WorkflowEvent::StateChange(_, fields, session_id) => {
+        self.pending_session_start |= self.maybe_update_session(session_id, fields);
         None
       },
       WorkflowEvent::CommandStart(log)
@@ -1132,7 +1148,10 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       | WorkflowEvent::CommandCompletion { log, .. } => {
         if self.state.session_id.is_empty() {
           // As with state-change initialization, defer SessionStart until ordinary log ingress.
-          self.pending_session_start |= self.maybe_update_session(&log.session_id);
+          self.pending_session_start |= self.maybe_update_session(
+            &log.session_id,
+            FieldsRef::new(&log.fields, &log.matching_fields),
+          );
         }
         None
       },
@@ -2102,7 +2121,7 @@ struct WorkflowsEngineStats {
 
   /// The number of new sessions observed. Note that thrashing between sessions will count the
   /// same session multiple times.
-  sessions_total: Counter,
+  sessions_total: ProductCounter,
   /// The number of immediate returns to the preceding session, indicating out-of-order logs
   /// caused an additional workflow state reset.
   session_thrashes_total: Counter,
@@ -2128,7 +2147,7 @@ impl WorkflowsEngineStats {
         .counter("buffers_to_flush_channel_send_failures_total"),
       intent_negotiation_channel_send_failures: scope
         .counter("intent_negotiation_channel_send_failures_total"),
-      sessions_total: scope.counter("sessions_total"),
+      sessions_total: scope.product_counter("sessions_total"),
       session_thrashes_total: scope.counter("session_thrashes_total"),
     }
   }

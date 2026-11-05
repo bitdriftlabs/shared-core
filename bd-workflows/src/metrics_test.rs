@@ -16,23 +16,178 @@ use crate::config::{
   ValueIncrement,
 };
 use crate::engine::EmitMetricActionCount;
-use crate::workflow::WorkflowEvent;
+use crate::workflow::{WorkflowCommandCompletionToken, WorkflowEvent};
 use bd_client_stats::Stats;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter, Histogram};
 use bd_log_matcher::matcher::JsonPathToken;
-use bd_log_primitives::{Log, LogFields, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::MultiTag as MultiTagProto;
 use bd_state::Scope;
 use bd_stats_common::{MetricType, NameType, labels};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use time::OffsetDateTime;
 
 fn make_metrics_collector() -> (MetricsCollector<Counter, Histogram>, Collector) {
   let collector = Collector::default();
   let stats = Stats::new(collector.clone());
   (MetricsCollector::new(stats), collector)
+}
+
+#[test]
+fn labels_are_payload_owned_for_log_session_command_and_state_metrics() {
+  for environment in [None, Some("{}"), Some(r#"{"channel":"previous"}"#)] {
+    let mut fields: LogFields = environment
+      .map(|value| [("__bd_labels".into(), value.into())].into())
+      .unwrap_or_default();
+    fields.insert("app_id".into(), "previous-app".into());
+    fields.insert("platform".into(), "apple".into());
+    fields.insert("app_version".into(), "01.2".into());
+    let log = Log {
+      message: "message".into(),
+      session_id: "session".into(),
+      occurred_at: OffsetDateTime::UNIX_EPOCH,
+      log_level: log_level::DEBUG,
+      log_type: LogType::NORMAL,
+      fields,
+      matching_fields: LogFields::default(),
+      command_attachment: None,
+      capture_session: None,
+    };
+    let change = bd_state::StateChange::inserted(
+      Scope::GlobalState,
+      "key",
+      bd_state::string_value("value"),
+      OffsetDateTime::UNIX_EPOCH,
+    );
+    let token = WorkflowCommandCompletionToken("token".to_string());
+    for event in [
+      WorkflowEvent::Log(&log),
+      WorkflowEvent::SessionStart(&log),
+      WorkflowEvent::CommandStart(&log),
+      WorkflowEvent::CommandCancelled(&log),
+      WorkflowEvent::CommandLog(&log),
+      WorkflowEvent::CommandCompletion {
+        log: &log,
+        token: &token,
+      },
+      WorkflowEvent::StateChange(
+        &change,
+        FieldsRef::new(&log.fields, &log.matching_fields),
+        "session",
+      ),
+    ] {
+      for metric_type in [MetricType::Counter, MetricType::Histogram] {
+        let collector = Collector::default().with_product_metadata(HashMap::from([
+          (
+            "__bd_labels".to_string(),
+            r#"{"channel":"current"}"#.to_string(),
+          ),
+          ("app_id".to_string(), "current-app".to_string()),
+          ("platform".to_string(), "android".to_string()),
+        ]));
+        let metrics_collector = MetricsCollector::new(Stats::new(collector.clone()));
+        let action = ActionEmitMetric {
+          id: "action".to_string(),
+          // Chart configuration cannot replace SDK identity, even when the payload is unset.
+          tags: BTreeMap::from([
+            (
+              "__bd_labels".to_string(),
+              TagValue::Fixed("configured".to_string()),
+            ),
+            (
+              "app_id".to_string(),
+              TagValue::Fixed("configured-app".to_string()),
+            ),
+            (
+              "platform".to_string(),
+              TagValue::Fixed("configured-platform".to_string()),
+            ),
+          ]),
+          multi_tag: None,
+          increment: ValueIncrement::Fixed(1),
+          metric_type,
+        };
+        let actions = BTreeMap::from([(
+          &action,
+          EmitMetricActionCount {
+            emission_count: 1,
+            is_parallel: false,
+            parallel_source_workflow_index: None,
+          },
+        )]);
+        metrics_collector.emit_metrics(&actions, event, &bd_state::InMemoryStateReader::default());
+        let mut tags = environment
+          .map(|value| labels! { "__bd_labels" => value })
+          .unwrap_or_default();
+        tags.insert("app_id".to_string(), "previous-app".to_string());
+        tags.insert("platform".to_string(), "apple".to_string());
+        match metric_type {
+          MetricType::Counter => collector.assert_workflow_counter_eq(1, "action", tags),
+          MetricType::Histogram => {
+            collector.assert_workflow_histogram_observed(1.0, "action", tags);
+          },
+        }
+      }
+    }
+  }
+}
+
+#[test]
+fn identity_tags_do_not_require_chart_configuration_and_support_legacy_platform_fields() {
+  for (os, platform) in [("iOS", "apple"), ("Android", "android")] {
+    let (metrics_collector, collector) = make_metrics_collector();
+    let log = Log {
+      message: "message".into(),
+      session_id: "session".into(),
+      occurred_at: OffsetDateTime::UNIX_EPOCH,
+      log_level: log_level::DEBUG,
+      log_type: LogType::NORMAL,
+      fields: [
+        ("__bd_labels".into(), r#"{"channel":"previous"}"#.into()),
+        ("app_id".into(), "previous-app".into()),
+        ("app_version".into(), "01.2".into()),
+        ("os".into(), os.into()),
+      ]
+      .into(),
+      matching_fields: LogFields::default(),
+      command_attachment: None,
+      capture_session: None,
+    };
+    let action = ActionEmitMetric {
+      id: "action".to_string(),
+      tags: BTreeMap::from([(
+        "app_version".to_string(),
+        TagValue::FieldExtract("app_version".to_string()),
+      )]),
+      multi_tag: None,
+      increment: ValueIncrement::Fixed(1),
+      metric_type: MetricType::Counter,
+    };
+    metrics_collector.emit_metrics(
+      &BTreeMap::from([(
+        &action,
+        EmitMetricActionCount {
+          emission_count: 1,
+          is_parallel: false,
+          parallel_source_workflow_index: None,
+        },
+      )]),
+      WorkflowEvent::Log(&log),
+      &bd_state::InMemoryStateReader::default(),
+    );
+    collector.assert_workflow_counter_eq(
+      1,
+      "action",
+      labels! {
+        "__bd_labels" => r#"{"channel":"previous"}"#,
+        "app_id" => "previous-app",
+        "app_version" => "01.2",
+        "platform" => platform,
+      },
+    );
+  }
 }
 
 #[test]
@@ -457,6 +612,85 @@ fn metric_multi_tag_with_no_matches_emits_nothing() {
       )
       .is_none()
   );
+}
+
+#[test]
+fn multi_tag_cannot_replace_payload_labels() {
+  let (metrics_collector, collector) = make_metrics_collector();
+  let log = Log {
+    message: "message".into(),
+    session_id: "session".into(),
+    occurred_at: OffsetDateTime::UNIX_EPOCH,
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    fields: [
+      ("__bd_labels".into(), r#"{"channel":"previous"}"#.into()),
+      ("app_id".into(), "previous-app".into()),
+      ("platform".into(), "apple".into()),
+    ]
+    .into(),
+    matching_fields: LogFields::default(),
+    command_attachment: None,
+    capture_session: None,
+  };
+  let mut state = bd_state::InMemoryStateReader::default();
+  state.insert(
+    Scope::FeatureFlagExposure,
+    "flag",
+    bd_state::string_value("variant"),
+  );
+  for (key_tag, value_tag) in [
+    ("__bd_labels", "variant"),
+    ("flag", "__bd_labels"),
+    ("app_id", "variant"),
+    ("flag", "app_id"),
+    ("platform", "variant"),
+    ("flag", "platform"),
+  ] {
+    let id = format!("{key_tag}-{value_tag}");
+    let action = ActionEmitMetric {
+      id: id.clone(),
+      tags: BTreeMap::new(),
+      multi_tag: Some(
+        MetricMultiTag::new(MultiTagProto {
+          scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+          key_tag_name: key_tag.to_string(),
+          value_tag_name: value_tag.to_string(),
+          ..Default::default()
+        })
+        .unwrap(),
+      ),
+      increment: ValueIncrement::Fixed(1),
+      metric_type: MetricType::Counter,
+    };
+    metrics_collector.emit_metrics(
+      &BTreeMap::from([(
+        &action,
+        EmitMetricActionCount {
+          emission_count: 1,
+          is_parallel: false,
+          parallel_source_workflow_index: None,
+        },
+      )]),
+      WorkflowEvent::Log(&log),
+      &state,
+    );
+    let extra_tag = if key_tag == "flag" {
+      ("flag", "flag")
+    } else {
+      ("variant", "variant")
+    };
+    collector.assert_workflow_counter_eq(
+      1,
+      &id,
+      labels! {
+        "__bd_labels" => r#"{"channel":"previous"}"#,
+        "app_id" => "previous-app",
+        "platform" => "apple",
+        extra_tag.0 => extra_tag.1,
+      },
+    );
+  }
 }
 
 fn json_extraction(key: &str) -> JsonFieldExtraction {

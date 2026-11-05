@@ -31,11 +31,11 @@ use bd_time::OffsetDateTimeExt;
 use bd_workflows::workflow::CommandArtifactMetadata;
 use parking_lot::Mutex;
 use protobuf::Message;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::fs::{self, File};
@@ -44,7 +44,7 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(1);
-const MAX_SIDECAR_BYTES: u64 = 1024;
+const MAX_SIDECAR_BYTES: u64 = 16 * 1024;
 
 //
 // AttachmentStoreHandle
@@ -52,6 +52,7 @@ const MAX_SIDECAR_BYTES: u64 = 1024;
 
 #[derive(Clone)]
 pub struct AttachmentStoreHandle {
+  origin: Arc<OnceLock<watch::Receiver<HashMap<String, String>>>>,
   sdk_directory: PathBuf,
   runtime: Arc<ConfigLoader>,
   store: Arc<OnceCell<Arc<AttachmentStore>>>,
@@ -60,6 +61,7 @@ pub struct AttachmentStoreHandle {
 impl AttachmentStoreHandle {
   pub fn new(sdk_directory: PathBuf, runtime: Arc<ConfigLoader>) -> Self {
     Self {
+      origin: Arc::new(OnceLock::new()),
       sdk_directory,
       runtime,
       store: Arc::new(OnceCell::new()),
@@ -72,10 +74,23 @@ impl AttachmentStoreHandle {
       .get_or_try_init(|| async {
         AttachmentStore::new(&self.sdk_directory, &self.runtime)
           .await
-          .map(Arc::new)
+          .map(|mut store| {
+            store.origin = self.origin.get().cloned();
+            Arc::new(store)
+          })
       })
       .await
       .map(Arc::clone)
+  }
+
+  pub(crate) fn set_origin(
+    &self,
+    origin: watch::Receiver<HashMap<String, String>>,
+  ) -> anyhow::Result<()> {
+    self
+      .origin
+      .set(origin)
+      .map_err(|_| anyhow::anyhow!("attachment origin is already initialized"))
   }
 }
 
@@ -165,6 +180,7 @@ trait TestHooks: Send + Sync {
 //
 
 pub struct AttachmentStore {
+  origin: Option<watch::Receiver<HashMap<String, String>>>,
   sdk_directory: PathBuf,
   directory: PathBuf,
   oldest_timestamp: Mutex<Option<u64>>,
@@ -268,6 +284,7 @@ impl AttachmentStore {
     metadata_paths.sort();
     metadata_paths.dedup();
     let store = Self {
+      origin: None,
       sdk_directory: sdk_directory.to_owned(),
       directory,
       oldest_timestamp: Mutex::new(None),
@@ -345,6 +362,10 @@ impl AttachmentStore {
     source: UploadSource,
     content_type: Option<String>,
   ) -> io::Result<AdmittedAttachment> {
+    let origin = self
+      .origin
+      .as_ref()
+      .map_or_default(|origin| origin.borrow().clone());
     if content_type.as_ref().is_some_and(|content_type| {
       content_type.len() > 255 || content_type.bytes().any(|byte| byte.is_ascii_control())
     }) {
@@ -378,7 +399,7 @@ impl AttachmentStore {
       if let Some(hooks) = &store.test_hooks {
         hooks.admission_started();
       }
-      let result = store.admit_async(source, content_type).await;
+      let result = store.admit_async(source, content_type, origin).await;
       let artifact_id = result.as_ref().ok().map(|attachment| attachment.id);
       let _ = result_tx.send(result);
       if let Some(hooks) = &store.test_hooks {
@@ -642,8 +663,10 @@ impl AttachmentStore {
     &self,
     source: UploadSource,
     content_type: Option<String>,
+    origin: HashMap<String, String>,
   ) -> io::Result<AdmittedAttachment> {
     let metadata = WorkflowAttachmentState {
+      origin,
       admitted_at_micros: u64::try_from(OffsetDateTime::now_utc().unix_timestamp_micros())
         .map_err(io::Error::other)?,
       content_type: content_type.clone(),
