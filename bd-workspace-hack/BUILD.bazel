@@ -1,8 +1,11 @@
-load("@crates//:defs.bzl", "aliases", "all_crate_deps")
 load("//tools/lint:linters.bzl", "rust_library")
 
 package(default_visibility = ["//visibility:public"])
 
+# Hakari unifies Cargo features across the workspace. Bazel already resolves one feature set per
+# crate from the root Cargo.lock, so the hack's dependencies add nothing there. Listing them would
+# put about 120 external crates into the link inputs of every binary and test that depends on this
+# crate, so the Bazel target stays empty.
 rust_library(
     name = "bd-workspace-hack",
     srcs = glob(
@@ -13,5 +16,4 @@ rust_library(
     crate_name = "bd_workspace_hack",
     crate_root = "src/lib.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True),
 )
