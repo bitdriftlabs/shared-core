@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{Collector, MetricDataRef, NameType};
-use bd_stats_common::labels;
+use bd_stats_common::{Counter as _, labels};
 use std::collections::BTreeMap;
 
 #[test]
@@ -60,5 +60,88 @@ fn retain() {
     collector
       .find_histogram(&NameType::Global("h".to_string()), &labels!())
       .is_none()
+  );
+}
+
+#[test]
+fn product_counters_have_emission_origin_but_operational_and_workflow_metrics_do_not() {
+  for environment in [None, Some("{}"), Some(r#"{"channel":"production"}"#)] {
+    let collector = Collector::default().with_product_metadata(
+      environment
+        .map(|value| ("__bd_labels".to_string(), value.to_string()))
+        .into_iter()
+        .collect(),
+    );
+    let scope = collector.scope("nested").scope("product");
+    scope.product_counter("counter").inc();
+    let expected = environment
+      .map(|value| labels! { "__bd_labels" => value })
+      .unwrap_or_default();
+    assert_eq!(
+      collector
+        .find_counter(
+          &NameType::Global("nested:product:counter".to_string()),
+          &expected
+        )
+        .unwrap()
+        .get(),
+      1,
+    );
+    scope.counter("operational").inc();
+    assert_eq!(
+      collector
+        .find_counter(
+          &NameType::Global("nested:product:operational".to_string()),
+          &labels! {}
+        )
+        .unwrap()
+        .get(),
+      1,
+    );
+    collector
+      .dynamic_counter(labels! {}, "workflow")
+      .unwrap()
+      .inc();
+    assert_eq!(
+      collector
+        .find_counter(&NameType::ActionId("workflow".to_string()), &labels! {})
+        .unwrap()
+        .get(),
+      1,
+    );
+  }
+}
+
+#[test]
+fn product_counter_handles_snapshot_origin_on_each_increment() {
+  let collector = Collector::default();
+  let scope = collector.scope("product");
+  let counter = scope.product_counter("counter");
+  scope.set_product_origin("__bd_labels", "{}".to_string());
+  counter.inc_by(2);
+  scope.set_product_origin("__bd_labels", r#"{"channel":"qa"}"#.to_string());
+  counter.inc_by(3);
+  counter.inc_with_origin(labels! { "__bd_labels" => r#"{"channel":"historical"}"# });
+  for (origin, expected) in [("{}", 2), (r#"{"channel":"qa"}"#, 3)] {
+    assert_eq!(
+      collector
+        .find_counter(
+          &NameType::Global("product:counter".to_string()),
+          &labels! { "__bd_labels" => origin },
+        )
+        .unwrap()
+        .get(),
+      expected
+    );
+  }
+  assert_eq!(
+    collector
+      .find_counter(
+        &NameType::Global("product:counter".to_string()),
+        &labels! { "__bd_labels" => r#"{"channel":"historical"}"# }
+      )
+      .unwrap()
+      .get(),
+    1
   );
 }

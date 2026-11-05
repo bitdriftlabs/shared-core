@@ -290,7 +290,7 @@ async fn cancelled_staging_keeps_cleanup_excluded_until_the_queue_releases_its_l
   client
     .expect_enqueue_workflow_attachment()
     .once()
-    .returning(move |_, _, _, _, persisted, _, lease| {
+    .returning(move |_, _, _, _, _, persisted, _, lease| {
       admission_tx
         .take()
         .unwrap()
@@ -334,11 +334,11 @@ async fn stage_waits_for_indexed_lease_ack() {
   let mut ack_tx = Some(ack_tx);
   mock_client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, source, session, _, _, _, _| {
+    .withf(move |id, source, session, _, _, _, _, _| {
       *id == artifact_id && *source == expected_source && session == "session"
     })
     .once()
-    .returning(move |_, _, _, _, persisted, _, _| {
+    .returning(move |_, _, _, _, _, persisted, _, _| {
       ack_tx.take().unwrap().send(persisted.unwrap()).unwrap();
       Ok(())
     });
@@ -366,9 +366,9 @@ async fn queue_backpressure_does_not_stall_another_batch() {
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, _, _, _, _, _, _| *id == first_id)
+    .withf(move |id, _, _, _, _, _, _, _| *id == first_id)
     .once()
-    .returning(move |_, _, _, _, persisted, _, _| {
+    .returning(move |_, _, _, _, _, persisted, _, _| {
       first_tx.take().unwrap().send(()).unwrap();
       persisted
         .unwrap()
@@ -378,9 +378,9 @@ async fn queue_backpressure_does_not_stall_another_batch() {
     });
   mock_client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, _, _, _, _, _, _| *id == second_id)
+    .withf(move |id, _, _, _, _, _, _, _| *id == second_id)
     .once()
-    .returning(|_, _, _, _, persisted, _, _| {
+    .returning(|_, _, _, _, _, persisted, _, _| {
       persisted.unwrap().send(Ok(())).unwrap();
       Ok(())
     });
@@ -413,7 +413,7 @@ async fn retryable_persistence_failure_is_reported() {
   mock_client
     .expect_enqueue_workflow_attachment()
     .once()
-    .returning(|_, _, _, _, persisted, _, _| {
+    .returning(|_, _, _, _, _, persisted, _, _| {
       persisted
         .unwrap()
         .send(Err(EnqueueError::RetryablePersistence(anyhow::anyhow!(
@@ -446,7 +446,7 @@ async fn permanent_staging_failure_does_not_block_other_attachments() {
   mock_client
     .expect_enqueue_workflow_attachment()
     .times(2)
-    .returning(move |id, _, _, _, persisted, _, _| {
+    .returning(move |id, _, _, _, _, persisted, _, _| {
       let result = if id == failed_id {
         Err(EnqueueError::Other(anyhow::anyhow!(
           "missing retained payload"
@@ -514,11 +514,11 @@ async fn corrupt_metadata_does_not_block_healthy_attachment_staging() {
     let mut client = bd_artifact_upload::MockClient::new();
     client
       .expect_enqueue_workflow_attachment()
-      .withf(move |id, _, session, content_type, _, _, _| {
+      .withf(move |id, _, session, _, content_type, _, _, _| {
         *id == healthy.id && session == "healthy" && content_type.as_deref() == Some("image/jpeg")
       })
       .once()
-      .returning(|_, _, _, _, persisted, _, _| {
+      .returning(|_, _, _, _, _, persisted, _, _| {
         persisted.unwrap().send(Ok(())).unwrap();
         Ok(())
       });
@@ -568,13 +568,13 @@ async fn successful_upload_releases_the_retained_payload() {
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, _, session, content_type, _, _, _| {
+    .withf(move |id, _, session, _, content_type, _, _, _| {
       *id == admitted.id
         && session == "session"
         && content_type.as_deref() == Some("application/vnd.example.capture")
     })
     .once()
-    .returning(move |_, _, _, _, persisted, completion, _| {
+    .returning(move |_, _, _, _, _, persisted, completion, _| {
       persisted.unwrap().send(Ok(())).unwrap();
       completion_tx
         .take()

@@ -33,6 +33,7 @@ bd-log-metadata.path         = "../bd-log-metadata"
 bd-log-primitives.path       = "../bd-log-primitives"
 bd-log-util.path             = "../bd-log-util"
 bd-macros.path               = "../bd-macros"
+bd-metadata.workspace        = true
 bd-network-quality.path      = "../bd-network-quality"
 bd-proto.path                = "../bd-proto"
 bd-proto-util.path           = "../bd-proto-util"

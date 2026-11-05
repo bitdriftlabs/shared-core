@@ -22,6 +22,8 @@ pub mod artifact;
 
 use std::collections::HashMap;
 
+pub mod labels;
+
 // The configuration version allows the server to send different configurations to different
 // clients. Native SDK release minor versions must match this number. Increment it whenever newer
 // clients support configurations that older clients would reject.
@@ -55,6 +57,15 @@ use std::collections::HashMap;
 // Version 51: Added log body extraction for Sankey nodes.
 // Version 52: Added scrub rules, applied to every log before the filters.
 pub const CONFIGURATION_VERSION: &str = "52";
+
+/// Validate an app environment without normalizing its case or whitespace.
+#[must_use]
+pub fn valid_app_environment_name(name: &str) -> bool {
+  (1 ..= 64).contains(&name.len())
+    && name
+      .bytes()
+      .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

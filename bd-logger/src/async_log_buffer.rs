@@ -493,6 +493,7 @@ fn workflow_generated_log(
 // Orchestrates buffering of incoming logs and offloading their processing to
 // a run loop in an async way.
 pub struct AsyncLogBuffer<R: LogReplay> {
+  labels: Option<Arc<crate::labels::LabelsState>>,
   event_buffer: EventBuffer,
   event_buffer_limit_watches: EventBufferLimitWatches,
   startup_replay_delay: Option<watch::Receiver<time::Duration>>,
@@ -598,6 +599,28 @@ impl StartupReplayGateStats {
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
+  pub(crate) async fn initialize_labels(
+    &mut self,
+    labels: Arc<crate::labels::LabelsState>,
+    store: &bd_state::Store,
+  ) -> anyhow::Result<()> {
+    let initial = labels.initial.clone();
+    self
+      .workflow_attachment_store
+      .set_origin(labels.origin.subscribe())?;
+    let encoded = bd_metadata::labels::encode(&initial)?;
+    store
+      .insert(
+        Scope::System,
+        bd_metadata::labels::LABELS_FIELD.to_string(),
+        string_value(encoded),
+      )
+      .await?;
+    self.metadata_collector.set_labels(labels.apply(&initial)?);
+    self.labels = Some(labels);
+    Ok(())
+  }
+
   pub(crate) fn new(
     uninitialized_logging_context: UninitializedLoggingContext,
     replayer: R,
@@ -687,6 +710,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     (
       Self {
+        labels: None,
         event_buffer: event_buffer.clone(),
         event_buffer_limit_watches,
         startup_replay_delay,
@@ -1843,6 +1867,28 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         if let Err(e) = result {
           log::debug!("failed to persist entity ID state: {e}");
+        }
+      },
+      LoggerControl::SetLabels(encoded) => {
+        let result = async {
+          let labels = bd_metadata::labels::decode(&encoded)?;
+          let state = self
+            .labels
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("labels are not initialized"))?;
+          self.metadata_collector.set_labels(state.apply(&labels)?);
+          state_store
+            .insert(
+              Scope::System,
+              bd_metadata::labels::LABELS_FIELD.to_string(),
+              string_value(encoded),
+            )
+            .await?;
+          Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        if let Err(error) = result {
+          log::warn!("failed to apply labels update: {error:#}");
         }
       },
       LoggerControl::FlushState(completion_tx) => {

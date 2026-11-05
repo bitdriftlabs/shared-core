@@ -41,6 +41,7 @@ use bd_grpc_codec::code::Code;
 use bd_grpc_codec::{Decompression, Encoder, OptimizeFor};
 use bd_internal_logging::{LogFields, LogLevel};
 use bd_key_value::Store;
+use bd_metadata::labels::Labels;
 use bd_metadata::{Metadata, Platform};
 use bd_network_quality::{NetworkQuality, NetworkQualityResolver as _};
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
@@ -296,6 +297,7 @@ struct Setup {
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
   sleep_mode_active: watch::Sender<bool>,
   opaque_entity_updates: watch::Sender<Option<String>>,
+  labels_updates: watch::Sender<Labels>,
   store: Arc<Store>,
   state_store: bd_state::Store,
   session_strategy: Arc<bd_session::Strategy>,
@@ -349,6 +351,7 @@ impl Setup {
     let (trigger_upload_tx, trigger_upload_rx) = channel(1);
     let (sleep_mode_active_tx, sleep_mode_active_rx) = watch::channel(false);
     let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
+    let (labels_updates, labels_rx) = watch::channel(Labels::new());
 
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
 
@@ -403,6 +406,7 @@ impl Setup {
       bd_client_common::sdk_status::SdkStatusTracker::new(),
       None,
     );
+    api = api.with_labels_updates(labels_rx);
     api.test_hooks = Some(Arc::new(ApiTestHooks {
       reconnect_backoff_started_tx,
       data_idle_timeout_reached_tx: idle_timeout_tx,
@@ -436,6 +440,7 @@ impl Setup {
       network_quality_provider,
       sleep_mode_active: sleep_mode_active_tx,
       opaque_entity_updates: opaque_entity_updates_tx,
+      labels_updates,
       store,
       state_store,
       session_strategy,
@@ -482,7 +487,11 @@ impl Setup {
       None,
     );
 
-    self.api_task = Some(tokio::task::spawn(api.start()));
+    self.api_task = Some(tokio::task::spawn(
+      api
+        .with_labels_updates(self.labels_updates.subscribe())
+        .start(),
+    ));
     self.start_stream_rx = start_stream_rx;
     self.data_tx = data_tx;
     self.trigger_upload_rx = trigger_upload_rx;
@@ -2872,6 +2881,96 @@ async fn opaque_client_state() {
       .unwrap()
       .opaque_client_state
       .is_none()
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn labels_changed_during_handshake_and_in_flight_are_not_lost() {
+  let mut setup = Setup::new().await;
+  let handshake = setup.next_stream(1.seconds()).await.unwrap();
+  assert!(
+    handshake
+      .state_update
+      .as_ref()
+      .unwrap()
+      .labels_update
+      .as_ref()
+      .unwrap()
+      .labels
+      .is_empty()
+  );
+  let production = Labels::from([("channel".to_string(), "production".to_string())]);
+  setup.labels_updates.send_replace(production.clone());
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+  let request = setup.next_request(1.seconds()).await.unwrap();
+  let Some(Request_type::StateUpdate(update)) = request.request_type else {
+    panic!("expected state update");
+  };
+  assert_eq!(
+    update.labels_update.as_ref().unwrap().labels,
+    production.into_iter().collect()
+  );
+  setup
+    .labels_updates
+    .send_replace(Labels::from([("channel".to_string(), "qa".to_string())]));
+  setup.set_opaque_entity_id(Some("changed-while-awaiting-ack"));
+  setup.labels_updates.send_replace(Labels::new());
+  setup.state_update_response().await;
+  let request = setup.next_request(1.seconds()).await.unwrap();
+  let Some(Request_type::StateUpdate(update)) = request.request_type else {
+    panic!("expected cleared labels");
+  };
+  assert!(update.labels_update.as_ref().unwrap().labels.is_empty());
+  assert_eq!(
+    update
+      .opaque_entity_update
+      .as_ref()
+      .unwrap()
+      .opaque_entity_id
+      .as_deref(),
+    Some("changed-while-awaiting-ack")
+  );
+  setup.state_update_response().await;
+  assert!(setup.next_request(1.milliseconds()).await.is_none());
+}
+
+#[tokio::test(start_paused = true)]
+async fn reconnect_and_restart_send_the_current_complete_labels() {
+  let mut setup = Setup::new().await;
+  setup.next_stream(1.seconds()).await.unwrap();
+  let labels = Labels::from([("channel".to_string(), "qa".to_string())]);
+  setup.labels_updates.send_replace(labels.clone());
+  setup.close_stream().await;
+  let handshake = setup
+    .next_stream_allowing_state_updates(2.seconds())
+    .await
+    .unwrap();
+  assert_eq!(
+    handshake
+      .state_update
+      .as_ref()
+      .unwrap()
+      .labels_update
+      .as_ref()
+      .unwrap()
+      .labels,
+    labels.clone().into_iter().collect()
+  );
+  setup.api_task.take().unwrap().abort();
+  setup.restart().await;
+  let handshake = setup.next_stream(1.seconds()).await.unwrap();
+  assert_eq!(
+    handshake
+      .state_update
+      .as_ref()
+      .unwrap()
+      .labels_update
+      .as_ref()
+      .unwrap()
+      .labels,
+    labels.into_iter().collect()
   );
 }
 

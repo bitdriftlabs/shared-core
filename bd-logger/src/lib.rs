@@ -27,6 +27,7 @@ mod directory_lock;
 mod flush_registry;
 pub mod internal;
 mod internal_report;
+mod labels;
 mod log_replay;
 mod logger;
 mod logging_state;
@@ -82,6 +83,7 @@ pub use bd_proto_v1::MemoryPressureLevel;
 pub use bd_resource_utilization::Target as ResourceUtilizationTarget;
 pub use bd_session_replay::Target as SessionReplayTarget;
 pub use builder::LoggerBuilder;
+pub use labels::InitialLabels;
 pub use logger::{
   Block,
   CaptureSession,

@@ -7,10 +7,12 @@
 
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
 use crate::stats::{
+  Flusher,
   HandshakeStats,
   PeriodicAction,
   PeriodicSchedule,
   RuntimePeriodicSchedule,
+  SnapshotHelper,
   batch_transport_uuid,
 };
 use crate::test::TestTickerBackedSchedule;
@@ -73,6 +75,74 @@ use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinError;
 use tokio::time::timeout;
+
+#[test]
+fn product_labels_survive_snapshot_persistence_and_restart_merge() {
+  let mut snapshot = SnapshotHelper::new(None, None);
+  for (index, labels) in [
+    None,
+    Some(r#"{"channel":"previous"}"#),
+    Some(r#"{"channel":"current"}"#),
+  ]
+  .into_iter()
+  .enumerate()
+  {
+    let mut metadata = HashMap::from([
+      ("app_id".to_string(), format!("app-{index}")),
+      ("app_version".to_string(), format!("01.2.{index}")),
+      ("platform".to_string(), "apple".to_string()),
+    ]);
+    if let Some(labels) = labels {
+      metadata.insert("__bd_labels".to_string(), labels.to_string());
+    }
+    let collector = Collector::default().with_product_metadata(metadata);
+    collector.scope("logger").product_counter("app_open").inc();
+    Flusher::snap_collector_to_snapshot(&collector, &mut snapshot);
+
+    let encoded = write_compressed_protobuf(&snapshot.into_proto().unwrap()).unwrap();
+    let persisted = read_compressed_protobuf(&encoded).unwrap();
+    snapshot = SnapshotHelper::new(Some(persisted), None);
+  }
+  let proto = snapshot.into_proto().unwrap();
+  let Some(Snapshot_type::Metrics(metrics)) = proto.snapshot_type else {
+    panic!("expected metrics snapshot");
+  };
+  assert_eq!(metrics.metric.len(), 3);
+  for (index, labels) in [
+    None,
+    Some(r#"{"channel":"previous"}"#),
+    Some(r#"{"channel":"current"}"#),
+  ]
+  .into_iter()
+  .enumerate()
+  {
+    let metric = metrics
+      .metric
+      .iter()
+      .find(|metric| metric.tags.get("__bd_labels").map(String::as_str) == labels)
+      .unwrap();
+    assert_eq!(metric.tags.get("app_id"), Some(&format!("app-{index}")));
+    assert_eq!(
+      metric.tags.get("app_version"),
+      Some(&format!("01.2.{index}"))
+    );
+    assert_eq!(
+      metric.tags.get("platform").map(String::as_str),
+      Some("apple")
+    );
+    assert_eq!(
+      metric.data,
+      Some(MetricData::Counter(CounterProto {
+        value: 1,
+        ..Default::default()
+      }))
+    );
+    assert_eq!(
+      metric.metric_name_type,
+      Some(Metric_name_type::Name("logger:app_open".to_string())),
+    );
+  }
+}
 
 #[derive(Clone, Default)]
 struct CountingFileSystem {

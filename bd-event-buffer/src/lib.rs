@@ -45,6 +45,7 @@ pub enum LoggerControl {
     level: MemoryPressureLevel,
   },
   SetEntityId(Option<String>),
+  SetLabels(String),
   FlushState(#[approximate_size(skip)] Option<bd_completion::Sender<()>>),
 }
 

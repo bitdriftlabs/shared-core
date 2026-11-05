@@ -82,6 +82,7 @@ axum              = { version = "0.8.9", features = ["http2", "macros"] }
 base64            = "0.23.1"
 base64-url        = "4.0.1"
 base64ct          = { version = "1.8.3", features = ["alloc", "std"] }
+bd-metadata       = { path = "bd-metadata" }
 bd-workspace-hack = "0.1.1"
 num-traits        = "0.2.19"
 

@@ -437,6 +437,108 @@ fn expected_field_value(fields: &LogFields, key: &str) -> Option<String> {
 }
 
 #[test]
+fn release_identity_is_immutable_and_cannot_be_injected_when_unset() {
+  for (key, environment) in [
+    ("__bd_labels", None),
+    ("__bd_labels", Some(r#"{"channel":"production"}"#)),
+    ("platform", None),
+    ("platform", Some("apple")),
+  ] {
+    let provider = Arc::new(LogMetadata {
+      timestamp: Mutex::new(time::OffsetDateTime::UNIX_EPOCH),
+      custom_fields: [(key.to_string().into(), "custom-provider".into())].into(),
+      ootb_fields: [(key.to_string().into(), "ootb-provider".into())].into(),
+    });
+    let initial =
+      environment.map_or_default(|value| [(key.to_string().into(), value.into())].into());
+    let mut collector = MetadataCollector::new(
+      provider,
+      initial,
+      [(key.to_string().into(), "initial-custom".into())].into(),
+    );
+    assert!(
+      collector
+        .add_field(key.to_string().into(), "custom".into())
+        .is_err()
+    );
+    collector.update_ootb_field(key.to_string().into(), "updated".into());
+    collector.remove_field(key.to_string().into());
+
+    let store = in_memory_store();
+    let mut tracker =
+      global_state::Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));
+    for log_type in [
+      LogType::NORMAL,
+      LogType::REPLAY,
+      LogType::RESOURCE,
+      LogType::INTERNAL_SDK,
+    ] {
+      let metadata = collector
+        .normalized_metadata_with_extra_fields(
+          [(key.to_string().into(), AnnotatedLogField::new_ootb("log"))].into(),
+          [(
+            key.to_string().into(),
+            AnnotatedLogField::new_ootb("matching"),
+          )]
+          .into(),
+          log_type,
+          &mut tracker,
+        )
+        .unwrap();
+      assert_eq!(
+        expected_field_value(&metadata.fields, key).as_deref(),
+        environment,
+      );
+      assert!(!metadata.matching_fields.contains_key(key));
+    }
+    assert_eq!(
+      expected_field_value(&Reader::new(store).global_state_fields(), key).as_deref(),
+      environment,
+    );
+  }
+}
+
+#[test]
+fn previous_run_labels_survive_current_process_initialization() {
+  for previous_environment in [None, Some(r#"{"channel":"previous"}"#)] {
+    let store = in_memory_store();
+    let mut previous_tracker =
+      global_state::Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));
+    let previous_fields =
+      previous_environment.map_or_default(|value| [("__bd_labels".into(), value.into())].into());
+    previous_tracker.maybe_update_global_state(&previous_fields);
+    let previous_reader = Reader::new(store.clone());
+
+    let collector = MetadataCollector::new(
+      Arc::new(LogMetadata::default()),
+      [("__bd_labels".into(), r#"{"channel":"current"}"#.into())].into(),
+      [].into(),
+    );
+    let mut current_tracker =
+      global_state::Tracker::new(store, Watch::new_for_testing(10.seconds()));
+    collector
+      .normalized_metadata_with_extra_fields(
+        [].into(),
+        [].into(),
+        LogType::NORMAL,
+        &mut current_tracker,
+      )
+      .unwrap();
+
+    let metadata = MetadataCollector::metadata_from_fields_with_previous_global_state(
+      [].into(),
+      [].into(),
+      &previous_reader,
+      time::OffsetDateTime::UNIX_EPOCH,
+    );
+    assert_eq!(
+      expected_field_value(&metadata.fields, "__bd_labels").as_deref(),
+      previous_environment,
+    );
+  }
+}
+
+#[test]
 fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
   let store = in_memory_store();
   let mut tracker = global_state::Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));

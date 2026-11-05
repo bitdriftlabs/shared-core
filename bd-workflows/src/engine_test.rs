@@ -3814,24 +3814,32 @@ async fn engine_tracks_new_sessions() {
 
   workflows_engine.process_log(TestLog::new("foo"));
   workflows_engine.process_log(TestLog::new("foo"));
-  assert_eq!(workflows_engine.stats.sessions_total.get(), 1);
+  setup
+    .collector
+    .assert_counter_eq(1, "workflows:sessions_total", labels! {});
   assert_eq!(workflows_engine.stats.session_thrashes_total.get(), 0);
 
   workflows_engine.session_id = "new session ID".to_string();
 
   workflows_engine.process_log(TestLog::new("foo"));
   workflows_engine.process_log(TestLog::new("foo"));
-  assert_eq!(workflows_engine.stats.sessions_total.get(), 2);
+  setup
+    .collector
+    .assert_counter_eq(2, "workflows:sessions_total", labels! {});
   assert_eq!(workflows_engine.stats.session_thrashes_total.get(), 0);
 
   workflows_engine.session_id = "foo_session".to_string();
   workflows_engine.process_log(TestLog::new("foo"));
-  assert_eq!(workflows_engine.stats.sessions_total.get(), 3);
+  setup
+    .collector
+    .assert_counter_eq(3, "workflows:sessions_total", labels! {});
   assert_eq!(workflows_engine.stats.session_thrashes_total.get(), 1);
 
   workflows_engine.session_id = "new session ID".to_string();
   workflows_engine.process_log(TestLog::new("foo"));
-  assert_eq!(workflows_engine.stats.sessions_total.get(), 4);
+  setup
+    .collector
+    .assert_counter_eq(4, "workflows:sessions_total", labels! {});
   assert_eq!(workflows_engine.stats.session_thrashes_total.get(), 2);
 }
 

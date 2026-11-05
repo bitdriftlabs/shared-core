@@ -731,6 +731,8 @@ pub struct WorkflowAttachmentState {
     pub content_type: ::std::option::Option<::std::string::String>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.WorkflowAttachmentState.uploaded)
     pub uploaded: bool,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.WorkflowAttachmentState.origin)
+    pub origin: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.WorkflowAttachmentState.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -748,7 +750,7 @@ impl WorkflowAttachmentState {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut fields = ::std::vec::Vec::with_capacity(5);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "admitted_at_micros",
@@ -769,6 +771,11 @@ impl WorkflowAttachmentState {
             "uploaded",
             |m: &WorkflowAttachmentState| { &m.uploaded },
             |m: &mut WorkflowAttachmentState| { &mut m.uploaded },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
+            "origin",
+            |m: &WorkflowAttachmentState| { &m.origin },
+            |m: &mut WorkflowAttachmentState| { &mut m.origin },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<WorkflowAttachmentState>(
             "WorkflowAttachmentState",
@@ -800,6 +807,21 @@ impl ::protobuf::Message for WorkflowAttachmentState {
                 32 => {
                     self.uploaded = is.read_bool()?;
                 },
+                42 => {
+                    let len = is.read_raw_varint32()?;
+                    let old_limit = is.push_limit(len as u64)?;
+                    let mut key = ::std::default::Default::default();
+                    let mut value = ::std::default::Default::default();
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => key = is.read_string()?,
+                            18 => value = is.read_string()?,
+                            _ => ::protobuf::rt::skip_field_for_tag(tag, is)?,
+                        };
+                    }
+                    is.pop_limit(old_limit);
+                    self.origin.insert(key, value);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -824,6 +846,12 @@ impl ::protobuf::Message for WorkflowAttachmentState {
         if self.uploaded != false {
             my_size += 1 + 1;
         }
+        for (k, v) in &self.origin {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            entry_size += ::protobuf::rt::string_size(2, &v);
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
+        };
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -842,6 +870,15 @@ impl ::protobuf::Message for WorkflowAttachmentState {
         if self.uploaded != false {
             os.write_bool(4, self.uploaded)?;
         }
+        for (k, v) in &self.origin {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            entry_size += ::protobuf::rt::string_size(2, &v);
+            os.write_raw_varint32(42)?; // Tag.
+            os.write_raw_varint32(entry_size as u32)?;
+            os.write_string(1, &k)?;
+            os.write_string(2, &v)?;
+        };
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -863,18 +900,13 @@ impl ::protobuf::Message for WorkflowAttachmentState {
         self.occurred_at_micros = ::std::option::Option::None;
         self.content_type = ::std::option::Option::None;
         self.uploaded = false;
+        self.origin.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static WorkflowAttachmentState {
-        static instance: WorkflowAttachmentState = WorkflowAttachmentState {
-            admitted_at_micros: 0,
-            occurred_at_micros: ::std::option::Option::None,
-            content_type: ::std::option::Option::None,
-            uploaded: false,
-            special_fields: ::protobuf::SpecialFields::new(),
-        };
-        &instance
+        static instance: ::protobuf::rt::Lazy<WorkflowAttachmentState> = ::protobuf::rt::Lazy::new();
+        instance.get(WorkflowAttachmentState::new)
     }
 }
 
@@ -991,13 +1023,17 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\
     \x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value:\
     \x028\x01B\n\n\x08_type_idB\x1a\n\x18_workflow_report_handoffB\r\n\x0b_c\
-    ommand_idB\x0f\n\r_content_type\"\xe6\x01\n\x17WorkflowAttachmentState\
+    ommand_idB\x0f\n\r_content_type\"\x82\x03\n\x17WorkflowAttachmentState\
     \x12,\n\x12admitted_at_micros\x18\x01\x20\x01(\x04R\x10admittedAtMicros\
     \x121\n\x12occurred_at_micros\x18\x02\x20\x01(\x04H\0R\x10occurredAtMicr\
     os\x88\x01\x01\x12&\n\x0ccontent_type\x18\x03\x20\x01(\tH\x01R\x0bconten\
     tType\x88\x01\x01\x12\x1a\n\x08uploaded\x18\x04\x20\x01(\x08R\x08uploade\
-    dB\x15\n\x13_occurred_at_microsB\x0f\n\r_content_type*)\n\rStorageFormat\
-    \x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
+    d\x12_\n\x06origin\x18\x05\x20\x03(\x0b2G.bitdrift_public.protobuf.clien\
+    t.v1.WorkflowAttachmentState.OriginEntryR\x06origin\x1a9\n\x0bOriginEntr\
+    y\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\
+    \x20\x01(\tR\x05value:\x028\x01B\x15\n\x13_occurred_at_microsB\x0f\n\r_c\
+    ontent_type*)\n\rStorageFormat\x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\
+    \x03RAW\x10\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
