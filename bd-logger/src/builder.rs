@@ -20,6 +20,7 @@ use crate::device_command::{
 use crate::directory_lock::DirectoryLock;
 use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::internal::InternalLogger;
+use crate::labels::{InitialLabels, LabelsState};
 use crate::log_replay::LoggerReplay;
 use crate::logger::{Logger, PendingEntityIdUpdate, TestHooks};
 use crate::logging_state::UninitializedLoggingContext;
@@ -187,6 +188,7 @@ async fn initialize_opaque_entity_updates(
 pub struct LoggerBuilder {
   // The parameters required to initialize the logger.
   params: InitParams,
+  initial_labels: InitialLabels,
 
   component_shutdown_handle: Option<ComponentShutdownTriggerHandle>,
   client_stats_schedule: Option<Box<dyn PeriodicSchedule>>,
@@ -205,6 +207,7 @@ impl LoggerBuilder {
   pub fn new(params: InitParams) -> Self {
     Self {
       params,
+      initial_labels: InitialLabels::UseExisting,
       component_shutdown_handle: None,
       client_stats_schedule: None,
       internal_logger: false,
@@ -215,6 +218,12 @@ impl LoggerBuilder {
       test_hooks: None,
       startup_replay_eligibility: StartupReplayEligibility::Unknown,
     }
+  }
+
+  #[must_use]
+  pub fn with_initial_labels(mut self, labels: InitialLabels) -> Self {
+    self.initial_labels = labels;
+    self
   }
 
   /// Sets the component shutdown handle to be used by the logger. By default the logger will
@@ -352,6 +361,10 @@ impl LoggerBuilder {
     let collector = Collector::new(Some(max_dynamic_stats));
 
     let scope = collector.scope("");
+    let labels = Arc::new(LabelsState::new(
+      self.initial_labels,
+      self.params.store.clone(),
+    )?);
     let session_persistence_failures = scope.counter("session_persistence_failures");
     let stats = bd_client_stats::Stats::new(collector.clone());
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
@@ -476,6 +489,7 @@ impl LoggerBuilder {
       self.params.store.clone(),
       opaque_entity_updates_tx.clone(),
       pending_entity_id.clone(),
+      labels.clone(),
       sleep_mode_active_tx,
       is_tracing_active,
       sdk_status_tracker.clone(),
@@ -546,7 +560,6 @@ impl LoggerBuilder {
       let pending_entity_id = pending_entity_id.lock().take();
       initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
         .await;
-
       initialize_memory_pressure(
         &previous_run_state,
         &state_store,
@@ -727,7 +740,8 @@ impl LoggerBuilder {
         sdk_status_tracker,
         Some(Arc::new(handshake_stats)),
       )
-      .with_device_command_state(command_state);
+      .with_device_command_state(command_state)
+      .with_labels_updates(labels.updates.subscribe());
 
       let mut config_writer = bd_crash_handler::ConfigWriter::new(
         &runtime_loader,

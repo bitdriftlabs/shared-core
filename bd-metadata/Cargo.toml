@@ -15,4 +15,5 @@ parking_lot.workspace       = true
 pretty_assertions.workspace = true
 
 [dependencies]
+anyhow.workspace            = true
 bd-workspace-hack.workspace = true

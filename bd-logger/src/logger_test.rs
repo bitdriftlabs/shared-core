@@ -8,6 +8,7 @@
 use super::{Stats, with_thread_local_logger_guard};
 use crate::app_version::Repository;
 use crate::device_command::RegisteredCommandDispatcher;
+use crate::labels::{InitialLabels, LabelsState};
 use crate::logger::CaptureSession;
 use crate::{LoggerHandle, async_log_buffer};
 use bd_client_stats_store::Collector;
@@ -33,6 +34,62 @@ fn event_buffer(total_limit_bytes: usize) -> EventBuffer {
   event_buffer
 }
 
+#[test]
+fn labels_mutations_publish_only_actual_changes_without_using_the_event_queue() {
+  let buffer = event_buffer(0);
+  let directory = TempDir::new().unwrap();
+  let session_strategy = no_timeout(directory.path()).strategy();
+  let store = in_memory_store();
+  let handle = LoggerHandle {
+    labels: Arc::new(LabelsState::new(InitialLabels::default(), store.clone()).unwrap()),
+    tx: async_log_buffer::Sender::from_event_buffer(buffer, session_strategy.clone()),
+    stats: Stats::new(&Collector::default().scope("")),
+    session_strategy,
+    device: Arc::new(bd_device::Device::new(store.clone())),
+    sdk_version: "1.0.0".into(),
+    app_version_repo: Repository::new(store),
+    opaque_entity_updates: watch::channel(None).0,
+    pending_entity_id: Arc::new(parking_lot::Mutex::new(None)),
+    sleep_mode_active: watch::channel(false).0,
+    is_tracing_active: Arc::new(AtomicBool::new(false)),
+    command_dispatcher: RegisteredCommandDispatcher::default(),
+  };
+  let mut wire = handle.labels.updates.subscribe();
+  std::thread::scope(|scope| {
+    for index in 0 .. 4 {
+      let handle = &handle;
+      scope.spawn(move || {
+        handle
+          .set_label(format!("key-{index}"), String::new())
+          .unwrap();
+      });
+    }
+  });
+  let labels = handle.current_labels();
+  assert_eq!(labels.len(), 4);
+  assert_eq!(*wire.borrow_and_update(), labels);
+  assert!(
+    handle
+      .set_label("invalid".to_string(), "x".repeat(257))
+      .is_err()
+  );
+  assert!(
+    handle
+      .set_label("__bd_env".to_string(), "fake".to_string())
+      .is_err()
+  );
+  assert!(handle.remove_label("__bd_env").is_err());
+  handle.replace_labels(labels.clone()).unwrap();
+  handle.remove_label("missing").unwrap();
+  assert!(!wire.has_changed().unwrap());
+  assert_eq!(handle.current_labels(), labels);
+  handle.clear_labels().unwrap();
+  assert!(handle.current_labels().is_empty());
+  assert!(wire.borrow_and_update().is_empty());
+  handle.clear_labels().unwrap();
+  assert!(!wire.has_changed().unwrap());
+}
+
 #[tokio::test]
 async fn thread_local_logger_guard() {
   let event_buffer = event_buffer(1024);
@@ -42,6 +99,7 @@ async fn thread_local_logger_guard() {
     async_log_buffer::Sender::from_event_buffer(event_buffer.clone(), session_strategy.clone());
   let store = in_memory_store();
   let handle = LoggerHandle {
+    labels: Arc::new(LabelsState::new(InitialLabels::default(), store.clone()).unwrap()),
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
     session_strategy,
@@ -87,6 +145,7 @@ async fn session_id_is_rejected_while_reentrancy_guard_is_held() {
     async_log_buffer::Sender::from_event_buffer(event_buffer(1024), session_strategy.clone());
   let store = in_memory_store();
   let handle = LoggerHandle {
+    labels: Arc::new(LabelsState::new(InitialLabels::default(), store.clone()).unwrap()),
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
     session_strategy,
@@ -118,6 +177,7 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
   let store = in_memory_store();
   let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
   let handle = LoggerHandle {
+    labels: Arc::new(LabelsState::new(InitialLabels::default(), store.clone()).unwrap()),
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
     session_strategy,
@@ -171,6 +231,7 @@ async fn register_opaque_entity_id_does_not_update_watch_when_queueing_fails() {
   let store = in_memory_store();
   let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
   let handle = LoggerHandle {
+    labels: Arc::new(LabelsState::new(InitialLabels::default(), store.clone()).unwrap()),
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
     session_strategy,

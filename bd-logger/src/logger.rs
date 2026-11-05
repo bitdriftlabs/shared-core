@@ -18,6 +18,7 @@ use crate::async_log_buffer::{
   LogAttributesOverrides,
 };
 use crate::device_command::{CommandRegistration, RegisteredCommandDispatcher};
+use crate::labels::LabelsState;
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
@@ -34,6 +35,7 @@ use bd_log_primitives::{
   log_level,
 };
 use bd_log_util::warn_every;
+use bd_metadata::labels::{self, Labels};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use bd_proto::protos::logging::payload::LogType;
@@ -194,6 +196,7 @@ pub struct LoggerHandle {
   app_version_repo: app_version::Repository,
   opaque_entity_updates: watch::Sender<Option<String>>,
   pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
+  labels: Arc<LabelsState>,
 
   stats: Stats,
 
@@ -203,6 +206,33 @@ pub struct LoggerHandle {
 }
 
 impl LoggerHandle {
+  /// Replaces the persisted labels and publishes them for the next state update.
+  pub fn replace_labels(&self, labels: Labels) -> anyhow::Result<()> {
+    self.labels.update(|next| *next = labels)
+  }
+
+  pub fn set_label(&self, key: String, value: String) -> anyhow::Result<()> {
+    self.labels.update(|next| {
+      next.insert(key, value);
+    })
+  }
+
+  pub fn remove_label(&self, key: &str) -> anyhow::Result<()> {
+    labels::validate(&Labels::from([(key.to_string(), String::new())]))?;
+    self.labels.update(|next| {
+      next.remove(key);
+    })
+  }
+
+  pub fn clear_labels(&self) -> anyhow::Result<()> {
+    self.replace_labels(Labels::new())
+  }
+
+  #[must_use]
+  pub fn current_labels(&self) -> Labels {
+    self.labels.updates.borrow().clone()
+  }
+
   /// Registers a command, replacing any handler with the same ID in its namespace.
   /// Commands that have already selected a handler continue running with that handler.
   pub fn register_command(&self, registration: CommandRegistration) -> anyhow::Result<()> {
@@ -748,6 +778,7 @@ pub struct Logger {
   store: Arc<bd_key_value::Store>,
   opaque_entity_updates: watch::Sender<Option<String>>,
   pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
+  labels: Arc<LabelsState>,
 
   pub(crate) stats: Stats,
 
@@ -775,6 +806,7 @@ impl Logger {
     store: Arc<bd_key_value::Store>,
     opaque_entity_updates: watch::Sender<Option<String>>,
     pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
+    labels: Arc<LabelsState>,
     sleep_mode_active: watch::Sender<bool>,
     is_tracing_active: Arc<AtomicBool>,
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
@@ -799,6 +831,7 @@ impl Logger {
       store,
       opaque_entity_updates,
       pending_entity_id,
+      labels,
       sleep_mode_active,
       is_tracing_active,
       sdk_status_tracker,
@@ -875,6 +908,7 @@ impl Logger {
       app_version_repo: Repository::new(self.store.clone()),
       opaque_entity_updates: self.opaque_entity_updates.clone(),
       pending_entity_id: self.pending_entity_id.clone(),
+      labels: self.labels.clone(),
       stats: self.stats.clone(),
       sleep_mode_active: self.sleep_mode_active.clone(),
       is_tracing_active: self.is_tracing_active.clone(),

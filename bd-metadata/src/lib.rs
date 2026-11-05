@@ -19,6 +19,7 @@
 mod tests;
 
 pub mod artifact;
+pub mod labels;
 
 use std::collections::HashMap;
 
