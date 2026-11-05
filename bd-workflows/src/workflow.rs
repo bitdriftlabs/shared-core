@@ -89,6 +89,9 @@ pub fn command_details(selector: Option<&WorkflowCommandSelector>) -> String {
         Ok(WellKnownCommandType::STACK_SAMPLING_TRACE) => {
           output.push_str("\"stack_sampling_trace\"");
         },
+        Ok(WellKnownCommandType::HEAP_PROFILE_TRACE) => {
+          output.push_str("\"heap_profile_trace\"");
+        },
         Ok(WellKnownCommandType::TYPE_UNSPECIFIED) | Err(_) => {
           let _ = write!(output, "\"unknown_builtin_{}\"", command.type_.value());
         },
