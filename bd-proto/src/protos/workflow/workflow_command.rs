@@ -1595,7 +1595,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ytes\x20allocated\x20between\x20two\x20recorded\x20samples.2\x04(\x80\
     \x80\x04\x1ay\n\x16track_java_allocations\x10\x06\x1aYRecords\x20Java\
     \x20heap\x20allocations\x20instead\x20of\x20native\x20ones;\x20a\x20prof\
-    ile\x20records\x20one\x20or\x20the\x20other.2\x020\0*\n\n\x08\x08\x01\
+    ile\x20records\x20one\x20or\x20the\x20other.2\x020\x01*\n\n\x08\x08\x01\
     \x12\x0215\x183:\x9f\x01\n\x1awell_known_command_options\x18\xb8\x8e\x03\
     \x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.WellKnownCommandOpt\
     ions\x12!.google.protobuf.EnumValueOptionsR\x17wellKnownCommandOptionsb\
