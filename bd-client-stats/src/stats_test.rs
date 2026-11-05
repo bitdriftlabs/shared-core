@@ -6,7 +6,14 @@
 // https://polyformproject.org/licenses/strict/1.0.0
 
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
-use crate::stats::{HandshakeStats, PeriodicAction, PeriodicSchedule, RuntimePeriodicSchedule};
+use crate::stats::{
+  Flusher,
+  HandshakeStats,
+  PeriodicAction,
+  PeriodicSchedule,
+  RuntimePeriodicSchedule,
+  SnapshotHelper,
+};
 use crate::test::TestTickerBackedSchedule;
 use crate::{FlushTrigger, Stats};
 use assert_matches::assert_matches;
@@ -65,6 +72,66 @@ use tokio::fs::File;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinError;
 use tokio::time::timeout;
+
+#[test]
+fn product_environment_survives_snapshot_persistence_and_restart_merge() {
+  let mut snapshot = SnapshotHelper::new(None, None);
+  for (index, environment) in [None, Some("previous"), Some("current")]
+    .into_iter()
+    .enumerate()
+  {
+    let mut metadata = HashMap::from([
+      ("app_id".to_string(), format!("app-{index}")),
+      ("app_version".to_string(), format!("01.2.{index}")),
+      ("platform".to_string(), "apple".to_string()),
+    ]);
+    if let Some(environment) = environment {
+      metadata.insert("app_environment".to_string(), environment.to_string());
+    }
+    let collector = Collector::default().with_product_metadata(metadata);
+    collector.scope("logger").product_counter("app_open").inc();
+    Flusher::snap_collector_to_snapshot(&collector, &mut snapshot);
+
+    let encoded = write_compressed_protobuf(&snapshot.into_proto().unwrap()).unwrap();
+    let persisted = read_compressed_protobuf(&encoded).unwrap();
+    snapshot = SnapshotHelper::new(Some(persisted), None);
+  }
+  let proto = snapshot.into_proto().unwrap();
+  let Some(Snapshot_type::Metrics(metrics)) = proto.snapshot_type else {
+    panic!("expected metrics snapshot");
+  };
+  assert_eq!(metrics.metric.len(), 3);
+  for (index, environment) in [None, Some("previous"), Some("current")]
+    .into_iter()
+    .enumerate()
+  {
+    let metric = metrics
+      .metric
+      .iter()
+      .find(|metric| metric.tags.get("app_environment").map(String::as_str) == environment)
+      .unwrap();
+    assert_eq!(metric.tags.get("app_id"), Some(&format!("app-{index}")));
+    assert_eq!(
+      metric.tags.get("app_version"),
+      Some(&format!("01.2.{index}"))
+    );
+    assert_eq!(
+      metric.tags.get("platform").map(String::as_str),
+      Some("apple")
+    );
+    assert_eq!(
+      metric.data,
+      Some(MetricData::Counter(CounterProto {
+        value: 1,
+        ..Default::default()
+      }))
+    );
+    assert_eq!(
+      metric.metric_name_type,
+      Some(Metric_name_type::Name("logger:app_open".to_string())),
+    );
+  }
+}
 
 #[derive(Clone, Default)]
 struct CountingFileSystem {

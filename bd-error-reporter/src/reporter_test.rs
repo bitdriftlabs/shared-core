@@ -9,6 +9,7 @@ use super::handle_unexpected;
 use crate::reporter::{
   ERROR_HANDLER,
   MetadataErrorReporter,
+  Reporter,
   SessionProvider,
   UnexpectedErrorHandler,
 };
@@ -20,7 +21,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-struct EmptyMetadata;
+#[derive(Default)]
+struct EmptyMetadata(HashMap<String, String>);
 
 impl Metadata for EmptyMetadata {
   fn sdk_version(&self) -> &'static str {
@@ -36,7 +38,7 @@ impl Metadata for EmptyMetadata {
   }
 
   fn collect_inner(&self) -> HashMap<String, String> {
-    HashMap::new()
+    self.0.clone()
   }
 
   fn device_id(&self) -> String {
@@ -94,7 +96,7 @@ fn attach_error_handler() {
   let error_reporter = Arc::new(MetadataErrorReporter::new(
     reporter.clone(),
     session_strategy.clone(),
-    Arc::new(EmptyMetadata),
+    Arc::new(EmptyMetadata::default()),
   ));
 
   UnexpectedErrorHandler::set_reporter(error_reporter);
@@ -140,4 +142,29 @@ fn attach_error_handler() {
     ERROR_HANDLER.lock().dropped_errors.as_ref().unwrap().get(),
     1
   );
+}
+
+#[test]
+fn sdk_error_headers_preserve_raw_version_without_environment_attribution() {
+  let reporter = Arc::new(TestReporter::default());
+  let error_reporter = MetadataErrorReporter::new(
+    reporter.clone(),
+    Arc::new(MockSessionProvider::new()),
+    Arc::new(EmptyMetadata(HashMap::from([(
+      "app_version".to_string(),
+      "01.2".to_string(),
+    )]))),
+  );
+  error_reporter.report(
+    "error",
+    &None,
+    &HashMap::from([("x-app-version".into(), "caller-version".into())]),
+  );
+  let headers = reporter.fields.lock().unwrap();
+  let headers = headers.as_ref().unwrap();
+  assert_eq!(
+    headers.get("x-app-version").map(String::as_str),
+    Some("01.2")
+  );
+  assert!(!headers.contains_key("x-app-environment"));
 }

@@ -186,6 +186,9 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
     let mut extracted_tags = BTreeMap::new();
 
     for (key, value) in tags {
+      if key.starts_with("__bd_") || matches!(key.as_str(), "app_id" | "platform") {
+        continue;
+      }
       if let Some(extracted_value) = match value {
         crate::config::TagValue::FieldExtract(extract) => Self::resolve_field_name(extract, event),
         crate::config::TagValue::JsonExtract(extract) => extract.extract(Self::event_fields(event)),
@@ -204,6 +207,25 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
         },
       } {
         extracted_tags.insert(key.clone(), extracted_value.into_owned());
+      }
+    }
+
+    // Identity follows the triggering payload, including replay and state-change events, never
+    // the current process or chart configuration.
+    for key in ["__bd_labels", "app_id", "platform"] {
+      let value = Self::resolve_field_name(key, event).or_else(|| {
+        // Older buffered logs have the SDK-owned OS but not the explicit platform field.
+        if key != "platform" {
+          return None;
+        }
+        match Self::resolve_field_name("os", event).as_deref() {
+          Some("iOS" | "ios") => Some(Cow::Borrowed("apple")),
+          Some("Android" | "android") => Some(Cow::Borrowed("android")),
+          _ => None,
+        }
+      });
+      if let Some(value) = value.filter(|value| !value.is_empty()) {
+        extracted_tags.insert(key.to_string(), value.into_owned());
       }
     }
 
@@ -269,8 +291,16 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
 
       // TODO(mattklein123): Optimize this code to avoid so many clones.
       let mut tags = base_tags.clone();
-      tags.insert(multi_tag.key_tag_name.clone(), state_key.clone());
-      tags.insert(multi_tag.value_tag_name.clone(), state_value.into_owned());
+      if !multi_tag.key_tag_name.starts_with("__bd_")
+        && !matches!(multi_tag.key_tag_name.as_str(), "app_id" | "platform")
+      {
+        tags.insert(multi_tag.key_tag_name.clone(), state_key.clone());
+      }
+      if !multi_tag.value_tag_name.starts_with("__bd_")
+        && !matches!(multi_tag.value_tag_name.as_str(), "app_id" | "platform")
+      {
+        tags.insert(multi_tag.value_tag_name.clone(), state_value.into_owned());
+      }
       self.record_metric(action, count, tags, value);
     }
 

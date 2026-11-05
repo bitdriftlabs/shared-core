@@ -515,9 +515,9 @@ fn log_upload_with_compression() {
         let decoded = decoder.finish().unwrap();
         let compressed_contents = CompressedContents::parse_from_bytes(&decoded).unwrap();
         assert_eq!(compressed_contents.message.string_data(), "some log");
-        assert_eq!(compressed_contents.fields[0].key, "super_long");
+        let field = compressed_contents.fields.iter().find(|field| field.key == "super_long").unwrap();
         assert_eq!(
-          compressed_contents.fields[0].value.string_data(),
+          field.value.string_data(),
           "A".repeat((i + 1) * 1024)
         );
       }
@@ -820,16 +820,16 @@ fn api_bandwidth_counters() {
       let upload = StatsRequestHelper::new(upload);
 
       // The handshake carries a started-session state update with a real-time start timestamp and
-      // connection analytics, plus the 38-byte encoded SDK instance identity. The protobuf
+      // connection analytics, the explicit empty labels wrapper, and the 38-byte encoded SDK instance identity. The protobuf
       // timestamp's varint encoding can vary across runs, so the uncompressed transmit counter
-      // legitimately falls between 219 and 221.
+      // legitimately falls between 221 and 223.
       let bandwidth_tx = upload.get_counter("api:bandwidth_tx", labels! {}).unwrap();
       let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
       let bandwidth_tx_uncompressed = upload
         .get_counter("api:bandwidth_tx_uncompressed", labels! {})
         .unwrap();
       assert!(
-        (219..=221).contains(&bandwidth_tx_uncompressed),
+        (221..=223).contains(&bandwidth_tx_uncompressed),
         "bandwidth_tx_uncompressed = {bandwidth_tx_uncompressed}"
       );
       assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
@@ -1669,7 +1669,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
-    stat_upload.get_workflow_counter("insight_action_id", labels! {}),
+    stat_upload.get_workflow_counter("insight_action_id", labels! {"__bd_labels" => "{}"}),
     Some(1),
   );
 
@@ -2055,6 +2055,7 @@ fn workflow_generate_log_to_histogram() {
     stat_upload.get_inline_histogram(
       "foo_id",
       labels! {
+        "__bd_labels" => "{}",
         "fixed_key" => "fixed_value",
       }
     ),
@@ -2147,7 +2148,7 @@ fn workflow_debugging() {
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert!(
     stat_upload
-      .get_workflow_counter("foo_id", labels! {})
+      .get_workflow_counter("foo_id", labels! {"__bd_labels" => "{}"})
       .is_none()
   );
 
@@ -2212,7 +2213,7 @@ fn workflow_debugging() {
   });
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
-    stat_upload.get_workflow_counter("foo_id", labels! {}),
+    stat_upload.get_workflow_counter("foo_id", labels! {"__bd_labels" => "{}"}),
     Some(123),
   );
 
@@ -2309,6 +2310,7 @@ fn workflow_emit_metric_action_emits_metric() {
     stat_upload.get_workflow_counter(
       "foo_id",
       labels! {
+        "__bd_labels" => "{}",
         "fixed_key" => "fixed_value",
         "extraction_key_to" => "extracted_value",
         "__log_body__" => "fire workflow action!",
@@ -2453,6 +2455,7 @@ fn workflow_emit_metric_action_does_not_dedupe_across_parallel_runs() {
     stat_upload.get_workflow_counter(
       "foo_parallel",
       labels! {
+        "__bd_labels" => "{}",
         "fixed_key" => "fixed_value",
         "extraction_key_to" => "extracted_value",
         "__log_body__" => "fire parallel metric",
@@ -2589,7 +2592,7 @@ fn workflow_emit_metric_action_parallel_same_save_field_reset_persists_across_re
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
-    stat_upload.get_workflow_counter("foo_parallel_reset", labels! {}),
+    stat_upload.get_workflow_counter("foo_parallel_reset", labels! {"__bd_labels" => "{}"}),
     Some(123),
   );
 }
@@ -2672,6 +2675,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
     stat_upload.get_workflow_counter(
       "foo",
       labels!(
+        "__bd_labels" => "{}",
         "extracted" => "hello",
       )
     ),
@@ -2681,13 +2685,17 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
     stat_upload.get_workflow_counter(
       "foo",
       labels!(
+        "__bd_labels" => "{}",
         "extracted" => "world",
       )
     ),
     None
   );
 
-  assert_eq!(stat_upload.get_workflow_counter("bar", labels! {}), Some(1));
+  assert_eq!(
+    stat_upload.get_workflow_counter("bar", labels! {"__bd_labels" => "{}"}),
+    Some(1)
+  );
   assert_eq!(stat_upload.overflows().len(), 1);
   assert_eq!(stat_upload.overflows()["foo"], 1);
 }
@@ -3349,6 +3357,7 @@ fn command_state_metadata() -> HashMap<String, Data> {
   CommandMetadata
     .command_artifact_metadata()
     .into_iter()
+    .chain([("__bd_labels".to_string(), "{}".to_string())])
     .map(|(key, value)| {
       (
         key,
@@ -5851,7 +5860,7 @@ fn workflow_state_change_match_advances_workflow() {
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
-    stat_upload.get_workflow_counter("state_change_action", labels! {}),
+    stat_upload.get_workflow_counter("state_change_action", labels! {"__bd_labels" => "{}"}),
     Some(42),
   );
 }
@@ -5919,7 +5928,10 @@ fn workflow_log_match_uses_server_pushed_feature_flag_state() {
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
-    stat_upload.get_workflow_counter("server_pushed_state_action", labels! {}),
+    stat_upload.get_workflow_counter(
+      "server_pushed_state_action",
+      labels! {"__bd_labels" => "{}"}
+    ),
     Some(1),
   );
 }

@@ -207,6 +207,10 @@ impl WorkflowAttachmentUploadWorker {
       if metadata.as_ref().is_some_and(|metadata| metadata.uploaded) {
         continue;
       }
+      let origin = metadata
+        .as_ref()
+        .map(|metadata| metadata.origin.clone())
+        .unwrap_or_default();
       let content_type = metadata.and_then(|metadata| metadata.content_type);
       let source = PathBuf::from(format!("workflow-attachments/{id}.payload"));
       let (completion_tx, completion_rx) = if attachment_store.is_some() {
@@ -221,6 +225,7 @@ impl WorkflowAttachmentUploadWorker {
           id,
           source,
           session_id,
+          origin,
           content_type,
           Some(persisted_tx),
           completion_tx,

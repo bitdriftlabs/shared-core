@@ -79,7 +79,8 @@ impl Reporter for MetadataErrorReporter {
     headers.insert("x-session-id".into(), session_id.to_string().into());
 
     for (key, value) in self.metadata.collect() {
-      headers.insert(format!("x-{}", key.replace('_', "-")).into(), value.into());
+      let header = format!("x-{}", key.replace('_', "-"));
+      headers.insert(header.into(), value.into());
     }
 
     self.reporter.report(message, details, &headers);

@@ -251,6 +251,7 @@ async fn index_sync_failure_is_reconciled_without_reenqueue() {
       id,
       source.clone(),
       "session".into(),
+      HashMap::new(),
       None,
       Some(persisted_tx),
       None,
@@ -302,6 +303,7 @@ async fn failed_workflow_unpin_is_retried_after_success_or_rejection() {
         id,
         source,
         "session".into(),
+        HashMap::new(),
         None,
         Some(persisted_tx),
         Some(completion_tx),
@@ -497,6 +499,7 @@ async fn queued_admission_owns_the_source_lease_until_processed() {
       id,
       format!("workflow-attachments/{id}.payload").into(),
       "session".into(),
+      HashMap::new(),
       None,
       None,
       None,
@@ -531,6 +534,7 @@ async fn retained_source_uses_one_payload_and_the_existing_upload_index() {
       artifact_id,
       source_path.clone().into(),
       "session".to_string(),
+      HashMap::new(),
       None,
       Some(persisted_tx),
       None,
@@ -579,6 +583,7 @@ async fn retained_source_can_retry_after_index_persistence_failure() {
       id,
       source.clone(),
       "session".into(),
+      HashMap::new(),
       None,
       Some(persisted_tx),
       None,
@@ -601,6 +606,7 @@ async fn retained_source_can_retry_after_index_persistence_failure() {
       id,
       source.clone(),
       "session".into(),
+      HashMap::new(),
       None,
       Some(persisted_tx),
       None,
@@ -648,6 +654,7 @@ async fn retained_source_can_retry_after_sync_failure() {
       artifact_id,
       source_path.clone().into(),
       "session".to_string(),
+      HashMap::new(),
       None,
       Some(first_persisted_tx),
       None,
@@ -674,6 +681,7 @@ async fn retained_source_can_retry_after_sync_failure() {
       artifact_id,
       source_path.into(),
       "session".to_string(),
+      HashMap::new(),
       None,
       Some(retry_persisted_tx),
       None,
@@ -1052,6 +1060,48 @@ async fn disk_persistence() {
 }
 
 #[tokio::test]
+async fn queued_command_origin_survives_runtime_changes_and_uploader_restart() {
+  let mut setup = Setup::new(1).await;
+  let mut origin = command_metadata();
+  origin.insert(
+    "__bd_labels".to_string(),
+    r#"{"channel":"production"}"#.to_string(),
+  );
+  let (sender, receiver) = tokio::sync::watch::channel(origin);
+  setup.client = setup.client.with_origin(receiver);
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::Bytes(vec![1]),
+      "attachment".to_string(),
+      None,
+      "session".to_string(),
+      vec![],
+      "command".to_string(),
+      None,
+      Some(persisted_tx),
+      None,
+    )
+    .unwrap();
+  persisted_rx.await.unwrap().unwrap();
+  sender.send_replace(HashMap::from([(
+    "__bd_labels".to_string(),
+    "{}".to_string(),
+  )]));
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.metadata["__bd_labels"].string_data(), r#"{"channel":"production"}"#);
+  });
+  let mut setup = setup.reinitialize().await;
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.metadata["__bd_labels"].string_data(), r#"{"channel":"production"}"#);
+  });
+  setup.shutdown().await;
+}
+
+#[tokio::test]
 async fn command_upload_persistence_reports_original_size() {
   let mut setup = Setup::new(1).await;
   let contents = vec![42; 1000];
@@ -1195,6 +1245,7 @@ async fn workflow_upload_preserves_content_type_after_restart() {
       artifact_id,
       source.clone(),
       "session_id".to_string(),
+      HashMap::new(),
       Some("application/vnd.example.capture".to_string()),
       Some(persisted_tx),
       None,
@@ -2144,6 +2195,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       id,
       source.clone(),
       "session_id".into(),
+      HashMap::new(),
       Some("application/vnd.example.capture".to_string()),
       Some(persisted_tx),
       None,
@@ -2164,6 +2216,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       id,
       source.clone(),
       "session_id".into(),
+      HashMap::new(),
       Some("application/vnd.example.capture".to_string()),
       Some(duplicate_persisted_tx),
       Some(completion_tx),
@@ -2178,6 +2231,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       id,
       source.clone(),
       "other_session".into(),
+      HashMap::new(),
       None,
       Some(conflict_tx),
       None,
@@ -2248,6 +2302,7 @@ async fn workflow_upload_rejects_id_owned_by_another_artifact_type() {
       id,
       std::path::PathBuf::from(format!("workflow-attachments/{id}.payload")),
       "session_id".to_string(),
+      HashMap::new(),
       None,
       Some(persisted_tx),
       None,

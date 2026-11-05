@@ -82,6 +82,7 @@ use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::state::scope::StateScope;
 use bd_runtime::runtime::DurationWatch;
+use bd_session::PendingStateUpdate;
 use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use std::cmp::max;
@@ -442,6 +443,7 @@ pub struct Api {
   session_strategy: Arc<bd_session::Strategy>,
   session_updates: watch::Receiver<u64>,
   opaque_entity_updates: watch::Receiver<Option<String>>,
+  labels_updates: Option<watch::Receiver<bd_metadata::labels::Labels>>,
 
   static_metadata: Arc<dyn Metadata + Send + Sync>,
 
@@ -541,6 +543,7 @@ impl Api {
       session_strategy,
       session_updates,
       opaque_entity_updates,
+      labels_updates: None,
       time_provider,
       network_quality_monitor,
       runtime_loader,
@@ -573,6 +576,15 @@ impl Api {
   #[must_use]
   pub fn with_device_command_state(mut self, state: Arc<DeviceCommandState>) -> Self {
     self.device_command_state = state;
+    self
+  }
+
+  #[must_use]
+  pub fn with_labels_updates(
+    mut self,
+    updates: watch::Receiver<bd_metadata::labels::Labels>,
+  ) -> Self {
+    self.labels_updates = Some(updates);
     self
   }
 
@@ -615,28 +627,34 @@ impl Api {
       .collect()
   }
 
-  fn current_opaque_entity_update(&self) -> OpaqueEntityUpdate {
+  fn current_opaque_entity_update(&mut self) -> OpaqueEntityUpdate {
     OpaqueEntityUpdate {
-      opaque_entity_id: self.opaque_entity_updates.borrow().clone(),
+      opaque_entity_id: self.opaque_entity_updates.borrow_and_update().clone(),
       ..Default::default()
     }
   }
 
   fn state_update_request(
-    &self,
+    &mut self,
     session_update: Option<&StateUpdateRequest>,
-    include_opaque_entity: bool,
-  ) -> Option<StateUpdateRequest> {
-    if session_update.is_none() && !include_opaque_entity {
-      return None;
-    }
-
+  ) -> StateUpdateRequest {
     let mut request = session_update.cloned().unwrap_or_default();
-    if include_opaque_entity {
-      request.opaque_entity_update = Some(self.current_opaque_entity_update()).into();
+    request.opaque_entity_update = Some(self.current_opaque_entity_update()).into();
+    if let Some(labels) = &mut self.labels_updates {
+      request.labels_update = Some(
+        bd_proto::protos::client::api::state_update_request::LabelsUpdate {
+          labels: labels
+            .borrow_and_update()
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+          ..Default::default()
+        },
+      )
+      .into();
     }
 
-    Some(request)
+    request
   }
 
   fn map_state_scope(scope: protobuf::EnumOrUnknown<StateScope>) -> Option<bd_state::Scope> {
@@ -1171,21 +1189,40 @@ impl Api {
           let Some(session_update) = self.session_strategy.pending_state_update() else {
             continue;
           };
-          stream_state.send_request(session_update.request().clone()).await?;
+          let request = self.state_update_request(Some(session_update.request()));
+          stream_state.send_request(request).await?;
           in_flight_state_update = Some(InFlightStateUpdate {
             session_update: Some(session_update),
           });
           self.reconnect_state.record_connectivity_event();
           continue;
         }
+        () = async {
+          match self.labels_updates.as_mut() {
+            Some(updates) => {
+              if updates.changed().await.is_err() {
+                std::future::pending::<()>().await;
+              }
+            },
+            None => std::future::pending().await,
+          }
+        }, if in_flight_state_update.is_none() => {
+          let session_update = self.session_strategy.pending_state_update();
+          let session_request = session_update.as_ref().map(PendingStateUpdate::request);
+          let request = self.state_update_request(session_request);
+          stream_state.send_request(request).await?;
+          in_flight_state_update = Some(InFlightStateUpdate { session_update });
+          self.reconnect_state.record_connectivity_event();
+          continue;
+        }
         _ = self.opaque_entity_updates.changed(), if in_flight_state_update.is_none() => {
           let _ = self.opaque_entity_updates.borrow_and_update();
-          let Some(request) = self.state_update_request(None, true) else {
-            continue;
-          };
+          let session_update = self.session_strategy.pending_state_update();
+          let session_request = session_update.as_ref().map(PendingStateUpdate::request);
+          let request = self.state_update_request(session_request);
           stream_state.send_request(request).await?;
           in_flight_state_update = Some(InFlightStateUpdate {
-            session_update: None,
+            session_update,
           });
           self.reconnect_state.record_connectivity_event();
           continue;
@@ -1451,7 +1488,7 @@ impl Api {
 
   // Creates a handshake request containing the current version nonces and static metadata.
   async fn handshake_request(
-    &self,
+    &mut self,
     metadata: &HashMap<String, ProtoData>,
     previous_disconnect_reason: Option<String>,
   ) -> (
@@ -1461,14 +1498,13 @@ impl Api {
   ) {
     let opaque_client_state = tokio::fs::read(&self.opaque_client_state_path()).await.ok();
     let session_update = self.session_strategy.handshake_state_update();
+    let state_update = self.state_update_request(Some(session_update.request()));
     let mut handshake = HandshakeRequest {
       static_device_metadata: metadata.clone(),
       previous_disconnect_reason: previous_disconnect_reason.unwrap_or_default(),
       sleep_mode: *self.sleep_mode_active.borrow(),
       opaque_client_state,
-      state_update: self
-        .state_update_request(Some(session_update.request()), true)
-        .into(),
+      state_update: Some(state_update).into(),
       analytics: Some(handshake_request::Analytics {
         connection_count_since_process_start: self.connection_count_since_process_start,
         ..Default::default()

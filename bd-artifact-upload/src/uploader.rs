@@ -304,6 +304,7 @@ pub trait Client: Send + Sync {
     artifact_id: Uuid,
     source_path: PathBuf,
     session_id: String,
+    origin: HashMap<String, String>,
     content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
@@ -342,9 +343,29 @@ pub struct UploadClient {
   queue_revision: watch::Receiver<u64>,
   counter_stats: SendCounters,
   command_artifact_metadata: LogFields,
+  origin: Option<watch::Receiver<HashMap<String, String>>>,
 }
 
 impl UploadClient {
+  #[must_use]
+  pub fn with_origin(mut self, origin: watch::Receiver<HashMap<String, String>>) -> Self {
+    self.origin = Some(origin);
+    self
+  }
+
+  fn command_metadata(&self) -> LogFields {
+    self.origin.as_ref().map_or_else(
+      || self.command_artifact_metadata.clone(),
+      |origin| {
+        origin
+          .borrow()
+          .iter()
+          .map(|(key, value)| (key.clone().into(), value.clone().into()))
+          .collect()
+      },
+    )
+  }
+
   fn enqueue(
     &self,
     uuid: Uuid,
@@ -402,6 +423,7 @@ impl Client for UploadClient {
     artifact_id: Uuid,
     source_path: PathBuf,
     session_id: String,
+    origin: HashMap<String, String>,
     content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
@@ -416,7 +438,16 @@ impl Client for UploadClient {
       artifact_id,
       UploadSource::Retained(source_path),
       WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID.to_string(),
-      self.command_artifact_metadata.clone(),
+      self
+        .command_artifact_metadata
+        .clone()
+        .into_iter()
+        .chain(
+          origin
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into())),
+        )
+        .collect(),
       None,
       session_id,
       Vec::new(),
@@ -472,7 +503,7 @@ impl Client for UploadClient {
       Uuid::new_v4(),
       source,
       type_id,
-      self.command_artifact_metadata.clone(),
+      self.command_metadata(),
       timestamp,
       session_id,
       feature_flags,
@@ -624,6 +655,7 @@ impl Uploader {
     };
 
     let client = UploadClient {
+      origin: None,
       upload_tx,
       queue_revision: queue_revision_rx,
       counter_stats: SendCounters::new(&scope, "enqueue"),

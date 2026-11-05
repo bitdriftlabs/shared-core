@@ -21,6 +21,7 @@ use bd_log_primitives::{
   LogFields,
 };
 use bd_log_util::warn_every;
+use bd_metadata::labels::LABELS_FIELD;
 use bd_proto::protos::logging::payload::LogType;
 use std::collections::BTreeSet;
 use std::collections::hash_map::Entry;
@@ -40,6 +41,7 @@ static RESERVED_FIELD_NAMES: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
     "network_type".to_string(),
     "os".to_string(),
     "os_version".to_string(),
+    "platform".to_string(),
     "radio_type".to_string(),
   ])
 });
@@ -69,6 +71,12 @@ pub struct MetadataCollector {
 }
 
 impl MetadataCollector {
+  pub(crate) fn set_labels(&mut self, encoded: String) {
+    self
+      .fields
+      .insert(LABELS_FIELD.into(), AnnotatedLogField::new_ootb(encoded));
+  }
+
   pub(crate) fn new(
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
     initial_ootb_fields: LogFields,
@@ -181,7 +189,11 @@ impl MetadataCollector {
     } = provider_snapshot;
 
     let provider_fields = PartitionedFields {
-      ootb: ootb_fields,
+      // SDK-owned origin snapshots cannot be replaced by field providers.
+      ootb: ootb_fields
+        .into_iter()
+        .filter(|(key, _)| key.as_ref() != "platform" && !key.starts_with("__bd_"))
+        .collect(),
       custom: custom_fields
         .into_iter()
         .filter(|field| match verify_custom_field_name(&field.0) {
@@ -222,7 +234,10 @@ impl MetadataCollector {
       (provider_fields, PartitionedFields::default())
     };
 
-    let log_fields = partition_fields(fields);
+    let mut log_fields = partition_fields(fields);
+    log_fields
+      .ootb
+      .retain(|key, _| key.as_ref() != "platform" && !key.starts_with("__bd_"));
 
     // Normalize fields from lowest to highest precedence so later fields override earlier ones.
     let fields = [
@@ -237,7 +252,10 @@ impl MetadataCollector {
     .flatten()
     .collect();
 
-    let matching_fields = partition_fields(matching_fields);
+    let mut matching_fields = partition_fields(matching_fields);
+    matching_fields
+      .ootb
+      .retain(|key, _| key.as_ref() != "platform" && !key.starts_with("__bd_"));
 
     let matching_fields = [
       provider_matching_fields.ootb,
@@ -274,6 +292,10 @@ impl MetadataCollector {
   }
 
   pub(crate) fn update_ootb_field(&mut self, key: LogFieldKey, value: LogFieldValue) {
+    if key.as_ref() == "platform" || key.starts_with("__bd_") {
+      log::debug!("ignoring OOTB update to SDK-owned origin field");
+      return;
+    }
     self.fields.insert(key, AnnotatedLogField::new_ootb(value));
   }
 
@@ -310,7 +332,7 @@ fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
 }
 
 fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
-  if RESERVED_FIELD_NAMES.contains(key) {
+  if key.starts_with("__bd_") || RESERVED_FIELD_NAMES.contains(key) {
     anyhow::bail!(
       "Custom global field with {key:?} name is not allowed as the name is reserved for SDK \
        internal use"

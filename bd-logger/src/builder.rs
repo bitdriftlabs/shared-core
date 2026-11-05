@@ -20,6 +20,7 @@ use crate::device_command::{
 use crate::directory_lock::DirectoryLock;
 use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::internal::InternalLogger;
+use crate::labels::{InitialLabels, LabelsState};
 use crate::log_replay::LoggerReplay;
 use crate::logger::{Logger, PendingEntityIdUpdate, TestHooks};
 use crate::logging_state::UninitializedLoggingContext;
@@ -187,6 +188,7 @@ async fn initialize_opaque_entity_updates(
 pub struct LoggerBuilder {
   // The parameters required to initialize the logger.
   params: InitParams,
+  initial_labels: InitialLabels,
 
   component_shutdown_handle: Option<ComponentShutdownTriggerHandle>,
   client_stats_schedule: Option<Box<dyn PeriodicSchedule>>,
@@ -204,6 +206,7 @@ impl LoggerBuilder {
   pub fn new(params: InitParams) -> Self {
     Self {
       params,
+      initial_labels: InitialLabels::UseExisting,
       component_shutdown_handle: None,
       client_stats_schedule: None,
       internal_logger: false,
@@ -213,6 +216,12 @@ impl LoggerBuilder {
       test_hooks: None,
       startup_replay_eligibility: StartupReplayEligibility::Unknown,
     }
+  }
+
+  #[must_use]
+  pub fn with_initial_labels(mut self, labels: InitialLabels) -> Self {
+    self.initial_labels = labels;
+    self
   }
 
   /// Sets the component shutdown handle to be used by the logger. By default the logger will
@@ -336,9 +345,16 @@ impl LoggerBuilder {
     let max_pending_started_sessions =
       bd_runtime::runtime::session::MaxPendingStartedSessions::register(&runtime_loader)
         .into_inner();
-    let collector = Collector::new(Some(max_dynamic_stats));
+    let collector = Collector::new(Some(max_dynamic_stats))
+      .with_product_metadata(self.params.static_metadata.collect());
 
     let scope = collector.scope("");
+    let labels = Arc::new(LabelsState::new(
+      self.initial_labels,
+      self.params.store.clone(),
+      scope.clone(),
+      self.params.static_metadata.command_artifact_metadata(),
+    )?);
     let session_persistence_failures = scope.counter("session_persistence_failures");
     let stats = bd_client_stats::Stats::new(collector.clone());
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
@@ -401,46 +417,47 @@ impl LoggerBuilder {
     let command_dispatcher = self.command_dispatcher;
     let command_execution_policy = CommandExecutionPolicy::new(&runtime_loader);
 
-    let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
-      UninitializedLoggingContext::new(
-        &self.params.sdk_directory,
+    let (mut async_log_buffer, async_log_buffer_communication_tx) =
+      AsyncLogBuffer::<LoggerReplay>::new(
+        UninitializedLoggingContext::new(
+          &self.params.sdk_directory,
+          &runtime_loader,
+          scope.clone(),
+          stats,
+          trigger_upload_tx.clone(),
+          remote_flush_streaming_rx,
+          data_upload_tx.clone(),
+          flush_buffers_tx,
+          flusher_trigger.clone(),
+          1024 * 1024,
+          is_tracing_active.clone(),
+          process_local_pending_flush_state.clone(),
+          self.test_hooks.clone(),
+        ),
+        LoggerReplay,
+        session_strategy.clone(),
+        self.params.metadata_provider.clone(),
+        self.params.initial_ootb_fields,
+        self.params.initial_custom_fields,
+        self.params.resource_utilization_target,
+        self.params.session_replay_target,
+        self.params.events_listener_target,
+        command_dispatcher.clone(),
+        command_execution_policy.clone(),
+        config_update_rx,
+        report_proc_rx,
+        shutdown_handle.clone(),
         &runtime_loader,
-        scope.clone(),
-        stats,
-        trigger_upload_tx.clone(),
-        remote_flush_streaming_rx,
+        log_network_quality_provider,
+        aggregated_network_quality_provider,
+        self.params.device.id(),
+        &self.params.store,
+        time_provider.clone(),
+        init_lifecycle.clone(),
+        sdk_status_tracker.clone(),
         data_upload_tx.clone(),
-        flush_buffers_tx,
-        flusher_trigger.clone(),
-        1024 * 1024,
-        is_tracing_active.clone(),
-        process_local_pending_flush_state.clone(),
-        self.test_hooks.clone(),
-      ),
-      LoggerReplay,
-      session_strategy.clone(),
-      self.params.metadata_provider.clone(),
-      self.params.initial_ootb_fields,
-      self.params.initial_custom_fields,
-      self.params.resource_utilization_target,
-      self.params.session_replay_target,
-      self.params.events_listener_target,
-      command_dispatcher.clone(),
-      command_execution_policy.clone(),
-      config_update_rx,
-      report_proc_rx,
-      shutdown_handle.clone(),
-      &runtime_loader,
-      log_network_quality_provider,
-      aggregated_network_quality_provider,
-      self.params.device.id(),
-      &self.params.store,
-      time_provider.clone(),
-      init_lifecycle.clone(),
-      sdk_status_tracker.clone(),
-      data_upload_tx.clone(),
-      self.startup_replay_eligibility,
-    );
+        self.startup_replay_eligibility,
+      );
     let workflow_attachment_cleanup_ready = async_log_buffer.workflow_attachment_cleanup_ready();
 
     let data_upload_tx_clone = data_upload_tx.clone();
@@ -462,6 +479,7 @@ impl LoggerBuilder {
       self.params.store.clone(),
       opaque_entity_updates_tx.clone(),
       pending_entity_id.clone(),
+      labels.clone(),
       sleep_mode_active_tx,
       is_tracing_active,
       sdk_status_tracker.clone(),
@@ -525,6 +543,10 @@ impl LoggerBuilder {
       let pending_entity_id = pending_entity_id.lock().take();
       initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
         .await;
+      async_log_buffer
+        .initialize_labels(labels.clone(), &state_store)
+        .await?;
+      scope.scope("logger").product_counter("app_open").inc();
 
       initialize_memory_pressure(
         &previous_run_state,
@@ -552,7 +574,8 @@ impl LoggerBuilder {
         self.params.static_metadata.command_artifact_metadata(),
         shutdown_handle.make_shutdown(),
       );
-      let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
+      let artifact_client: Arc<dyn bd_artifact_upload::Client> =
+        Arc::new(artifact_client.with_origin(labels.origin.subscribe()));
       async_log_buffer.set_retention_registry(
         retention_registry.clone(),
         artifact_client.upload_queue_revision(),
@@ -686,7 +709,8 @@ impl LoggerBuilder {
         sdk_status_tracker,
         Some(Arc::new(handshake_stats)),
       )
-      .with_device_command_state(command_state);
+      .with_device_command_state(command_state)
+      .with_labels_updates(labels.updates.subscribe());
 
       let mut config_writer = bd_crash_handler::ConfigWriter::new(
         &runtime_loader,

@@ -170,6 +170,7 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
           attachment.id,
           format!("workflow-attachments/{}.payload", attachment.id).into(),
           "session".into(),
+          HashMap::new(),
           None,
           Some(persisted_tx),
           None,
@@ -798,11 +799,11 @@ async fn workflow_attachment_staging_does_not_acquire_admission_permit() {
   let mut client = MockClient::new();
   client
     .expect_enqueue_workflow_attachment()
-    .withf(move |id, _, _, content_type, _, _, _| {
+    .withf(move |id, _, _, _, content_type, _, _, _| {
       *id == admitted.id && content_type.as_deref() == Some("image/jpeg")
     })
     .once()
-    .returning(|_, _, _, _, persisted, _, _| {
+    .returning(|_, _, _, _, _, persisted, _, _| {
       persisted.unwrap().send(Ok(())).unwrap();
       Ok(())
     });
@@ -1042,6 +1043,65 @@ async fn workflow_attachment_restart_isolates_corrupt_metadata() {
     assert_eq!(read_checked(&restarted, admitted.id).await.unwrap(), b"new");
     assert_eq!(restarted.capacity.lock().files, 1);
   }
+}
+
+#[tokio::test]
+async fn attachment_origin_survives_label_changes_and_restart_without_relabeling_legacy_sidecars() {
+  let directory = tempfile::tempdir().unwrap();
+  let mut store = new_store(&directory).await;
+  let (sender, receiver) = tokio::sync::watch::channel(HashMap::new());
+  store.origin = Some(receiver);
+  let store = Arc::new(store);
+  let legacy = store
+    .admit(UploadSource::Bytes(vec![1]), None)
+    .await
+    .unwrap();
+  let origin = HashMap::from([(
+    "__bd_labels".to_string(),
+    r#"{"channel":"production"}"#.to_string(),
+  )]);
+  sender.send_replace(origin.clone());
+  let production = store
+    .admit(UploadSource::Bytes(vec![2]), None)
+    .await
+    .unwrap();
+  sender.send_replace(HashMap::from([(
+    "__bd_labels".to_string(),
+    "{}".to_string(),
+  )]));
+  let cleared = store
+    .admit(UploadSource::Bytes(vec![3]), None)
+    .await
+    .unwrap();
+  for attachment in [&legacy, &production, &cleared] {
+    store
+      .record_timestamp(attachment.id, OffsetDateTime::now_utc())
+      .await
+      .unwrap();
+  }
+  drop(store);
+  let restarted = new_store(&directory).await;
+  assert!(
+    super::read_metadata(&restarted.metadata_path(legacy.id))
+      .await
+      .unwrap()
+      .origin
+      .is_empty()
+  );
+  assert_eq!(
+    super::read_metadata(&restarted.metadata_path(production.id))
+      .await
+      .unwrap()
+      .origin,
+    origin
+  );
+  assert_eq!(
+    super::read_metadata(&restarted.metadata_path(cleared.id))
+      .await
+      .unwrap()
+      .origin["__bd_labels"],
+    "{}"
+  );
 }
 
 #[tokio::test]
