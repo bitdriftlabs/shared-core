@@ -31,6 +31,218 @@
 /// of protobuf runtime.
 const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_4_0_0_ALPHA_0;
 
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.CrashProfileSource)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct CrashProfileSource {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.CrashProfileSource.run_id)
+    pub run_id: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.CrashProfileSource.pid)
+    pub pid: u32,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.CrashProfileSource.boot_count)
+    pub boot_count: u64,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.CrashProfileSource.process_start_elapsed_ns)
+    pub process_start_elapsed_ns: u64,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.CrashProfileSource.wall_ns)
+    pub wall_ns: i64,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.CrashProfileSource.elapsed_ns)
+    pub elapsed_ns: u64,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.CrashProfileSource.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a CrashProfileSource {
+    fn default() -> &'a CrashProfileSource {
+        <CrashProfileSource as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl CrashProfileSource {
+    pub fn new() -> CrashProfileSource {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "run_id",
+            |m: &CrashProfileSource| { &m.run_id },
+            |m: &mut CrashProfileSource| { &mut m.run_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "pid",
+            |m: &CrashProfileSource| { &m.pid },
+            |m: &mut CrashProfileSource| { &mut m.pid },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "boot_count",
+            |m: &CrashProfileSource| { &m.boot_count },
+            |m: &mut CrashProfileSource| { &mut m.boot_count },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "process_start_elapsed_ns",
+            |m: &CrashProfileSource| { &m.process_start_elapsed_ns },
+            |m: &mut CrashProfileSource| { &mut m.process_start_elapsed_ns },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "wall_ns",
+            |m: &CrashProfileSource| { &m.wall_ns },
+            |m: &mut CrashProfileSource| { &mut m.wall_ns },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "elapsed_ns",
+            |m: &CrashProfileSource| { &m.elapsed_ns },
+            |m: &mut CrashProfileSource| { &mut m.elapsed_ns },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CrashProfileSource>(
+            "CrashProfileSource",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for CrashProfileSource {
+    const NAME: &'static str = "CrashProfileSource";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.run_id = is.read_bytes()?;
+                },
+                16 => {
+                    self.pid = is.read_uint32()?;
+                },
+                24 => {
+                    self.boot_count = is.read_uint64()?;
+                },
+                32 => {
+                    self.process_start_elapsed_ns = is.read_uint64()?;
+                },
+                40 => {
+                    self.wall_ns = is.read_int64()?;
+                },
+                48 => {
+                    self.elapsed_ns = is.read_uint64()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.run_id.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(1, &self.run_id);
+        }
+        if self.pid != 0 {
+            my_size += ::protobuf::rt::uint32_size(2, self.pid);
+        }
+        if self.boot_count != 0 {
+            my_size += ::protobuf::rt::uint64_size(3, self.boot_count);
+        }
+        if self.process_start_elapsed_ns != 0 {
+            my_size += ::protobuf::rt::uint64_size(4, self.process_start_elapsed_ns);
+        }
+        if self.wall_ns != 0 {
+            my_size += ::protobuf::rt::int64_size(5, self.wall_ns);
+        }
+        if self.elapsed_ns != 0 {
+            my_size += ::protobuf::rt::uint64_size(6, self.elapsed_ns);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.run_id.is_empty() {
+            os.write_bytes(1, &self.run_id)?;
+        }
+        if self.pid != 0 {
+            os.write_uint32(2, self.pid)?;
+        }
+        if self.boot_count != 0 {
+            os.write_uint64(3, self.boot_count)?;
+        }
+        if self.process_start_elapsed_ns != 0 {
+            os.write_uint64(4, self.process_start_elapsed_ns)?;
+        }
+        if self.wall_ns != 0 {
+            os.write_int64(5, self.wall_ns)?;
+        }
+        if self.elapsed_ns != 0 {
+            os.write_uint64(6, self.elapsed_ns)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> CrashProfileSource {
+        CrashProfileSource::new()
+    }
+
+    fn clear(&mut self) {
+        self.run_id.clear();
+        self.pid = 0;
+        self.boot_count = 0;
+        self.process_start_elapsed_ns = 0;
+        self.wall_ns = 0;
+        self.elapsed_ns = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static CrashProfileSource {
+        static instance: CrashProfileSource = CrashProfileSource {
+            run_id: ::std::vec::Vec::new(),
+            pid: 0,
+            boot_count: 0,
+            process_start_elapsed_ns: 0,
+            wall_ns: 0,
+            elapsed_ns: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for CrashProfileSource {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("CrashProfileSource").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for CrashProfileSource {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for CrashProfileSource {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct ArtifactUploadIndex {
@@ -184,6 +396,8 @@ pub mod artifact_upload_index {
         pub payload_encoding: ::protobuf::EnumOrUnknown<super::super::api::ArtifactPayloadEncoding>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.content_type)
         pub content_type: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.crash_profile)
+        pub crash_profile: ::protobuf::MessageField<super::super::api::CrashProfileMetadata>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -201,7 +415,7 @@ pub mod artifact_upload_index {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(12);
+            let mut fields = ::std::vec::Vec::with_capacity(13);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "name",
@@ -262,6 +476,11 @@ pub mod artifact_upload_index {
                 "content_type",
                 |m: &Artifact| { &m.content_type },
                 |m: &mut Artifact| { &mut m.content_type },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::api::CrashProfileMetadata>(
+                "crash_profile",
+                |m: &Artifact| { &m.crash_profile },
+                |m: &mut Artifact| { &mut m.crash_profile },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
                 "ArtifactUploadIndex.Artifact",
@@ -329,6 +548,9 @@ pub mod artifact_upload_index {
                     106 => {
                         self.content_type = ::std::option::Option::Some(is.read_string()?);
                     },
+                    114 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.crash_profile)?;
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -384,6 +606,10 @@ pub mod artifact_upload_index {
             if let Some(v) = self.content_type.as_ref() {
                 my_size += ::protobuf::rt::string_size(13, &v);
             }
+            if let Some(v) = self.crash_profile.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -433,6 +659,9 @@ pub mod artifact_upload_index {
             if let Some(v) = self.content_type.as_ref() {
                 os.write_string(13, v)?;
             }
+            if let Some(v) = self.crash_profile.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(14, v, os)?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -462,6 +691,7 @@ pub mod artifact_upload_index {
             self.command_id = ::std::option::Option::None;
             self.payload_encoding = ::protobuf::EnumOrUnknown::new(super::super::api::ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW);
             self.content_type = ::std::option::Option::None;
+            self.crash_profile.clear();
             self.special_fields.clear();
         }
 
@@ -732,36 +962,42 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     c.protobuf.client.v1\x1a,bitdrift_public/protobuf/client/v1/api.proto\
     \x1a5bitdrift_public/protobuf/client/v1/feature_flag.proto\x1a1bitdrift_\
     public/protobuf/logging/v1/payload.proto\x1a3bitdrift_public/protobuf/wo\
-    rkflow/v1/workflow.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb9\
-    \x08\n\x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\x01\x20\x03(\x0b2@\
-    .bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.ArtifactR\x08art\
-    ifact\x1a\xc3\x07\n\x08Artifact\x12\x12\n\x04name\x18\x01\x20\x01(\tR\
-    \x04name\x12.\n\x04time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.Timest\
-    ampR\x04time\x12<\n\x1apending_intent_negotiation\x18\x03\x20\x01(\x08R\
-    \x18pendingIntentNegotiation\x12j\n\x08metadata\x18\x05\x20\x03(\x0b2N.b\
-    itdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.MetadataE\
-    ntryR\x08metadata\x12\x1d\n\nsession_id\x18\x06\x20\x01(\tR\tsessionId\
-    \x12T\n\rfeature_flags\x18\x07\x20\x03(\x0b2/.bitdrift_public.protobuf.c\
-    lient.v1.FeatureFlagR\x0cfeatureFlags\x12\x1c\n\x07type_id\x18\x08\x20\
-    \x01(\tH\0R\x06typeId\x88\x01\x01\x12X\n\x0estorage_format\x18\t\x20\x01\
-    (\x0e21.bitdrift_public.protobuf.client.v1.StorageFormatR\rstorageFormat\
-    \x12x\n\x17workflow_report_handoff\x18\n\x20\x01(\x0b2;.bitdrift_public.\
-    protobuf.workflow.v1.WorkflowReportHandoffH\x01R\x15workflowReportHandof\
-    f\x88\x01\x01\x12\"\n\ncommand_id\x18\x0b\x20\x01(\tH\x02R\tcommandId\
-    \x88\x01\x01\x12f\n\x10payload_encoding\x18\x0c\x20\x01(\x0e2;.bitdrift_\
-    public.protobuf.client.v1.ArtifactPayloadEncodingR\x0fpayloadEncoding\
-    \x12&\n\x0ccontent_type\x18\r\x20\x01(\tH\x03R\x0bcontentType\x88\x01\
-    \x01\x1af\n\rMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
-    \x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging\
-    .v1.DataR\x05value:\x028\x01B\n\n\x08_type_idB\x1a\n\x18_workflow_report\
-    _handoffB\r\n\x0b_command_idB\x0f\n\r_content_type\"\xe6\x01\n\x17Workfl\
-    owAttachmentState\x12,\n\x12admitted_at_micros\x18\x01\x20\x01(\x04R\x10\
-    admittedAtMicros\x121\n\x12occurred_at_micros\x18\x02\x20\x01(\x04H\0R\
-    \x10occurredAtMicros\x88\x01\x01\x12&\n\x0ccontent_type\x18\x03\x20\x01(\
-    \tH\x01R\x0bcontentType\x88\x01\x01\x12\x1a\n\x08uploaded\x18\x04\x20\
-    \x01(\x08R\x08uploadedB\x15\n\x13_occurred_at_microsB\x0f\n\r_content_ty\
-    pe*)\n\rStorageFormat\x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03RAW\
-    \x10\x01b\x06proto3\
+    rkflow/v1/workflow.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcd\
+    \x01\n\x12CrashProfileSource\x12\x15\n\x06run_id\x18\x01\x20\x01(\x0cR\
+    \x05runId\x12\x10\n\x03pid\x18\x02\x20\x01(\rR\x03pid\x12\x1d\n\nboot_co\
+    unt\x18\x03\x20\x01(\x04R\tbootCount\x127\n\x18process_start_elapsed_ns\
+    \x18\x04\x20\x01(\x04R\x15processStartElapsedNs\x12\x17\n\x07wall_ns\x18\
+    \x05\x20\x01(\x03R\x06wallNs\x12\x1d\n\nelapsed_ns\x18\x06\x20\x01(\x04R\
+    \telapsedNs\"\x98\t\n\x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\x01\
+    \x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.A\
+    rtifactR\x08artifact\x1a\xa2\x08\n\x08Artifact\x12\x12\n\x04name\x18\x01\
+    \x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\x01(\x0b2\x1a.google.pro\
+    tobuf.TimestampR\x04time\x12<\n\x1apending_intent_negotiation\x18\x03\
+    \x20\x01(\x08R\x18pendingIntentNegotiation\x12j\n\x08metadata\x18\x05\
+    \x20\x03(\x0b2N.bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.A\
+    rtifact.MetadataEntryR\x08metadata\x12\x1d\n\nsession_id\x18\x06\x20\x01\
+    (\tR\tsessionId\x12T\n\rfeature_flags\x18\x07\x20\x03(\x0b2/.bitdrift_pu\
+    blic.protobuf.client.v1.FeatureFlagR\x0cfeatureFlags\x12\x1c\n\x07type_i\
+    d\x18\x08\x20\x01(\tH\0R\x06typeId\x88\x01\x01\x12X\n\x0estorage_format\
+    \x18\t\x20\x01(\x0e21.bitdrift_public.protobuf.client.v1.StorageFormatR\
+    \rstorageFormat\x12x\n\x17workflow_report_handoff\x18\n\x20\x01(\x0b2;.b\
+    itdrift_public.protobuf.workflow.v1.WorkflowReportHandoffH\x01R\x15workf\
+    lowReportHandoff\x88\x01\x01\x12\"\n\ncommand_id\x18\x0b\x20\x01(\tH\x02\
+    R\tcommandId\x88\x01\x01\x12f\n\x10payload_encoding\x18\x0c\x20\x01(\x0e\
+    2;.bitdrift_public.protobuf.client.v1.ArtifactPayloadEncodingR\x0fpayloa\
+    dEncoding\x12&\n\x0ccontent_type\x18\r\x20\x01(\tH\x03R\x0bcontentType\
+    \x88\x01\x01\x12]\n\rcrash_profile\x18\x0e\x20\x01(\x0b28.bitdrift_publi\
+    c.protobuf.client.v1.CrashProfileMetadataR\x0ccrashProfile\x1af\n\rMetad\
+    ataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\
+    \x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value:\
+    \x028\x01B\n\n\x08_type_idB\x1a\n\x18_workflow_report_handoffB\r\n\x0b_c\
+    ommand_idB\x0f\n\r_content_type\"\xe6\x01\n\x17WorkflowAttachmentState\
+    \x12,\n\x12admitted_at_micros\x18\x01\x20\x01(\x04R\x10admittedAtMicros\
+    \x121\n\x12occurred_at_micros\x18\x02\x20\x01(\x04H\0R\x10occurredAtMicr\
+    os\x88\x01\x01\x12&\n\x0ccontent_type\x18\x03\x20\x01(\tH\x01R\x0bconten\
+    tType\x88\x01\x01\x12\x1a\n\x08uploaded\x18\x04\x20\x01(\x08R\x08uploade\
+    dB\x15\n\x13_occurred_at_microsB\x0f\n\r_content_type*)\n\rStorageFormat\
+    \x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -784,7 +1020,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::payload::file_descriptor().clone());
             deps.push(super::workflow::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(3);
+            let mut messages = ::std::vec::Vec::with_capacity(4);
+            messages.push(CrashProfileSource::generated_message_descriptor_data());
             messages.push(ArtifactUploadIndex::generated_message_descriptor_data());
             messages.push(WorkflowAttachmentState::generated_message_descriptor_data());
             messages.push(artifact_upload_index::Artifact::generated_message_descriptor_data());

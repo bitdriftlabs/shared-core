@@ -14,7 +14,11 @@ use bd_api::{DataUpload, RuntimeBackoffPolicy};
 use bd_backoff::future::retry_notify;
 use bd_backoff::{ExponentialBackoff, InfiniteBackoff};
 use bd_bounded_buffer::SendCounters;
-use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, STATE_SNAPSHOT_ARTIFACT_TYPE_ID};
+use bd_client_common::artifact::{
+  CLIENT_REPORT_ARTIFACT_TYPE_ID,
+  CRASH_PROFILE_ARTIFACT_TYPE_ID,
+  STATE_SNAPSHOT_ARTIFACT_TYPE_ID,
+};
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
   async_write_checksummed_data,
@@ -32,6 +36,7 @@ use bd_log_primitives::LogFields;
 use bd_macros::ApproximateSize;
 use bd_proto::protos::client::api::{
   ArtifactPayloadEncoding,
+  CrashProfileMetadata,
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
 };
@@ -137,6 +142,8 @@ struct NewUpload {
   feature_flags: Vec<SnappedFeatureFlag>,
   command_id: Option<String>,
   content_type: Option<String>,
+  #[approximate_size(with = crash_profile_size)]
+  crash_profile: Option<CrashProfileMetadata>,
   #[approximate_size(skip)]
   persisted_tx: Option<PersistenceAck>,
   #[approximate_size(skip)]
@@ -147,9 +154,23 @@ struct NewUpload {
   source_cleanup: Option<CommandFile>,
 }
 
+// Derive callbacks borrow the field, including its Option.
+#[allow(clippy::ref_option)]
+fn crash_profile_size(profile: &Option<CrashProfileMetadata>) -> usize {
+  profile.as_ref().map_or(0, |profile| {
+    profile.report_ids.approximate_size_children_bytes()
+  })
+}
+
 //
 // CommandFile
 //
+
+// Command and crash-profile attachments share compressed storage, the attachment size limit and
+// ownership of absolute source paths.
+fn is_compressed_attachment(command_id: Option<&String>, type_id: &str) -> bool {
+  command_id.is_some() || type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID
+}
 
 #[derive(Debug)]
 struct CommandFile(PathBuf);
@@ -318,6 +339,7 @@ pub trait Client: Send + Sync {
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
+    crash_profile: Option<CrashProfileMetadata>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError>;
 
@@ -334,6 +356,18 @@ pub trait Client: Send + Sync {
     content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<u64, EnqueueError>>>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
+  ) -> std::result::Result<Uuid, EnqueueError>;
+
+  /// Queues an Android crash profile exactly like a command attachment, with its explicit parent
+  /// report IDs. Takes ownership of absolute path sources even on rejection.
+  fn enqueue_crash_profile(
+    &self,
+    source: UploadSource,
+    timestamp: OffsetDateTime,
+    session_id: String,
+    content_type: String,
+    crash_profile: CrashProfileMetadata,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError>;
 }
 
@@ -356,13 +390,14 @@ impl UploadClient {
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: Option<String>,
     content_type: Option<String>,
+    crash_profile: Option<CrashProfileMetadata>,
     persisted_tx: Option<PersistenceAck>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<Uuid, EnqueueError> {
-    let source_cleanup = command_id
-      .as_ref()
-      .and_then(|_| CommandFile::from_source(&source));
+    let source_cleanup = is_compressed_attachment(command_id.as_ref(), &type_id)
+      .then(|| CommandFile::from_source(&source))
+      .flatten();
     let result = self
       .upload_tx
       .try_send(NewUpload {
@@ -375,6 +410,7 @@ impl UploadClient {
         feature_flags,
         command_id,
         content_type,
+        crash_profile,
         persisted_tx,
         completion_tx,
         source_lease,
@@ -422,6 +458,7 @@ impl Client for UploadClient {
       Vec::new(),
       None,
       content_type,
+      None,
       persisted_tx.map(PersistenceAck::Upload),
       completion_tx,
       source_lease,
@@ -438,6 +475,7 @@ impl Client for UploadClient {
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
+    crash_profile: Option<CrashProfileMetadata>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
     self.enqueue(
@@ -450,6 +488,7 @@ impl Client for UploadClient {
       feature_flags,
       None,
       None,
+      crash_profile,
       persisted_tx.map(PersistenceAck::Upload),
       None,
       None,
@@ -478,8 +517,35 @@ impl Client for UploadClient {
       feature_flags,
       Some(command_id),
       content_type,
+      None,
       persisted_tx.map(PersistenceAck::Command),
       completion_tx,
+      None,
+    )
+  }
+
+  fn enqueue_crash_profile(
+    &self,
+    source: UploadSource,
+    timestamp: OffsetDateTime,
+    session_id: String,
+    content_type: String,
+    crash_profile: CrashProfileMetadata,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  ) -> std::result::Result<Uuid, EnqueueError> {
+    self.enqueue(
+      Uuid::new_v4(),
+      source,
+      CRASH_PROFILE_ARTIFACT_TYPE_ID.to_string(),
+      self.command_artifact_metadata.clone(),
+      Some(timestamp),
+      session_id,
+      Vec::new(),
+      None,
+      Some(content_type),
+      Some(crash_profile),
+      persisted_tx.map(PersistenceAck::Upload),
+      None,
       None,
     )
   }
@@ -546,21 +612,29 @@ pub struct Uploader {
 }
 
 impl Uploader {
-  /// Reads durable workflow upload leases. Admission must exclude payload cleanup until its
-  /// persistence acknowledgement, including when the requesting task is cancelled.
-  pub async fn pending_workflow_attachments(sdk_directory: &Path) -> io::Result<HashSet<Uuid>> {
+  /// Reads the durable upload index without starting the uploader. Callers that need entries before
+  /// any upload can remove them must read before `run` starts.
+  pub async fn pending_artifacts(sdk_directory: &Path) -> io::Result<Vec<Artifact>> {
     let path = sdk_directory
       .join(&*ARTIFACT_UPLOAD_DIRECTORY)
       .join(&*REPORT_INDEX_FILE);
     let bytes = match tokio::fs::read(path).await {
       Ok(bytes) => bytes,
-      Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(HashSet::new()),
+      Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
       Err(error) => return Err(error),
     };
-    let index = read_compressed_protobuf::<ArtifactUploadIndex>(&bytes)
-      .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    index
-      .artifact
+    Ok(
+      read_compressed_protobuf::<ArtifactUploadIndex>(&bytes)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+        .artifact,
+    )
+  }
+
+  /// Reads durable workflow upload leases. Admission must exclude payload cleanup until its
+  /// persistence acknowledgement, including when the requesting task is cancelled.
+  pub async fn pending_workflow_attachments(sdk_directory: &Path) -> io::Result<HashSet<Uuid>> {
+    Self::pending_artifacts(sdk_directory)
+      .await?
       .into_iter()
       .filter(|entry| entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID))
       .map(|entry| {
@@ -672,6 +746,7 @@ impl Uploader {
             next.session_id.clone(),
             next.time.to_offset_date_time(),
             next.metadata.clone(),
+            next.crash_profile.as_ref().cloned(),
             self.backoff_policy.backoff_mark_update(),
           )));
           continue;
@@ -725,6 +800,7 @@ impl Uploader {
           next.command_id.clone(),
           next.content_type.clone(),
           next.payload_encoding.enum_value_or_default(),
+          next.crash_profile.as_ref().cloned(),
         )));
       }
 
@@ -756,6 +832,7 @@ impl Uploader {
             feature_flags,
             command_id,
             content_type,
+            crash_profile,
             persisted_tx,
             completion_tx,
             source_lease,
@@ -773,6 +850,7 @@ impl Uploader {
               feature_flags,
               command_id,
               content_type,
+              crash_profile,
               persisted_tx,
               completion_tx,
               source_cleanup,
@@ -1021,6 +1099,7 @@ impl Uploader {
     feature_flags: Vec<SnappedFeatureFlag>,
     command_id: Option<String>,
     content_type: Option<String>,
+    crash_profile: Option<CrashProfileMetadata>,
     mut persisted_tx: Option<PersistenceAck>,
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     mut source_cleanup: Option<CommandFile>,
@@ -1102,7 +1181,7 @@ impl Uploader {
     }
 
     let retained = matches!(source, UploadSource::Retained(_));
-    let command_attachment = command_id.is_some();
+    let command_attachment = is_compressed_attachment(command_id.as_ref(), &type_id);
     let payload_encoding =
       if command_attachment || (retained && type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID) {
         ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
@@ -1264,6 +1343,7 @@ impl Uploader {
       command_id,
       content_type,
       payload_encoding: payload_encoding.into(),
+      crash_profile: crash_profile.into(),
       ..Default::default()
     });
 
@@ -1371,6 +1451,7 @@ impl Uploader {
     command_id: Option<String>,
     content_type: Option<String>,
     payload_encoding: ArtifactPayloadEncoding,
+    crash_profile: Option<CrashProfileMetadata>,
   ) -> Result<()> {
     let path = ARTIFACT_UPLOAD_DIRECTORY.join(&name);
     log::debug!("uploading artifact: {}", path.display());
@@ -1397,6 +1478,7 @@ impl Uploader {
             command_id: command_id.clone(),
             content_type: content_type.clone(),
             payload_encoding: payload_encoding.into(),
+            crash_profile: crash_profile.clone().into(),
             ..Default::default()
           },
         );
@@ -1425,6 +1507,7 @@ impl Uploader {
     session_id: String,
     timestamp: OffsetDateTime,
     state_metadata: HashMap<String, Data>,
+    crash_profile: Option<CrashProfileMetadata>,
     mut retry_policy: ExponentialBackoff,
   ) -> Result<IntentDecision> {
     retry_notify(
@@ -1440,6 +1523,7 @@ impl Uploader {
             session_id: (!session_id.is_empty()).then(|| session_id.clone()),
             time: timestamp.into_proto(),
             metadata: state_metadata.clone(),
+            crash_profile: crash_profile.clone().into(),
             ..Default::default()
           },
         );

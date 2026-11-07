@@ -193,6 +193,7 @@ pub struct LoggerBuilder {
   internal_logger: bool,
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
+  report_attribution: Option<Arc<dyn bd_artifact_upload::ReportAttribution>>,
   command_dispatcher: RegisteredCommandDispatcher,
   test_hooks: Option<Arc<dyn TestHooks>>,
   startup_replay_eligibility: StartupReplayEligibility,
@@ -209,6 +210,7 @@ impl LoggerBuilder {
       internal_logger: false,
       time_provider: None,
       crash_report_hook: None,
+      report_attribution: None,
       command_dispatcher: RegisteredCommandDispatcher::default(),
       test_hooks: None,
       startup_replay_eligibility: StartupReplayEligibility::Unknown,
@@ -271,6 +273,17 @@ impl LoggerBuilder {
     hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
   ) -> Self {
     self.crash_report_hook = hook;
+    self
+  }
+
+  /// Sets the platform's report attribution. It is seeded from the pending upload index before the
+  /// uploader starts, then receives each freshly enqueued report carrying source facts.
+  #[must_use]
+  pub fn with_report_attribution(
+    mut self,
+    attribution: Option<Arc<dyn bd_artifact_upload::ReportAttribution>>,
+  ) -> Self {
+    self.report_attribution = attribution;
     self
   }
 
@@ -553,6 +566,20 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
+      // The uploader has not started yet, so no ACK, rejection or eviction can remove a pending
+      // report before it is restored.
+      if let Some(attribution) = &self.report_attribution {
+        bd_artifact_upload::restore_pending_reports(
+          attribution.as_ref(),
+          &self.params.sdk_directory,
+        )
+        .await;
+        attribution.start(
+          artifact_client.clone(),
+          &runtime_loader,
+          shutdown_handle.make_shutdown(),
+        );
+      }
       async_log_buffer.set_retention_registry(
         retention_registry.clone(),
         artifact_client.upload_queue_revision(),
@@ -616,6 +643,7 @@ impl LoggerBuilder {
           .map_err(Into::into)
         },
         self.crash_report_hook,
+        self.report_attribution,
       );
 
       let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;

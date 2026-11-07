@@ -5,8 +5,11 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[path = "./crash_profile_lifecycle_test.rs"]
+mod crash_profile_lifecycle;
+
 use crate::{CrashReportHook, CrashReportInfo, Monitor, global_state};
-use bd_artifact_upload::UploadSource;
+use bd_artifact_upload::{Client, ReportAttribution, UploadSource};
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_log_primitives::{AnnotatedLogFields, LogFields};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
@@ -29,9 +32,9 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp,
 };
 use bd_proto_util::ToFlatBufferString;
-use bd_runtime::runtime::{self};
+use bd_runtime::runtime::{self, ConfigLoader};
 use bd_session::configuration;
-use bd_shutdown::ComponentShutdownTrigger;
+use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_state::MEMORY_PRESSURE_LEVEL_KEY;
 use bd_state::test::TestStore;
 use bd_test_helpers::make_mut;
@@ -40,9 +43,11 @@ use bd_time::TestTimeProvider;
 use bd_versioned_kv::StateValue;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
 use itertools::Itertools;
+use parking_lot::Mutex;
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tempfile::TempDir;
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
@@ -63,6 +68,7 @@ struct CrashReportBuilder {
   timestamp: Option<OffsetDateTime>,
   running_state: Option<String>,
   platform: Platform,
+  crash_profile_source: Option<Vec<u8>>,
 }
 
 impl CrashReportBuilder {
@@ -76,7 +82,13 @@ impl CrashReportBuilder {
       timestamp: None,
       running_state: None,
       platform: Platform::Unknown,
+      crash_profile_source: None,
     }
+  }
+
+  fn crash_profile_source(mut self, source: &[u8]) -> Self {
+    self.crash_profile_source = Some(source.to_vec());
+    self
   }
 
   fn reason(mut self, reason: impl Into<String>) -> Self {
@@ -153,6 +165,7 @@ impl CrashReportBuilder {
 
     let mut report_t = ReportT::default();
     report_t.type_ = self.report_type;
+    report_t.crash_profile_source = self.crash_profile_source;
     report_t.errors = Some(vec![error]);
     report_t.app_metrics = app_metrics;
     report_t.device_metrics = device_metrics;
@@ -325,6 +338,7 @@ impl Setup {
       previous_run_state,
       emit_log,
       crash_report_hook,
+      None,
     );
 
     Self {
@@ -439,7 +453,14 @@ impl Setup {
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
       .withf(
-        move |source, ftype_id, fstate, ftimestamp, fsession_id, feature_flags, _persisted_tx| {
+        move |source,
+              ftype_id,
+              fstate,
+              ftimestamp,
+              fsession_id,
+              feature_flags,
+              crash_profile,
+              _persisted_tx| {
           let UploadSource::File(file) = source else {
             return false;
           };
@@ -472,9 +493,10 @@ impl Setup {
             && timestamp_match
             && session_match
             && flags_match
+            && crash_profile.is_none()
         },
       )
-      .returning(move |_, _, _, _, _, _, _| Ok(uuid));
+      .returning(move |_, _, _, _, _, _, _, _| Ok(uuid));
   }
 }
 
@@ -857,12 +879,12 @@ async fn file_watcher_processes_multiple_reports() {
     .expect_enqueue_upload()
     .times(1)
     .in_sequence(&mut seq)
-    .returning(move |_, _, _, _, _, _, _| Ok(uuid1));
+    .returning(move |_, _, _, _, _, _, _, _| Ok(uuid1));
   make_mut(&mut setup.upload_client)
     .expect_enqueue_upload()
     .times(1)
     .in_sequence(&mut seq)
-    .returning(move |_, _, _, _, _, _, _| Ok(uuid2));
+    .returning(move |_, _, _, _, _, _, _, _| Ok(uuid2));
 
   // Create two crash reports
   let data1 = CrashReportBuilder::new("Crash1").reason("error1").build();
@@ -1149,7 +1171,7 @@ async fn crash_report_hook_is_invoked_with_correct_info() {
   let uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".parse().unwrap();
   make_mut(&mut setup.upload_client)
     .expect_enqueue_upload()
-    .returning(move |_, _, _, _, _, _, _| Ok(uuid));
+    .returning(move |_, _, _, _, _, _, _, _| Ok(uuid));
 
   setup.process_all_pending_reports().await;
 
@@ -1184,7 +1206,7 @@ async fn assert_running_state_maps_to_foreground(running_state: &str, expected_f
   let uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".parse().unwrap();
   make_mut(&mut setup.upload_client)
     .expect_enqueue_upload()
-    .returning(move |_, _, _, _, _, _, _| Ok(uuid));
+    .returning(move |_, _, _, _, _, _, _, _| Ok(uuid));
 
   let logs = setup.process_all_pending_reports().await;
   assert_eq!(1, logs.len());
@@ -1227,9 +1249,95 @@ async fn no_running_state_does_not_override_foreground() {
   let uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".parse().unwrap();
   make_mut(&mut setup.upload_client)
     .expect_enqueue_upload()
-    .returning(move |_, _, _, _, _, _, _| Ok(uuid));
+    .returning(move |_, _, _, _, _, _, _, _| Ok(uuid));
 
   let logs = setup.process_all_pending_reports().await;
   assert_eq!(1, logs.len());
   assert_eq!("1", logs[0]["foreground"].value.as_str().unwrap());
+}
+
+//
+// RecordingAttribution
+//
+
+// Report ID, its crash-profile source bytes and session ID.
+type RecordedReport = (Uuid, Option<Vec<u8>>, String);
+
+#[derive(Default)]
+struct RecordingAttribution {
+  reports: Mutex<Vec<RecordedReport>>,
+  ready: AtomicUsize,
+}
+
+impl ReportAttribution for RecordingAttribution {
+  fn add_report(&self, report_id: Uuid, report: &Report<'_>, session_id: &str) {
+    self.reports.lock().push((
+      report_id,
+      report
+        .crash_profile_source()
+        .map(|source| source.bytes().to_vec()),
+      session_id.to_string(),
+    ));
+  }
+
+  fn mark_ready(&self) {
+    self.ready.fetch_add(1, Ordering::Relaxed);
+  }
+
+  fn start(&self, _: Arc<dyn Client>, _: &ConfigLoader, _: ComponentShutdown) {}
+}
+
+#[tokio::test]
+async fn enqueued_reports_reach_attribution_without_extra_upload_metadata() {
+  let timestamp = datetime!(2024-01-15 12:34:56 UTC);
+  let data = CrashReportBuilder::new("java.lang.OutOfMemoryError")
+    .report_type(ReportType::JVMCrash)
+    .timestamp(timestamp)
+    .crash_profile_source(b"facts")
+    .build();
+  let attribution = Arc::new(RecordingAttribution::default());
+  let mut setup = Setup::new(None, false, None, None).await;
+  setup.monitor.report_attribution = Some(attribution.clone());
+  let report_id = Uuid::new_v4();
+  setup.expect_artifact_upload_with_flags(
+    &data,
+    report_id,
+    [
+      ("app_version".into(), "unknown".into()),
+      ("os_version".into(), "unknown".into()),
+    ]
+    .into(),
+    Some(timestamp),
+    "previous_session_id",
+    Some(vec![
+      ("initial_flag".to_string(), "true".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
+  );
+  setup.make_crash("report.cap", &data);
+
+  let logs = setup.process_all_pending_reports().await;
+  assert_eq!(logs.len(), 1);
+  assert_eq!(
+    *attribution.reports.lock(),
+    vec![(
+      report_id,
+      Some(b"facts".to_vec()),
+      "previous_session_id".to_string()
+    )]
+  );
+  assert_eq!(attribution.ready.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn attribution_is_ready_after_an_empty_initial_report_pass() {
+  let attribution = Arc::new(RecordingAttribution::default());
+  let mut setup = Setup::new(None, false, None, None).await;
+  setup.monitor.report_attribution = Some(attribution.clone());
+  assert_eq!(
+    setup.process_all_pending_reports().await,
+    Vec::<AnnotatedLogFields>::new()
+  );
+  assert_eq!(*attribution.reports.lock(), Vec::new());
+  assert_eq!(attribution.ready.load(Ordering::Relaxed), 1);
 }

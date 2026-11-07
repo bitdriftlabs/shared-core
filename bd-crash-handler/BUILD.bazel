@@ -1,9 +1,14 @@
-load("@crates//:defs.bzl", "all_crate_deps")
-load("//tools/rust:tests.bzl", "rust_library_with_test")
+load("//tools/lint:linters.bzl", "rust_library")
+load("//tools/rust:feature_variants.bzl", "all_crate_deps_with_overrides")
+load("//tools/rust:tests.bzl", "rust_library_test")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library_with_test(
+CRASH_PROFILE_TEST_OVERRIDE = {
+    "//shared-core/bd-artifact-upload": "//shared-core/bd-artifact-upload:crash-profile-upload-test-support",
+}
+
+rust_library(
     name = "bd-crash-handler",
     srcs = glob(
         ["src/**/*.rs"],
@@ -13,5 +18,27 @@ rust_library_with_test(
     crate_name = "bd_crash_handler",
     crate_root = "src/lib.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True),
+    deps = all_crate_deps_with_overrides(normal = True),
+)
+
+rust_library(
+    name = "bd-crash-handler-test",
+    testonly = True,
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**/*.rs"],
+    ),
+    crate_features = ["default"],
+    crate_name = "bd_crash_handler",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    deps = all_crate_deps_with_overrides(
+        dependency_overrides = CRASH_PROFILE_TEST_OVERRIDE,
+        normal = True,
+    ),
+)
+
+rust_library_test(
+    crate = ":bd-crash-handler-test",
+    test_dependency_overrides = CRASH_PROFILE_TEST_OVERRIDE,
 )
