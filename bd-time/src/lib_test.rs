@@ -162,74 +162,7 @@ fn proto_duration(seconds: i64, nanos: i32) -> ProtoDuration {
 }
 
 #[test]
-fn timestamp_checked_accepts_the_spec_range() {
-  assert_eq!(
-    timestamp(-62_135_596_800, 0).to_offset_date_time_checked(),
-    Some(datetime!(0001-01-01 00:00:00 UTC))
-  );
-  assert_eq!(
-    timestamp(253_402_300_799, 999_999_999).to_offset_date_time_checked(),
-    Some(datetime!(9999-12-31 23:59:59.999999999 UTC))
-  );
-  assert_eq!(
-    timestamp(1_609_459_200, 123_456_789).to_offset_date_time_checked(),
-    Some(datetime!(2021-01-01 00:00:00.123456789 UTC))
-  );
-}
-
-#[test]
-fn timestamp_checked_refuses_values_past_the_spec_range() {
-  for (seconds, nanos) in [
-    (-62_135_596_801, 0),
-    (253_402_300_800, 0),
-    (0, -1),
-    (0, 1_000_000_000),
-  ] {
-    assert_eq!(
-      timestamp(seconds, nanos).to_offset_date_time_checked(),
-      None,
-      "seconds {seconds}, nanos {nanos}"
-    );
-  }
-}
-
-#[test]
-fn duration_checked_accepts_the_spec_range() {
-  for (seconds, nanos) in [
-    (315_576_000_000, 999_999_999),
-    (-315_576_000_000, -999_999_999),
-    // Zero seconds can go with nanos of either sign.
-    (0, -500_000_000),
-    (90, 500_000_000),
-  ] {
-    assert_eq!(
-      proto_duration(seconds, nanos).to_time_duration_checked(),
-      Some(time::Duration::new(seconds, nanos)),
-      "seconds {seconds}, nanos {nanos}"
-    );
-  }
-}
-
-#[test]
-fn duration_checked_refuses_values_past_the_spec_range() {
-  for (seconds, nanos) in [
-    (315_576_000_001, 0),
-    (-315_576_000_001, 0),
-    (0, 1_000_000_000),
-    (0, -1_000_000_000),
-    (1, -1),
-    (-1, 1),
-  ] {
-    assert_eq!(
-      proto_duration(seconds, nanos).to_time_duration_checked(),
-      None,
-      "seconds {seconds}, nanos {nanos}"
-    );
-  }
-}
-
-#[test]
-fn unchecked_conversions_saturate_instead_of_panicking() {
+fn conversions_saturate_instead_of_panicking() {
   assert_eq!(
     proto_duration(i64::MAX, 2_000_000_000).to_time_duration(),
     time::Duration::MAX
@@ -246,7 +179,7 @@ fn unchecked_conversions_saturate_instead_of_panicking() {
 }
 
 #[test]
-fn unchecked_conversions_keep_their_old_output() {
+fn conversions_keep_their_old_output() {
   assert_eq!(
     timestamp(1_609_459_200, 123_456_789).to_offset_date_time(),
     datetime!(2021-01-01 00:00:00.123456789 UTC)
