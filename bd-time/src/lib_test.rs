@@ -10,6 +10,7 @@ use crate::{
   ProtoDurationExt as _,
   TestTimeProvider,
   Ticker,
+  TimeDurationExt as _,
   TimeProvider,
   TimestampExt as _,
 };
@@ -19,6 +20,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 use time::ext::NumericalDuration;
 use time::macros::datetime;
+use tokio::time::{Instant, MissedTickBehavior};
 
 #[test]
 fn timestamp_floor() {
@@ -281,4 +283,103 @@ fn unchecked_conversions_keep_their_output_for_valid_input() {
     proto_duration(-3, -500_000_000).to_time_duration(),
     time::Duration::new(-3, -500_000_000)
   );
+}
+
+#[test]
+fn rounding_to_an_interval_under_one_second_leaves_the_time_unchanged() {
+  let time = datetime!(2021-01-01 00:00:03.5 UTC);
+  for interval in [
+    time::Duration::ZERO,
+    500.milliseconds(),
+    (-500).milliseconds(),
+  ] {
+    assert_eq!(time.floor(interval), time, "floor to {interval}");
+    assert_eq!(time.ceil(interval), time, "ceil to {interval}");
+  }
+}
+
+#[test]
+fn rounding_to_a_negative_interval_uses_its_absolute_value() {
+  let time = datetime!(2021-01-01 00:00:03 UTC);
+  assert_eq!(
+    time.floor((-5).seconds()),
+    datetime!(2021-01-01 00:00:00 UTC)
+  );
+  assert_eq!(
+    time.ceil((-5).seconds()),
+    datetime!(2021-01-01 00:00:05 UTC)
+  );
+
+  // `time::Duration::MIN` has `-2^63` whole seconds, whose absolute value does not fit `i64`.
+  let epoch = time::OffsetDateTime::UNIX_EPOCH;
+  assert_eq!(time.floor(time::Duration::MIN), epoch);
+  assert_eq!(time.ceil(time::Duration::MIN), epoch);
+}
+
+#[test]
+fn rounding_past_the_representable_dates_falls_back_to_the_epoch() {
+  // A multiple of `i64::MAX` seconds is either zero or past the dates `OffsetDateTime` can hold.
+  let epoch = time::OffsetDateTime::UNIX_EPOCH;
+  let after_epoch = datetime!(2021-01-01 00:00:03 UTC);
+  let before_epoch = datetime!(1900-01-01 00:00:03 UTC);
+  assert_eq!(after_epoch.floor(time::Duration::MAX), epoch);
+  assert_eq!(after_epoch.ceil(time::Duration::MAX), epoch);
+  assert_eq!(before_epoch.floor(time::Duration::MAX), epoch);
+  assert_eq!(before_epoch.ceil(time::Duration::MAX), epoch);
+}
+
+// About 30 years, the longest duration the timer helpers pass to tokio.
+const MAX_TIMER_DURATION: std::time::Duration = std::time::Duration::from_hours(24 * 365 * 30);
+
+#[tokio::test(start_paused = true)]
+async fn timer_helpers_cap_huge_durations_instead_of_panicking() {
+  let now = Instant::now();
+  for duration in [time::Duration::MAX, time::Duration::MIN] {
+    assert_eq!(duration.add_tokio_now(), now + MAX_TIMER_DURATION);
+    assert_eq!(duration.add_tokio_instant(now), now + MAX_TIMER_DURATION);
+  }
+  assert!(time::Duration::MAX.jittered() <= MAX_TIMER_DURATION);
+
+  // A second tick adds the period to the first deadline, which overflows `Instant` when uncapped.
+  for mut interval in [
+    time::Duration::MAX.interval(MissedTickBehavior::Burst),
+    time::Duration::MAX.interval_at(MissedTickBehavior::Burst),
+    time::Duration::MAX.jittered_interval_at(MissedTickBehavior::Burst),
+  ] {
+    assert_eq!(interval.period(), MAX_TIMER_DURATION);
+    interval.tick().await;
+    interval.tick().await;
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_zero_interval_ticks_every_millisecond_instead_of_panicking() {
+  for mut interval in [
+    time::Duration::ZERO.interval(MissedTickBehavior::Burst),
+    time::Duration::ZERO.interval_at(MissedTickBehavior::Burst),
+    time::Duration::ZERO.jittered_interval_at(MissedTickBehavior::Burst),
+  ] {
+    assert_eq!(interval.period(), std::time::Duration::from_millis(1));
+    interval.tick().await;
+    interval.tick().await;
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn timer_helpers_keep_their_output_for_ordinary_durations() {
+  let now = Instant::now();
+  assert_eq!(
+    5.seconds().add_tokio_now(),
+    now + std::time::Duration::from_secs(5)
+  );
+  assert_eq!(
+    (-5).seconds().add_tokio_instant(now),
+    now + std::time::Duration::from_secs(5)
+  );
+  assert_eq!(
+    5.seconds().interval(MissedTickBehavior::Burst).period(),
+    std::time::Duration::from_secs(5)
+  );
+  assert_eq!((-5).seconds().jittered(), std::time::Duration::ZERO);
+  assert!(5.seconds().jittered() <= std::time::Duration::from_secs(5));
 }
