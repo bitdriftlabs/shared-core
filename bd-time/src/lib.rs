@@ -172,8 +172,9 @@ pub trait TimestampExt {
 
 impl TimestampExt for Timestamp {
   fn to_offset_date_time(&self) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(self.seconds).unwrap_or(OffsetDateTime::UNIX_EPOCH)
-      + std::time::Duration::from_nanos(self.nanos.try_into().unwrap_or_default())
+    OffsetDateTime::from_unix_timestamp(self.seconds)
+      .unwrap_or(OffsetDateTime::UNIX_EPOCH)
+      .saturating_add(time::Duration::nanoseconds(self.nanos.max(0).into()))
   }
 }
 
@@ -278,7 +279,8 @@ impl ProtoDurationExt for protobuf::well_known_types::duration::Duration {
   }
 
   fn to_time_duration(&self) -> time::Duration {
-    time::Duration::seconds(self.seconds) + time::Duration::nanoseconds(self.nanos.into())
+    time::Duration::seconds(self.seconds)
+      .saturating_add(time::Duration::nanoseconds(self.nanos.into()))
   }
 }
 
