@@ -166,14 +166,46 @@ impl OffsetDateTimeExt for OffsetDateTime {
 // TimestampExt
 //
 
+/// Earliest `Timestamp.seconds` the protobuf spec allows: 0001-01-01T00:00:00Z.
+const MIN_TIMESTAMP_SECONDS: i64 = -62_135_596_800;
+/// Latest `Timestamp.seconds` the protobuf spec allows: 9999-12-31T23:59:59Z.
+const MAX_TIMESTAMP_SECONDS: i64 = 253_402_300_799;
+/// Largest `Duration.seconds` magnitude the protobuf spec allows, about 10,000 years.
+const MAX_DURATION_SECONDS: i64 = 315_576_000_000;
+/// Largest `nanos` magnitude the protobuf spec allows for a Timestamp or Duration.
+const MAX_NANOS: i32 = 999_999_999;
+
 pub trait TimestampExt {
+  /// Converts without checking that the value follows the protobuf spec. Seconds outside the
+  /// dates `OffsetDateTime` can hold become the Unix epoch and negative nanos count as zero. The
+  /// result stops at the latest date rather than overflowing. Use this for data the server or SDK
+  /// wrote. Request handlers must use `to_offset_date_time_checked`, so a bad value is refused
+  /// rather than quietly turned into another date.
   fn to_offset_date_time(&self) -> OffsetDateTime;
+
+  /// Converts a timestamp that follows the protobuf spec. Returns `None` unless seconds is from
+  /// -62,135,596,800 to 253,402,300,799 (0001-01-01 to 9999-12-31) and nanos is from 0 to
+  /// 999,999,999. Request handlers must use this form and refuse `None` as an invalid argument.
+  fn to_offset_date_time_checked(&self) -> Option<OffsetDateTime>;
 }
 
 impl TimestampExt for Timestamp {
   fn to_offset_date_time(&self) -> OffsetDateTime {
-    OffsetDateTime::from_unix_timestamp(self.seconds).unwrap_or(OffsetDateTime::UNIX_EPOCH)
-      + std::time::Duration::from_nanos(self.nanos.try_into().unwrap_or_default())
+    // `+` panics past the latest date, and a panic stops the whole server.
+    OffsetDateTime::from_unix_timestamp(self.seconds)
+      .unwrap_or(OffsetDateTime::UNIX_EPOCH)
+      .saturating_add(time::Duration::nanoseconds(self.nanos.max(0).into()))
+  }
+
+  fn to_offset_date_time_checked(&self) -> Option<OffsetDateTime> {
+    if !(MIN_TIMESTAMP_SECONDS ..= MAX_TIMESTAMP_SECONDS).contains(&self.seconds)
+      || !(0 ..= MAX_NANOS).contains(&self.nanos)
+    {
+      return None;
+    }
+    OffsetDateTime::from_unix_timestamp(self.seconds)
+      .ok()?
+      .checked_add(time::Duration::nanoseconds(self.nanos.into()))
   }
 }
 
@@ -254,8 +286,17 @@ pub trait ProtoDurationExt {
   /// function returns None if the duration is negative.
   fn to_std_duration_checked(&self) -> Option<Duration>;
 
-  /// Convert to a ``time::Duration`` which can be negative.
+  /// Convert to a ``time::Duration`` which can be negative. This does not check that the value
+  /// follows the protobuf spec, and a result past the largest or smallest ``time::Duration`` stops
+  /// there rather than overflowing. Use this for data the server or SDK wrote. Request handlers
+  /// must use `to_time_duration_checked`, so a bad value is refused rather than clamped.
   fn to_time_duration(&self) -> time::Duration;
+
+  /// Convert a duration that follows the protobuf spec to a ``time::Duration``. Returns `None`
+  /// unless seconds is from -315,576,000,000 to 315,576,000,000 (about 10,000 years), nanos is
+  /// from -999,999,999 to 999,999,999 and nanos does not have the opposite sign to seconds. Either
+  /// may be zero. Request handlers must use this form and refuse `None` as an invalid argument.
+  fn to_time_duration_checked(&self) -> Option<time::Duration>;
 }
 
 impl ProtoDurationExt for protobuf::well_known_types::duration::Duration {
@@ -278,7 +319,22 @@ impl ProtoDurationExt for protobuf::well_known_types::duration::Duration {
   }
 
   fn to_time_duration(&self) -> time::Duration {
-    time::Duration::seconds(self.seconds) + time::Duration::nanoseconds(self.nanos.into())
+    // `+` panics on overflow, and a panic stops the whole server.
+    time::Duration::seconds(self.seconds)
+      .saturating_add(time::Duration::nanoseconds(self.nanos.into()))
+  }
+
+  fn to_time_duration_checked(&self) -> Option<time::Duration> {
+    let opposite_signs =
+      (self.seconds > 0 && self.nanos < 0) || (self.seconds < 0 && self.nanos > 0);
+    if !(-MAX_DURATION_SECONDS ..= MAX_DURATION_SECONDS).contains(&self.seconds)
+      || !(-MAX_NANOS ..= MAX_NANOS).contains(&self.nanos)
+      || opposite_signs
+    {
+      return None;
+    }
+    time::Duration::seconds(self.seconds)
+      .checked_add(time::Duration::nanoseconds(self.nanos.into()))
   }
 }
 
