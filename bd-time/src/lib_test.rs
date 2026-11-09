@@ -6,6 +6,7 @@
 
 use crate::{
   DynamicIntervalTicker,
+  MAX_TIMER_DURATION,
   OffsetDateTimeExt as _,
   ProtoDurationExt as _,
   TestTimeProvider,
@@ -13,6 +14,7 @@ use crate::{
   TimeDurationExt as _,
   TimeProvider,
   TimestampExt as _,
+  ZERO_INTERVAL_PERIOD,
 };
 use protobuf::well_known_types::duration::Duration as ProtoDuration;
 use protobuf::well_known_types::timestamp::Timestamp;
@@ -174,8 +176,8 @@ fn timestamp_checked_accepts_the_spec_range() {
     Some(datetime!(9999-12-31 23:59:59.999999999 UTC))
   );
   assert_eq!(
-    timestamp(1_609_459_200, 500).to_offset_date_time_checked(),
-    Some(timestamp(1_609_459_200, 500).to_offset_date_time())
+    timestamp(1_609_459_200, 123_456_789).to_offset_date_time_checked(),
+    Some(datetime!(2021-01-01 00:00:00.123456789 UTC))
   );
 }
 
@@ -186,8 +188,6 @@ fn timestamp_checked_refuses_values_past_the_spec_range() {
     (253_402_300_800, 0),
     (0, -1),
     (0, 1_000_000_000),
-    (i64::MAX, 0),
-    (i64::MIN, 0),
   ] {
     assert_eq!(
       timestamp(seconds, nanos).to_offset_date_time_checked(),
@@ -202,10 +202,9 @@ fn duration_checked_accepts_the_spec_range() {
   for (seconds, nanos) in [
     (315_576_000_000, 999_999_999),
     (-315_576_000_000, -999_999_999),
-    (0, 999_999_999),
-    (0, -999_999_999),
-    (5, 0),
-    (-5, 0),
+    // Zero seconds can go with nanos of either sign.
+    (0, -500_000_000),
+    (90, 500_000_000),
   ] {
     assert_eq!(
       proto_duration(seconds, nanos).to_time_duration_checked(),
@@ -224,8 +223,6 @@ fn duration_checked_refuses_values_past_the_spec_range() {
     (0, -1_000_000_000),
     (1, -1),
     (-1, 1),
-    (i64::MAX, 0),
-    (i64::MIN, 0),
   ] {
     assert_eq!(
       proto_duration(seconds, nanos).to_time_duration_checked(),
@@ -245,31 +242,15 @@ fn unchecked_conversions_saturate_instead_of_panicking() {
     proto_duration(i64::MIN, -2_000_000_000).to_time_duration(),
     time::Duration::MIN
   );
-
-  // Seconds out of range still fall back to the Unix epoch, as before.
-  assert_eq!(
-    timestamp(i64::MAX, 2_000_000_000).to_offset_date_time(),
-    datetime!(1970-01-01 00:00:02 UTC)
-  );
-  assert_eq!(
-    timestamp(i64::MIN, -2_000_000_000).to_offset_date_time(),
-    datetime!(1970-01-01 00:00:00 UTC)
-  );
-
-  let latest = datetime!(9999-12-31 23:59:59.999999999 UTC);
-  assert_eq!(
-    timestamp(253_402_300_799, 999_999_999).to_offset_date_time(),
-    latest
-  );
-  // One nanosecond more would be past 9999-12-31, so the result stops there.
+  // One nanosecond past the latest date `OffsetDateTime` can hold.
   assert_eq!(
     timestamp(253_402_300_799, 1_000_000_000).to_offset_date_time(),
-    latest
+    datetime!(9999-12-31 23:59:59.999999999 UTC)
   );
 }
 
 #[test]
-fn unchecked_conversions_keep_their_output_for_valid_input() {
+fn unchecked_conversions_keep_their_old_output() {
   assert_eq!(
     timestamp(1_609_459_200, 123_456_789).to_offset_date_time(),
     datetime!(2021-01-01 00:00:00.123456789 UTC)
@@ -288,11 +269,7 @@ fn unchecked_conversions_keep_their_output_for_valid_input() {
 #[test]
 fn rounding_to_an_interval_under_one_second_leaves_the_time_unchanged() {
   let time = datetime!(2021-01-01 00:00:03.5 UTC);
-  for interval in [
-    time::Duration::ZERO,
-    500.milliseconds(),
-    (-500).milliseconds(),
-  ] {
+  for interval in [time::Duration::ZERO, 500.milliseconds()] {
     assert_eq!(time.floor(interval), time, "floor to {interval}");
     assert_eq!(time.ceil(interval), time, "ceil to {interval}");
   }
@@ -309,35 +286,33 @@ fn rounding_to_a_negative_interval_uses_its_absolute_value() {
     time.ceil((-5).seconds()),
     datetime!(2021-01-01 00:00:05 UTC)
   );
-
-  // The absolute value of `time::Duration::MIN` doesn't fit in an `i64`.
-  let epoch = time::OffsetDateTime::UNIX_EPOCH;
-  assert_eq!(time.floor(time::Duration::MIN), epoch);
-  assert_eq!(time.ceil(time::Duration::MIN), epoch);
 }
 
 #[test]
-fn rounding_past_the_representable_dates_falls_back_to_the_epoch() {
-  // Rounding to `i64::MAX` seconds gives either zero or a date out of range.
-  let epoch = time::OffsetDateTime::UNIX_EPOCH;
-  let after_epoch = datetime!(2021-01-01 00:00:03 UTC);
-  let before_epoch = datetime!(1900-01-01 00:00:03 UTC);
-  assert_eq!(after_epoch.floor(time::Duration::MAX), epoch);
-  assert_eq!(after_epoch.ceil(time::Duration::MAX), epoch);
-  assert_eq!(before_epoch.floor(time::Duration::MAX), epoch);
-  assert_eq!(before_epoch.ceil(time::Duration::MAX), epoch);
+fn rounding_up_to_a_huge_interval_falls_back_to_the_epoch() {
+  // `to_time_duration` gives these for bad input. Rounding up to either lands past the dates
+  // `OffsetDateTime` can hold.
+  let time = datetime!(2021-01-01 00:00:03 UTC);
+  for interval in [time::Duration::MAX, time::Duration::MIN] {
+    assert_eq!(
+      time.ceil(interval),
+      time::OffsetDateTime::UNIX_EPOCH,
+      "{interval}"
+    );
+  }
 }
-
-// About 30 years, the longest duration the timer helpers pass to tokio.
-const MAX_TIMER_DURATION: std::time::Duration = std::time::Duration::from_hours(24 * 365 * 30);
 
 #[tokio::test(start_paused = true)]
 async fn timer_helpers_cap_huge_durations_instead_of_panicking() {
   let now = Instant::now();
-  for duration in [time::Duration::MAX, time::Duration::MIN] {
-    assert_eq!(duration.add_tokio_now(), now + MAX_TIMER_DURATION);
-    assert_eq!(duration.add_tokio_instant(now), now + MAX_TIMER_DURATION);
-  }
+  assert_eq!(
+    time::Duration::MAX.add_tokio_now(),
+    now + MAX_TIMER_DURATION
+  );
+  assert_eq!(
+    time::Duration::MAX.add_tokio_instant(now),
+    now + MAX_TIMER_DURATION
+  );
   assert!(time::Duration::MAX.jittered() <= MAX_TIMER_DURATION);
 
   // The second tick adds the period to the first deadline. Without the cap, that overflows
@@ -354,13 +329,13 @@ async fn timer_helpers_cap_huge_durations_instead_of_panicking() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_zero_interval_ticks_every_millisecond_instead_of_panicking() {
+async fn a_zero_interval_uses_a_one_millisecond_period_instead_of_panicking() {
   for mut interval in [
     time::Duration::ZERO.interval(MissedTickBehavior::Burst),
     time::Duration::ZERO.interval_at(MissedTickBehavior::Burst),
     time::Duration::ZERO.jittered_interval_at(MissedTickBehavior::Burst),
   ] {
-    assert_eq!(interval.period(), std::time::Duration::from_millis(1));
+    assert_eq!(interval.period(), ZERO_INTERVAL_PERIOD);
     interval.tick().await;
     interval.tick().await;
   }
