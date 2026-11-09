@@ -172,7 +172,6 @@ pub trait TimestampExt {
 
 impl TimestampExt for Timestamp {
   fn to_offset_date_time(&self) -> OffsetDateTime {
-    // Plain `+` panics past 9999-12-31. A panic takes down the whole server.
     OffsetDateTime::from_unix_timestamp(self.seconds)
       .unwrap_or(OffsetDateTime::UNIX_EPOCH)
       .saturating_add(time::Duration::nanoseconds(self.nanos.max(0).into()))
@@ -280,7 +279,6 @@ impl ProtoDurationExt for protobuf::well_known_types::duration::Duration {
   }
 
   fn to_time_duration(&self) -> time::Duration {
-    // Plain `+` panics on overflow. A panic takes down the whole server.
     time::Duration::seconds(self.seconds)
       .saturating_add(time::Duration::nanoseconds(self.nanos.into()))
   }
