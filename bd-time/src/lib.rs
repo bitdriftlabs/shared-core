@@ -97,18 +97,18 @@ pub trait OffsetDateTimeExt {
   ///
   /// For example, if the interval is 5 minutes, then 12:03:00 would be rounded down to 12:00:00.
   ///
-  /// Note that `interval` will be rounded down to the nearest second. A negative interval rounds
-  /// the same as its absolute value. An interval under one second leaves the time unchanged. A
-  /// result past the dates `OffsetDateTime` can hold becomes the Unix epoch.
+  /// `interval` is cut to whole seconds and its sign is ignored. An interval under one second
+  /// returns the time unchanged. A result outside the dates `OffsetDateTime` supports becomes the
+  /// Unix epoch.
   fn floor(&self, interval: time::Duration) -> OffsetDateTime;
 
   /// Rounds up the given timestamp to the nearest interval.
   ///
   /// For example, if the interval is 5 minutes, then 12:03:00 would be rounded up to 12:05:00.
   ///
-  /// Note that `interval` will be rounded down to the nearest second. A negative interval rounds
-  /// the same as its absolute value. An interval under one second leaves the time unchanged. A
-  /// result past the dates `OffsetDateTime` can hold becomes the Unix epoch.
+  /// `interval` is cut to whole seconds and its sign is ignored. An interval under one second
+  /// returns the time unchanged. A result outside the dates `OffsetDateTime` supports becomes the
+  /// Unix epoch.
   fn ceil(&self, interval: time::Duration) -> OffsetDateTime;
 
   /// Create an `OffsetDateTime` from a unix timestamp in microseconds.
@@ -161,10 +161,9 @@ impl OffsetDateTimeExt for OffsetDateTime {
   }
 }
 
-/// The unix timestamp of `time`, its remainder after dividing by `interval` and the interval, all
-/// in whole seconds. The interval's sign is dropped. Returns `None` for an interval under one
-/// second, because dividing by zero panics, even in release builds. `i128` holds every value and
-/// result here, so a huge interval cannot overflow.
+/// Returns the unix timestamp of `time`, its remainder after dividing by `interval` and the
+/// interval without its sign, all in whole seconds. Returns `None` for an interval under one
+/// second, because dividing by zero would panic. Uses `i128` so a huge interval can't overflow.
 fn rounding_parts(time: OffsetDateTime, interval: time::Duration) -> Option<(i128, i128, i128)> {
   let interval = i128::from(interval.whole_seconds()).abs();
   if interval == 0 {
@@ -178,8 +177,8 @@ fn rounding_parts(time: OffsetDateTime, interval: time::Duration) -> Option<(i12
   ))
 }
 
-/// Converts a unix timestamp in seconds, falling back to the Unix epoch when it is past the dates
-/// `OffsetDateTime` can hold.
+/// Like `OffsetDateTime::from_unix_timestamp`, but returns the Unix epoch when the time is out of
+/// range.
 fn from_unix_timestamp_i128(seconds: i128) -> OffsetDateTime {
   i64::try_from(seconds)
     .ok()
@@ -191,32 +190,31 @@ fn from_unix_timestamp_i128(seconds: i128) -> OffsetDateTime {
 // TimestampExt
 //
 
-/// Earliest `Timestamp.seconds` the protobuf spec allows: 0001-01-01T00:00:00Z.
+/// 0001-01-01T00:00:00Z, the earliest time a protobuf Timestamp allows.
 const MIN_TIMESTAMP_SECONDS: i64 = -62_135_596_800;
-/// Latest `Timestamp.seconds` the protobuf spec allows: 9999-12-31T23:59:59Z.
+/// 9999-12-31T23:59:59Z, the latest time a protobuf Timestamp allows.
 const MAX_TIMESTAMP_SECONDS: i64 = 253_402_300_799;
-/// Largest `Duration.seconds` magnitude the protobuf spec allows, about 10,000 years.
+/// About 10,000 years, the longest protobuf Duration in either direction.
 const MAX_DURATION_SECONDS: i64 = 315_576_000_000;
-/// Largest `nanos` magnitude the protobuf spec allows for a Timestamp or Duration.
+/// The largest `nanos` a protobuf Timestamp or Duration allows. One more would be a whole second.
 const MAX_NANOS: i32 = 999_999_999;
 
 pub trait TimestampExt {
-  /// Converts without checking that the value follows the protobuf spec. Seconds outside the
-  /// dates `OffsetDateTime` can hold become the Unix epoch and negative nanos count as zero. The
-  /// result stops at the latest date rather than overflowing. Use this for data the server or SDK
-  /// wrote. Request handlers must use `to_offset_date_time_checked`, so a bad value is refused
-  /// rather than quietly turned into another date.
+  /// Converts without checking the value. Seconds out of range become the Unix epoch, negative
+  /// nanos count as zero and a result past 9999-12-31 stops there. Use this for stored or SDK
+  /// data, where a clamped date is better than an error. Request handlers should use
+  /// `to_offset_date_time_checked` instead, so a bad value is rejected, not silently changed.
   fn to_offset_date_time(&self) -> OffsetDateTime;
 
-  /// Converts a timestamp that follows the protobuf spec. Returns `None` unless seconds is from
-  /// -62,135,596,800 to 253,402,300,799 (0001-01-01 to 9999-12-31) and nanos is from 0 to
-  /// 999,999,999. Request handlers must use this form and refuse `None` as an invalid argument.
+  /// Converts only a timestamp protobuf considers valid: 0001-01-01 to 9999-12-31, with nanos from
+  /// 0 to 999,999,999. Returns `None` for anything else. Request handlers should use this and reply
+  /// with an invalid argument error on `None`.
   fn to_offset_date_time_checked(&self) -> Option<OffsetDateTime>;
 }
 
 impl TimestampExt for Timestamp {
   fn to_offset_date_time(&self) -> OffsetDateTime {
-    // `+` panics past the latest date, and a panic stops the whole server.
+    // Plain `+` panics past 9999-12-31. A panic takes down the whole server.
     OffsetDateTime::from_unix_timestamp(self.seconds)
       .unwrap_or(OffsetDateTime::UNIX_EPOCH)
       .saturating_add(time::Duration::nanoseconds(self.nanos.max(0).into()))
@@ -250,22 +248,21 @@ pub trait TimeDurationExt {
   fn add_tokio_instant(self, instant: tokio::time::Instant) -> tokio::time::Instant;
 }
 
-/// Longest duration the timer helpers hand to tokio, about 30 years. This is the cap tokio's
-/// `sleep` already applies. Tokio's intervals and `Instant` addition have no cap. A duration near
-/// `time::Duration::MAX`, which `to_time_duration` returns for bad input, overflows `Instant` there
-/// and panics.
+/// The longest duration the timer helpers pass to tokio: about 30 years, the same cap tokio's
+/// `sleep` uses. Tokio's intervals and `Instant` math have no cap. A huge duration there, like the
+/// `time::Duration::MAX` that `to_time_duration` returns for bad input, would panic.
 const MAX_TIMER_DURATION: Duration = Duration::from_hours(24 * 365 * 30);
 
-/// Period used for a zero interval. Tokio panics on a zero period. Its timer fires at most once per
-/// millisecond, so this is as often as a zero period could tick.
+/// Used in place of a zero interval period, which makes tokio panic. Tokio's timer can't fire more
+/// than once per millisecond anyway.
 const ZERO_INTERVAL_PERIOD: Duration = Duration::from_millis(1);
 
-/// The absolute value of `duration`, capped at `MAX_TIMER_DURATION`.
+/// The duration without its sign, capped at `MAX_TIMER_DURATION`.
 fn timer_duration(duration: time::Duration) -> Duration {
   duration.unsigned_abs().min(MAX_TIMER_DURATION)
 }
 
-/// Like `timer_duration`, but never zero, because tokio panics on a zero interval period.
+/// Same as `timer_duration`, but never zero, since tokio panics on a zero interval period.
 fn interval_period(duration: time::Duration) -> Duration {
   let period = timer_duration(duration);
   if period.is_zero() {
@@ -275,8 +272,8 @@ fn interval_period(duration: time::Duration) -> Duration {
   }
 }
 
-// Each helper takes the absolute value of the duration and caps it at `MAX_TIMER_DURATION`, so none
-// of them can panic however large the duration is.
+// Every helper goes through `timer_duration` or `interval_period`, so no duration can make them
+// panic.
 impl TimeDurationExt for time::Duration {
   fn advance(self) -> impl Future<Output = ()> {
     tokio::time::advance(timer_duration(self))
@@ -299,7 +296,7 @@ impl TimeDurationExt for time::Duration {
   }
 
   fn jittered(self) -> Duration {
-    // A negative duration has always jittered by zero.
+    // Negative durations get no jitter, as before.
     if self.is_negative() {
       return Duration::ZERO;
     }
@@ -342,16 +339,16 @@ pub trait ProtoDurationExt {
   /// function returns None if the duration is negative.
   fn to_std_duration_checked(&self) -> Option<Duration>;
 
-  /// Convert to a ``time::Duration`` which can be negative. This does not check that the value
-  /// follows the protobuf spec, and a result past the largest or smallest ``time::Duration`` stops
-  /// there rather than overflowing. Use this for data the server or SDK wrote. Request handlers
-  /// must use `to_time_duration_checked`, so a bad value is refused rather than clamped.
+  /// Convert to a `time::Duration`, which can be negative. Doesn't check the value. A result past
+  /// the largest or smallest `time::Duration` stops there. Use this for stored or SDK data. Request
+  /// handlers should use `to_time_duration_checked` instead, so a bad value is rejected rather than
+  /// clamped.
   fn to_time_duration(&self) -> time::Duration;
 
-  /// Convert a duration that follows the protobuf spec to a ``time::Duration``. Returns `None`
-  /// unless seconds is from -315,576,000,000 to 315,576,000,000 (about 10,000 years), nanos is
-  /// from -999,999,999 to 999,999,999 and nanos does not have the opposite sign to seconds. Either
-  /// may be zero. Request handlers must use this form and refuse `None` as an invalid argument.
+  /// Converts only a duration protobuf considers valid: up to about 10,000 years either way, nanos
+  /// under one second and nanos with the same sign as seconds (or zero). Returns `None` for
+  /// anything else. Request handlers should use this and reply with an invalid argument error on
+  /// `None`.
   fn to_time_duration_checked(&self) -> Option<time::Duration>;
 }
 
@@ -375,7 +372,7 @@ impl ProtoDurationExt for protobuf::well_known_types::duration::Duration {
   }
 
   fn to_time_duration(&self) -> time::Duration {
-    // `+` panics on overflow, and a panic stops the whole server.
+    // Plain `+` panics on overflow. A panic takes down the whole server.
     time::Duration::seconds(self.seconds)
       .saturating_add(time::Duration::nanoseconds(self.nanos.into()))
   }

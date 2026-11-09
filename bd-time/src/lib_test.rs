@@ -246,7 +246,7 @@ fn unchecked_conversions_saturate_instead_of_panicking() {
     time::Duration::MIN
   );
 
-  // Seconds `OffsetDateTime` cannot hold still fall back to the Unix epoch.
+  // Seconds out of range still fall back to the Unix epoch, as before.
   assert_eq!(
     timestamp(i64::MAX, 2_000_000_000).to_offset_date_time(),
     datetime!(1970-01-01 00:00:02 UTC)
@@ -261,7 +261,7 @@ fn unchecked_conversions_saturate_instead_of_panicking() {
     timestamp(253_402_300_799, 999_999_999).to_offset_date_time(),
     latest
   );
-  // One more nanosecond is past the latest date `OffsetDateTime` can hold.
+  // One nanosecond more would be past 9999-12-31, so the result stops there.
   assert_eq!(
     timestamp(253_402_300_799, 1_000_000_000).to_offset_date_time(),
     latest
@@ -310,7 +310,7 @@ fn rounding_to_a_negative_interval_uses_its_absolute_value() {
     datetime!(2021-01-01 00:00:05 UTC)
   );
 
-  // `time::Duration::MIN` has `-2^63` whole seconds, whose absolute value does not fit `i64`.
+  // The absolute value of `time::Duration::MIN` doesn't fit in an `i64`.
   let epoch = time::OffsetDateTime::UNIX_EPOCH;
   assert_eq!(time.floor(time::Duration::MIN), epoch);
   assert_eq!(time.ceil(time::Duration::MIN), epoch);
@@ -318,7 +318,7 @@ fn rounding_to_a_negative_interval_uses_its_absolute_value() {
 
 #[test]
 fn rounding_past_the_representable_dates_falls_back_to_the_epoch() {
-  // A multiple of `i64::MAX` seconds is either zero or past the dates `OffsetDateTime` can hold.
+  // Rounding to `i64::MAX` seconds gives either zero or a date out of range.
   let epoch = time::OffsetDateTime::UNIX_EPOCH;
   let after_epoch = datetime!(2021-01-01 00:00:03 UTC);
   let before_epoch = datetime!(1900-01-01 00:00:03 UTC);
@@ -340,7 +340,8 @@ async fn timer_helpers_cap_huge_durations_instead_of_panicking() {
   }
   assert!(time::Duration::MAX.jittered() <= MAX_TIMER_DURATION);
 
-  // A second tick adds the period to the first deadline, which overflows `Instant` when uncapped.
+  // The second tick adds the period to the first deadline. Without the cap, that overflows
+  // `Instant`.
   for mut interval in [
     time::Duration::MAX.interval(MissedTickBehavior::Burst),
     time::Duration::MAX.interval_at(MissedTickBehavior::Burst),
