@@ -6,7 +6,13 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
-use crate::stats::{HandshakeStats, PeriodicAction, PeriodicSchedule, RuntimePeriodicSchedule};
+use crate::stats::{
+  HandshakeStats,
+  PeriodicAction,
+  PeriodicSchedule,
+  RuntimePeriodicSchedule,
+  batch_transport_uuid,
+};
 use crate::test::TestTickerBackedSchedule;
 use crate::{FlushTrigger, Stats};
 use assert_matches::assert_matches;
@@ -55,14 +61,16 @@ use futures_util::poll;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::task::Poll;
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
 use tokio::fs::File;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc::error::TryRecvError;
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinError;
 use tokio::time::timeout;
 
@@ -71,6 +79,33 @@ struct CountingFileSystem {
   inner: Arc<TestFileSystem>,
   snapshot_reads: Arc<AtomicUsize>,
   index_writes: Arc<AtomicUsize>,
+  read_gates: Arc<Mutex<HashMap<PathBuf, ReadGate>>>,
+}
+
+struct ReadGate {
+  reached_tx: oneshot::Sender<()>,
+  resume_rx: oneshot::Receiver<()>,
+}
+
+impl CountingFileSystem {
+  fn pause_next_read(&self, path: &Path) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+    let (reached_tx, reached_rx) = oneshot::channel();
+    let (resume_tx, resume_rx) = oneshot::channel();
+    assert!(
+      self
+        .read_gates
+        .lock()
+        .insert(
+          path.to_path_buf(),
+          ReadGate {
+            reached_tx,
+            resume_rx
+          }
+        )
+        .is_none()
+    );
+    (reached_rx, resume_tx)
+  }
 }
 
 #[async_trait]
@@ -87,7 +122,13 @@ impl FileSystem for CountingFileSystem {
     if path != STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE) {
       self.snapshot_reads.fetch_add(1, Ordering::Relaxed);
     }
-    self.inner.read_file(path).await
+    let result = self.inner.read_file(path).await;
+    let gate = self.read_gates.lock().remove(path);
+    if let Some(gate) = gate {
+      gate.reached_tx.send(()).unwrap();
+      gate.resume_rx.await.unwrap();
+    }
+    result
   }
 
   async fn open_file(&self, path: &Path) -> anyhow::Result<File> {
@@ -195,6 +236,17 @@ async fn read_test_index(fs: &dyn FileSystem) -> PendingAggregationIndex {
     .await
     .unwrap();
   read_compressed_protobuf(&contents).unwrap()
+}
+
+fn empty_stats_upload_request(file_name: &str) -> StatsUploadRequest {
+  StatsUploadRequest {
+    upload_uuid: file_name.to_string(),
+    snapshot: vec![StatsSnapshot {
+      snapshot_type: Some(Snapshot_type::Metrics(MetricsList::default())),
+      ..Default::default()
+    }],
+    ..Default::default()
+  }
 }
 
 fn counter_snapshot(metric_name: &str, value: u64) -> StatsSnapshot {
@@ -997,8 +1049,8 @@ async fn overflow() {
   setup
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.overflows().len(), 2);
-      assert_eq!(upload.overflows()["id1"], 4);
-      assert_eq!(upload.overflows()["id2"], 2);
+      assert_eq!(upload.overflows().get("id1"), Some(&4));
+      assert_eq!(upload.overflows().get("id2"), Some(&2));
       assert_eq!(
         upload.get_workflow_counter("id1", labels!("foo" => "bar")),
         Some(3)
@@ -1136,6 +1188,290 @@ async fn report() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn snapshot_write_survives_handshake_cleanup() {
+  flush_survives_handshake_cleanup(true).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn empty_snapshot_cleanup_survives_handshake_cleanup() {
+  flush_survives_handshake_cleanup(false).await;
+}
+
+async fn flush_survives_handshake_cleanup(with_metrics: bool) {
+  let fs = CountingFileSystem::default();
+  write_test_index_entries(
+    &fs,
+    vec![
+      ("old", OffsetDateTime::UNIX_EPOCH - 10.minutes(), true),
+      ("active", OffsetDateTime::UNIX_EPOCH, false),
+    ],
+  )
+  .await;
+  fs.write_file(&STATS_DIRECTORY.join("old"), b"corrupt snapshot")
+    .await
+    .unwrap();
+  let mut active_request = empty_stats_upload_request("active");
+  if with_metrics {
+    active_request.snapshot = vec![counter_snapshot("test:counter", 1)];
+  }
+  write_named_test_upload_request(&fs, "active", active_request).await;
+  let (old_read_reached, resume_old_read) = fs.pause_next_read(&STATS_DIRECTORY.join("old"));
+  let (active_read_reached, resume_active_read) =
+    fs.pause_next_read(&STATS_DIRECTORY.join("active"));
+  let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+  if with_metrics {
+    setup
+      .stats
+      .collector
+      .scope("test")
+      .counter("counter")
+      .inc_by(2);
+  }
+
+  {
+    let mut request = HandshakeRequest::default();
+    let handshake = setup.handshake_stats.prepare_stats_handshake(&mut request);
+    tokio::pin!(handshake);
+    tokio::select! {
+      reached = old_read_reached => reached.unwrap(),
+      _ = &mut handshake => panic!("handshake finished before reading the old snapshot"),
+    }
+
+    setup.periodic_flush_tick_tx.send(()).await.unwrap();
+    active_read_reached.await.unwrap();
+
+    // Queue cleanup behind the flusher's locked read. Mutex fairness then lets cleanup remove
+    // the old entry before the flusher can reacquire the lock to write or remove its snapshot.
+    resume_old_read.send(()).unwrap();
+    assert!(poll!(&mut handshake).is_pending());
+    resume_active_read.send(()).unwrap();
+    let (handshake_result, flush_result) =
+      tokio::join!(handshake, setup.test_hooks.flush_complete_rx.recv());
+    assert!(handshake_result.unwrap().is_none());
+    assert_eq!(flush_result, Some(()));
+  }
+
+  let index = read_test_index(&fs).await;
+  assert!(!fs.exists(&STATS_DIRECTORY.join("old")).await.unwrap());
+  if with_metrics {
+    assert_eq!(index.pending_files.len(), 1);
+    assert_eq!(index.pending_files.first().unwrap().name, "active");
+    let persisted: StatsUploadRequest =
+      read_compressed_protobuf(&fs.read_file(&STATS_DIRECTORY.join("active")).await.unwrap())
+        .unwrap();
+    assert_eq!(persisted.upload_uuid, "active");
+    assert_eq!(
+      StatsRequestHelper::new(persisted).get_counter("test:counter", labels! {}),
+      Some(3)
+    );
+  } else {
+    assert_eq!(index.pending_files, Vec::<PendingFile>::new());
+    assert!(!fs.exists(&STATS_DIRECTORY.join("active")).await.unwrap());
+  }
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn empty_snapshot_cleanup_removes_empty_and_corrupt_files() {
+  let empty_request = write_compressed_protobuf(&empty_stats_upload_request("active")).unwrap();
+  for (contents, expected_corruption_drops) in [
+    (empty_request, 0),
+    (Vec::new(), 1),
+    (b"not a proto".to_vec(), 1),
+  ] {
+    let fs = CountingFileSystem::default();
+    write_test_index_entries(
+      &fs,
+      vec![
+        ("retained", OffsetDateTime::UNIX_EPOCH - 10.minutes(), true),
+        ("active", OffsetDateTime::UNIX_EPOCH, false),
+      ],
+    )
+    .await;
+    write_named_test_upload_request(
+      &fs,
+      "retained",
+      StatsUploadRequest {
+        upload_uuid: "retained".to_string(),
+        snapshot: vec![counter_snapshot("retained", 7)],
+        ..Default::default()
+      },
+    )
+    .await;
+    fs.write_file(&STATS_DIRECTORY.join("active"), &contents)
+      .await
+      .unwrap();
+    let retained_contents = fs
+      .read_file(&STATS_DIRECTORY.join("retained"))
+      .await
+      .unwrap();
+    let retained_file = read_test_index(&fs)
+      .await
+      .pending_files
+      .first()
+      .unwrap()
+      .clone();
+    let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+
+    setup.do_periodic_flush().await;
+
+    let index = read_test_index(&fs).await;
+    assert_eq!(index.pending_files, vec![retained_file]);
+    assert_eq!(
+      index
+        .unreported_stats_pipeline_analytics
+        .as_ref()
+        .unwrap()
+        .stats_files_dropped_due_to_active_snapshot_corruption,
+      expected_corruption_drops
+    );
+    assert!(!fs.exists(&STATS_DIRECTORY.join("active")).await.unwrap());
+    assert_eq!(
+      fs.read_file(&STATS_DIRECTORY.join("retained"))
+        .await
+        .unwrap(),
+      retained_contents
+    );
+    assert_matches!(setup.data_rx.try_recv(), Err(TryRecvError::Empty));
+    setup.shutdown().await.unwrap();
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn removed_snapshot_handle_fails_explicit_flush_and_recovers() {
+  let ((), error) = RecordingErrorReporter::async_record_error(async {
+    let fs = CountingFileSystem::default();
+    write_test_index_entries(&fs, vec![("active", OffsetDateTime::UNIX_EPOCH, false)]).await;
+    write_named_test_upload_request(&fs, "active", empty_stats_upload_request("active")).await;
+    let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+    let manager = setup.handshake_stats.file_manager.clone();
+    let empty_handle = manager.get_or_create_snapshot().await.unwrap();
+    let (read_reached, resume_read) = fs.pause_next_read(&STATS_DIRECTORY.join("active"));
+    setup.stats.record_dynamic_counter(labels! {}, "lost", 1);
+    let completion = setup.explicit_flush_trigger.flush().unwrap();
+    read_reached.await.unwrap();
+
+    // Invalidate the handle through cleanup queued ahead of the writer, exercising the real
+    // flusher's error and completion paths rather than only the manager's returned error.
+    let cleanup = manager.remove_empty_snapshot(empty_handle);
+    tokio::pin!(cleanup);
+    assert!(poll!(&mut cleanup).is_pending());
+    resume_read.send(()).unwrap();
+    let (cleanup_result, flush_result) =
+      tokio::join!(cleanup, setup.test_hooks.flush_complete_rx.recv());
+    cleanup_result.unwrap();
+    assert_eq!(flush_result, Some(()));
+    setup.wait_for_debounce_started().await;
+    assert_matches!(poll!(Box::pin(completion.wait())), Poll::Ready(Err(_)));
+    assert!(!setup.flush_handle.is_finished());
+    assert_eq!(
+      read_test_index(&fs).await.pending_files,
+      Vec::<PendingFile>::new()
+    );
+    assert!(!fs.exists(&STATS_DIRECTORY.join("active")).await.unwrap());
+    assert_matches!(setup.data_rx.try_recv(), Err(TryRecvError::Empty));
+
+    setup
+      .stats
+      .record_dynamic_counter(labels! {}, "recovered", 2);
+    let recovered_completion = setup.explicit_flush_trigger.flush().unwrap();
+    setup.wait_for_flush_coalesced().await;
+    tokio::time::advance(1.std_seconds()).await;
+    setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+    recovered_completion.wait().await.unwrap();
+    let upload = setup.next_stat_upload().await;
+    let helper = StatsRequestHelper::new(upload.payload.clone());
+    assert_eq!(helper.get_workflow_counter("lost", labels! {}), None);
+    assert_eq!(
+      helper.get_workflow_counter("recovered", labels! {}),
+      Some(2)
+    );
+    respond_to_stats_upload(upload, Some(true));
+    setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+    setup.shutdown().await.unwrap();
+  })
+  .await;
+
+  assert_eq!(
+    error,
+    "writing stats to disk: stats snapshot active no longer in pending index"
+  );
+}
+
+#[test]
+fn batch_transport_uuid_preserves_encoding() {
+  assert_eq!(batch_transport_uuid(&["first".to_string()]), "first");
+  assert_eq!(
+    batch_transport_uuid(&["first".to_string(), "second".to_string()]),
+    "ea0b6fcba933a68e4ceef50d236c323a3ce332bb12c4c1313a35550aced89b5e"
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn snapshot_handles_reject_rotated_files() {
+  for remove_empty in [false, true] {
+    let directory = TempDir::new().unwrap();
+    let fs = CountingFileSystem::default();
+    let runtime_loader = ConfigLoader::new(directory.path());
+    runtime_loader
+      .update_snapshot(make_simple_update(vec![(
+        bd_runtime::runtime::stats::MaxAggregatedFilesFlag::path(),
+        ValueKind::Int(1),
+      )]))
+      .await
+      .unwrap();
+    let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+    let manager = FileManager::new(Box::new(fs.clone()), time_provider.clone(), &runtime_loader);
+    let stale_handle = manager.get_or_create_snapshot().await.unwrap();
+    let old_file_name = read_test_index(&fs)
+      .await
+      .pending_files
+      .first()
+      .unwrap()
+      .name
+      .clone();
+
+    time_provider.advance(5.minutes());
+    let replacement = manager.get_or_create_snapshot().await.unwrap();
+    manager
+      .write_snapshot(replacement, counter_snapshot("replacement", 2))
+      .await
+      .unwrap();
+
+    let result = if remove_empty {
+      manager.remove_empty_snapshot(stale_handle).await
+    } else {
+      manager
+        .write_snapshot(stale_handle, counter_snapshot("stale", 1))
+        .await
+    };
+    assert!(result.unwrap_err().to_string().contains(&old_file_name));
+    let index = read_test_index(&fs).await;
+    assert_eq!(index.pending_files.len(), 1);
+    let replacement_file = index.pending_files.first().unwrap();
+    assert_ne!(replacement_file.name, old_file_name);
+    let persisted: StatsUploadRequest = read_compressed_protobuf(
+      &fs
+        .read_file(&STATS_DIRECTORY.join(&replacement_file.name))
+        .await
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(persisted.upload_uuid, replacement_file.name);
+    assert_eq!(
+      StatsRequestHelper::new(persisted).get_counter("replacement", labels! {}),
+      Some(2)
+    );
+    assert!(
+      !fs
+        .exists(&STATS_DIRECTORY.join(old_file_name))
+        .await
+        .unwrap()
+    );
+  }
+}
+
+#[tokio::test(start_paused = true)]
 async fn max_files_upload_race() {
   let mut setup = Setup::new().await;
 
@@ -1248,8 +1584,16 @@ async fn earliest_aggregation_start_end_maintained() {
       assert_eq!(upload.aggregation_window_start(), t0);
       assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
-      assert_eq!(upload.request.snapshot[0].retry_count, 0);
-      assert_eq!(upload.request.snapshot[0].client_stats_sequence, 1);
+      assert_eq!(upload.request.snapshot.first().unwrap().retry_count, 0);
+      assert_eq!(
+        upload
+          .request
+          .snapshot
+          .first()
+          .unwrap()
+          .client_stats_sequence,
+        1
+      );
     })
     .await;
 
@@ -1265,8 +1609,16 @@ async fn earliest_aggregation_start_end_maintained() {
       assert_eq!(upload.aggregation_window_start(), t0);
       assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
-      assert_eq!(upload.request.snapshot[0].retry_count, 1);
-      assert_eq!(upload.request.snapshot[0].client_stats_sequence, 1);
+      assert_eq!(upload.request.snapshot.first().unwrap().retry_count, 1);
+      assert_eq!(
+        upload
+          .request
+          .snapshot
+          .first()
+          .unwrap()
+          .client_stats_sequence,
+        1
+      );
     })
     .await;
 
@@ -1282,8 +1634,16 @@ async fn earliest_aggregation_start_end_maintained() {
       assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(1));
-      assert_eq!(upload.request.snapshot[0].retry_count, 2);
-      assert_eq!(upload.request.snapshot[0].client_stats_sequence, 1);
+      assert_eq!(upload.request.snapshot.first().unwrap().retry_count, 2);
+      assert_eq!(
+        upload
+          .request
+          .snapshot
+          .first()
+          .unwrap()
+          .client_stats_sequence,
+        1
+      );
     })
     .await;
 
@@ -1297,8 +1657,16 @@ async fn earliest_aggregation_start_end_maintained() {
       assert_eq!(upload.aggregation_window_end(), t4);
       assert_eq!(upload.number_of_metrics(), 2);
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(2));
-      assert_eq!(upload.request.snapshot[0].retry_count, 0);
-      assert_eq!(upload.request.snapshot[0].client_stats_sequence, 2);
+      assert_eq!(upload.request.snapshot.first().unwrap().retry_count, 0);
+      assert_eq!(
+        upload
+          .request
+          .snapshot
+          .first()
+          .unwrap()
+          .client_stats_sequence,
+        2
+      );
     })
     .await;
 
@@ -1313,8 +1681,16 @@ async fn abandoned_upload_increments_retry_count() {
   setup.upload_tick_tx.send(()).await.unwrap();
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   let upload = setup.next_stat_upload().await;
-  assert_eq!(upload.payload.snapshot[0].retry_count, 0);
-  assert_eq!(upload.payload.snapshot[0].client_stats_sequence, 1);
+  assert_eq!(upload.payload.snapshot.first().unwrap().retry_count, 0);
+  assert_eq!(
+    upload
+      .payload
+      .snapshot
+      .first()
+      .unwrap()
+      .client_stats_sequence,
+    1
+  );
 
   drop(upload);
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
@@ -1322,8 +1698,16 @@ async fn abandoned_upload_increments_retry_count() {
   setup.upload_tick_tx.send(()).await.unwrap();
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   let retry = setup.next_stat_upload().await;
-  assert_eq!(retry.payload.snapshot[0].retry_count, 1);
-  assert_eq!(retry.payload.snapshot[0].client_stats_sequence, 1);
+  assert_eq!(retry.payload.snapshot.first().unwrap().retry_count, 1);
+  assert_eq!(
+    retry
+      .payload
+      .snapshot
+      .first()
+      .unwrap()
+      .client_stats_sequence,
+    1
+  );
   retry
     .response_tx
     .send(UploadResponse {
@@ -1368,10 +1752,18 @@ async fn batched_retry_counts_and_sequences_persist_across_restart() {
   .await;
 
   let mut index = read_test_index(&fs).await;
-  index.pending_files[0].retry_count = 1;
-  index.pending_files[1].retry_count = u32::MAX;
-  index.pending_files[0].client_stats_sequence = 7;
-  index.pending_files[1].client_stats_sequence = 8;
+  index.pending_files.first_mut().unwrap().retry_count = 1;
+  index.pending_files.get_mut(1).unwrap().retry_count = u32::MAX;
+  index
+    .pending_files
+    .first_mut()
+    .unwrap()
+    .client_stats_sequence = 7;
+  index
+    .pending_files
+    .get_mut(1)
+    .unwrap()
+    .client_stats_sequence = 8;
   index.next_client_stats_sequence = 9;
   fs.write_file(
     &STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE),
@@ -1395,10 +1787,32 @@ async fn batched_retry_counts_and_sequences_persist_across_restart() {
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(pending_upload.request.snapshot[0].retry_count, 1);
-  assert_eq!(pending_upload.request.snapshot[1].retry_count, u32::MAX);
-  assert_eq!(pending_upload.request.snapshot[0].client_stats_sequence, 7);
-  assert_eq!(pending_upload.request.snapshot[1].client_stats_sequence, 8);
+  assert_eq!(
+    pending_upload.request.snapshot.first().unwrap().retry_count,
+    1
+  );
+  assert_eq!(
+    pending_upload.request.snapshot.get(1).unwrap().retry_count,
+    u32::MAX
+  );
+  assert_eq!(
+    pending_upload
+      .request
+      .snapshot
+      .first()
+      .unwrap()
+      .client_stats_sequence,
+    7
+  );
+  assert_eq!(
+    pending_upload
+      .request
+      .snapshot
+      .get(1)
+      .unwrap()
+      .client_stats_sequence,
+    8
+  );
   file_manager
     .release_pending_upload(&pending_upload.source_file_ids)
     .await
@@ -1408,8 +1822,14 @@ async fn batched_retry_counts_and_sequences_persist_across_restart() {
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(pending_upload.request.snapshot[0].retry_count, 1);
-  assert_eq!(pending_upload.request.snapshot[1].retry_count, u32::MAX);
+  assert_eq!(
+    pending_upload.request.snapshot.first().unwrap().retry_count,
+    1
+  );
+  assert_eq!(
+    pending_upload.request.snapshot.get(1).unwrap().retry_count,
+    u32::MAX
+  );
   file_manager
     .try_begin_stats_upload_attempt(&pending_upload.source_file_ids)
     .await
@@ -1431,10 +1851,32 @@ async fn batched_retry_counts_and_sequences_persist_across_restart() {
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(retried_upload.request.snapshot[0].retry_count, 2);
-  assert_eq!(retried_upload.request.snapshot[1].retry_count, u32::MAX);
-  assert_eq!(retried_upload.request.snapshot[0].client_stats_sequence, 7);
-  assert_eq!(retried_upload.request.snapshot[1].client_stats_sequence, 8);
+  assert_eq!(
+    retried_upload.request.snapshot.first().unwrap().retry_count,
+    2
+  );
+  assert_eq!(
+    retried_upload.request.snapshot.get(1).unwrap().retry_count,
+    u32::MAX
+  );
+  assert_eq!(
+    retried_upload
+      .request
+      .snapshot
+      .first()
+      .unwrap()
+      .client_stats_sequence,
+    7
+  );
+  assert_eq!(
+    retried_upload
+      .request
+      .snapshot
+      .get(1)
+      .unwrap()
+      .client_stats_sequence,
+    8
+  );
 }
 
 #[tokio::test(start_paused = true)]
@@ -1470,7 +1912,7 @@ async fn global_upload_interval_backpressure_holds_reservation_until_channel_clo
   setup.test_hooks.upload_abandoned_rx.recv().await.unwrap();
   let index = read_test_index(fs.as_ref()).await;
   assert!(!index.stats_upload_attempt_in_progress);
-  assert_eq!(index.pending_files[0].retry_count, 1);
+  assert_eq!(index.pending_files.first().unwrap().retry_count, 1);
   assert!(
     setup
       .handshake_stats
@@ -1495,7 +1937,7 @@ async fn global_upload_interval_backpressure_holds_reservation_until_channel_clo
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(upload.payload.snapshot[0].retry_count, 1);
+  assert_eq!(upload.payload.snapshot.first().unwrap().retry_count, 1);
   respond_to_stats_upload(upload, None);
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
   setup.shutdown().await.unwrap();
@@ -1515,9 +1957,14 @@ async fn global_upload_interval_deferred_handoff_does_not_reserve_twice() {
   completion.wait().await.unwrap();
   drop(setup.next_stat_upload().await);
   let upload = setup.next_stat_upload().await;
-  assert_eq!(upload.payload.snapshot[0].retry_count, 0);
+  assert_eq!(upload.payload.snapshot.first().unwrap().retry_count, 0);
   assert_eq!(
-    read_test_index(fs.as_ref()).await.pending_files[0].retry_count,
+    read_test_index(fs.as_ref())
+      .await
+      .pending_files
+      .first()
+      .unwrap()
+      .retry_count,
     1
   );
   tokio::time::advance(60.std_seconds()).await;
@@ -1544,7 +1991,7 @@ async fn global_upload_interval_deferred_handoff_does_not_reserve_twice() {
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(upload.payload.snapshot[0].retry_count, 1);
+  assert_eq!(upload.payload.snapshot.first().unwrap().retry_count, 1);
   respond_to_stats_upload(upload, Some(true));
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
   setup.shutdown().await.unwrap();
@@ -1564,7 +2011,7 @@ async fn global_upload_interval_deferred_shutdown_restart_starts_full_cooldown()
   completion.wait().await.unwrap();
   let before = read_test_index(fs.as_ref()).await;
   assert!(before.stats_upload_attempt_in_progress);
-  assert_eq!(before.pending_files[0].retry_count, 1);
+  assert_eq!(before.pending_files.first().unwrap().retry_count, 1);
   setup.shutdown().await.unwrap();
   assert!(
     read_test_index(fs.as_ref())
@@ -1587,10 +2034,10 @@ async fn global_upload_interval_deferred_shutdown_restart_starts_full_cooldown()
   let recovered = read_test_index(fs.as_ref()).await;
   assert!(!recovered.stats_upload_attempt_in_progress);
   assert_eq!(
-    recovered.pending_files[0].name,
-    before.pending_files[0].name
+    recovered.pending_files.first().unwrap().name,
+    before.pending_files.first().unwrap().name
   );
-  assert_eq!(recovered.pending_files[0].retry_count, 1);
+  assert_eq!(recovered.pending_files.first().unwrap().retry_count, 1);
   tokio::time::advance(9_999.std_milliseconds()).await;
   assert!(
     restarted
@@ -1607,10 +2054,15 @@ async fn global_upload_interval_deferred_shutdown_restart_starts_full_cooldown()
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(upload.payload.snapshot[0].retry_count, 1);
+  assert_eq!(upload.payload.snapshot.first().unwrap().retry_count, 1);
   assert_eq!(
-    upload.payload.snapshot[0].client_stats_sequence,
-    before.pending_files[0].client_stats_sequence
+    upload
+      .payload
+      .snapshot
+      .first()
+      .unwrap()
+      .client_stats_sequence,
+    before.pending_files.first().unwrap().client_stats_sequence
   );
   assert_eq!(
     StatsRequestHelper::new(upload.payload.clone()).get_workflow_counter_for_snapshot(
@@ -1713,7 +2165,7 @@ async fn global_upload_interval_handshake_blocks_other_origins_until_completion_
       .await
       .unwrap()
       .unwrap();
-    assert_eq!(startup.payload.snapshot[0].retry_count, 0);
+    assert_eq!(startup.payload.snapshot.first().unwrap().retry_count, 0);
     setup
       .stats
       .record_dynamic_counter(labels! {}, "retained", 2);
@@ -1918,7 +2370,7 @@ async fn global_upload_interval_completion_writes_index_once() {
         u64::from(success == Some(false))
       );
       if success != Some(true) {
-        assert_eq!(index.pending_files[0].retry_count, 1);
+        assert_eq!(index.pending_files.first().unwrap().retry_count, 1);
       }
     }
   }
@@ -1964,8 +2416,8 @@ async fn global_upload_interval_throttled_candidates_do_not_read_or_seal_snapsho
   assert_eq!(fs.snapshot_reads.load(Ordering::Relaxed), 0);
   assert_eq!(fs.index_writes.load(Ordering::Relaxed), 0);
   let index = read_test_index(&fs).await;
-  assert!(index.pending_files[0].period_end.is_none());
-  assert_eq!(index.pending_files[0].retry_count, 0);
+  assert!(index.pending_files.first().unwrap().period_end.is_none());
+  assert_eq!(index.pending_files.first().unwrap().retry_count, 0);
   manager.complete_stats_upload(&[], None).await.unwrap();
   fs.index_writes.store(0, Ordering::Relaxed);
   tokio::time::advance(9_999.std_milliseconds()).await;
@@ -1985,7 +2437,7 @@ async fn global_upload_interval_throttled_candidates_do_not_read_or_seal_snapsho
     .unwrap()
     .unwrap();
   assert_eq!(fs.snapshot_reads.load(Ordering::Relaxed), 1);
-  assert_eq!(pending.request.snapshot[0].retry_count, 0);
+  assert_eq!(pending.request.snapshot.first().unwrap().retry_count, 0);
   assert!(manager.prepare_stats_upload(&pending.source_file_ids).await);
   manager
     .complete_stats_upload(&pending.source_file_ids, Some(true))
@@ -2069,7 +2521,7 @@ async fn global_upload_interval_recovery_write_failure_keeps_fail_open_upload_re
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(pending.request.snapshot[0].retry_count, 1);
+  assert_eq!(pending.request.snapshot.first().unwrap().retry_count, 1);
   fs.disk_full.store(true, Ordering::SeqCst);
   assert!(manager.prepare_stats_upload(&pending.source_file_ids).await);
   fs.disk_full.store(false, Ordering::SeqCst);
@@ -2081,7 +2533,7 @@ async fn global_upload_interval_recovery_write_failure_keeps_fail_open_upload_re
     .unwrap();
   let index = read_test_index(fs.as_ref()).await;
   assert!(!index.stats_upload_attempt_in_progress);
-  assert_eq!(index.pending_files[0].retry_count, 2);
+  assert_eq!(index.pending_files.first().unwrap().retry_count, 2);
   assert!(!manager.prepare_stats_upload(&[]).await);
   tokio::time::advance(10.std_seconds()).await;
   let retry = manager
@@ -2089,7 +2541,7 @@ async fn global_upload_interval_recovery_write_failure_keeps_fail_open_upload_re
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(retry.request.snapshot[0].retry_count, 2);
+  assert_eq!(retry.request.snapshot.first().unwrap().retry_count, 2);
   assert!(manager.prepare_stats_upload(&retry.source_file_ids).await);
 }
 
@@ -2433,7 +2885,7 @@ async fn global_upload_interval_write_failure_retains_claim() {
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(retry.request.snapshot[0].retry_count, 1);
+  assert_eq!(retry.request.snapshot.first().unwrap().retry_count, 1);
 }
 
 #[tokio::test]
@@ -2486,7 +2938,7 @@ async fn index_write_failure_retains_pending_upload_until_transport_closes() {
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(retry.request.snapshot[0].retry_count, 1);
+  assert_eq!(retry.request.snapshot.first().unwrap().retry_count, 1);
 }
 
 #[tokio::test]
@@ -2527,7 +2979,15 @@ async fn index_write_replaces_temporary_file_before_publication() {
     .unwrap();
 
   assert!(!temporary_path.exists());
-  assert_eq!(read_test_index(&fs).await.pending_files[0].retry_count, 1);
+  assert_eq!(
+    read_test_index(&fs)
+      .await
+      .pending_files
+      .first()
+      .unwrap()
+      .retry_count,
+    1
+  );
 }
 
 #[tokio::test]
@@ -2546,7 +3006,10 @@ async fn client_stats_sequence_starts_at_one_and_persists_across_restart() {
 
   let first_snapshot = file_manager.get_or_create_snapshot().await.unwrap();
   let index = read_test_index(&fs).await;
-  assert_eq!(index.pending_files[0].client_stats_sequence, 1);
+  assert_eq!(
+    index.pending_files.first().unwrap().client_stats_sequence,
+    1
+  );
   assert_eq!(index.next_client_stats_sequence, 2);
   file_manager
     .write_snapshot(first_snapshot, counter_snapshot("first", 1))
@@ -2557,7 +3020,15 @@ async fn client_stats_sequence_starts_at_one_and_persists_across_restart() {
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(first_upload.request.snapshot[0].client_stats_sequence, 1);
+  assert_eq!(
+    first_upload
+      .request
+      .snapshot
+      .first()
+      .unwrap()
+      .client_stats_sequence,
+    1
+  );
   file_manager
     .complete_pending_upload(&first_upload.source_file_ids, true)
     .await
@@ -2574,7 +3045,10 @@ async fn client_stats_sequence_starts_at_one_and_persists_across_restart() {
     .await
     .unwrap();
   let index = read_test_index(&fs).await;
-  assert_eq!(index.pending_files[0].client_stats_sequence, 2);
+  assert_eq!(
+    index.pending_files.first().unwrap().client_stats_sequence,
+    2
+  );
   assert_eq!(index.next_client_stats_sequence, 3);
   restarted_file_manager
     .write_snapshot(second_snapshot, counter_snapshot("second", 1))
@@ -2585,7 +3059,15 @@ async fn client_stats_sequence_starts_at_one_and_persists_across_restart() {
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(second_upload.request.snapshot[0].client_stats_sequence, 2);
+  assert_eq!(
+    second_upload
+      .request
+      .snapshot
+      .first()
+      .unwrap()
+      .client_stats_sequence,
+    2
+  );
 }
 
 #[tokio::test]
@@ -2609,7 +3091,10 @@ async fn client_stats_sequence_resets_after_index_recovery() {
 
   let _ = file_manager.get_or_create_snapshot().await.unwrap();
   let index = read_test_index(&fs).await;
-  assert_eq!(index.pending_files[0].client_stats_sequence, 1);
+  assert_eq!(
+    index.pending_files.first().unwrap().client_stats_sequence,
+    1
+  );
   assert_eq!(index.next_client_stats_sequence, 2);
 }
 
@@ -4410,7 +4895,7 @@ async fn global_upload_interval_queued_abandonment_starts_full_cooldown() {
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
   let index = read_test_index(fs.as_ref()).await;
   assert!(!index.stats_upload_attempt_in_progress);
-  assert_eq!(index.pending_files[0].retry_count, 1);
+  assert_eq!(index.pending_files.first().unwrap().retry_count, 1);
   assert!(
     setup
       .handshake_stats
@@ -4436,7 +4921,7 @@ async fn global_upload_interval_queued_abandonment_starts_full_cooldown() {
     .await
     .unwrap()
     .unwrap();
-  assert_eq!(admitted.payload.snapshot[0].retry_count, 1);
+  assert_eq!(admitted.payload.snapshot.first().unwrap().retry_count, 1);
   drop(admitted);
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
   setup.shutdown().await.unwrap();
@@ -4493,9 +4978,9 @@ async fn global_upload_interval_is_shared_across_all_origins() {
   assert!(setup.data_rx.try_recv().is_err());
   let index = read_test_index(fs.as_ref()).await;
   assert_eq!(index.pending_files.len(), 2);
-  assert_eq!(index.pending_files[0].retry_count, 1);
-  assert_eq!(index.pending_files[1].retry_count, 0);
-  let second_file_id = index.pending_files[1].name.clone();
+  assert_eq!(index.pending_files.first().unwrap().retry_count, 1);
+  assert_eq!(index.pending_files.get(1).unwrap().retry_count, 0);
+  let second_file_id = index.pending_files.get(1).unwrap().name.clone();
 
   tokio::time::advance(60.std_seconds()).await;
   setup.upload_tick_tx.send(()).await.unwrap();
@@ -4507,7 +4992,12 @@ async fn global_upload_interval_is_shared_across_all_origins() {
     Some(1)
   );
   assert_eq!(
-    read_test_index(fs.as_ref()).await.pending_files[1].name,
+    read_test_index(fs.as_ref())
+      .await
+      .pending_files
+      .get(1)
+      .unwrap()
+      .name,
     second_file_id
   );
 
@@ -4537,8 +5027,8 @@ async fn global_upload_interval_is_shared_across_all_origins() {
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
   assert!(setup.data_rx.try_recv().is_err());
   let index = read_test_index(fs.as_ref()).await;
-  assert_eq!(index.pending_files[0].name, second_file_id);
-  assert_eq!(index.pending_files[0].retry_count, 0);
+  assert_eq!(index.pending_files.first().unwrap().name, second_file_id);
+  assert_eq!(index.pending_files.first().unwrap().retry_count, 0);
 
   let completion = setup.explicit_flush_trigger.flush().unwrap();
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();

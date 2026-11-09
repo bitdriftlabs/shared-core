@@ -49,7 +49,7 @@ pub const MAX_SNAPSHOTS_PER_UPLOAD: usize = 10;
 //
 
 pub struct StatsUploadRequestHandle {
-  index: usize,
+  file_name: String,
   stats_upload_request: StatsUploadRequest,
 }
 
@@ -146,17 +146,14 @@ impl InitializedInner {
       .stats_files_dropped_due_to_pending_snapshot_corruption += 1;
   }
 
-  fn find_index(
-    index: &VecDeque<PendingFile>,
-    predicate: impl Fn(&PendingFile) -> bool,
-  ) -> Option<usize> {
-    index.iter().position(predicate)
-  }
-
   fn increment_retry_counts(&mut self, source_file_ids: &[String]) {
     for source_file_id in source_file_ids {
-      if let Some(index) = Self::find_index(&self.index, |file| file.name == *source_file_id) {
-        self.index[index].retry_count = self.index[index].retry_count.saturating_add(1);
+      if let Some(file) = self
+        .index
+        .iter_mut()
+        .find(|file| file.name == *source_file_id)
+      {
+        file.retry_count = file.retry_count.saturating_add(1);
       } else {
         log::debug!("pending upload {source_file_id} not found in index");
       }
@@ -216,10 +213,15 @@ impl InitializedInner {
     Ok(())
   }
 
-  async fn delete_snapshot(&mut self, index: usize) -> anyhow::Result<()> {
+  async fn delete_snapshot(&mut self, file_name: &str) -> anyhow::Result<()> {
+    let index = self
+      .index
+      .iter()
+      .position(|file| file.name == file_name)
+      .ok_or(InvariantError::Invariant)?;
     self
       .file_system
-      .delete_file(&STATS_DIRECTORY.join(&self.index[index].name))
+      .delete_file(&STATS_DIRECTORY.join(file_name))
       .await?;
     self.index.remove(index);
 
@@ -227,24 +229,14 @@ impl InitializedInner {
   }
 
   async fn delete_pending_uploads(&mut self, names: &[String]) -> anyhow::Result<()> {
-    let mut remaining_names: HashSet<String> = names.iter().cloned().collect();
-    let mut index = 0;
-
-    while index < self.index.len() {
-      let file_name = self.index[index].name.clone();
-      if remaining_names.remove(&file_name) {
+    for file_name in names {
+      if self.index.iter().any(|file| file.name == *file_name) {
         log::debug!("deleting pending upload: {file_name}");
-        self.delete_snapshot(index).await?;
+        self.delete_snapshot(file_name).await?;
       } else {
-        index += 1;
+        // Rotation can evict an in-flight file before its upload completes.
+        log::debug!("pending upload {file_name} not found in index");
       }
-    }
-
-    for name in remaining_names {
-      // A completion can race with max-files eviction removing an older in-flight entry before the
-      // upload ack arrives. We could teach eviction to preserve in-flight files, but that is more
-      // complicated than treating a missing entry here as an already-cleaned-up upload.
-      log::debug!("pending upload {name} not found in index");
     }
 
     self.write_index().await
@@ -577,7 +569,13 @@ impl FileManager {
     if create_new_snapshot {
       if *self.max_aggregated_files.read() <= u32::try_from(initialized_inner.index.len())? {
         log::debug!("max files reached, popping oldest snapshot");
-        initialized_inner.delete_snapshot(0).await?;
+        let oldest_file_name = initialized_inner
+          .index
+          .front()
+          .ok_or(InvariantError::Invariant)?
+          .name
+          .clone();
+        initialized_inner.delete_snapshot(&oldest_file_name).await?;
         initialized_inner.record_rotation_drop();
       }
 
@@ -594,13 +592,13 @@ impl FileManager {
 
     // Read the file back or make a new one. We don't count an error reading the file or file
     // corruption as a fatal error.
-    let path = STATS_DIRECTORY.join(
-      &initialized_inner
-        .index
-        .back()
-        .ok_or(InvariantError::Invariant)?
-        .name,
-    );
+    let file_name = initialized_inner
+      .index
+      .back()
+      .ok_or(InvariantError::Invariant)?
+      .name
+      .clone();
+    let path = STATS_DIRECTORY.join(&file_name);
     let stats_upload_request = if create_new_snapshot {
       None
     } else {
@@ -625,47 +623,42 @@ impl FileManager {
     .map_or_else(
       || {
         Ok(StatsUploadRequest {
-          upload_uuid: initialized_inner
-            .index
-            .back()
-            .ok_or(InvariantError::Invariant)?
-            .name
-            .clone(),
+          upload_uuid: file_name.clone(),
           ..Default::default()
         })
       },
       Ok::<_, anyhow::Error>,
     )?;
 
+    log::debug!("acquired writable stats snapshot: {file_name}");
     Ok(StatsUploadRequestHandle {
-      index: initialized_inner.index.len() - 1,
+      file_name,
       stats_upload_request,
     })
   }
 
-  // Called if a merge results in no metrics. The file is removed from the index as it is never
-  // written to avoid empty uploads.
-  pub async fn remove_empty_snapshot(&self) -> anyhow::Result<()> {
+  // Called if a merge results in no metrics. Use the handle's identity because the pending index
+  // may have changed during the merge, and remove the file to avoid empty uploads.
+  pub async fn remove_empty_snapshot(
+    &self,
+    handle: StatsUploadRequestHandle,
+  ) -> anyhow::Result<()> {
     let mut inner = self.inner.lock().await;
     let initialized_inner = inner.get_initialized().await?;
 
-    debug_assert!(
-      !initialized_inner
-        .index
-        .back()
-        .ok_or(InvariantError::Invariant)?
-        .period_end
-        .is_some()
-    );
-    log::debug!(
-      "removing empty snapshot from index: {}",
-      initialized_inner
-        .index
-        .back()
-        .ok_or(InvariantError::Invariant)?
-        .name
-    );
-    initialized_inner.index.pop_back();
+    let file = initialized_inner
+      .index
+      .iter()
+      .find(|file| file.name == handle.file_name)
+      .ok_or_else(|| {
+        anyhow::anyhow!(
+          "stats snapshot {} no longer in pending index",
+          handle.file_name
+        )
+      })?;
+    debug_assert!(file.period_end.is_none());
+    log::debug!("removing empty snapshot from index: {}", handle.file_name);
+    initialized_inner.delete_snapshot(&handle.file_name).await?;
     initialized_inner.write_index().await?;
 
     Ok(())
@@ -680,8 +673,20 @@ impl FileManager {
     let mut inner = self.inner.lock().await;
     let initialized_inner = inner.get_initialized().await?;
 
+    // Handshake cleanup can remove earlier entries while the caller merges its snapshot. Resolve
+    // the stable file identity again rather than retaining a position across mutex acquisitions.
+    let file = initialized_inner
+      .index
+      .iter()
+      .find(|file| file.name == handle.file_name)
+      .ok_or_else(|| {
+        anyhow::anyhow!(
+          "stats snapshot {} no longer in pending index",
+          handle.file_name
+        )
+      })?;
     handle.stats_upload_request.snapshot = vec![snapshot];
-    let path = STATS_DIRECTORY.join(&initialized_inner.index[handle.index].name);
+    let path = STATS_DIRECTORY.join(&file.name);
     log::debug!("writing snapshot: {}", path.display());
     let compressed = write_compressed_protobuf(&handle.stats_upload_request)?;
 
@@ -741,26 +746,26 @@ impl FileManager {
       let mut pending_files = Vec::new();
 
       for file_id in &eligible_file_ids {
-        let Some(index) =
-          InitializedInner::find_index(&initialized_inner.index, |file| file.name == *file_id)
+        let Some(file) = initialized_inner
+          .index
+          .iter_mut()
+          .find(|file| file.name == *file_id)
         else {
           continue;
         };
 
         // Mark the selected files in flight under the lock before we release it for disk reads.
-        if initialized_inner.index[index].period_end.is_none() {
-          log::debug!(
-            "marking entry as ready to upload: {}",
-            initialized_inner.index[index].name
-          );
-          initialized_inner.index[index].period_end = now.into_proto();
+        if file.period_end.is_none() {
+          log::debug!("marking entry as ready to upload: {}", file.name);
+          file.period_end = now.into_proto();
           should_write_index = true;
         }
 
+        let pending_file = file.clone();
         initialized_inner
           .in_flight_uploads
-          .insert(initialized_inner.index[index].name.clone());
-        pending_files.push(initialized_inner.index[index].clone());
+          .insert(pending_file.name.clone());
+        pending_files.push(pending_file);
       }
 
       if should_write_index {
@@ -852,10 +857,12 @@ impl FileManager {
     initialized_inner.release_pending_uploads(source_file_ids);
 
     for uuid in source_file_ids {
-      if let Some(index) =
-        InitializedInner::find_index(&initialized_inner.index, |file| file.name == *uuid)
+      if let Some(file) = initialized_inner
+        .index
+        .iter()
+        .find(|file| file.name == *uuid)
       {
-        debug_assert!(initialized_inner.index[index].period_end.is_some());
+        debug_assert!(file.period_end.is_some());
       }
     }
 

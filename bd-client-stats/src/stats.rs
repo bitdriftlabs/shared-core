@@ -66,8 +66,6 @@ use tokio::time::Sleep;
 type UploadFuture =
   Pin<Box<dyn std::future::Future<Output = (Option<UploadResponse>, UploadContext)> + Send + Sync>>;
 
-const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PeriodicAction {
   Flush,
@@ -301,8 +299,8 @@ impl PendingUploadContext {
 }
 
 fn batch_transport_uuid(source_file_ids: &[String]) -> String {
-  if source_file_ids.len() == 1 {
-    return source_file_ids[0].clone();
+  if let [source_file_id] = source_file_ids {
+    return source_file_id.clone();
   }
 
   // Retries must use the same transport UUID for the same logical batch, but the UUID also needs
@@ -310,12 +308,7 @@ fn batch_transport_uuid(source_file_ids: &[String]) -> String {
   // source file IDs gives us both properties across retries and restarts, and `upload_uuid` is
   // only treated as an opaque string in this path.
   let digest = Sha256::digest(format!("stats-batch:{}", source_file_ids.join(",")));
-  let mut encoded = String::with_capacity(digest.len() * 2);
-  for byte in digest {
-    encoded.push(HEX_DIGITS[usize::from(byte >> 4)] as char);
-    encoded.push(HEX_DIGITS[usize::from(byte & 0x0f)] as char);
-  }
-  encoded
+  format!("{:02x}", digest.iter().format(""))
 }
 
 #[async_trait]
@@ -1241,7 +1234,7 @@ impl Flusher {
       && new_or_existing_snapshot.overflows.is_empty()
       && new_or_existing_snapshot.workflow_debug_data.is_empty()
     {
-      self.file_manager.remove_empty_snapshot().await?;
+      self.file_manager.remove_empty_snapshot(handle).await?;
       return Ok(());
     }
 
