@@ -6,15 +6,12 @@
 
 use crate::{
   DynamicIntervalTicker,
-  MAX_TIMER_DURATION,
   OffsetDateTimeExt as _,
   ProtoDurationExt as _,
   TestTimeProvider,
   Ticker,
-  TimeDurationExt as _,
   TimeProvider,
   TimestampExt as _,
-  ZERO_INTERVAL_PERIOD,
 };
 use protobuf::well_known_types::duration::Duration as ProtoDuration;
 use protobuf::well_known_types::timestamp::Timestamp;
@@ -22,7 +19,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 use time::ext::NumericalDuration;
 use time::macros::datetime;
-use tokio::time::{Instant, MissedTickBehavior};
 
 #[test]
 fn timestamp_floor() {
@@ -264,98 +260,4 @@ fn unchecked_conversions_keep_their_old_output() {
     proto_duration(-3, -500_000_000).to_time_duration(),
     time::Duration::new(-3, -500_000_000)
   );
-}
-
-#[test]
-fn rounding_to_an_interval_under_one_second_leaves_the_time_unchanged() {
-  let time = datetime!(2021-01-01 00:00:03.5 UTC);
-  for interval in [time::Duration::ZERO, 500.milliseconds()] {
-    assert_eq!(time.floor(interval), time, "floor to {interval}");
-    assert_eq!(time.ceil(interval), time, "ceil to {interval}");
-  }
-}
-
-#[test]
-fn rounding_to_a_negative_interval_uses_its_absolute_value() {
-  let time = datetime!(2021-01-01 00:00:03 UTC);
-  assert_eq!(
-    time.floor((-5).seconds()),
-    datetime!(2021-01-01 00:00:00 UTC)
-  );
-  assert_eq!(
-    time.ceil((-5).seconds()),
-    datetime!(2021-01-01 00:00:05 UTC)
-  );
-}
-
-#[test]
-fn rounding_up_to_a_huge_interval_falls_back_to_the_epoch() {
-  // `to_time_duration` gives these for bad input. Rounding up to either lands past the dates
-  // `OffsetDateTime` can hold.
-  let time = datetime!(2021-01-01 00:00:03 UTC);
-  for interval in [time::Duration::MAX, time::Duration::MIN] {
-    assert_eq!(
-      time.ceil(interval),
-      time::OffsetDateTime::UNIX_EPOCH,
-      "{interval}"
-    );
-  }
-}
-
-#[tokio::test(start_paused = true)]
-async fn timer_helpers_cap_huge_durations_instead_of_panicking() {
-  let now = Instant::now();
-  assert_eq!(
-    time::Duration::MAX.add_tokio_now(),
-    now + MAX_TIMER_DURATION
-  );
-  assert_eq!(
-    time::Duration::MAX.add_tokio_instant(now),
-    now + MAX_TIMER_DURATION
-  );
-  assert!(time::Duration::MAX.jittered() <= MAX_TIMER_DURATION);
-
-  // The second tick adds the period to the first deadline. Without the cap, that overflows
-  // `Instant`.
-  for mut interval in [
-    time::Duration::MAX.interval(MissedTickBehavior::Burst),
-    time::Duration::MAX.interval_at(MissedTickBehavior::Burst),
-    time::Duration::MAX.jittered_interval_at(MissedTickBehavior::Burst),
-  ] {
-    assert_eq!(interval.period(), MAX_TIMER_DURATION);
-    interval.tick().await;
-    interval.tick().await;
-  }
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_zero_interval_uses_a_one_millisecond_period_instead_of_panicking() {
-  for mut interval in [
-    time::Duration::ZERO.interval(MissedTickBehavior::Burst),
-    time::Duration::ZERO.interval_at(MissedTickBehavior::Burst),
-    time::Duration::ZERO.jittered_interval_at(MissedTickBehavior::Burst),
-  ] {
-    assert_eq!(interval.period(), ZERO_INTERVAL_PERIOD);
-    interval.tick().await;
-    interval.tick().await;
-  }
-}
-
-#[tokio::test(start_paused = true)]
-async fn timer_helpers_keep_their_output_for_ordinary_durations() {
-  let now = Instant::now();
-  assert_eq!(
-    5.seconds().add_tokio_now(),
-    now + std::time::Duration::from_secs(5)
-  );
-  assert_eq!(
-    (-5).seconds().add_tokio_instant(now),
-    now + std::time::Duration::from_secs(5)
-  );
-  assert_eq!(
-    5.seconds().interval(MissedTickBehavior::Burst).period(),
-    std::time::Duration::from_secs(5)
-  );
-  assert_eq!((-5).seconds().jittered(), std::time::Duration::ZERO);
-  assert!(5.seconds().jittered() <= std::time::Duration::from_secs(5));
 }

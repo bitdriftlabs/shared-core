@@ -97,18 +97,14 @@ pub trait OffsetDateTimeExt {
   ///
   /// For example, if the interval is 5 minutes, then 12:03:00 would be rounded down to 12:00:00.
   ///
-  /// `interval` is cut to whole seconds and its sign is ignored. An interval under one second
-  /// returns the time unchanged. A result outside the dates `OffsetDateTime` supports becomes the
-  /// Unix epoch.
+  /// Note that `interval` will be rounded down to the nearest second and should be positive.
   fn floor(&self, interval: time::Duration) -> OffsetDateTime;
 
   /// Rounds up the given timestamp to the nearest interval.
   ///
   /// For example, if the interval is 5 minutes, then 12:03:00 would be rounded up to 12:05:00.
   ///
-  /// `interval` is cut to whole seconds and its sign is ignored. An interval under one second
-  /// returns the time unchanged. A result outside the dates `OffsetDateTime` supports becomes the
-  /// Unix epoch.
+  /// Note that `interval` will be rounded down to the nearest second and should be positive.
   fn ceil(&self, interval: time::Duration) -> OffsetDateTime;
 
   /// Create an `OffsetDateTime` from a unix timestamp in microseconds.
@@ -144,46 +140,26 @@ impl OffsetDateTimeExt for OffsetDateTime {
   }
 
   fn floor(&self, interval: time::Duration) -> OffsetDateTime {
-    let Some((unix_timestamp, rem, _)) = rounding_parts(*self, interval) else {
-      return *self;
-    };
-    from_unix_timestamp_i128(unix_timestamp - rem)
+    debug_assert!(interval.whole_seconds() >= 0);
+
+    let unix_timestamp = self.unix_timestamp();
+    let rounded_down = unix_timestamp - unix_timestamp.rem_euclid(interval.whole_seconds());
+    Self::from_unix_timestamp(rounded_down).unwrap_or(Self::UNIX_EPOCH)
   }
 
   fn ceil(&self, interval: time::Duration) -> OffsetDateTime {
-    let Some((unix_timestamp, rem, interval)) = rounding_parts(*self, interval) else {
-      return *self;
-    };
+    debug_assert!(interval.whole_seconds() >= 0);
+
+    let unix_timestamp = self.unix_timestamp();
+    let rem = unix_timestamp.rem_euclid(interval.whole_seconds());
     if rem == 0 {
       return *self;
     }
-    from_unix_timestamp_i128(unix_timestamp - rem + interval)
-  }
-}
 
-/// Returns the unix timestamp of `time`, its remainder after dividing by `interval` and the
-/// interval without its sign, all in whole seconds. Returns `None` for an interval under one
-/// second, because dividing by zero would panic. Uses `i128` so a huge interval can't overflow.
-fn rounding_parts(time: OffsetDateTime, interval: time::Duration) -> Option<(i128, i128, i128)> {
-  let interval = i128::from(interval.whole_seconds()).abs();
-  if interval == 0 {
-    return None;
+    let rounded_up = unix_timestamp + interval.whole_seconds()
+      - unix_timestamp.rem_euclid(interval.whole_seconds());
+    Self::from_unix_timestamp(rounded_up).unwrap_or(Self::UNIX_EPOCH)
   }
-  let unix_timestamp = i128::from(time.unix_timestamp());
-  Some((
-    unix_timestamp,
-    unix_timestamp.rem_euclid(interval),
-    interval,
-  ))
-}
-
-/// Like `OffsetDateTime::from_unix_timestamp`, but returns the Unix epoch when the time is out of
-/// range.
-fn from_unix_timestamp_i128(seconds: i128) -> OffsetDateTime {
-  i64::try_from(seconds)
-    .ok()
-    .and_then(|seconds| OffsetDateTime::from_unix_timestamp(seconds).ok())
-    .unwrap_or(OffsetDateTime::UNIX_EPOCH)
 }
 
 //
@@ -248,81 +224,51 @@ pub trait TimeDurationExt {
   fn add_tokio_instant(self, instant: tokio::time::Instant) -> tokio::time::Instant;
 }
 
-/// The longest duration the timer helpers pass to tokio: about 30 years, the same cap tokio's
-/// `sleep` uses. Tokio's intervals and `Instant` math have no cap. A huge duration there, like the
-/// `time::Duration::MAX` that `to_time_duration` returns for bad input, would panic.
-const MAX_TIMER_DURATION: Duration = Duration::from_hours(24 * 365 * 30);
-
-/// Used in place of a zero interval period, which makes tokio panic. Tokio's timer can't fire more
-/// than once per millisecond anyway.
-const ZERO_INTERVAL_PERIOD: Duration = Duration::from_millis(1);
-
-/// The duration without its sign, capped at `MAX_TIMER_DURATION`.
-fn timer_duration(duration: time::Duration) -> Duration {
-  duration.unsigned_abs().min(MAX_TIMER_DURATION)
-}
-
-/// Same as `timer_duration`, but never zero, since tokio panics on a zero interval period.
-fn interval_period(duration: time::Duration) -> Duration {
-  let period = timer_duration(duration);
-  if period.is_zero() {
-    ZERO_INTERVAL_PERIOD
-  } else {
-    period
-  }
-}
-
-// Every helper goes through `timer_duration` or `interval_period`, so no duration can make them
-// panic.
 impl TimeDurationExt for time::Duration {
   fn advance(self) -> impl Future<Output = ()> {
-    tokio::time::advance(timer_duration(self))
+    tokio::time::advance(self.unsigned_abs())
   }
 
   fn sleep(self) -> Sleep {
-    tokio::time::sleep(timer_duration(self))
+    tokio::time::sleep(self.unsigned_abs())
   }
 
   fn interval(self, behavior: MissedTickBehavior) -> Interval {
-    let mut i = interval(interval_period(self));
+    let mut i = interval(self.unsigned_abs());
     i.set_missed_tick_behavior(behavior);
     i
   }
 
   fn interval_at(self, behavior: MissedTickBehavior) -> Interval {
-    let mut i = interval_at(self.add_tokio_now(), interval_period(self));
+    let mut i = interval_at(self.add_tokio_now(), self.unsigned_abs());
     i.set_missed_tick_behavior(behavior);
     i
   }
 
   fn jittered(self) -> Duration {
-    // Negative durations get no jitter, as before.
-    if self.is_negative() {
-      return Duration::ZERO;
-    }
-    let millis = u64::try_from(timer_duration(self).as_millis()).unwrap_or(u64::MAX);
+    let millis: u64 = self.whole_milliseconds().try_into().unwrap_or_default();
     Duration::from_millis(rng().random_range(0 ..= millis))
   }
 
   fn jittered_interval_at(self, behavior: MissedTickBehavior) -> Interval {
     let mut i = interval_at(
       tokio::time::Instant::now() + self.jittered(),
-      interval_period(self),
+      self.unsigned_abs(),
     );
     i.set_missed_tick_behavior(behavior);
     i
   }
 
   fn timeout<F: IntoFuture>(self, f: F) -> Timeout<F::IntoFuture> {
-    tokio::time::timeout(timer_duration(self), f)
+    tokio::time::timeout(self.unsigned_abs(), f)
   }
 
   fn add_tokio_now(self) -> tokio::time::Instant {
-    tokio::time::Instant::now() + timer_duration(self)
+    tokio::time::Instant::now() + self.unsigned_abs()
   }
 
   fn add_tokio_instant(self, instant: tokio::time::Instant) -> tokio::time::Instant {
-    instant + timer_duration(self)
+    instant + self.unsigned_abs()
   }
 }
 
