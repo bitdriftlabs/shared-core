@@ -23,13 +23,17 @@ upload and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/arti
   `ApplicationExitInfo` timestamp supplies a death bound, with paired-clock skew and millisecond
   rounding tolerance, so later reuse of its numeric PID cannot attach an unrelated profile when
   optional trace process-start metadata is absent. A live Java OOM timestamp is not a known process
-  death and does not impose that bound. Known limitation: OOM traces may omit process-start
+  death and does not impose that bound. Distinct overlapping runs compatible with the trace's
+  process-start tolerance are rejected as ambiguous; multiple reports from one run remain eligible.
+  Known limitation: OOM traces may omit process-start
   metadata, so unbounded OOM candidates cannot exclude later PID reuse unless another candidate
   exposes it. Recovered OOMs need trustworthy process-exit evidence; using exception time as death
   would reject valid heap capture that continues afterward.
 - The selective wire reader streams zlib `compressed_packets` into the parser without retaining
   either the encoded field or expanded heap/event bodies. It verifies the complete zlib stream,
-  checksum and absence of trailing bytes; nested compressed packets remain unsupported. Unrelated
+  checksum, declared protobuf message lengths and absence of trailing bytes; nested compressed
+  packets remain unsupported. Repeated singular defaults and ftrace/compact-scheduler messages
+  merge within a packet before clocks and timestamp deltas are applied. Unrelated
   unusable incremental packets are skipped, but loss still invalidates sequence defaults and any
   selected clock, heap or process evidence requiring that state fails closed. Conflicting
   process/thread ownership is rejected regardless of metadata order, including process IDs known

@@ -232,20 +232,21 @@ pub fn match_reports(
         .last_ns
         .min(report.run.end_elapsed_ns.unwrap_or(u64::MAX));
       if first <= last {
-        // Without a trace process-start discriminator, overlapping reused PIDs are ambiguous.
-        if observation.process_start_ns.is_none()
-          && reports.iter().any(|other| {
-            other.run.run_id != report.run.run_id
-              && other.run.installation_id == installation_id
-              && other.run.pid == report.run.pid
-              && other.run.boot_count == report.run.boot_count
-              && other.run.boot_epoch_ns().is_ok_and(|epoch| {
-                epoch.abs_diff(evidence.boot_epoch_ns) <= CLOCK_TOLERANCE_NS as u128
-              })
-              && other.run.start_elapsed_ns <= last
-              && other.run.end_elapsed_ns.unwrap_or(u64::MAX) >= first
-          })
-        {
+        // A trace start only disambiguates reused PIDs when one overlapping run fits its tolerance.
+        if reports.iter().any(|other| {
+          other.run.run_id != report.run.run_id
+            && other.run.installation_id == installation_id
+            && other.run.pid == report.run.pid
+            && other.run.boot_count == report.run.boot_count
+            && observation.process_start_ns.is_none_or(|start| {
+              start.abs_diff(other.run.start_elapsed_ns) <= PROCESS_START_TOLERANCE_NS
+            })
+            && other.run.boot_epoch_ns().is_ok_and(|epoch| {
+              epoch.abs_diff(evidence.boot_epoch_ns) <= CLOCK_TOLERANCE_NS as u128
+            })
+            && other.run.start_elapsed_ns <= last
+            && other.run.end_elapsed_ns.unwrap_or(u64::MAX) >= first
+        }) {
           bail!("ambiguous reused source PID");
         }
         matched.push(report.report_id);

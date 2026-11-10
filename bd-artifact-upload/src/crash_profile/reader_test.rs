@@ -122,6 +122,17 @@ fn sched_event(timestamp: u64, next_tid: u32, header_tid: u32) -> Vec<u8> {
   })
 }
 
+fn compact_sched(timestamps: &[u64], tids: &[u32]) -> Vec<u8> {
+  message(|output| {
+    for timestamp in timestamps {
+      output.write_uint64(1, *timestamp).unwrap();
+    }
+    for tid in tids {
+      output.write_uint32(3, *tid).unwrap();
+    }
+  })
+}
+
 #[test]
 fn heap_pid_is_typed_and_packet_field_order_does_not_matter() {
   let evidence = Reader::read(trace(&[heap_packet(), clock_packet()]).as_slice()).unwrap();
@@ -184,6 +195,66 @@ fn compact_scheduler_requires_typed_tid_mapping_and_consistent_arrays() {
 }
 
 #[test]
+fn repeated_ftrace_and_compact_messages_merge_scheduler_arrays() {
+  for split_ftrace in [false, true] {
+    for split_arrays in [false, true] {
+      let fragments = if split_arrays {
+        [compact_sched(&[20, 5], &[]), compact_sched(&[], &[8, 8])]
+      } else {
+        [compact_sched(&[20], &[8]), compact_sched(&[5], &[8])]
+      };
+      let packet = message(|output| {
+        if split_ftrace {
+          for fragment in &fragments {
+            let bundle = message(|output| output.write_bytes(4, fragment).unwrap());
+            output.write_bytes(1, &bundle).unwrap();
+          }
+        } else {
+          let bundle = message(|output| {
+            for fragment in &fragments {
+              output.write_bytes(4, fragment).unwrap();
+            }
+          });
+          output.write_bytes(1, &bundle).unwrap();
+        }
+      });
+      let result =
+        Reader::read(trace(&[clock_packet(), packet, process_tree(7, 8, None)]).as_slice())
+          .unwrap();
+      assert_eq!(result.observations[0].first_ns, 20);
+      assert_eq!(result.observations[0].last_ns, 25);
+    }
+  }
+}
+
+#[test]
+fn compact_scheduler_delta_state_resets_between_packets() {
+  let packets: Vec<_> = [20, 5]
+    .into_iter()
+    .map(|timestamp| {
+      let bundle = message(|output| {
+        output
+          .write_bytes(4, &compact_sched(&[timestamp], &[8]))
+          .unwrap();
+      });
+      message(|output| output.write_bytes(1, &bundle).unwrap())
+    })
+    .collect();
+  let result = Reader::read(
+    trace(&[
+      clock_packet(),
+      packets[0].clone(),
+      packets[1].clone(),
+      process_tree(7, 8, None),
+    ])
+    .as_slice(),
+  )
+  .unwrap();
+  assert_eq!(result.observations[0].first_ns, 5);
+  assert_eq!(result.observations[0].last_ns, 20);
+}
+
+#[test]
 fn malformed_truncated_unknown_and_clockless_inputs_fail_closed() {
   let valid = trace(&[clock_packet(), heap_packet()]);
   for len in 0 .. valid.len() {
@@ -197,6 +268,35 @@ fn malformed_truncated_unknown_and_clockless_inputs_fail_closed() {
     output.write_bytes(6, &clocks()).unwrap();
   });
   assert!(Reader::read(trace(&[unknown, heap_packet()]).as_slice()).is_ok());
+}
+
+#[test]
+fn overdeclared_final_packet_lengths_fail_for_raw_and_compressed_traces() {
+  for extra in [1, 1000] {
+    let packet = heap_packet();
+    let mut raw = trace(&[clock_packet()]);
+    raw.extend(message(|output| {
+      output
+        .write_tag(1, protobuf::rt::WireType::LengthDelimited)
+        .unwrap();
+      output
+        .write_raw_varint32(u32::try_from(packet.len()).unwrap() + extra)
+        .unwrap();
+      output.write_raw_bytes(&packet).unwrap();
+    }));
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(&raw).unwrap();
+    let encoded = encoder.finish().unwrap();
+    let compressed = trace(&[message(|output| output.write_bytes(50, &encoded).unwrap())]);
+    for input in [raw, compressed] {
+      assert!(
+        Reader::read(input.as_slice())
+          .unwrap_err()
+          .to_string()
+          .contains("incomplete selected protobuf message")
+      );
+    }
+  }
 }
 
 #[test]
@@ -386,6 +486,55 @@ fn heap_clock_defaults_are_sequence_scoped_and_explicit_clocks_override_them() {
       .first_ns,
     25
   );
+}
+
+#[test]
+fn repeated_defaults_merge_clock_fields_before_sequence_reset() {
+  for (clocks, supported) in [
+    ([Some(64), None], false),
+    ([None, Some(64)], false),
+    ([Some(64), Some(BOOTTIME)], true),
+    ([Some(BOOTTIME), Some(64)], false),
+    ([Some(BOOTTIME), None], true),
+  ] {
+    let mut defaults = sequence_header(1, STATE_CLEARED, None);
+    defaults.extend(message(|output| {
+      for clock in clocks {
+        let fields = message(|output| {
+          if let Some(clock) = clock {
+            output.write_uint32(58, clock).unwrap();
+          } else {
+            output.write_uint32(999, 1).unwrap();
+          }
+        });
+        output.write_bytes(59, &fields).unwrap();
+      }
+    }));
+    for inline in [false, true] {
+      let packets = if inline {
+        let mut heap = heap_packet();
+        heap.extend_from_slice(&defaults);
+        vec![clock_packet(), heap]
+      } else {
+        vec![
+          clock_packet(),
+          defaults.clone(),
+          sequenced_heap(1, NEEDS_STATE),
+        ]
+      };
+      let result = Reader::read(trace(&packets).as_slice());
+      if supported {
+        assert_eq!(result.unwrap().observations[0].first_ns, 25);
+      } else {
+        assert!(
+          result
+            .unwrap_err()
+            .to_string()
+            .contains("unsupported heap packet clock")
+        );
+      }
+    }
+  }
 }
 
 #[test]
@@ -635,6 +784,36 @@ fn ftrace_clock_anchors_can_follow_events_and_are_independent_of_packet_clock() 
           .contains("missing ftrace boot anchor")
       );
     }
+  }
+}
+
+#[test]
+fn repeated_ftrace_messages_merge_clock_anchors_before_observing_events() {
+  let fragments = [
+    message(|output| output.write_bytes(2, &sched_event(80, 8, 99)).unwrap()),
+    message(|output| {
+      output.write_uint32(5, 2).unwrap();
+      output.write_uint64(6, 100).unwrap();
+    }),
+    message(|output| output.write_uint64(7, 50).unwrap()),
+  ];
+  for order in [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ] {
+    let packet = message(|output| {
+      for index in order {
+        output.write_bytes(1, &fragments[index]).unwrap();
+      }
+    });
+    let result =
+      Reader::read(trace(&[clock_packet(), packet, process_tree(7, 8, None)]).as_slice()).unwrap();
+    assert_eq!(result.observations[0].first_ns, 30);
+    assert_eq!(result.observations[0].last_ns, 30);
   }
 }
 

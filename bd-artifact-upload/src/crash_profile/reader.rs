@@ -67,9 +67,9 @@ struct Sequence {
 // Packet
 //
 
-// Only heap attribution and timestamp-default lifecycle fields. Heap data may precede its
-// timestamp, sequence ID or defaults; buffering these scalars avoids buffering the entire packet.
-// Snapshot/process/ftrace messages have self-contained timing and are consumed immediately.
+// Heap data may precede its timestamp/defaults, and repeated ftrace messages merge within a packet.
+// Buffer selected timing fields, not payload bodies. Snapshots/process metadata is consumed
+// directly.
 #[derive(Default)]
 struct Packet {
   timestamp: Option<u64>,
@@ -81,6 +81,23 @@ struct Packet {
   default_clock: Option<u32>,
   heap_pid: Option<u32>,
   heap_has_objects: bool,
+  ftrace: FtraceBundle,
+}
+
+//
+// FtraceBundle
+//
+
+// Singular bundle/compact messages can span wire occurrences. Merge arrays and anchors before
+// decoding deltas or converting clocks; normal events need only one min/max pair per TID.
+#[derive(Default)]
+struct FtraceBundle {
+  events: BTreeMap<u32, (u64, u64)>,
+  clock: u64,
+  ftrace_anchor: Option<u64>,
+  boot_anchor: Option<u64>,
+  switch_timestamps: Vec<u64>,
+  switch_tids: Vec<u64>,
 }
 
 //
@@ -112,10 +129,10 @@ fn nested<T>(
   let len = input.read_uint32()?;
   let old_limit = input.push_limit(u64::from(len))?;
   let result = parse(input);
-  let complete = input.eof();
+  let remaining = input.bytes_until_limit();
   input.pop_limit(old_limit);
   let value = result?;
-  ensure!(complete?, "incomplete selected protobuf message");
+  ensure!(remaining == 0, "incomplete selected protobuf message");
   Ok(value)
 }
 
@@ -247,7 +264,7 @@ impl Reader {
         59 => {
           message_wire(tag.wire_type)?;
           packet.default_clock = nested(input, |input| {
-            let mut clock = None;
+            let mut clock = packet.default_clock;
             while let Some(tag) = read_tag(input)? {
               // TracePacketDefaults.timestamp_clock_id = 58.
               if tag.field_number == 58 {
@@ -296,7 +313,7 @@ impl Reader {
         1 => {
           requires_state = true;
           message_wire(tag.wire_type)?;
-          nested(input, |input| self.ftrace(input))?;
+          nested(input, |input| Self::ftrace(input, &mut packet.ftrace))?;
         },
         // TracePacket.compressed_packets wraps a zlib-compressed Trace packet stream.
         50 => {
@@ -344,6 +361,7 @@ impl Reader {
       self.add_process(pid, None)?;
       self.observe(true, pid, timestamp, timestamp);
     }
+    self.observe_ftrace(packet.ftrace)?;
     Ok(())
   }
 
@@ -474,11 +492,7 @@ impl Reader {
       .or_insert((first, last));
   }
 
-  fn ftrace(&mut self, input: &mut CodedInputStream<'_>) -> anyhow::Result<()> {
-    // Bundle anchors may follow the events, so retain one min/max pair per TID until the offset
-    // is known. This is summary state, not a decoded list of ftrace events.
-    let mut events = BTreeMap::<u32, (u64, u64)>::new();
-    let (mut clock, mut ftrace_anchor, mut boot_anchor) = (0, None, None);
+  fn ftrace(input: &mut CodedInputStream<'_>, bundle: &mut FtraceBundle) -> anyhow::Result<()> {
     while let Some(tag) = read_tag(input)? {
       match tag.field_number {
         // FtraceEventBundle.event.
@@ -513,22 +527,21 @@ impl Reader {
           if let Some(tid) = next_tid.filter(|tid| *tid > 0) {
             let timestamp =
               timestamp.ok_or_else(|| anyhow::anyhow!("scheduler event has no timestamp"))?;
-            Self::bundle_observe(&mut events, tid, timestamp);
+            Self::bundle_observe(&mut bundle.events, tid, timestamp);
           }
         },
         // FtraceEventBundle.compact_sched.
         4 => {
           message_wire(tag.wire_type)?;
-          let (mut times, mut tids) = (Vec::new(), Vec::new());
           nested(input, |input| {
             while let Some(tag) = read_tag(input)? {
               match tag.field_number {
                 // CompactSched.switch_timestamp = 1 / switch_next_pid = 3.
                 1 | 3 => {
                   let values = if tag.field_number == 1 {
-                    &mut times
+                    &mut bundle.switch_timestamps
                   } else {
-                    &mut tids
+                    &mut bundle.switch_tids
                   };
                   // Accept packed and unpacked repeated varints; protobuf permits either.
                   if tag.wire_type == WireType::LengthDelimited {
@@ -547,36 +560,47 @@ impl Reader {
             }
             Ok(())
           })?;
-          ensure!(
-            times.len() == tids.len(),
-            "inconsistent compact scheduler arrays"
-          );
-          let mut timestamp = 0u64;
-          // CompactSched's first switch_timestamp is absolute; the rest are deltas. We do not
-          // consume waking timestamps: they do not establish the collector's sched_slice activity.
-          for (delta, tid) in times.into_iter().zip(tids) {
-            timestamp = timestamp
-              .checked_add(delta)
-              .ok_or_else(|| anyhow::anyhow!("compact scheduler timestamp overflow"))?;
-            Self::bundle_observe(&mut events, u32::try_from(tid)?, timestamp);
-          }
         },
         // FtraceEventBundle.ftrace_clock / ftrace_timestamp / boot_timestamp.
-        5 => clock = scalar(input, tag.wire_type)?,
-        6 => ftrace_anchor = Some(scalar(input, tag.wire_type)?),
-        7 => boot_anchor = Some(scalar(input, tag.wire_type)?),
+        5 => bundle.clock = scalar(input, tag.wire_type)?,
+        6 => bundle.ftrace_anchor = Some(scalar(input, tag.wire_type)?),
+        7 => bundle.boot_anchor = Some(scalar(input, tag.wire_type)?),
         _ => skip(input, tag.wire_type)?,
       }
     }
+    Ok(())
+  }
+
+  fn observe_ftrace(&mut self, mut bundle: FtraceBundle) -> anyhow::Result<()> {
+    ensure!(
+      bundle.switch_timestamps.len() == bundle.switch_tids.len(),
+      "inconsistent compact scheduler arrays"
+    );
+    let mut timestamp = 0u64;
+    // CompactSched's first switch_timestamp is absolute; the rest are deltas. Waking timestamps
+    // do not establish the collector's sched_slice activity and are not consumed.
+    for (delta, tid) in bundle.switch_timestamps.into_iter().zip(bundle.switch_tids) {
+      timestamp = timestamp
+        .checked_add(delta)
+        .ok_or_else(|| anyhow::anyhow!("compact scheduler timestamp overflow"))?;
+      Self::bundle_observe(&mut bundle.events, u32::try_from(tid)?, timestamp);
+    }
     // FtraceClock.FTRACE_CLOCK_UNSPECIFIED = 0 means BOOTTIME. Other ftrace clocks require a
     // simultaneous anchor pair; TracePacket.timestamp_clock_id does not apply to these events.
-    let offset = if clock == 0 {
+    let offset = if bundle.clock == 0 {
       0
     } else {
-      i128::from(boot_anchor.ok_or_else(|| anyhow::anyhow!("missing ftrace boot anchor"))?)
-        - i128::from(ftrace_anchor.ok_or_else(|| anyhow::anyhow!("missing ftrace clock anchor"))?)
+      i128::from(
+        bundle
+          .boot_anchor
+          .ok_or_else(|| anyhow::anyhow!("missing ftrace boot anchor"))?,
+      ) - i128::from(
+        bundle
+          .ftrace_anchor
+          .ok_or_else(|| anyhow::anyhow!("missing ftrace clock anchor"))?,
+      )
     };
-    for (tid, (first, last)) in events {
+    for (tid, (first, last)) in bundle.events {
       self.observe(
         false,
         tid,

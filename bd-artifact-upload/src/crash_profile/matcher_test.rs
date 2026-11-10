@@ -59,10 +59,14 @@ fn matches_all_eligible_reports_in_source_run_without_using_observer_pid() {
   let reports = [first.clone(), second.clone()];
   let mut expected = vec![first.report_id, second.report_id];
   expected.sort_unstable();
-  assert_eq!(
-    match_reports(first.run.installation_id, Kind::Anr, &evidence(), &reports,).unwrap(),
-    expected
-  );
+  for start in [None, Some(first.run.start_elapsed_ns)] {
+    let mut profile = evidence();
+    profile.observations[0].process_start_ns = start;
+    assert_eq!(
+      match_reports(first.run.installation_id, Kind::Anr, &profile, &reports).unwrap(),
+      expected
+    );
+  }
   assert_eq!(
     match_reports(Uuid::new_v4(), Kind::Anr, &evidence(), &reports).unwrap(),
     Vec::<Uuid>::new()
@@ -145,23 +149,35 @@ fn trace_process_age_disambiguates_overlapping_pid_reuse() {
   first.run.wall_ns = evidence().boot_epoch_ns + i128::from(first.run.elapsed_ns);
   first.run.end_elapsed_ns = Some(1_100_000_000);
   first.event_elapsed_ns = 1_100_000_000;
-  let mut reused = first.clone();
-  reused.run.run_id = Uuid::new_v4();
-  reused.run.start_elapsed_ns += 2 * PROCESS_START_TOLERANCE_NS;
-  reused.report_id = Uuid::new_v4();
   let mut profile = evidence();
   profile.observations[0].first_ns = 1_020_000_000;
   profile.observations[0].last_ns = 1_030_000_000;
-  profile.observations[0].process_start_ns = Some(first.run.start_elapsed_ns);
   let expected = vec![first.report_id];
   let installation = first.run.installation_id;
-  let reports = [first, reused];
-  assert_eq!(
-    match_reports(installation, Kind::Anr, &profile, &reports).unwrap(),
-    expected
-  );
-  profile.observations[0].process_start_ns = None;
-  assert!(match_reports(installation, Kind::Anr, &profile, &reports).is_err());
+  for delta in [
+    0,
+    PROCESS_START_TOLERANCE_NS / 2,
+    PROCESS_START_TOLERANCE_NS,
+    PROCESS_START_TOLERANCE_NS + 1,
+    2 * PROCESS_START_TOLERANCE_NS,
+  ] {
+    let mut reused = first.clone();
+    reused.run.run_id = Uuid::new_v4();
+    reused.run.start_elapsed_ns += delta;
+    reused.report_id = Uuid::new_v4();
+    let reports = [first.clone(), reused];
+    profile.observations[0].process_start_ns = Some(first.run.start_elapsed_ns);
+    for reports in [reports.clone(), [reports[1].clone(), reports[0].clone()]] {
+      let result = match_reports(installation, Kind::Anr, &profile, &reports);
+      if delta <= PROCESS_START_TOLERANCE_NS {
+        assert!(result.unwrap_err().to_string().contains("ambiguous"));
+      } else {
+        assert_eq!(result.unwrap(), expected);
+      }
+    }
+    profile.observations[0].process_start_ns = None;
+    assert!(match_reports(installation, Kind::Anr, &profile, &reports).is_err());
+  }
 }
 
 #[test]
