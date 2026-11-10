@@ -19,7 +19,7 @@ use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_crash_handler::global_state;
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_event_buffer::ProviderSnapshot;
-use bd_log_filter::FilterChain;
+use bd_log_filter::{FilterChain, ScrubRules};
 use bd_log_primitives::tiny_set::TinySet;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
@@ -361,6 +361,7 @@ pub struct ConfigUpdate {
   pub(crate) buffer_selector: BufferSelector,
   pub(crate) workflows_configuration: WorkflowsConfiguration,
   pub(crate) tail_configs: TailConfigurations,
+  pub(crate) scrub_rules: ScrubRules,
   pub(crate) filter_chain: FilterChain,
   pub(crate) from_cache: bool,
 }

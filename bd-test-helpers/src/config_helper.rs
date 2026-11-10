@@ -18,6 +18,7 @@ use bd_proto::protos::config::v1::config::log_matcher::{
   base_log_matcher,
 };
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
+use bd_proto::protos::filter::scrub::{ScrubConfiguration, ScrubRule};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::{Workflow, WorkflowsConfiguration};
 #[rustfmt::skip]
@@ -139,6 +140,7 @@ pub struct ConfigurationUpdateParts {
   pub debug_workflows: Vec<Workflow>,
   pub bdtail_streams: Vec<BdTailStream>,
   pub filters_configuration: Vec<Filter>,
+  pub scrub_rules: Vec<ScrubRule>,
 }
 
 #[must_use]
@@ -176,6 +178,12 @@ pub fn configuration_update_from_parts(
       filters_configuration: (!parts.filters_configuration.is_empty())
         .then(|| FiltersConfiguration {
           filters: parts.filters_configuration,
+          ..Default::default()
+        })
+        .into(),
+      scrub_configuration: (!parts.scrub_rules.is_empty())
+        .then(|| ScrubConfiguration {
+          rules: parts.scrub_rules,
           ..Default::default()
         })
         .into(),

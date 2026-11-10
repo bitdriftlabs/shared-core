@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_proto::protos::filter::filter::filter::{self};
+use bd_proto::protos::filter::scrub::{ScrubRule, scrub_rule};
 
 pub mod macros {
   #[macro_export]
@@ -236,6 +237,25 @@ fn make_regex_match_and_substitute_config(
 pub fn make_transform(transform_type: filter::transform::Transform_type) -> filter::Transform {
   filter::Transform {
     transform_type: Some(transform_type),
+    ..Default::default()
+  }
+}
+
+/// Converts a `RemoveField` or `RegexMatchAndSubstituteField` filter transform, as built by the
+/// transform macros, into the equivalent scrub rule.
+#[must_use]
+pub fn scrub_rule(transform: filter::Transform) -> ScrubRule {
+  let rule = match transform.transform_type {
+    Some(filter::transform::Transform_type::RemoveField(config)) => {
+      scrub_rule::Rule::RemoveField(config)
+    },
+    Some(filter::transform::Transform_type::RegexMatchAndSubstituteField(config)) => {
+      scrub_rule::Rule::Regex(config)
+    },
+    other => panic!("not a scrub rule transform: {other:?}"),
+  };
+  ScrubRule {
+    rule: Some(rule),
     ..Default::default()
   }
 }
