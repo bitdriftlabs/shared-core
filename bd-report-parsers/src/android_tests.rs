@@ -327,6 +327,7 @@ macro_rules! assert_parsed_anr_eq {
       &mut device_info,
       Some(anr_trace),
       None,
+      None,
       true,
     );
     let report = get_table!(Report, builder, offset);
@@ -439,6 +440,7 @@ fn build_anr_to_bytes(filename: &str, description: Option<&str>) -> Vec<u8> {
     &mut device_info,
     Some(anr_trace),
     description,
+    None,
     true,
   );
   builder.finish(offset, None);
@@ -492,6 +494,7 @@ fn build_anr_without_trace_uses_app_exit_description() {
     &mut device_info,
     None,
     Some(description),
+    None,
     true,
   );
   builder.finish(offset, None);
@@ -518,6 +521,7 @@ fn build_anr_with_unparsable_trace_uses_app_exit_description() -> anyhow::Result
     &mut device_info,
     Some(MemmapView::new(&mmap)),
     Some(description),
+    None,
     true,
   );
   builder.finish(offset, None);
@@ -529,4 +533,30 @@ fn build_anr_with_unparsable_trace_uses_app_exit_description() -> anyhow::Result
   assert_eq!(error.reason(), Some(description));
   assert_eq!(report.thread_details().unwrap().count(), 0);
   Ok(())
+}
+
+#[test]
+fn anr_reports_preserve_crash_profile_source_with_and_without_traces() {
+  let file = open_fixture("anr1.txt");
+  let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
+  for trace in [None, Some(MemmapView::new(&mmap))] {
+    let mut builder = FlatBufferBuilder::new();
+    let source = Some(builder.create_vector(b"source facts".as_slice()));
+    let offset = build_anr_from_app_exit(
+      &mut builder,
+      &mut AppMetricsArgs::default(),
+      &mut DeviceMetricsArgs::default(),
+      trace,
+      None,
+      source,
+      true,
+    );
+    builder.finish(offset, None);
+
+    let report = flatbuffers::root::<Report<'_>>(builder.finished_data()).unwrap();
+    assert_eq!(
+      report.crash_profile_source().unwrap().bytes(),
+      b"source facts"
+    );
+  }
 }

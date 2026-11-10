@@ -51,6 +51,9 @@ use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use uuid::Uuid;
 
+#[path = "./profile_upload_test.rs"]
+mod profile_tests;
+
 pub struct TestHooks {
   pub upload_complete_tx: tokio::sync::mpsc::Sender<String>,
   pub entry_received_tx: tokio::sync::mpsc::Sender<String>,
@@ -429,6 +432,7 @@ async fn basic_flow() {
       "session_id".to_string(),
       vec![],
       None,
+      None,
     )
     .unwrap();
 
@@ -713,6 +717,7 @@ async fn feature_flags() {
         SnappedFeatureFlag::new("key2".to_string(), None, timestamp - 2.std_seconds()),
       ],
       None,
+      None,
     )
     .unwrap();
 
@@ -782,6 +787,7 @@ async fn pending_upload_limit() {
       "session_id".to_string(),
       vec![],
       None,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -799,6 +805,7 @@ async fn pending_upload_limit() {
       "session_id".to_string(),
       vec![],
       None,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -814,6 +821,7 @@ async fn pending_upload_limit() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       None,
     )
     .unwrap();
@@ -884,6 +892,7 @@ async fn inconsistent_state_missing_file() {
       "session_id".to_string(),
       vec![],
       None,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -899,6 +908,7 @@ async fn inconsistent_state_missing_file() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       None,
     )
     .unwrap();
@@ -943,6 +953,7 @@ async fn inconsistent_state_extra_file() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       None,
     )
     .unwrap();
@@ -1015,6 +1026,7 @@ async fn disk_persistence() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       None,
     )
     .unwrap();
@@ -1263,6 +1275,7 @@ async fn inconsistent_state_missing_index() {
       "session_id".to_string(),
       vec![],
       None,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -1287,6 +1300,7 @@ async fn inconsistent_state_missing_index() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       None,
     )
     .unwrap();
@@ -1335,6 +1349,7 @@ async fn new_entry_disk_full() {
       "session_id".to_string(),
       vec![],
       None,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -1364,6 +1379,7 @@ async fn new_entry_disk_full_after_received() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       None,
     )
     .unwrap();
@@ -1407,6 +1423,7 @@ async fn intent_retries() {
       "session_id".to_string(),
       vec![],
       None,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -1442,6 +1459,7 @@ async fn intent_drop() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       None,
     )
     .unwrap();
@@ -1668,6 +1686,7 @@ async fn command_upload_negative_ack_retries_without_stopping_uploader() {
       "session_id".to_string(),
       vec![],
       None,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -1712,6 +1731,7 @@ async fn evicted_command_upload_completes_with_failure() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       None,
     )
     .unwrap();
@@ -1854,6 +1874,7 @@ async fn upload_retries() {
       "session_id".to_string(),
       vec![],
       None,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -1900,6 +1921,7 @@ async fn enqueue_upload_acknowledges_after_disk_persist() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       Some(persisted_tx),
     )
     .unwrap();
@@ -2044,6 +2066,7 @@ async fn assert_command_source_consumed_before_error_ack(failure: PersistenceFai
       vec![],
       Some(Uuid::new_v4().to_string()),
       None,
+      None,
       Some(PersistenceAck::Command(persisted_tx)),
       None,
       source_cleanup,
@@ -2112,6 +2135,7 @@ async fn enqueue_upload_from_path_acknowledges_after_disk_persist_and_removes_so
       None,
       "session_id".to_string(),
       vec![],
+      None,
       Some(persisted_tx),
     )
     .unwrap();
@@ -2232,6 +2256,7 @@ async fn workflow_upload_rejects_id_owned_by_another_artifact_type() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       Some(persisted_tx),
     )
     .unwrap();
@@ -2279,6 +2304,7 @@ async fn path_upload_restores_source_if_index_persistence_fails() {
       None,
       String::new(),
       vec![],
+      None,
       Some(persisted_tx),
     )
     .unwrap();
@@ -2308,6 +2334,7 @@ async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       Some(persisted_tx1),
     )
     .unwrap();
@@ -2327,6 +2354,7 @@ async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
       Some(persisted_tx2),
     )
     .unwrap();

@@ -7,8 +7,17 @@
 
 //! Shared conventions for client artifact uploads.
 
+/// Content type for raw Perfetto traces uploaded by commands, workflows and crash profiling.
+pub const PERFETTO_CONTENT_TYPE: &str = "application/vnd.bitdrift.perfetto-trace";
+
 /// Artifact type ID used for crash reports uploaded by the client.
 pub const CLIENT_REPORT_ARTIFACT_TYPE_ID: &str = "client_report";
+
+/// Artifact type ID used for Android ANR/OOM profiles linked to crash reports.
+pub const CRASH_PROFILE_ARTIFACT_TYPE_ID: &str = "crash_profile";
+
+/// Maximum number of parent report IDs a single crash-profile upload may name.
+pub const CRASH_PROFILE_MAX_REPORT_IDS: usize = 16;
 
 /// Artifact type ID used for uploaded versioned state snapshots.
 pub const STATE_SNAPSHOT_ARTIFACT_TYPE_ID: &str = "state_snapshot";

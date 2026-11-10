@@ -29,6 +29,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
 use time::error::ComponentRange;
+use time::macros::datetime;
 use tokio::time::{Interval, MissedTickBehavior, Sleep, Timeout, interval, interval_at};
 
 //
@@ -168,9 +169,24 @@ impl OffsetDateTimeExt for OffsetDateTime {
 
 pub trait TimestampExt {
   fn to_offset_date_time(&self) -> OffsetDateTime;
+
+  /// Validate the protobuf year range and nanos without clamping malformed timestamps.
+  fn to_offset_date_time_checked(&self) -> Option<OffsetDateTime>;
 }
 
 impl TimestampExt for Timestamp {
+  fn to_offset_date_time_checked(&self) -> Option<OffsetDateTime> {
+    let valid_seconds = datetime!(0001-01-01 00:00 UTC).unix_timestamp()
+      ..= datetime!(9999-12-31 23:59:59 UTC).unix_timestamp();
+    if !(0 .. 1_000_000_000).contains(&self.nanos) || !valid_seconds.contains(&self.seconds) {
+      return None;
+    }
+    OffsetDateTime::from_unix_timestamp_nanos(
+      i128::from(self.seconds) * 1_000_000_000 + i128::from(self.nanos),
+    )
+    .ok()
+  }
+
   fn to_offset_date_time(&self) -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(self.seconds)
       .unwrap_or(OffsetDateTime::UNIX_EPOCH)

@@ -661,6 +661,9 @@
               },
         "crash_info" : {
                 "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_CrashInfo"}
+              },
+        "crash_profile_source" : {
+                "type" : "array", "items" : {"type" : "integer", "minimum" : 0, "maximum" :255}
               }
       },
       "additionalProperties" : false

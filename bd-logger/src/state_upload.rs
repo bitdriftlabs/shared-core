@@ -336,6 +336,7 @@ impl StateUploadWorker {
           timestamp,
           String::new(),
           vec![],
+          None,
           Some(persisted_tx),
         )
       })

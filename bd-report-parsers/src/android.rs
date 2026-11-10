@@ -51,6 +51,8 @@ type BinaryImagePath = String;
 type BinaryImageKey = (BinaryImagePath, Option<u64>);
 type FrameVectorOffset<'fbb> = WIPOffset<Vector<'fbb, ForwardsUOffset<v_1::Frame<'fbb>>>>;
 type FrameOffsetSequence = Vec<u32>;
+/// An encoded `CrashProfileSource`, already serialized into the report's builder.
+pub type CrashProfileSource<'fbb> = Option<WIPOffset<Vector<'fbb, u8>>>;
 
 const MAIN_THREAD: &str = "main";
 
@@ -60,6 +62,7 @@ pub fn build_anr_from_app_exit<'fbb>(
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
   anr_trace: Option<MemmapView<'_>>,
   app_exit_description: Option<&str>,
+  crash_profile_source: CrashProfileSource<'fbb>,
   is_file_size_optimization_enabled: bool,
 ) -> WIPOffset<v_1::Report<'fbb>> {
   device_info.platform = v_1::Platform::Android;
@@ -70,13 +73,20 @@ pub fn build_anr_from_app_exit<'fbb>(
       device_info,
       anr_trace,
       app_exit_description,
+      crash_profile_source,
       is_file_size_optimization_enabled,
     )
   {
     return report;
   }
 
-  build_anr_without_trace(builder, app_info, device_info, app_exit_description)
+  build_anr_without_trace(
+    builder,
+    app_info,
+    device_info,
+    app_exit_description,
+    crash_profile_source,
+  )
 }
 
 fn build_anr_from_trace<'a, 'fbb>(
@@ -85,6 +95,7 @@ fn build_anr_from_trace<'a, 'fbb>(
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
   anr_trace: MemmapView<'a>,
   app_exit_description: Option<&str>,
+  crash_profile_source: CrashProfileSource<'fbb>,
   is_file_size_optimization_enabled: bool,
 ) -> IResult<MemmapView<'a>, WIPOffset<v_1::Report<'fbb>>, nom::error::Error<MemmapView<'a>>> {
   let (remainder, (subject, (pid, _timestamp), metrics, _attached_count, stacks)) = (
@@ -106,7 +117,14 @@ fn build_anr_from_trace<'a, 'fbb>(
   let description = app_exit_description.or(subject.as_deref());
   Ok((
     remainder,
-    create_anr_report(builder, app_info, device_info, description, &stacks),
+    create_anr_report(
+      builder,
+      app_info,
+      device_info,
+      description,
+      crash_profile_source,
+      &stacks,
+    ),
   ))
 }
 
@@ -115,6 +133,7 @@ fn create_anr_report<'fbb>(
   app_info: &v_1::AppMetricsArgs<'fbb>,
   device_info: &v_1::DeviceMetricsArgs<'fbb>,
   description: Option<&str>,
+  crash_profile_source: CrashProfileSource<'fbb>,
   stacks: &Stacks<'fbb>,
 ) -> WIPOffset<v_1::Report<'fbb>> {
   let error_args = v_1::ErrorArgs {
@@ -132,6 +151,7 @@ fn create_anr_report<'fbb>(
     device_metrics: Some(v_1::DeviceMetrics::create(builder, device_info)),
     thread_details: Some(thread_details),
     binary_images: stacks.binary_images,
+    crash_profile_source,
     ..Default::default()
   };
   v_1::Report::create(builder, &args)
@@ -142,12 +162,14 @@ fn build_anr_without_trace<'fbb>(
   app_info: &v_1::AppMetricsArgs<'fbb>,
   device_info: &v_1::DeviceMetricsArgs<'fbb>,
   app_exit_description: Option<&str>,
+  crash_profile_source: CrashProfileSource<'fbb>,
 ) -> WIPOffset<v_1::Report<'fbb>> {
   create_anr_report(
     builder,
     app_info,
     device_info,
     app_exit_description,
+    crash_profile_source,
     &Stacks {
       args: v_1::ThreadDetailsArgs {
         count: 0,

@@ -1,4 +1,5 @@
 load("@crates//:defs.bzl", "all_crate_deps")
+load("//tools/lint:linters.bzl", "rust_library")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -14,4 +15,37 @@ rust_library_with_test(
     crate_root = "src/lib.rs",
     edition = "2024",
     deps = all_crate_deps(normal = True),
+)
+
+# Exercise the Android adapter with the real crash monitor/uploader in host-only lifecycle tests.
+rust_library(
+    name = "crash-profile-upload-test-support",
+    testonly = True,
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = [
+        "default",
+        "test-support",
+    ],
+    crate_name = "bd_artifact_upload",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True),
+)
+
+# Host validation compiles the same Android reader without exposing it in non-Android SDK builds.
+rust_library(
+    name = "crash-profile-test-support",
+    testonly = True,
+    srcs = glob(["src/crash_profile/*.rs"]),
+    crate_name = "bd_crash_profile",
+    crate_root = "src/crash_profile/mod.rs",
+    edition = "2024",
+    deps = [
+        "//shared-core/bd-proto-util",
+        "@crates//:anyhow",
+        "@crates//:flate2",
+        "@crates//:log",
+        "@crates//:protobuf",
+        "@crates//:uuid",
+    ],
 )

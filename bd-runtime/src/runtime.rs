@@ -672,6 +672,24 @@ pub mod crash_reporting {
   );
 }
 
+pub mod crash_profiles {
+  // Subscribes to Android system-triggered ANR profiles (API 36+) and uploads those attributable
+  // to SDK ANR reports. Android reads the same key; disabling it removes the SDK trigger and stops
+  // queued adoption.
+  bool_feature_flag!(
+    AnrEnabled,
+    "client_feature.android.crash_profiles.anr",
+    true
+  );
+
+  // As above for Java OutOfMemoryError profiles (API 37+) attributable to SDK JVM OOM reports.
+  bool_feature_flag!(
+    OomEnabled,
+    "client_feature.android.crash_profiles.oom",
+    true
+  );
+}
+
 pub mod log_upload {
   use time::ext::NumericalDuration as _;
 
