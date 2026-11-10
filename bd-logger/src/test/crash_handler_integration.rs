@@ -10,9 +10,18 @@ use crate::logger::{Block, ReportProcessingSession};
 use crate::test::setup::SetupOptions;
 use assert_matches::assert_matches;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
-use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::config::v1::config::buffer_config;
+use bd_proto::protos::logging::payload::{Data, LogType};
 use bd_runtime::runtime::FeatureFlag as _;
-use bd_test_helpers::config_helper::configuration_update;
+use bd_test_helpers::config_helper::{
+  ConfigurationUpdateParts,
+  configuration_update,
+  configuration_update_from_parts,
+  default_buffer_config,
+  make_buffer_matcher_matching_everything,
+};
+use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
+use bd_test_helpers::filter::scrub_rule;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::test_api_server::log_upload::LogUpload;
@@ -116,7 +125,23 @@ fn crash_report_upload() {
     setup.logger.new_logger_handle().session_id().unwrap()
   );
 
-  setup.configure_stream_all_logs();
+  // Stream every log, and redact the "custom" field with a scrub rule. The configuration is applied
+  // before its ack, so the previous-run report processed below is sent with the rule known.
+  setup.send_configuration_update(configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![default_buffer_config(
+        buffer_config::Type::CONTINUOUS,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      scrub_rules: vec![scrub_rule(regex_match_and_substitute_field!(
+        "custom",
+        ".+",
+        "<redacted>"
+      ))],
+      ..Default::default()
+    },
+  ));
   setup.upload_individual_logs();
   setup.upload_crash_reports(ReportProcessingSession::PreviousRun);
 
@@ -144,7 +169,7 @@ fn crash_report_upload() {
   assert_ne!(crash.timestamp(), timestamp);
   assert_eq!(crash.field("_ootb_field"), "ootb");
   assert!(!crash.has_field("_crash_artifact"));
-  assert!(crash.has_field("custom"));
+  assert_eq!(crash.field("custom"), "<redacted>");
   let crash1_uuid = crash.field("_crash_artifact_id");
 
   let mut remaining_uploads: HashSet<_> = [crash1_uuid].into();
@@ -153,10 +178,19 @@ fn crash_report_upload() {
     // Verify that out of band uploads happen.
     let request = setup.server.blocking_next_artifact_intent().unwrap();
     let uuid = request.artifact_id;
+    // Crash-report metadata is scrubbed with the rules current when each request is built.
+    assert_eq!(
+      request.metadata.get("custom").map(Data::string_data),
+      Some("<redacted>")
+    );
 
     let request = setup.server.blocking_next_artifact_upload().unwrap();
     assert_eq!(request.artifact_id, uuid);
     assert_eq!(request.contents, CRASH_CONTENTS.as_bytes());
+    assert_eq!(
+      request.state_metadata.get("custom").map(Data::string_data),
+      Some("<redacted>")
+    );
     let mut feature_flags = request
       .feature_flags
       .iter()

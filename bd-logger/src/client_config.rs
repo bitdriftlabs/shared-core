@@ -269,6 +269,9 @@ pub struct LoggerUpdate {
   stream_config_parse_failure: Counter,
   filter_config_parse_failure: Counter,
   scrub_config_parse_failure: Counter,
+  // Publishes each applied configuration's scrub rules to the artifact uploader, which scrubs
+  // upload metadata with them on a best-effort basis.
+  scrub_rules_tx: tokio::sync::watch::Sender<Arc<ScrubRules>>,
 }
 
 impl LoggerUpdate {
@@ -285,6 +288,7 @@ impl LoggerUpdate {
     command_execution_policy: CommandExecutionPolicy,
     command_state: Arc<DeviceCommandState>,
     time_provider: Arc<dyn TimeProvider>,
+    scrub_rules_tx: tokio::sync::watch::Sender<Arc<ScrubRules>>,
     scope: &Scope,
   ) -> Self {
     Self {
@@ -305,6 +309,7 @@ impl LoggerUpdate {
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),
       filter_config_parse_failure: scope.counter("filter_config_parse_failure"),
       scrub_config_parse_failure: scope.counter("scrub_config_parse_failure"),
+      scrub_rules_tx,
     }
   }
 }
@@ -381,33 +386,35 @@ impl ApplyConfig for LoggerUpdate {
     self
       .scrub_config_parse_failure
       .inc_by(scrub_config_parse_failure_count);
+    let scrub_rules = Arc::new(scrub_rules);
 
-    if let Err(e) = self
-      .config_update_tx
-      .send(ConfigUpdate {
-        buffer_producers: BufferProducers::new(&self.buffer_manager)?,
-        buffer_selector: crate::buffer_selector::BufferSelector::new(&buffer)?,
-        // TODO(Augustyniak): Propagate the information about invalid workflows to server.
-        workflows_configuration,
-        tail_configs: TailConfigurations::new(
-          bdtail,
-          || {
-            // This is only called if we have active streams, which means we should have an active
-            // stream buffer.
-            Ok(
-              maybe_stream_buffer
-                .ok_or(InvariantError::Invariant)?
-                .register_producer()?,
-            )
-          },
-          || self.stream_config_parse_failure.inc(),
-        )?,
-        scrub_rules,
-        filter_chain,
-        from_cache,
-      })
-      .await
-    {
+    let config_update = ConfigUpdate {
+      buffer_producers: BufferProducers::new(&self.buffer_manager)?,
+      buffer_selector: crate::buffer_selector::BufferSelector::new(&buffer)?,
+      // TODO(Augustyniak): Propagate the information about invalid workflows to server.
+      workflows_configuration,
+      tail_configs: TailConfigurations::new(
+        bdtail,
+        || {
+          // This is only called if we have active streams, which means we should have an active
+          // stream buffer.
+          Ok(
+            maybe_stream_buffer
+              .ok_or(InvariantError::Invariant)?
+              .register_producer()?,
+          )
+        },
+        || self.stream_config_parse_failure.inc(),
+      )?,
+      scrub_rules: scrub_rules.clone(),
+      filter_chain,
+      from_cache,
+    };
+    // Publish the rules to the artifact uploader only once the configuration has been built, so a
+    // configuration rejected above never changes how artifact metadata is scrubbed.
+    self.scrub_rules_tx.send_replace(scrub_rules);
+
+    if let Err(e) = self.config_update_tx.send(config_update).await {
       log::debug!("failed to push config update to a channel: {e:?}");
       return Ok(());
     }

@@ -7,7 +7,7 @@
 
 use crate::{FilterChain, ScrubRules};
 use bd_log_matcher::builder::message_equals;
-use bd_log_primitives::{Log, LogFields, log_level};
+use bd_log_primitives::{DataValue, Log, LogFields, log_level};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_proto::protos::filter::scrub::{ScrubConfiguration, ScrubRule};
 use bd_proto::protos::logging::payload::LogType;
@@ -177,6 +177,42 @@ fn filter_copying_a_scrubbed_field_copies_the_scrubbed_value() {
       [].into(),
     )
   );
+}
+
+#[test]
+fn scrub_field_matches_scrubbing_a_log() {
+  let rules = make_scrub_rules(vec![
+    scrub_rule(remove_field!("removed")),
+    scrub_rule(regex_match_and_substitute_field!(
+      "email",
+      "@.*",
+      "@<redacted>"
+    )),
+    scrub_rule(regex_match_and_substitute_global!(
+      "token=\\w+",
+      "token=<redacted>",
+      ignore = ["safe"]
+    )),
+    // Message body rules do not apply to fields.
+    scrub_rule(regex_match_and_substitute_message!(".*", "<message>")),
+  ]);
+
+  let fields: LogFields = [
+    ("removed".into(), "a".into()),
+    ("email".into(), "a@example.com token=x".into()),
+    ("safe".into(), "token=y".into()),
+    ("other".into(), "token=z".into()),
+    ("number".into(), DataValue::U64(7)),
+  ]
+  .into();
+
+  let mut log = make_log("message", fields.clone(), [].into());
+  rules.process(&mut log);
+
+  let mut scrubbed = fields;
+  scrubbed.retain(|key, value| rules.scrub_field(key, value));
+
+  assert_eq!(scrubbed, log.fields);
 }
 
 fn make_scrub_rules(rules: Vec<ScrubRule>) -> ScrubRules {

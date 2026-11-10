@@ -28,7 +28,8 @@ use bd_client_common::file_system::FileSystem;
 use bd_client_common::maybe_await;
 use bd_client_stats_store::{Collector, Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_log_primitives::LogFields;
+use bd_log_filter::ScrubRules;
+use bd_log_primitives::{DataValue, LogFields};
 use bd_macros::ApproximateSize;
 use bd_proto::protos::client::api::{
   ArtifactPayloadEncoding,
@@ -536,6 +537,10 @@ pub struct Uploader {
     bd_runtime::runtime::retry_backoff::BackoffGrowthFactorBasisPoints,
   >,
 
+  // The scrub rules from the most recently applied configuration. Metadata is scrubbed with
+  // whatever rules are current when each request is built; sends never wait for rules.
+  scrub_rules: watch::Receiver<Arc<ScrubRules>>,
+
   intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
   upload_task_handle: Option<tokio::task::JoinHandle<Result<()>>>,
 
@@ -585,6 +590,7 @@ impl Uploader {
     runtime: &ConfigLoader,
     collector: &Collector,
     command_artifact_metadata: HashMap<String, String>,
+    scrub_rules: watch::Receiver<Arc<ScrubRules>>,
     shutdown: ComponentShutdown,
   ) -> (Self, UploadClient) {
     runtime.expect_initialized();
@@ -616,6 +622,7 @@ impl Uploader {
       max_entries: runtime.register_int_watch(),
       max_attachment_bytes: runtime.register_int_watch(),
       backoff_policy: RuntimeBackoffPolicy::new(runtime),
+      scrub_rules,
       upload_task_handle: None,
       intent_task_handle: None,
       stats: Stats::new(&scope),
@@ -634,6 +641,12 @@ impl Uploader {
     };
 
     (uploader, client)
+  }
+
+  // Returns the metadata to send, scrubbed with the current rules. The index keeps the raw
+  // metadata so a later rule change still applies to an artifact that has not been sent.
+  fn scrubbed_metadata(&self, metadata: &HashMap<String, Data>) -> HashMap<String, Data> {
+    scrub_metadata(&self.scrub_rules.borrow(), metadata)
   }
 
   pub async fn run(self) {
@@ -671,7 +684,7 @@ impl Uploader {
             next.type_id.clone().unwrap_or_default(),
             next.session_id.clone(),
             next.time.to_offset_date_time(),
-            next.metadata.clone(),
+            self.scrubbed_metadata(&next.metadata),
             self.backoff_policy.backoff_mark_update(),
           )));
           continue;
@@ -720,7 +733,7 @@ impl Uploader {
           next.time.to_offset_date_time(),
           next.session_id.clone(),
           self.backoff_policy.backoff_mark_update(),
-          next.metadata.clone(),
+          self.scrubbed_metadata(&next.metadata),
           next.feature_flags.clone(),
           next.command_id.clone(),
           next.content_type.clone(),
@@ -1457,4 +1470,37 @@ impl Uploader {
     )
     .await
   }
+}
+
+/// Applies scrub rules to artifact metadata. Values no rule changes are sent exactly as stored.
+fn scrub_metadata(
+  rules: &ScrubRules,
+  metadata: &HashMap<String, Data>,
+) -> HashMap<String, Data> {
+  if rules.is_empty() {
+    return metadata.clone();
+  }
+  metadata
+    .iter()
+    .filter_map(|(key, value)| {
+      // A value that cannot be read as a field cannot be rewritten by a regex rule, but a rule
+      // removing its key still applies, so it is checked with a placeholder value.
+      let Some(original) = DataValue::from_proto(value.clone()) else {
+        return rules
+          .scrub_field(key, &mut DataValue::default())
+          .then(|| (key.clone(), value.clone()));
+      };
+      let mut field = original.clone();
+      if !rules.scrub_field(key, &mut field) {
+        return None;
+      }
+      // Only a value a rule changed is re-encoded; the conversion drops details such as a
+      // binary value's type.
+      if field == original {
+        Some((key.clone(), value.clone()))
+      } else {
+        Some((key.clone(), field.into_proto()))
+      }
+    })
+    .collect()
 }

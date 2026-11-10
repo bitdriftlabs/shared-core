@@ -51,6 +51,7 @@ async fn cancelled_staging_retains_real_admission_ownership_through_both_syncs()
     &runtime,
     &Collector::default(),
     HashMap::new(),
+    tokio::sync::watch::channel(Arc::default()).1,
     shutdown.make_shutdown(),
   );
   let mut revision = client.upload_queue_revision();
@@ -187,6 +188,7 @@ async fn single_payload_survives_log_retirement_until_real_upload_completes() {
     &runtime,
     &Collector::default(),
     HashMap::new(),
+    tokio::sync::watch::channel(Arc::default()).1,
     shutdown.make_shutdown(),
   );
   let uploader = tokio::spawn(uploader.run());
