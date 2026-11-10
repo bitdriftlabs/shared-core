@@ -166,9 +166,9 @@ impl Reader {
         .is_some_and(|delta| delta <= CLOCK_TOLERANCE_NS),
       "unstable trace clocks"
     );
-    // Linux shares the numeric PID/TID namespace. Check after all metadata so packet order cannot
-    // hide a process ID reused as another process's thread.
-    for pid in reader.processes.keys() {
+    // Linux shares the numeric PID/TID namespace, including process IDs known only through thread
+    // ownership. Check after all metadata so packet order cannot hide conflicting identities.
+    for pid in reader.processes.keys().chain(reader.threads.values()) {
       ensure!(
         reader.threads.get(pid).is_none_or(|parent| parent == pid),
         "conflicting trace PID/TID identity"

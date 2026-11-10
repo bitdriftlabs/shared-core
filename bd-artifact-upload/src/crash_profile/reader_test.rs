@@ -660,44 +660,59 @@ fn changed_process_or_thread_identity_is_not_silently_merged() {
 fn process_thread_conflicts_are_order_independent_but_main_threads_are_valid() {
   let bundle = message(|output| {
     output.write_bytes(2, &sched_event(20, 7, 99)).unwrap();
+    output.write_bytes(2, &sched_event(25, 8, 99)).unwrap();
   });
   let activity = message(|output| output.write_bytes(1, &bundle).unwrap());
+  let thread_tree = |pid, tid| {
+    let thread = message(|output| {
+      output.write_uint32(1, tid).unwrap();
+      output.write_uint32(3, pid).unwrap();
+    });
+    let tree = message(|output| output.write_bytes(2, &thread).unwrap());
+    message(|output| output.write_bytes(2, &tree).unwrap())
+  };
   for parent in [7, 9] {
-    let packets = [
-      process_tree(7, 8, Some(10)),
-      process_tree(parent, 7, Some(10)),
-      activity.clone(),
-    ];
-    for order in [
-      [0, 1, 2],
-      [0, 2, 1],
-      [1, 0, 2],
-      [1, 2, 0],
-      [2, 0, 1],
-      [2, 1, 0],
+    for (process, thread, process_start) in [
+      (
+        process_tree(7, 8, Some(10)),
+        process_tree(parent, 7, Some(10)),
+        Some(10),
+      ),
+      (thread_tree(7, 8), thread_tree(parent, 7), None),
     ] {
-      let result = Reader::read(
-        trace(&[
-          clock_packet(),
-          packets[order[0]].clone(),
-          packets[order[1]].clone(),
-          packets[order[2]].clone(),
-        ])
-        .as_slice(),
-      );
-      if parent == 7 {
-        let observations = result.unwrap().observations;
-        assert_eq!(observations.len(), 1);
-        assert_eq!(observations[0].pid, 7);
-        assert_eq!(observations[0].process_start_ns, Some(10));
-        assert_eq!(observations[0].first_ns, 20);
-      } else {
-        assert!(
-          result
-            .unwrap_err()
-            .to_string()
-            .contains("conflicting trace PID/TID identity")
+      let packets = [process, thread, activity.clone()];
+      for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+      ] {
+        let result = Reader::read(
+          trace(&[
+            clock_packet(),
+            packets[order[0]].clone(),
+            packets[order[1]].clone(),
+            packets[order[2]].clone(),
+          ])
+          .as_slice(),
         );
+        if parent == 7 {
+          let observations = result.unwrap().observations;
+          assert_eq!(observations.len(), 1);
+          assert_eq!(observations[0].pid, 7);
+          assert_eq!(observations[0].process_start_ns, process_start);
+          assert_eq!(observations[0].first_ns, 20);
+          assert_eq!(observations[0].last_ns, 25);
+        } else {
+          assert!(
+            result
+              .unwrap_err()
+              .to_string()
+              .contains("conflicting trace PID/TID identity")
+          );
+        }
       }
     }
   }

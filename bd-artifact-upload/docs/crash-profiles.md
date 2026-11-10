@@ -1,8 +1,8 @@
 # Linked Android crash-profile contracts
 
-[`CrashProfileMetadata`](../../api/src/bitdrift_public/protobuf/client/v1/api.proto) contains only the
-artifact IDs of the associated crash reports. It is carried on the existing artifact intent, upload
-and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/artifact.proto).
+[`CrashProfileMetadata`](../../api/src/bitdrift_public/protobuf/client/v1/api.proto) contains only
+the artifact IDs of the associated crash reports. It is carried on the existing artifact intent,
+upload and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/artifact.proto).
 
 ## Identity and matching
 
@@ -13,8 +13,9 @@ and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/artifact.pr
 - A profile ID is its outer artifact ID. Every submitted `report_ids` entry selects an explicit
   parent; the backend never searches for a different parent.
 - PID/time matching stays on the device. Eligible Android reports carry an encoded
-  `CrashProfileSource` ([artifact.proto](../../api/src/bitdrift_public/protobuf/client/v1/artifact.proto):
-  run UUID, PID, boot count, process start and a paired startup clock sample) in the report's typed
+  `CrashProfileSource`
+  ([artifact.proto](../../api/src/bitdrift_public/protobuf/client/v1/artifact.proto): run UUID, PID,
+  boot count, process start and a paired startup clock sample) in the report's typed
   `crash_profile_source` FlatBuffer field; kind comes from the report type. After a restart the SDK
   re-reads still-queued report payloads. Nothing else is transmitted, and the backend ignores the
   field.
@@ -22,16 +23,17 @@ and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/artifact.pr
   `ApplicationExitInfo` timestamp supplies a death bound, with paired-clock skew and millisecond
   rounding tolerance, so later reuse of its numeric PID cannot attach an unrelated profile when
   optional trace process-start metadata is absent. A live Java OOM timestamp is not a known process
-  death and does not impose that bound. Known limitation: OOM traces may omit process-start metadata,
-  so unbounded OOM candidates cannot exclude later PID reuse unless another candidate exposes it.
-  Recovered OOMs need trustworthy process-exit evidence; using exception time as death would reject
-  valid heap capture that continues afterward.
+  death and does not impose that bound. Known limitation: OOM traces may omit process-start
+  metadata, so unbounded OOM candidates cannot exclude later PID reuse unless another candidate
+  exposes it. Recovered OOMs need trustworthy process-exit evidence; using exception time as death
+  would reject valid heap capture that continues afterward.
 - The selective wire reader streams zlib `compressed_packets` into the parser without retaining
   either the encoded field or expanded heap/event bodies. It verifies the complete zlib stream,
   checksum and absence of trailing bytes; nested compressed packets remain unsupported. Unrelated
   unusable incremental packets are skipped, but loss still invalidates sequence defaults and any
-  selected clock, heap or process evidence requiring that state fails closed.
-  Conflicting ownership between the process and thread maps is rejected regardless of metadata order.
+  selected clock, heap or process evidence requiring that state fails closed. Conflicting
+  process/thread ownership is rejected regardless of metadata order, including process IDs known
+  only through thread ownership records.
 - Reuse existing artifact fields for capture time, MIME type, encoding and captured metadata,
   including the receiving process's build at first adoption. Keep IDs, bytes and lookup build stable
   across retries. Scope and authorization checks remain server responsibilities.
@@ -42,16 +44,15 @@ and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/artifact.pr
 attachment (ZLIB storage, `attachment.max_bytes`, ownership of an absolute source path) with the
 receiving build's static metadata and the `crash_profile` report IDs, and returns its artifact ID.
 Attribution resolves relative source paths once before queueing, so matching, persistence and source
-cleanup refer to the same file.
-That metadata is retained in the index and forwarded unchanged to intent and upload. Existing
-persistence notifications, retries and ACKs are unchanged. `ReportAttribution` is the platform hook:
-the logger seeds it from the pending index before the uploader starts, and the crash monitor adds
-each enqueued report that carries source facts.
+cleanup refer to the same file. That metadata is retained in the index and forwarded unchanged to
+intent and upload. Existing persistence notifications, retries and ACKs are unchanged.
+`ReportAttribution` is the platform hook: the logger seeds it from the pending index before the
+uploader starts, and the crash monitor adds each enqueued report that carries source facts.
 Readiness and successful report/profile ACKs do not remove candidates: several later profiles may
 reuse one canonical report ID until process exit. Persistence rejection retires the owned profile
 source through the ordinary attachment path without removing its report candidate. Shutdown can
-cancel the attribution worker even while it awaits a persistence acknowledgement; an upload
-already accepted by the uploader keeps its ordinary ownership and delivery semantics.
+cancel the attribution worker even while it awaits a persistence acknowledgement; an upload already
+accepted by the uploader keeps its ordinary ownership and delivery semantics.
 
 Profiles use ordinary artifact intent decisions and upload ACKs. A successful ACK covers the whole
 submitted artifact and its report links after raw ownership and durable work scheduling; processing
