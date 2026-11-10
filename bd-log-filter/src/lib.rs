@@ -147,6 +147,30 @@ impl ScrubRule {
       Self::Regex(regex) => regex.apply(log),
     }
   }
+
+  // Applies the rule to one field, returning false if the rule removes it. Message body rules do
+  // not apply to fields.
+  fn apply_to_field(&self, key: &str, value: &mut LogFieldValue) -> bool {
+    match self {
+      Self::RemoveField(remove_field) => remove_field.field_name != key,
+      Self::Regex(regex) => {
+        let applies = match &regex.target {
+          RegexMatchAndSubstituteTarget::Field(field_name) => field_name == key,
+          RegexMatchAndSubstituteTarget::MessageBody => false,
+          RegexMatchAndSubstituteTarget::GlobalScrub { ignored_fields } => {
+            !ignored_fields.contains(key)
+          },
+        };
+        if applies
+          && let Some(string_value) = value.as_str()
+          && let Cow::Owned(new_value) = regex.produce_new_value(string_value)
+        {
+          *value = new_value.into();
+        }
+        true
+      },
+    }
+  }
 }
 
 impl ScrubRules {
@@ -189,11 +213,36 @@ impl ScrubRules {
     }
   }
 
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    self.rules.is_empty()
+  }
+
   /// Applies every rule to the log's captured and matching fields and its message body.
   pub fn process(&self, log: &mut Log) {
     for rule in &self.rules {
       rule.apply(log);
     }
+  }
+
+  /// Applies every rule, in order, to one field outside a log, such as artifact metadata. Returns
+  /// false if a rule removes the field. Rules that target the message body do not apply. Because
+  /// each rule depends only on the field's key and value, this gives the same result as
+  /// `process` gives for a log carrying the field.
+  pub fn scrub_field(&self, key: &str, value: &mut LogFieldValue) -> bool {
+    self
+      .rules
+      .iter()
+      .all(|rule| rule.apply_to_field(key, value))
+  }
+
+  /// Returns a copy of a field set, such as the global fields of a state change, with every rule
+  /// applied.
+  #[must_use]
+  pub fn scrub_fields(&self, fields: &LogFields) -> LogFields {
+    let mut fields = fields.clone();
+    fields.retain(|key, value| self.scrub_field(key, value));
+    fields
   }
 }
 
