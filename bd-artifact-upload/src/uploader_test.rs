@@ -1566,6 +1566,70 @@ async fn intent_retries() {
 }
 
 #[tokio::test]
+async fn retries_scrub_metadata_with_the_rules_current_at_each_attempt() {
+  let mut setup = Setup::new(1).await;
+  let make_rules = |rules| {
+    let (rules, failures) = ScrubRules::new(ScrubConfiguration {
+      rules,
+      ..Default::default()
+    });
+    assert_eq!(failures, 0);
+    Arc::new(rules)
+  };
+
+  setup
+    .client
+    .enqueue_upload(
+      UploadSource::File(setup.make_file(b"1")),
+      "client_report".to_string(),
+      [
+        ("secret".into(), "hunter2".into()),
+        ("keep".into(), "value".into()),
+      ]
+      .into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      None,
+    )
+    .unwrap();
+
+  // The first intent attempt goes out before any rules are known. Rules arrive before it fails.
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.metadata, string_metadata(&[("secret", "hunter2"), ("keep", "value")]));
+    setup.scrub_rules_tx.send_replace(make_rules(vec![scrub_rule(remove_field!("secret"))]));
+    // Dropping the response channel fails the attempt.
+  });
+
+  // The retried intent uses the rules that arrived in the meantime.
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.metadata, string_metadata(&[("keep", "value")]));
+    intent.response_tx.send(IntentResponse {
+      uuid: intent.uuid,
+      decision: IntentDecision::UploadImmediately,
+    }).unwrap();
+  });
+
+  // The rules change again before the first upload attempt fails.
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.state_metadata, string_metadata(&[("keep", "value")]));
+    setup.scrub_rules_tx.send_replace(make_rules(vec![
+      scrub_rule(remove_field!("secret")),
+      scrub_rule(remove_field!("keep")),
+    ]));
+    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: false }).unwrap();
+  });
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.state_metadata, HashMap::new());
+  });
+}
+
+#[tokio::test]
 async fn intent_drop() {
   let mut setup = Setup::new(1).await;
 

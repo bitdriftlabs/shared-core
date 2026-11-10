@@ -643,10 +643,11 @@ impl Uploader {
     (uploader, client)
   }
 
-  // Returns the metadata to send, scrubbed with the current rules. The index keeps the raw
-  // metadata so a later rule change still applies to an artifact that has not been sent.
-  fn scrubbed_metadata(&self, metadata: &HashMap<String, Data>) -> HashMap<String, Data> {
-    scrub_metadata(&self.scrub_rules.borrow(), metadata)
+  fn request_metadata(&self, metadata: &HashMap<String, Data>) -> RequestMetadata {
+    RequestMetadata {
+      raw: metadata.clone(),
+      scrub_rules: self.scrub_rules.clone(),
+    }
   }
 
   pub async fn run(self) {
@@ -684,7 +685,7 @@ impl Uploader {
             next.type_id.clone().unwrap_or_default(),
             next.session_id.clone(),
             next.time.to_offset_date_time(),
-            self.scrubbed_metadata(&next.metadata),
+            self.request_metadata(&next.metadata),
             self.backoff_policy.backoff_mark_update(),
           )));
           continue;
@@ -733,7 +734,7 @@ impl Uploader {
           next.time.to_offset_date_time(),
           next.session_id.clone(),
           self.backoff_policy.backoff_mark_update(),
-          self.scrubbed_metadata(&next.metadata),
+          self.request_metadata(&next.metadata),
           next.feature_flags.clone(),
           next.command_id.clone(),
           next.content_type.clone(),
@@ -1379,7 +1380,7 @@ impl Uploader {
     timestamp: OffsetDateTime,
     session_id: String,
     mut retry_policy: ExponentialBackoff,
-    state_metadata: HashMap<String, Data>,
+    state_metadata: RequestMetadata,
     feature_flags: Vec<FeatureFlag>,
     command_id: Option<String>,
     content_type: Option<String>,
@@ -1405,7 +1406,7 @@ impl Uploader {
             artifact_id: name.clone(),
             time: timestamp.into_proto(),
             session_id: session_id.clone(),
-            state_metadata: state_metadata.clone(),
+            state_metadata: state_metadata.current(),
             feature_flags: feature_flags.clone(),
             command_id: command_id.clone(),
             content_type: content_type.clone(),
@@ -1437,7 +1438,7 @@ impl Uploader {
     type_id: String,
     session_id: String,
     timestamp: OffsetDateTime,
-    state_metadata: HashMap<String, Data>,
+    state_metadata: RequestMetadata,
     mut retry_policy: ExponentialBackoff,
   ) -> Result<IntentDecision> {
     retry_notify(
@@ -1452,7 +1453,7 @@ impl Uploader {
             intent_uuid: upload_uuid.clone(),
             session_id: (!session_id.is_empty()).then(|| session_id.clone()),
             time: timestamp.into_proto(),
-            metadata: state_metadata.clone(),
+            metadata: state_metadata.current(),
             ..Default::default()
           },
         );
@@ -1472,11 +1473,23 @@ impl Uploader {
   }
 }
 
+/// The metadata of an artifact being sent. The index keeps it raw; every attempt to send an intent
+/// or upload request scrubs it with the rules current at that moment, so rules applied while a
+/// request is being retried, for example before any configuration has loaded, reach the next
+/// attempt.
+struct RequestMetadata {
+  raw: HashMap<String, Data>,
+  scrub_rules: watch::Receiver<Arc<ScrubRules>>,
+}
+
+impl RequestMetadata {
+  fn current(&self) -> HashMap<String, Data> {
+    scrub_metadata(&self.scrub_rules.borrow(), &self.raw)
+  }
+}
+
 /// Applies scrub rules to artifact metadata. Values no rule changes are sent exactly as stored.
-fn scrub_metadata(
-  rules: &ScrubRules,
-  metadata: &HashMap<String, Data>,
-) -> HashMap<String, Data> {
+fn scrub_metadata(rules: &ScrubRules, metadata: &HashMap<String, Data>) -> HashMap<String, Data> {
   if rules.is_empty() {
     return metadata.clone();
   }
