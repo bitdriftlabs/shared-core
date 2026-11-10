@@ -15,7 +15,7 @@ pub mod runtime;
 
 use super::bdtail::bdtail_config;
 use super::config::v1::config;
-use super::filter::filter;
+use super::filter::{filter, scrub};
 use super::logging::payload;
 use super::state::{scope, state_payload};
 use super::workflow::workflow;
