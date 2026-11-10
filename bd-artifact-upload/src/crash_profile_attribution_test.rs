@@ -10,7 +10,11 @@
 use super::*;
 use crate::crash_profile::PidObservation;
 use crate::test::heap_profile;
-use crate::{EnqueueError, MockClient};
+use crate::uploader::ARTIFACT_UPLOAD_DIRECTORY;
+use crate::{EnqueueError, MockClient, Uploader};
+use bd_client_common::file::read_compressed;
+use bd_client_common::file_system::{FileSystem, RealFileSystem};
+use bd_client_stats_store::Collector;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   DeviceMetrics,
   DeviceMetricsArgs,
@@ -18,13 +22,15 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp,
   root_as_report,
 };
-use bd_runtime::runtime::FeatureFlag as _;
+use bd_runtime::runtime::{FeatureFlag as _, attachment};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{ValueKind, make_update};
+use bd_time::TestTimeProvider;
 use flatbuffers::FlatBufferBuilder;
 use std::path::Path;
 use tempfile::TempDir;
+use tokio::sync::mpsc::error::TryRecvError;
 
 // Trace and report clocks share a boot epoch of 1,000 s REALTIME at BOOTTIME 0.
 const BOOT_EPOCH_NS: i128 = 1_000_000_000_000;
@@ -133,6 +139,37 @@ fn add(attribution: &CrashProfileAttribution, kind: &str, pid: u32) -> Uuid {
 
 fn candidate_count(attribution: &CrashProfileAttribution) -> usize {
   attribution.candidates.reports.lock().len()
+}
+
+#[test]
+fn submitted_profile_paths_are_absolute() {
+  let expected = std::env::current_dir()
+    .unwrap()
+    .join("profile.perfetto-trace");
+  for path in [PathBuf::from("profile.perfetto-trace"), expected.clone()] {
+    let attribution = attribution();
+    attribution.submit(path, Kind::Anr, true);
+    let request = attribution
+      .requests_rx
+      .lock()
+      .as_mut()
+      .unwrap()
+      .try_recv()
+      .unwrap();
+    assert_eq!(request.path, expected);
+    assert_eq!(request.kind, Kind::Anr);
+    assert!(request.retain_unmatched);
+  }
+}
+
+#[test]
+fn empty_profile_paths_are_rejected_before_queueing() {
+  let attribution = attribution();
+  attribution.submit(PathBuf::new(), Kind::Anr, false);
+  assert!(matches!(
+    attribution.requests_rx.lock().as_mut().unwrap().try_recv(),
+    Err(TryRecvError::Empty)
+  ));
 }
 
 #[test]
@@ -310,6 +347,73 @@ fn report_id_limit_is_enforced_without_truncation() {
 //
 // Worker
 //
+
+#[tokio::test]
+async fn relative_sources_persist_the_matched_bytes_and_are_retired_on_rejection() {
+  std::fs::create_dir_all(".tmp").unwrap();
+  for accepted in [true, false] {
+    let directory = TempDir::with_prefix_in("relative-profile", ".tmp").unwrap();
+    let relative_directory = Path::new(".tmp").join(directory.path().file_name().unwrap());
+    let source = write_profile(&relative_directory, 7);
+    assert!(source.is_relative());
+    let contents = std::fs::read(&source).unwrap();
+    let sdk_directory = directory.path().canonicalize().unwrap().join("sdk");
+    let decoy = sdk_directory.join(&source);
+    std::fs::create_dir_all(decoy.parent().unwrap()).unwrap();
+    std::fs::write(&decoy, b"not the matched profile").unwrap();
+    let filesystem = Arc::new(RealFileSystem::new(sdk_directory.clone()));
+    let runtime = TestConfigLoader::new().await;
+    let limit = u32::try_from(contents.len() - usize::from(!accepted)).unwrap();
+    runtime
+      .update_snapshot(make_update(
+        vec![
+          (AnrEnabled::path(), ValueKind::Bool(true)),
+          (attachment::MaxBytes::path(), ValueKind::Int(limit)),
+        ],
+        "relative profile".to_string(),
+      ))
+      .await
+      .unwrap();
+    let shutdown = ComponentShutdownTrigger::default();
+    let (upload_tx, _uploads) = mpsc::channel(16);
+    let (uploader, client) = Uploader::new(
+      filesystem.clone(),
+      upload_tx,
+      Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+      &runtime,
+      &Collector::default(),
+      [].into(),
+      shutdown.make_shutdown(),
+    );
+    let uploader_task = tokio::spawn(uploader.run());
+    let attribution = attribution();
+    let report_id = add(&attribution, "anr", 7);
+    let mut progress = attribution.processing_revision_for_test();
+    attribution.start(Arc::new(client), &runtime, shutdown.make_shutdown());
+    attribution.mark_ready();
+    attribution.submit(source.clone(), Kind::Anr, false);
+    progress.wait_for(|revision| *revision >= 2).await.unwrap();
+
+    assert!(!source.exists());
+    assert_eq!(std::fs::read(&decoy).unwrap(), b"not the matched profile");
+    let pending = Uploader::pending_artifacts(&sdk_directory).await.unwrap();
+    assert_eq!(pending.len(), usize::from(accepted));
+    if accepted {
+      let entry = &pending[0];
+      assert_eq!(
+        entry.crash_profile.as_ref().unwrap().report_ids,
+        vec![report_id.to_string()]
+      );
+      let payload = filesystem
+        .read_file(&ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name))
+        .await
+        .unwrap();
+      assert_eq!(read_compressed(&payload).unwrap(), contents);
+    }
+    shutdown.shutdown().await;
+    uploader_task.await.unwrap();
+  }
+}
 
 type Enqueued = (Vec<String>, String, String, OffsetDateTime);
 

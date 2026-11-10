@@ -59,7 +59,7 @@ use protobuf::Message as _;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::{PathBuf, absolute};
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -191,7 +191,16 @@ impl CrashProfileAttribution {
   /// Queues a successful system-triggered result, handled after the initial report pass and left in
   /// place if its kind is disabled by then. A live result that matches no report is retained for
   /// one resubmission by the next process (`retain_unmatched`); otherwise it is deleted.
+  /// Resolve relative paths once so matching, upload persistence and source cleanup use the same
+  /// file.
   pub fn submit(&self, path: PathBuf, kind: Kind, retain_unmatched: bool) {
+    let path = match absolute(path) {
+      Ok(path) => path,
+      Err(error) => {
+        log::warn!("failed to resolve crash profile path: {error}");
+        return;
+      },
+    };
     log::info!(
       "crash profile submitted: {kind:?} retain_unmatched={retain_unmatched} {}",
       path.display()
@@ -267,6 +276,9 @@ fn report_candidate(
         .ok_or_else(|| anyhow!("report death bound overflow"))?,
     );
   }
+  // TODO: Bound recovered JVM OOM lifetimes using trustworthy process-exit evidence. Native OOM
+  // traces can omit process-start metadata, leaving later PID reuse indistinguishable. The
+  // exception timestamp is not a death bound: heap capture may continue afterward.
   Ok(Some(ReportCandidate {
     report_id,
     kind,

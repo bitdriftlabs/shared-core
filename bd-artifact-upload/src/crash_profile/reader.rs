@@ -166,6 +166,14 @@ impl Reader {
         .is_some_and(|delta| delta <= CLOCK_TOLERANCE_NS),
       "unstable trace clocks"
     );
+    // Linux shares the numeric PID/TID namespace. Check after all metadata so packet order cannot
+    // hide a process ID reused as another process's thread.
+    for pid in reader.processes.keys() {
+      ensure!(
+        reader.threads.get(pid).is_none_or(|parent| parent == pid),
+        "conflicting trace PID/TID identity"
+      );
+    }
     let mut observations = BTreeMap::<u32, PidObservation>::new();
     for ((process, tid), (first, last)) in reader.activity {
       let pid = if process {

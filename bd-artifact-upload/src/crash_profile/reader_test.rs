@@ -657,6 +657,53 @@ fn changed_process_or_thread_identity_is_not_silently_merged() {
 }
 
 #[test]
+fn process_thread_conflicts_are_order_independent_but_main_threads_are_valid() {
+  let bundle = message(|output| {
+    output.write_bytes(2, &sched_event(20, 7, 99)).unwrap();
+  });
+  let activity = message(|output| output.write_bytes(1, &bundle).unwrap());
+  for parent in [7, 9] {
+    let packets = [
+      process_tree(7, 8, Some(10)),
+      process_tree(parent, 7, Some(10)),
+      activity.clone(),
+    ];
+    for order in [
+      [0, 1, 2],
+      [0, 2, 1],
+      [1, 0, 2],
+      [1, 2, 0],
+      [2, 0, 1],
+      [2, 1, 0],
+    ] {
+      let result = Reader::read(
+        trace(&[
+          clock_packet(),
+          packets[order[0]].clone(),
+          packets[order[1]].clone(),
+          packets[order[2]].clone(),
+        ])
+        .as_slice(),
+      );
+      if parent == 7 {
+        let observations = result.unwrap().observations;
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].pid, 7);
+        assert_eq!(observations[0].process_start_ns, Some(10));
+        assert_eq!(observations[0].first_ns, 20);
+      } else {
+        assert!(
+          result
+            .unwrap_err()
+            .to_string()
+            .contains("conflicting trace PID/TID identity")
+        );
+      }
+    }
+  }
+}
+
+#[test]
 fn valid_raw_and_compressed_profiles_have_no_reader_byte_or_work_cap() {
   let mut bytes = trace(&[clock_packet(), heap_packet()]);
   {
