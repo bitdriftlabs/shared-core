@@ -107,7 +107,10 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
     },
     ProtoConfig {
       output_dir: "src/protos/filter",
-      inputs: &["../api/src/bitdrift_public/protobuf/filter/v1/filter.proto"],
+      inputs: &[
+        "../api/src/bitdrift_public/protobuf/filter/v1/filter.proto",
+        "../api/src/bitdrift_public/protobuf/filter/v1/scrub.proto",
+      ],
       includes: PROTO_INCLUDES,
       use_tokio_bytes: false,
       file_header: true,

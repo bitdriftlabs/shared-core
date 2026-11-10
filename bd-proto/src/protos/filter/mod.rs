@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod filter;
+pub mod scrub;
 
 use super::log_matcher::log_matcher;
 use bd_pgv::generated::protos::validate;
