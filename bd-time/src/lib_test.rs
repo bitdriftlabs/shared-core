@@ -21,6 +21,46 @@ use time::ext::NumericalDuration;
 use time::macros::datetime;
 
 #[test]
+fn checked_protobuf_timestamps_validate_representation_and_preserve_nanos() {
+  for value in [
+    datetime!(0001-01-01 0:00 UTC),
+    datetime!(1969-12-31 23:59:59.999999999 UTC),
+    datetime!(2026-01-01 12:34:56.123456789 UTC),
+    datetime!(9999-12-31 23:59:59.999999999 UTC),
+  ] {
+    assert_eq!(
+      value.into_proto().to_offset_date_time_checked(),
+      Some(value)
+    );
+  }
+  for nanos in [-1, 1_000_000_000, i32::MAX] {
+    assert_eq!(
+      Timestamp {
+        nanos,
+        ..Default::default()
+      }
+      .to_offset_date_time_checked(),
+      None
+    );
+  }
+  for seconds in [
+    i64::MIN,
+    i64::MAX,
+    datetime!(0001-01-01 0:00 UTC).unix_timestamp() - 1,
+    datetime!(9999-12-31 23:59:59 UTC).unix_timestamp() + 1,
+  ] {
+    assert_eq!(
+      Timestamp {
+        seconds,
+        ..Default::default()
+      }
+      .to_offset_date_time_checked(),
+      None
+    );
+  }
+}
+
+#[test]
 fn timestamp_floor() {
   let test_cases = &[
     (

@@ -22,7 +22,7 @@ pub mod config_writer;
 mod file_watcher;
 pub mod global_state;
 
-use bd_artifact_upload::{SnappedFeatureFlag, UploadSource};
+use bd_artifact_upload::{ReportAttribution, SnappedFeatureFlag, UploadSource};
 use bd_client_common::artifact::CLIENT_REPORT_ARTIFACT_TYPE_ID;
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
@@ -148,6 +148,7 @@ pub struct Monitor {
   pub session: Arc<bd_session::Strategy>,
   watcher: Option<file_watcher::FileWatcher>,
   crash_report_hook: Option<Arc<dyn CrashReportHook>>,
+  report_attribution: Option<Arc<dyn ReportAttribution>>,
 }
 
 impl Monitor {
@@ -161,6 +162,7 @@ impl Monitor {
     previous_run_state: bd_versioned_kv::ScopedMaps,
     emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
     crash_report_hook: Option<Arc<dyn CrashReportHook>>,
+    report_attribution: Option<Arc<dyn ReportAttribution>>,
   ) -> Self {
     debug_check_lifecycle_less_than!(
       init_lifecycle,
@@ -179,6 +181,7 @@ impl Monitor {
       session,
       watcher: None,
       crash_report_hook,
+      report_attribution,
     };
 
     // Only enable the file watcher if the reports/watcher directory exists. This allows the
@@ -337,6 +340,16 @@ impl Monitor {
 
   /// Processes all pending reports found in the "new" reports directory.
   pub async fn process_all_pending_reports(&self) -> Vec<CrashLog> {
+    let logs = self.process_new_reports().await;
+    // The first pass is the startup recovery of previous-run reports; profile adoption waits for
+    // it, including when there was nothing to recover. Later dispatches still add candidates.
+    if let Some(attribution) = &self.report_attribution {
+      attribution.mark_ready();
+    }
+    logs
+  }
+
+  async fn process_new_reports(&self) -> Vec<CrashLog> {
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
       Err(e) => {
@@ -611,6 +624,7 @@ impl Monitor {
       session_id.to_string(),
       reporting_feature_flags.clone(),
       None,
+      None,
     ) else {
       log::warn!(
         "Failed to enqueue issue report for upload: {}",
@@ -618,6 +632,11 @@ impl Monitor {
       );
       return None;
     };
+
+    // The platform decides from the report itself whether it is eligible for attribution.
+    if let Some(attribution) = &self.report_attribution {
+      attribution.add_report(artifact_id, &bin_report, &session_id);
+    }
 
     let fields = Self::build_crash_log_fields(
       state_fields,

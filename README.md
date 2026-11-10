@@ -2,6 +2,11 @@
 
 This repo contains bitdrift code shared between the client and server.
 
+## Documentation
+
+- [Linked Android crash-profile contracts](bd-artifact-upload/docs/crash-profiles.md): on-device
+  attribution, profile persistence and delivery.
+
 ## Licensing
 
 Packages are individually licensed under either Apache License 2.0 or PolyForm Shield 1.0.0.

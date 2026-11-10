@@ -322,6 +322,7 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
       fields: None,
       processing_result: None,
       crash_info,
+      crash_profile_source: None,
     },
   );
   processor.builder.finish(report, None);
