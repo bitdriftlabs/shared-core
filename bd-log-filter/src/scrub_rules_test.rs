@@ -209,6 +209,7 @@ fn scrub_field_matches_scrubbing_a_log() {
   let mut log = make_log("message", fields.clone(), [].into());
   rules.process(&mut log);
 
+  assert_eq!(rules.scrub_fields(&fields), log.fields);
   let mut scrubbed = fields;
   scrubbed.retain(|key, value| rules.scrub_field(key, value));
 

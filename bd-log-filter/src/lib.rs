@@ -235,6 +235,15 @@ impl ScrubRules {
       .iter()
       .all(|rule| rule.apply_to_field(key, value))
   }
+
+  /// Returns a copy of a field set, such as the global fields of a state change, with every rule
+  /// applied.
+  #[must_use]
+  pub fn scrub_fields(&self, fields: &LogFields) -> LogFields {
+    let mut fields = fields.clone();
+    fields.retain(|key, value| self.scrub_field(key, value));
+    fields
+  }
 }
 
 //

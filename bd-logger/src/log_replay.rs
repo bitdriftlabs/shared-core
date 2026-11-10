@@ -494,6 +494,19 @@ impl ProcessingPipeline {
   ) -> LogReplayResult {
     let state_reader = state.read().await;
 
+    // The global fields reach workflows and, when the state change triggers a flush, a synthetic
+    // log, so they are scrubbed as the same fields are on every log.
+    let scrubbed_fields;
+    let (fields, matching_fields) = if self.scrub_rules.is_empty() {
+      (fields, matching_fields)
+    } else {
+      scrubbed_fields = (
+        self.scrub_rules.scrub_fields(fields),
+        self.scrub_rules.scrub_fields(matching_fields),
+      );
+      (&scrubbed_fields.0, &scrubbed_fields.1)
+    };
+
     let empty_set = TinySet::default();
     let mut result = self.workflows_engine.process_event(
       bd_workflows::workflow::WorkflowEvent::StateChange(
