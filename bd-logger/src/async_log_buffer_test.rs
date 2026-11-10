@@ -58,7 +58,7 @@ use bd_event_buffer::{
   LoggerIngressPayload,
   ProviderSnapshot,
 };
-use bd_log_filter::FilterChain;
+use bd_log_filter::{FilterChain, ScrubRules};
 use bd_log_matcher::builder::message_equals;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
@@ -436,6 +436,7 @@ impl Setup {
       buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
       workflows_configuration,
       tail_configs: TailConfigurations::default(),
+      scrub_rules: ScrubRules::default(),
       filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
       from_cache: false,
     }

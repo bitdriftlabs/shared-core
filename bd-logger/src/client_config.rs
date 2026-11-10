@@ -27,7 +27,7 @@ use bd_client_common::file::write_compressed_protobuf;
 use bd_client_common::payload_conversion::{ClientConfigurationUpdateAck, IntoRequest};
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_stats_store::{Counter, Scope};
-use bd_log_filter::FilterChain;
+use bd_log_filter::{FilterChain, ScrubRules};
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{EncodableLog, FieldsRef};
@@ -42,6 +42,7 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
+use bd_proto::protos::filter::scrub::ScrubConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use bd_stats_common::Counter as _;
 use bd_time::TimeProvider;
@@ -72,6 +73,7 @@ pub struct Configuration {
   debug_workflows: WorkflowsConfigurationProto,
   bdtail: BdTailConfigurations,
   filters: FiltersConfiguration,
+  scrub: ScrubConfiguration,
 }
 
 impl Configuration {
@@ -82,6 +84,7 @@ impl Configuration {
       debug_workflows: sow.debug_workflows.unwrap_or_default(),
       bdtail: sow.bdtail_configuration.unwrap_or_default(),
       filters: sow.filters_configuration.unwrap_or_default(),
+      scrub: sow.scrub_configuration.unwrap_or_default(),
     }
   }
 }
@@ -265,6 +268,7 @@ pub struct LoggerUpdate {
   device_command_dispatcher: DeviceCommandDispatcher,
   stream_config_parse_failure: Counter,
   filter_config_parse_failure: Counter,
+  scrub_config_parse_failure: Counter,
 }
 
 impl LoggerUpdate {
@@ -300,6 +304,7 @@ impl LoggerUpdate {
       ),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),
       filter_config_parse_failure: scope.counter("filter_config_parse_failure"),
+      scrub_config_parse_failure: scope.counter("scrub_config_parse_failure"),
     }
   }
 }
@@ -342,6 +347,7 @@ impl ApplyConfig for LoggerUpdate {
       debug_workflows,
       bdtail,
       filters,
+      scrub,
     } = configuration;
     let device_commands = device_commands_from_bdtail(&bdtail)?;
     let has_active_tail_streams = bdtail
@@ -371,6 +377,10 @@ impl ApplyConfig for LoggerUpdate {
     self
       .filter_config_parse_failure
       .inc_by(filter_config_parse_failure_count);
+    let (scrub_rules, scrub_config_parse_failure_count) = ScrubRules::new(scrub);
+    self
+      .scrub_config_parse_failure
+      .inc_by(scrub_config_parse_failure_count);
 
     if let Err(e) = self
       .config_update_tx
@@ -392,6 +402,7 @@ impl ApplyConfig for LoggerUpdate {
           },
           || self.stream_config_parse_failure.inc(),
         )?,
+        scrub_rules,
         filter_chain,
         from_cache,
       })

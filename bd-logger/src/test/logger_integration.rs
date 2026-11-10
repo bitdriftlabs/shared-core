@@ -107,6 +107,8 @@ use bd_test_helpers::config_helper::{
   make_workflow_config_flushing_buffer,
   match_message,
 };
+use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
+use bd_test_helpers::filter::scrub_rule;
 use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
@@ -2758,6 +2760,63 @@ fn transforms_emitted_logs_according_to_filters() {
     assert_eq!(log_upload.logs().len(), 10);
     assert_eq!("fire workflow action!", log_upload.logs()[9].field("foo"));
     assert_eq!(vec!["flush_action_id"], *log_upload.logs()[9].workflow_action_ids());
+  });
+}
+
+#[test]
+fn scrub_rules_apply_before_filters_and_workflows() {
+  let mut setup = Setup::new();
+
+  setup.send_runtime_update();
+
+  // Send down a configuration:
+  //  * a single trigger buffer ('default') which accepts all logs
+  //  * a workflow which flushes the buffers when it sees "copy" equal to the scrubbed value
+  //  * a filter that copies "secret" into "copy", as the `_path_template` filter does
+  //  * a scrub rule that redacts "secret"
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: make_workflow_config_flushing_buffer(
+        "default",
+        field_equals("copy", "<redacted>"),
+      ),
+      filters_configuration: vec![Filter {
+        matcher: Some(message_equals("copy me")).into(),
+        transforms: vec![set_field!(captured("copy") = field_value!(field "secret"))],
+        ..Default::default()
+      }],
+      scrub_rules: vec![scrub_rule(regex_match_and_substitute_field!(
+        "secret",
+        ".+",
+        "<redacted>"
+      ))],
+      ..Default::default()
+    },
+  ));
+
+  assert!(maybe_nack.is_none());
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "copy me".into(),
+    [("secret".into(), AnnotatedLogField::new_custom("hunter2"))].into(),
+    [].into(),
+    None,
+  );
+
+  // The workflow only fires if the filter copied the scrubbed value, so an upload proves both
+  // the ordering and that workflows see scrubbed fields.
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    let log = log_upload.logs().into_iter().find(|log| log.message() == "copy me").unwrap();
+    assert_eq!("<redacted>", log.field("secret"));
+    assert_eq!("<redacted>", log.field("copy"));
   });
 }
 

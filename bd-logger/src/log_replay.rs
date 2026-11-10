@@ -16,7 +16,7 @@ use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::{Counter, Histogram};
-use bd_log_filter::FilterChain;
+use bd_log_filter::{FilterChain, ScrubRules};
 use bd_log_metadata::LogFields;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::tiny_set::TinySet;
@@ -175,7 +175,8 @@ impl LogReplay for LoggerReplay {
 
 // Maintains the machinery required to process incoming logs.
 // Processing a log involves (not a full list):
-//  * modifying it according to active filter chain.
+//  * redacting it according to active scrub rules, then modifying it according to active filter
+//    chain.
 //  * processing it using workflows engine.
 //  * potentially streaming it according to bd tail configuration.
 //  * writing it to buffers according to active buffer selector(s).
@@ -184,6 +185,7 @@ pub struct ProcessingPipeline {
   buffer_selector: BufferSelector,
   pub(crate) workflows_engine: WorkflowsEngine<Counter, Histogram>,
   tail_configs: TailConfigurations,
+  scrub_rules: ScrubRules,
   filter_chain: FilterChain,
   min_log_compression_size: IntWatch<MinLogCompressionSize>,
 
@@ -262,6 +264,7 @@ impl ProcessingPipeline {
       buffer_selector: config.buffer_selector,
       workflows_engine,
       tail_configs: config.tail_configs,
+      scrub_rules: config.scrub_rules,
       filter_chain: config.filter_chain,
       min_log_compression_size: runtime.register_int_watch(),
 
@@ -282,6 +285,7 @@ impl ProcessingPipeline {
     self.buffer_selector = config.buffer_selector;
     self.buffer_producers = config.buffer_producers;
     self.tail_configs = config.tail_configs;
+    self.scrub_rules = config.scrub_rules;
     self.filter_chain = config.filter_chain;
 
     let workflows_engine_config = WorkflowsEngineConfig::new(
@@ -349,6 +353,9 @@ impl ProcessingPipeline {
 
     let state_reader = state.read().await;
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
+    // Scrub rules run before every filter so that a filter copying a field, such as the
+    // server-synthesized `_path_template` filter, copies the redacted value.
+    self.scrub_rules.process(&mut log);
     self.filter_chain.process(&mut log, &state_reader);
     let mut log = EncodableLog::new(log, (*self.min_log_compression_size.read()).into());
     let has_workflow_attachment = log

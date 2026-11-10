@@ -18,6 +18,10 @@
 #[path = "./filter_chain_test.rs"]
 mod filter_chain_test;
 
+#[cfg(test)]
+#[path = "./scrub_rules_test.rs"]
+mod scrub_rules_test;
+
 use anyhow::{Context, Result, anyhow};
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::TinyMap;
@@ -33,6 +37,8 @@ use bd_log_primitives::{
 };
 use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
+use bd_proto::protos::filter::scrub::scrub_rule::Rule as ScrubRuleType;
+use bd_proto::protos::filter::scrub::{ScrubConfiguration, ScrubRule as ScrubRuleProto};
 use filter::transform::Transform_type;
 use filter::transform::regex_match_and_substitute_field::Scrubbing_target;
 use itertools::Itertools;
@@ -113,6 +119,80 @@ impl FilterChain {
       for transform in &filter.transforms {
         transform.apply(log);
       }
+    }
+  }
+}
+
+//
+// ScrubRules
+//
+
+/// Redaction rules applied to every log, in order, before the filter chain. Each rule removes a
+/// field or substitutes regex matches in a field, in every field, or in the message body, so its
+/// effect on a field depends only on that field's key and value.
+#[derive(Default)]
+pub struct ScrubRules {
+  rules: Vec<ScrubRule>,
+}
+
+enum ScrubRule {
+  RemoveField(RemoveField),
+  Regex(RegexMatchAndSubstitute),
+}
+
+impl ScrubRule {
+  fn apply(&self, log: &mut Log) {
+    match self {
+      Self::RemoveField(remove_field) => remove_field.apply(log),
+      Self::Regex(regex) => regex.apply(log),
+    }
+  }
+}
+
+impl ScrubRules {
+  /// Returns the created `ScrubRules` and the number of rules that could not be created due to
+  /// config parsing failures. As with filters, an invalid rule is skipped and the rest still
+  /// apply.
+  #[must_use]
+  pub fn new(config: ScrubConfiguration) -> (Self, u64) {
+    let mut failures_count = 0;
+    let rules = config
+      .rules
+      .into_iter()
+      .filter_map(|rule| {
+        Self::new_rule(rule)
+          .context("invalid scrub rule configuration")
+          .inspect_err(|e| {
+            failures_count += 1;
+            log::debug!("{e:#}");
+          })
+          .ok()
+      })
+      .collect_vec();
+
+    log::debug!(
+      "{} scrub rules created, {} failed",
+      rules.len(),
+      failures_count
+    );
+
+    (Self { rules }, failures_count)
+  }
+
+  fn new_rule(config: ScrubRuleProto) -> Result<ScrubRule> {
+    match config.rule.ok_or_else(|| anyhow!("no rule set"))? {
+      ScrubRuleType::RemoveField(config) => Ok(ScrubRule::RemoveField(RemoveField::new(config))),
+      ScrubRuleType::Regex(config) => Ok(ScrubRule::Regex(
+        RegexMatchAndSubstitute::new(config)
+          .context("invalid RegexMatchAndSubstitute configuration")?,
+      )),
+    }
+  }
+
+  /// Applies every rule to the log's captured and matching fields and its message body.
+  pub fn process(&self, log: &mut Log) {
+    for rule in &self.rules {
+      rule.apply(log);
     }
   }
 }
