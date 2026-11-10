@@ -5984,6 +5984,75 @@ fn workflow_log_match_uses_server_pushed_feature_flag_state() {
 }
 
 #[test]
+fn state_change_flush_scrubs_global_fields() {
+  let mut setup = Setup::new();
+
+  setup.send_runtime_update();
+
+  // A workflow that flushes the buffer when a feature flag is set, and a scrub rule redacting a
+  // global field.
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_state_change_rule(
+      bd_proto::protos::state::scope::StateScope::FEATURE_FLAG,
+      "trigger_flush",
+      Some("true"),
+    ),
+    &[make_flush_buffers_action(
+      &["default"],
+      None,
+      "flush_action_id",
+    )],
+  );
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![WorkflowBuilder::new("flush_workflow", &[&a, &b]).build()],
+      scrub_rules: vec![scrub_rule(regex_match_and_substitute_field!(
+        "secret",
+        ".+",
+        "<redacted>"
+      ))],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  // A field set on the logger is carried by every log, including the synthetic log a state change
+  // adds when it triggers a flush.
+  setup
+    .logger_handle
+    .add_log_field("secret".to_string(), "hunter2".into());
+
+  setup.log_then_flush(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "ordinary log".into(),
+    [].into(),
+    [].into(),
+  );
+
+  setup
+    .logger_handle
+    .set_feature_flag_exposure("trigger_flush".to_string(), Some("true".to_string()));
+
+  // Both the ordinary log and the synthetic log the state change adds carry the global field,
+  // redacted.
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    let logs = log_upload.logs();
+    let ordinary = logs.iter().find(|log| log.message() == "ordinary log").unwrap();
+    assert_eq!(ordinary.field("secret"), "<redacted>");
+    let synthetic = logs.iter().find(|log| log.message() == "State Change").unwrap();
+    assert_eq!(synthetic.field("secret"), "<redacted>");
+  });
+}
+
+#[test]
 fn workflow_state_change_match_flush_buffers() {
   let mut setup = Setup::new();
 
