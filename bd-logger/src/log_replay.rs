@@ -185,7 +185,7 @@ pub struct ProcessingPipeline {
   buffer_selector: BufferSelector,
   pub(crate) workflows_engine: WorkflowsEngine<Counter, Histogram>,
   tail_configs: TailConfigurations,
-  scrub_rules: ScrubRules,
+  scrub_rules: Arc<ScrubRules>,
   filter_chain: FilterChain,
   min_log_compression_size: IntWatch<MinLogCompressionSize>,
 

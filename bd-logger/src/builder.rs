@@ -556,6 +556,9 @@ impl LoggerBuilder {
         log.log_internal("state store initialization failed, using in-memory fallback");
       }
 
+      // Configuration applies publish their scrub rules here; the uploader reads whatever rules
+      // are current when it builds each request and never waits for them.
+      let (scrub_rules_tx, scrub_rules_rx) = tokio::sync::watch::channel(Arc::default());
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
         data_upload_tx_clone.clone(),
@@ -563,6 +566,7 @@ impl LoggerBuilder {
         &runtime_loader,
         &collector_clone,
         self.params.static_metadata.command_artifact_metadata(),
+        scrub_rules_rx,
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
@@ -686,6 +690,7 @@ impl LoggerBuilder {
           command_execution_policy,
           command_state.clone(),
           time_provider.clone(),
+          scrub_rules_tx,
           &scope.scope("config"),
         ),
         time_provider.clone(),

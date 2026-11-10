@@ -361,7 +361,7 @@ pub struct ConfigUpdate {
   pub(crate) buffer_selector: BufferSelector,
   pub(crate) workflows_configuration: WorkflowsConfiguration,
   pub(crate) tail_configs: TailConfigurations,
-  pub(crate) scrub_rules: ScrubRules,
+  pub(crate) scrub_rules: Arc<ScrubRules>,
   pub(crate) filter_chain: FilterChain,
   pub(crate) from_cache: bool,
 }

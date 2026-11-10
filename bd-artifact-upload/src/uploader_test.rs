@@ -24,14 +24,19 @@ use bd_client_common::file::read_compressed_protobuf;
 use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
+use bd_log_filter::ScrubRules;
 use bd_proto::protos::client::api::ArtifactPayloadEncoding;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
-use bd_proto::protos::logging::payload::Data;
+use bd_proto::protos::filter::scrub::ScrubConfiguration;
 use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::logging::payload::{BinaryData, Data};
 use bd_runtime::runtime::{FeatureFlag as _, artifact_upload, attachment};
 use bd_runtime::test::TestConfigLoader;
+use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
+use bd_test_helpers::filter::scrub_rule;
+use bd_test_helpers::remove_field;
 use bd_test_helpers::runtime::ValueKind;
 use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
 use flate2::Compression;
@@ -53,6 +58,10 @@ use uuid::Uuid;
 
 #[path = "./profile_upload_test.rs"]
 mod profile_tests;
+
+fn no_scrub_rules() -> watch::Receiver<Arc<ScrubRules>> {
+  watch::channel(Arc::new(ScrubRules::default())).1
+}
 
 pub struct TestHooks {
   pub upload_complete_tx: tokio::sync::mpsc::Sender<String>,
@@ -84,6 +93,7 @@ struct Setup {
   shutdown: bd_shutdown::ComponentShutdownTrigger,
   task_handle: JoinHandle<()>,
   runtime: TestConfigLoader,
+  scrub_rules_tx: watch::Sender<Arc<ScrubRules>>,
 
   tmpdir: tempfile::TempDir,
 }
@@ -109,6 +119,7 @@ impl Setup {
       &runtime,
       &Collector::default(),
       [("app_version".to_string(), "upgraded".to_string())].into(),
+      self.scrub_rules_tx.subscribe(),
       shutdown.make_shutdown(),
     );
 
@@ -132,6 +143,7 @@ impl Setup {
       shutdown,
       task_handle,
       runtime,
+      scrub_rules_tx: self.scrub_rules_tx,
       tmpdir: self.tmpdir,
     }
   }
@@ -142,6 +154,7 @@ impl Setup {
 
     let filesystem = Arc::new(TestFileSystem::new());
     let config_loader = TestConfigLoader::new().await;
+    let (scrub_rules_tx, _) = watch::channel(Arc::new(ScrubRules::default()));
 
     config_loader
       .update_snapshot(bd_test_helpers::runtime::make_update(
@@ -161,6 +174,7 @@ impl Setup {
       &config_loader,
       &Collector::default(),
       command_metadata(),
+      scrub_rules_tx.subscribe(),
       shutdown.make_shutdown(),
     );
 
@@ -185,6 +199,7 @@ impl Setup {
       shutdown,
       task_handle,
       runtime: config_loader,
+      scrub_rules_tx,
       tmpdir: tempfile::tempdir().unwrap(),
     }
   }
@@ -480,6 +495,127 @@ async fn basic_flow() {
 }
 
 #[tokio::test]
+async fn metadata_is_scrubbed_with_the_rules_current_when_each_request_is_built() {
+  let mut setup = Setup::new(10).await;
+
+  // With no rules applied yet, the intent is sent at once with the raw metadata.
+  let id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::File(setup.make_file(b"abc")),
+      "client_report".to_string(),
+      [
+        ("secret".into(), "hunter2".into()),
+        ("email".into(), "a@example.com".into()),
+        ("keep".into(), "value".into()),
+      ]
+      .into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      None,
+      None,
+    )
+    .unwrap();
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  let intent_response = assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.metadata, string_metadata(&[
+      ("secret", "hunter2"),
+      ("email", "a@example.com"),
+      ("keep", "value"),
+    ]));
+    (intent.uuid, intent.response_tx)
+  });
+
+  // Rules applied while the artifact is queued reach the next request built for it.
+  let (rules, failures) = ScrubRules::new(ScrubConfiguration {
+    rules: vec![
+      scrub_rule(remove_field!("secret")),
+      scrub_rule(regex_match_and_substitute_field!(
+        "email",
+        "@.*",
+        "@<redacted>"
+      )),
+    ],
+    ..Default::default()
+  });
+  assert_eq!(failures, 0);
+  setup.scrub_rules_tx.send_replace(Arc::new(rules));
+
+  intent_response
+    .1
+    .send(IntentResponse {
+      uuid: intent_response.0,
+      decision: IntentDecision::UploadImmediately,
+    })
+    .unwrap();
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.artifact_id, id.to_string());
+    assert_eq!(upload.payload.state_metadata, string_metadata(&[
+      ("email", "a@<redacted>"),
+      ("keep", "value"),
+    ]));
+    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true }).unwrap();
+  });
+
+  setup.upload_complete_rx.recv().await.unwrap();
+}
+
+#[test]
+fn scrub_metadata_keeps_untouched_values_verbatim_and_removes_unreadable_values_by_key() {
+  let (rules, failures) = ScrubRules::new(ScrubConfiguration {
+    rules: vec![
+      scrub_rule(remove_field!("unreadable")),
+      scrub_rule(regex_match_and_substitute_field!(
+        "email",
+        "@.*",
+        "@<redacted>"
+      )),
+    ],
+    ..Default::default()
+  });
+  assert_eq!(failures, 0);
+
+  let binary = Data {
+    data_type: Some(Data_type::BinaryData(BinaryData {
+      type_: Some("image/png".to_string()),
+      payload: vec![1, 2, 3],
+      ..Default::default()
+    })),
+    ..Default::default()
+  };
+  let mut metadata = string_metadata(&[("email", "a@example.com"), ("keep", "value")]);
+  metadata.insert("binary".to_string(), binary.clone());
+  // A value with no type set cannot be read as a field.
+  metadata.insert("unreadable".to_string(), Data::default());
+  metadata.insert("unreadable_kept".to_string(), Data::default());
+
+  let mut expected = string_metadata(&[("email", "a@<redacted>"), ("keep", "value")]);
+  expected.insert("binary".to_string(), binary);
+  expected.insert("unreadable_kept".to_string(), Data::default());
+
+  assert_eq!(super::scrub_metadata(&rules, &metadata), expected);
+}
+
+fn string_metadata(entries: &[(&str, &str)]) -> HashMap<String, Data> {
+  entries
+    .iter()
+    .map(|(key, value)| {
+      (
+        (*key).to_string(),
+        Data {
+          data_type: Some(Data_type::StringData((*value).to_string())),
+          ..Default::default()
+        },
+      )
+    })
+    .collect()
+}
+
+#[tokio::test]
 async fn queued_admission_owns_the_source_lease_until_processed() {
   let runtime = TestConfigLoader::new().await;
   let (data_upload_tx, _data_upload_rx) = tokio::sync::mpsc::channel(1);
@@ -491,6 +627,7 @@ async fn queued_admission_owns_the_source_lease_until_processed() {
     &runtime,
     &Collector::default(),
     command_metadata(),
+    no_scrub_rules(),
     shutdown.make_shutdown(),
   );
   let ownership = Arc::new(tokio::sync::Semaphore::new(1));
@@ -1447,6 +1584,71 @@ async fn intent_retries() {
 }
 
 #[tokio::test]
+async fn retries_scrub_metadata_with_the_rules_current_at_each_attempt() {
+  let mut setup = Setup::new(1).await;
+  let make_rules = |rules| {
+    let (rules, failures) = ScrubRules::new(ScrubConfiguration {
+      rules,
+      ..Default::default()
+    });
+    assert_eq!(failures, 0);
+    Arc::new(rules)
+  };
+
+  setup
+    .client
+    .enqueue_upload(
+      UploadSource::File(setup.make_file(b"1")),
+      "client_report".to_string(),
+      [
+        ("secret".into(), "hunter2".into()),
+        ("keep".into(), "value".into()),
+      ]
+      .into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      None,
+      None,
+    )
+    .unwrap();
+
+  // The first intent attempt goes out before any rules are known. Rules arrive before it fails.
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.metadata, string_metadata(&[("secret", "hunter2"), ("keep", "value")]));
+    setup.scrub_rules_tx.send_replace(make_rules(vec![scrub_rule(remove_field!("secret"))]));
+    // Dropping the response channel fails the attempt.
+  });
+
+  // The retried intent uses the rules that arrived in the meantime.
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.metadata, string_metadata(&[("keep", "value")]));
+    intent.response_tx.send(IntentResponse {
+      uuid: intent.uuid,
+      decision: IntentDecision::UploadImmediately,
+    }).unwrap();
+  });
+
+  // The rules change again before the first upload attempt fails.
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.state_metadata, string_metadata(&[("keep", "value")]));
+    setup.scrub_rules_tx.send_replace(make_rules(vec![
+      scrub_rule(remove_field!("secret")),
+      scrub_rule(remove_field!("keep")),
+    ]));
+    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: false }).unwrap();
+  });
+
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+    assert_eq!(upload.payload.state_metadata, HashMap::new());
+  });
+}
+
+#[tokio::test]
 async fn intent_drop() {
   let mut setup = Setup::new(1).await;
 
@@ -2014,6 +2216,7 @@ async fn assert_command_source_consumed_before_error_ack(failure: PersistenceFai
     &runtime,
     &Collector::default(),
     command_metadata(),
+    no_scrub_rules(),
     shutdown.make_shutdown(),
   );
   uploader.initialize().await;

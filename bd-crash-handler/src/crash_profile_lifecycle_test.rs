@@ -67,6 +67,7 @@ impl Pipeline {
       &runtime,
       &Collector::default(),
       [("app_version".to_string(), "receiving-build".to_string())].into(),
+      tokio::sync::watch::channel(Arc::default()).1,
       uploader_shutdown.make_shutdown(),
     );
     let client = Arc::new(client);

@@ -32,7 +32,8 @@ use bd_client_common::file_system::FileSystem;
 use bd_client_common::maybe_await;
 use bd_client_stats_store::{Collector, Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_log_primitives::LogFields;
+use bd_log_filter::ScrubRules;
+use bd_log_primitives::{DataValue, LogFields};
 use bd_macros::ApproximateSize;
 use bd_proto::protos::client::api::{
   ArtifactPayloadEncoding,
@@ -602,6 +603,10 @@ pub struct Uploader {
     bd_runtime::runtime::retry_backoff::BackoffGrowthFactorBasisPoints,
   >,
 
+  // The scrub rules from the most recently applied configuration. Metadata is scrubbed with
+  // whatever rules are current when each request is built; sends never wait for rules.
+  scrub_rules: watch::Receiver<Arc<ScrubRules>>,
+
   intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
   upload_task_handle: Option<tokio::task::JoinHandle<Result<()>>>,
 
@@ -659,6 +664,7 @@ impl Uploader {
     runtime: &ConfigLoader,
     collector: &Collector,
     command_artifact_metadata: HashMap<String, String>,
+    scrub_rules: watch::Receiver<Arc<ScrubRules>>,
     shutdown: ComponentShutdown,
   ) -> (Self, UploadClient) {
     runtime.expect_initialized();
@@ -690,6 +696,7 @@ impl Uploader {
       max_entries: runtime.register_int_watch(),
       max_attachment_bytes: runtime.register_int_watch(),
       backoff_policy: RuntimeBackoffPolicy::new(runtime),
+      scrub_rules,
       upload_task_handle: None,
       intent_task_handle: None,
       stats: Stats::new(&scope),
@@ -708,6 +715,13 @@ impl Uploader {
     };
 
     (uploader, client)
+  }
+
+  fn request_metadata(&self, metadata: &HashMap<String, Data>) -> RequestMetadata {
+    RequestMetadata {
+      raw: metadata.clone(),
+      scrub_rules: self.scrub_rules.clone(),
+    }
   }
 
   pub async fn run(self) {
@@ -745,7 +759,7 @@ impl Uploader {
             next.type_id.clone().unwrap_or_default(),
             next.session_id.clone(),
             next.time.to_offset_date_time(),
-            next.metadata.clone(),
+            self.request_metadata(&next.metadata),
             next.crash_profile.as_ref().cloned(),
             self.backoff_policy.backoff_mark_update(),
           )));
@@ -795,7 +809,7 @@ impl Uploader {
           next.time.to_offset_date_time(),
           next.session_id.clone(),
           self.backoff_policy.backoff_mark_update(),
-          next.metadata.clone(),
+          self.request_metadata(&next.metadata),
           next.feature_flags.clone(),
           next.command_id.clone(),
           next.content_type.clone(),
@@ -1446,7 +1460,7 @@ impl Uploader {
     timestamp: OffsetDateTime,
     session_id: String,
     mut retry_policy: ExponentialBackoff,
-    state_metadata: HashMap<String, Data>,
+    state_metadata: RequestMetadata,
     feature_flags: Vec<FeatureFlag>,
     command_id: Option<String>,
     content_type: Option<String>,
@@ -1473,7 +1487,7 @@ impl Uploader {
             artifact_id: name.clone(),
             time: timestamp.into_proto(),
             session_id: session_id.clone(),
-            state_metadata: state_metadata.clone(),
+            state_metadata: state_metadata.current(),
             feature_flags: feature_flags.clone(),
             command_id: command_id.clone(),
             content_type: content_type.clone(),
@@ -1506,7 +1520,7 @@ impl Uploader {
     type_id: String,
     session_id: String,
     timestamp: OffsetDateTime,
-    state_metadata: HashMap<String, Data>,
+    state_metadata: RequestMetadata,
     crash_profile: Option<CrashProfileMetadata>,
     mut retry_policy: ExponentialBackoff,
   ) -> Result<IntentDecision> {
@@ -1522,7 +1536,7 @@ impl Uploader {
             intent_uuid: upload_uuid.clone(),
             session_id: (!session_id.is_empty()).then(|| session_id.clone()),
             time: timestamp.into_proto(),
-            metadata: state_metadata.clone(),
+            metadata: state_metadata.current(),
             crash_profile: crash_profile.clone().into(),
             ..Default::default()
           },
@@ -1541,4 +1555,49 @@ impl Uploader {
     )
     .await
   }
+}
+
+/// The metadata of an artifact being sent. The index keeps it raw; every attempt to send an intent
+/// or upload request scrubs it with the rules current at that moment, so rules applied while a
+/// request is being retried, for example before any configuration has loaded, reach the next
+/// attempt.
+struct RequestMetadata {
+  raw: HashMap<String, Data>,
+  scrub_rules: watch::Receiver<Arc<ScrubRules>>,
+}
+
+impl RequestMetadata {
+  fn current(&self) -> HashMap<String, Data> {
+    scrub_metadata(&self.scrub_rules.borrow(), &self.raw)
+  }
+}
+
+/// Applies scrub rules to artifact metadata. Values no rule changes are sent exactly as stored.
+fn scrub_metadata(rules: &ScrubRules, metadata: &HashMap<String, Data>) -> HashMap<String, Data> {
+  if rules.is_empty() {
+    return metadata.clone();
+  }
+  metadata
+    .iter()
+    .filter_map(|(key, value)| {
+      // A value that cannot be read as a field cannot be rewritten by a regex rule, but a rule
+      // removing its key still applies, so it is checked with a placeholder value.
+      let Some(original) = DataValue::from_proto(value.clone()) else {
+        return rules
+          .scrub_field(key, &mut DataValue::default())
+          .then(|| (key.clone(), value.clone()));
+      };
+      let mut field = original.clone();
+      if !rules.scrub_field(key, &mut field) {
+        return None;
+      }
+      // Only a value a rule changed is re-encoded; the conversion drops details such as a
+      // binary value's type.
+      if field == original {
+        Some((key.clone(), value.clone()))
+      } else {
+        Some((key.clone(), field.into_proto()))
+      }
+    })
+    .collect()
 }

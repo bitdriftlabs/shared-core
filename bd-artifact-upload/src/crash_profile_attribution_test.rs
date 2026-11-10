@@ -383,6 +383,7 @@ async fn relative_sources_persist_the_matched_bytes_and_are_retired_on_rejection
       &runtime,
       &Collector::default(),
       [].into(),
+      tokio::sync::watch::channel(Arc::default()).1,
       shutdown.make_shutdown(),
     );
     let uploader_task = tokio::spawn(uploader.run());

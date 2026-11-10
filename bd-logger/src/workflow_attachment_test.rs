@@ -161,6 +161,7 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
         &runtime,
         &Collector::default(),
         HashMap::new(),
+        tokio::sync::watch::channel(Arc::default()).1,
         shutdown.make_shutdown(),
       );
       let uploader = tokio::spawn(uploader.run());
@@ -204,6 +205,7 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
       &runtime,
       &Collector::default(),
       HashMap::new(),
+      tokio::sync::watch::channel(Arc::default()).1,
       shutdown.make_shutdown(),
     );
     let mut revision = client.upload_queue_revision();
