@@ -101,16 +101,34 @@ struct FtraceBundle {
 }
 
 //
+// ClockSample
+//
+
+#[derive(Clone, Copy)]
+struct ClockSample {
+  snapshot_index: u64,
+  realtime_ns: u64,
+  boottime_ns: u64,
+}
+
+impl ClockSample {
+  fn boot_epoch_ns(self) -> i128 {
+    i128::from(self.realtime_ns) - i128::from(self.boottime_ns)
+  }
+}
+
+//
 // Reader
 //
 
 // These are cross-packet facts, not decoded protobufs. Separate process/TID namespaces prevent
-// an untyped scheduler TID from masquerading as a heap PID. Only epoch extrema are needed to
-// diagnose clock jumps; retaining every snapshot or an unused process-end map adds no evidence.
+// an untyped scheduler TID from masquerading as a heap PID. Keep clock pairs so historical
+// corrections can be separated from mappings that apply to the retained activity window.
 #[derive(Default)]
 pub struct Reader {
   sequences: BTreeMap<u32, Sequence>,
-  boot_epochs: Option<(i128, i128)>,
+  clock_snapshots: u64,
+  clock_samples: Vec<ClockSample>,
   processes: BTreeMap<u32, Option<u64>>,
   threads: BTreeMap<u32, u32>,
   activity: BTreeMap<(bool, u32), (u64, u64)>,
@@ -174,15 +192,6 @@ impl Reader {
     let mut input = CodedInputStream::new(&mut source);
     let mut reader = Self::default();
     reader.trace(&mut input, false)?;
-    let (min_epoch, max_epoch) = reader
-      .boot_epochs
-      .ok_or_else(|| anyhow::anyhow!("missing REALTIME/BOOTTIME mapping"))?;
-    ensure!(
-      max_epoch
-        .checked_sub(min_epoch)
-        .is_some_and(|delta| delta <= CLOCK_TOLERANCE_NS),
-      "unstable trace clocks"
-    );
     // Linux shares the numeric PID/TID namespace, including process IDs known only through thread
     // ownership. Check after all metadata so packet order cannot hide conflicting identities.
     for pid in reader.processes.keys().chain(reader.threads.values()) {
@@ -192,7 +201,7 @@ impl Reader {
       );
     }
     let mut observations = BTreeMap::<u32, PidObservation>::new();
-    for ((process, tid), (first, last)) in reader.activity {
+    for (&(process, tid), &(first, last)) in &reader.activity {
       let pid = if process {
         Some(tid)
       } else {
@@ -221,16 +230,83 @@ impl Reader {
       !observations.is_empty(),
       "missing typed PID-specific timing"
     );
+    let (first_ns, last_ns) = observations
+      .values()
+      .fold((u64::MAX, 0), |range, observation| {
+        (
+          range.0.min(observation.first_ns),
+          range.1.max(observation.last_ns),
+        )
+      });
+    let boot_epoch_ns = reader.activity_boot_epoch(first_ns, last_ns)?;
     log::debug!(
       "Extracted crash profile timing (processes={})",
       observations.len()
     );
     let evidence = Evidence {
-      boot_epoch_ns: min_epoch,
+      boot_epoch_ns,
       observations: observations.into_values().collect(),
     };
     evidence.validate()?;
     Ok(evidence)
+  }
+
+  fn activity_boot_epoch(&mut self, first_ns: u64, last_ns: u64) -> anyhow::Result<i128> {
+    self
+      .clock_samples
+      .sort_unstable_by_key(|sample| (sample.boottime_ns, sample.boot_epoch_ns()));
+    // Perfetto uses the preceding snapshot, or the earliest snapshot for activity before all
+    // snapshots. Include every mapping through the last observation, including duplicate times.
+    let initial = self
+      .clock_samples
+      .iter()
+      .rev()
+      .find(|sample| sample.boottime_ns <= first_ns)
+      .or_else(|| self.clock_samples.first())
+      .ok_or_else(|| anyhow::anyhow!("missing REALTIME/BOOTTIME mapping"))?;
+    let mut min_sample = *initial;
+    let mut max_sample = *initial;
+    let mut selected = *initial;
+    let mut applicable_snapshots = 0;
+    for sample in self.clock_samples.iter().filter(|sample| {
+      sample.boottime_ns >= initial.boottime_ns
+        && sample.boottime_ns <= last_ns.max(initial.boottime_ns)
+    }) {
+      let epoch = sample.boot_epoch_ns();
+      if epoch < min_sample.boot_epoch_ns() {
+        min_sample = *sample;
+      }
+      if epoch > max_sample.boot_epoch_ns() {
+        max_sample = *sample;
+      }
+      selected = *sample;
+      applicable_snapshots += 1;
+    }
+    let min_epoch = min_sample.boot_epoch_ns();
+    let max_epoch = max_sample.boot_epoch_ns();
+    let spread_ns = max_epoch - min_epoch;
+    let clock_summary = format!(
+      "snapshots={}, applicable_snapshots={applicable_snapshots}, first_activity_ns={first_ns}, \
+       last_activity_ns={last_ns}, selected_snapshot_index={}, selected_epoch_ns={}, \
+       min_epoch_ns={min_epoch}, max_epoch_ns={max_epoch}, spread_ns={spread_ns}, \
+       tolerance_ns={CLOCK_TOLERANCE_NS}, min_snapshot_index={}, min_realtime_ns={}, \
+       min_boottime_ns={}, max_snapshot_index={}, max_realtime_ns={}, max_boottime_ns={}",
+      self.clock_snapshots,
+      selected.snapshot_index,
+      selected.boot_epoch_ns(),
+      min_sample.snapshot_index,
+      min_sample.realtime_ns,
+      min_sample.boottime_ns,
+      max_sample.snapshot_index,
+      max_sample.realtime_ns,
+      max_sample.boottime_ns
+    );
+    log::debug!("crash profile clock summary: {clock_summary}");
+    ensure!(
+      spread_ns <= CLOCK_TOLERANCE_NS,
+      "unstable trace clocks: {clock_summary}"
+    );
+    Ok(selected.boot_epoch_ns())
   }
 
   fn trace(&mut self, input: &mut CodedInputStream<'_>, compressed: bool) -> anyhow::Result<()> {
@@ -282,7 +358,7 @@ impl Reader {
           message_wire(tag.wire_type)?;
           nested(input, |input| self.process_tree(input))?;
         },
-        // TracePacket.clock_snapshot: retain just REALTIME - BOOTTIME extrema.
+        // TracePacket.clock_snapshot: retain paired clocks, not their surrounding packet.
         6 => {
           requires_state = true;
           message_wire(tag.wire_type)?;
@@ -418,6 +494,7 @@ impl Reader {
   // Only simultaneous REALTIME/BOOTTIME samples establish wall capture time and reboot identity.
   // Ignore other domains rather than constructing Perfetto's general clock-conversion graph.
   fn clock_snapshot(&mut self, input: &mut CodedInputStream<'_>) -> anyhow::Result<()> {
+    self.clock_snapshots += 1;
     let (mut realtime, mut boottime) = (None, None);
     while let Some(tag) = read_tag(input)? {
       // ClockSnapshot.clocks = 1.
@@ -464,10 +541,11 @@ impl Reader {
     }
     match (realtime, boottime) {
       (Some(realtime), Some(boottime)) => {
-        let epoch = i128::from(realtime) - i128::from(boottime);
-        let range = self.boot_epochs.get_or_insert((epoch, epoch));
-        range.0 = range.0.min(epoch);
-        range.1 = range.1.max(epoch);
+        self.clock_samples.push(ClockSample {
+          snapshot_index: self.clock_snapshots,
+          realtime_ns: realtime,
+          boottime_ns: boottime,
+        });
       },
       (None, None) => {},
       // Do not hide a possible later wall-clock jump behind an earlier valid alignment.

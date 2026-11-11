@@ -751,7 +751,11 @@ impl Uploader {
         && let Some(next) = self.index.front().cloned()
       {
         if next.pending_intent_negotiation {
-          log::debug!("starting intent negotiation for {:?}", next.name);
+          log::debug!(
+            "starting intent negotiation: artifact_id={}, type={}",
+            next.name,
+            next.type_id.as_deref().unwrap_or("<missing>")
+          );
 
           self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
             self.data_upload_tx.clone(),
@@ -800,7 +804,12 @@ impl Uploader {
             .await;
           continue;
         };
-        log::debug!("starting file upload for {:?}", next.name);
+        log::debug!(
+          "starting file upload: artifact_id={}, type={}, payload_bytes={}",
+          next.name,
+          next.type_id.as_deref().unwrap_or("<missing>"),
+          contents.len()
+        );
         self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
           self.data_upload_tx.clone(),
           contents,
@@ -852,7 +861,10 @@ impl Uploader {
             source_lease,
             source_cleanup,
         }) = self.upload_queued_rx.recv() => {
-          log::debug!("tracking artifact: {uuid} for upload");
+          log::debug!(
+            "tracking artifact for upload: artifact_id={uuid}, type={type_id}, queue_depth={}",
+            self.index.len()
+          );
           self
             .track_new_upload(
               uuid,
@@ -1012,6 +1024,11 @@ impl Uploader {
       IntentDecision::UploadImmediately => {
         self.stats.accepted_intent.inc();
         let entry = self.index.front_mut().ok_or(InvariantError::Invariant)?;
+        log::debug!(
+          "artifact intent accepted: artifact_id={}, type={}",
+          entry.name,
+          entry.type_id.as_deref().unwrap_or("<missing>")
+        );
         // Mark the file as being ready for uploads and persist this to the index.
         entry.pending_intent_negotiation = false;
         if let Err(error) = self.write_index().await {
@@ -1042,6 +1059,11 @@ impl Uploader {
   }
 
   async fn discard_upload(&mut self, entry: Artifact, error: String) {
+    log::debug!(
+      "discarding artifact: artifact_id={}, type={}, reason={error}",
+      entry.name,
+      entry.type_id.as_deref().unwrap_or("<missing>")
+    );
     self.index_sync_required |=
       entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID);
     if let Err(delete_error) = self
@@ -1468,7 +1490,15 @@ impl Uploader {
     crash_profile: Option<CrashProfileMetadata>,
   ) -> Result<()> {
     let path = ARTIFACT_UPLOAD_DIRECTORY.join(&name);
-    log::debug!("uploading artifact: {}", path.display());
+    log::debug!(
+      "uploading artifact: artifact_id={name}, type={type_id}, path={}, payload_bytes={}, \
+       encoding={payload_encoding:?}, linked_reports={}",
+      path.display(),
+      contents.len(),
+      crash_profile
+        .as_ref()
+        .map_or(0, |profile| profile.report_ids.len())
+    );
 
     // Use exponential backoff to avoid retrying over and over again in case something is going
     // wrong. We put no overall timeout as the device might be offline for a long time and we want
@@ -1502,14 +1532,19 @@ impl Uploader {
           .map_err(|_| Error::Shutdown)?;
         match response.await {
           Ok(response) if response.success => {
-            log::debug!("upload of artifact: {name} succeeded");
+            log::debug!("artifact upload succeeded: artifact_id={name}, type={type_id}");
             Ok(())
           },
           Ok(_) | Err(_) => Err(Error::IncompleteUpload),
         }
       },
       |error| matches!(error, Error::IncompleteUpload),
-      |_, delay| log::debug!("upload of artifact: {name} failed, retrying in {delay:?}"),
+      |error, delay| {
+        log::debug!(
+          "artifact upload failed: artifact_id={name}, type={type_id}, error={error:?}, \
+           retry_delay={delay:?}"
+        );
+      },
     )
     .await
   }
@@ -1551,7 +1586,12 @@ impl Uploader {
           .map_err(|_| Error::IncompleteUpload)
       },
       |error| matches!(error, Error::IncompleteUpload),
-      |_, delay| log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}"),
+      |error, delay| {
+        log::debug!(
+          "artifact intent failed: artifact_id={id}, type={type_id}, error={error:?}, \
+           retry_delay={delay:?}"
+        );
+      },
     )
     .await
   }

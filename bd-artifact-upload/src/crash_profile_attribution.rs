@@ -19,7 +19,8 @@
 //! its report can exist (Java OOM heap dumps can too), so an unmatched live result is renamed in
 //! place in the platform's output directory with [`RETAINED_SUFFIX`] and its kind. The next process
 //! resubmits only such files, once, after its own startup report pass. An unmatched resubmission or
-//! an unreadable file is deleted; nothing is staged in an SDK store.
+//! an unreadable file is deleted. In debug builds with attribution debug logging enabled, errors
+//! instead retain the latest failed trace per kind for local diagnosis, never for upload.
 //!
 //! Eligible reports carry an encoded `CrashProfileSource` in their typed `crash_profile_source`
 //! field: ANR reports (facts recovered from the exit record) and unhandled Java `OutOfMemoryError`
@@ -59,7 +60,7 @@ use protobuf::Message as _;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use std::path::{PathBuf, absolute};
+use std::path::{Path, PathBuf, absolute};
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -70,7 +71,7 @@ use uuid::Uuid;
 /// results. The Android collector rediscovers the same suffix.
 pub const RETAINED_SUFFIX: &str = ".bitdrift-retained-";
 
-fn retained_path(path: &std::path::Path, kind: Kind) -> PathBuf {
+fn retained_path(path: &Path, kind: Kind) -> PathBuf {
   let kind = match kind {
     Kind::Anr => "anr",
     Kind::JavaOutOfMemory => "oom",
@@ -78,6 +79,15 @@ fn retained_path(path: &std::path::Path, kind: Kind) -> PathBuf {
   let mut name = path.as_os_str().to_owned();
   name.push(format!("{RETAINED_SUFFIX}{kind}"));
   PathBuf::from(name)
+}
+
+#[cfg(debug_assertions)]
+fn failed_path(path: &Path, kind: Kind) -> PathBuf {
+  let name = match kind {
+    Kind::Anr => "bitdrift-attribution-failed-anr.perfetto-trace",
+    Kind::JavaOutOfMemory => "bitdrift-attribution-failed-oom.perfetto-trace",
+  };
+  path.with_file_name(name)
 }
 
 //
@@ -128,9 +138,22 @@ impl Candidates {
   /// Match one profile against a snapshot of the current candidates.
   fn attribute(&self, kind: Kind, evidence: &Evidence) -> anyhow::Result<Option<Upload>> {
     let candidates: Vec<Candidate> = self.reports.lock().values().cloned().collect();
+    for (index, observation) in evidence.observations.iter().take(16).enumerate() {
+      log::debug!("crash profile observation[{index}]: {observation:?}");
+    }
+    if evidence.observations.len() > 16 {
+      log::debug!(
+        "crash profile observation log truncated: showing=16, total={}",
+        evidence.observations.len()
+      );
+    }
     let reports: Vec<ReportCandidate> = candidates.iter().map(|c| c.report.clone()).collect();
     let report_ids = match_reports(self.installation_id, kind, evidence, &reports)?;
     let Some(first) = report_ids.first() else {
+      log::debug!(
+        "crash profile has no eligible parents: kind={kind:?}, candidates={}",
+        reports.len()
+      );
       return Ok(None);
     };
     // Admission rejects more parents; never silently drop some of the matched reports.
@@ -153,9 +176,21 @@ impl Candidates {
 
   /// Read and match a profile file. A `None` result or error means the file is not uploaded.
   async fn prepare(self: &Arc<Self>, kind: Kind, path: PathBuf) -> anyhow::Result<Option<Upload>> {
-    let evidence =
-      tokio::task::spawn_blocking(move || Reader::read(BufReader::new(File::open(path)?)))
-        .await??;
+    let evidence = tokio::task::spawn_blocking(move || {
+      log::debug!(
+        "reading crash profile: kind={kind:?}, path={}",
+        path.display()
+      );
+      let evidence = Reader::read(BufReader::new(File::open(&path)?))?;
+      log::debug!(
+        "read crash profile timing: path={}, boot_epoch_ns={}, observations={}",
+        path.display(),
+        evidence.boot_epoch_ns,
+        evidence.observations.len()
+      );
+      Ok::<_, anyhow::Error>(evidence)
+    })
+    .await??;
     self.attribute(kind, &evidence)
   }
 }
@@ -201,9 +236,14 @@ impl CrashProfileAttribution {
         return;
       },
     };
-    log::info!(
+    log::debug!(
       "crash profile submitted: {kind:?} retain_unmatched={retain_unmatched} {}",
       path.display()
+    );
+    log::debug!(
+      "crash profile submission state: report_recovery_complete={}, candidates={}",
+      *self.candidates.ready.borrow(),
+      self.candidates.reports.lock().len()
     );
     let request = Request {
       path,
@@ -290,11 +330,27 @@ fn report_candidate(
 impl ReportAttribution for CrashProfileAttribution {
   fn add_report(&self, report_id: Uuid, report: &Report<'_>, session_id: &str) {
     match report_candidate(self.candidates.installation_id, report_id, report) {
-      Ok(None) => {},
+      Ok(None) => log::debug!(
+        "crash profile skipped report {report_id}: reason=missing_source_facts, report_type={:?}",
+        report.type_()
+      ),
       Ok(Some(report)) => {
-        log::info!(
+        log::debug!(
           "crash profile candidate added: {report_id} {:?}",
           report.kind
+        );
+        log::debug!(
+          "crash profile candidate source: report_id={report_id}, pid={}, run_id={}, \
+           boot_count={}, start_elapsed_ns={}, end_elapsed_ns={:?}, wall_ns={}, elapsed_ns={}, \
+           event_elapsed_ns={}",
+          report.run.pid,
+          report.run.run_id,
+          report.run.boot_count,
+          report.run.start_elapsed_ns,
+          report.run.end_elapsed_ns,
+          report.run.wall_ns,
+          report.run.elapsed_ns,
+          report.event_elapsed_ns
         );
         self.candidates.reports.lock().insert(
           report_id,
@@ -304,13 +360,13 @@ impl ReportAttribution for CrashProfileAttribution {
           },
         );
       },
-      Err(error) => log::info!("report {report_id} is not attributable: {error}"),
+      Err(error) => log::debug!("report {report_id} is not attributable: {error}"),
     }
   }
 
   fn mark_ready(&self) {
     if !self.candidates.ready.send_replace(true) {
-      log::info!(
+      log::debug!(
         "crash profile candidates ready: {}",
         self.candidates.reports.lock().len()
       );
@@ -346,8 +402,14 @@ async fn run(
   #[cfg(any(test, feature = "test-support"))]
   candidates.progress.send_replace(1);
   tokio::select! {
-    result = ready.wait_for(|ready| *ready) => if result.is_err() { return },
-    () = shutdown.cancelled() => return,
+    result = ready.wait_for(|ready| *ready) => if result.is_err() {
+      log::debug!("crash profile worker stopped: report recovery channel closed");
+      return;
+    },
+    () = shutdown.cancelled() => {
+      log::debug!("crash profile worker stopped while waiting for initial report recovery");
+      return;
+    },
   }
   log::debug!("crash profile worker initial report recovery complete");
   loop {
@@ -361,14 +423,24 @@ async fn run(
       retain_unmatched,
     }) = request
     else {
+      log::debug!("crash profile worker stopped: request channel closed or shutdown requested");
       return;
     };
     let enabled = match kind {
       Kind::Anr => *anr_enabled.read(),
       Kind::JavaOutOfMemory => *oom_enabled.read(),
     };
+    log::debug!(
+      "crash profile adoption started: kind={kind:?}, path={}, \
+       retain_unmatched={retain_unmatched}, runtime_enabled={enabled}, candidates={}",
+      path.display(),
+      candidates.reports.lock().len()
+    );
     if !enabled {
-      log::info!("crash profile adoption disabled for {kind:?}");
+      log::debug!(
+        "crash profile adoption disabled for {kind:?}, leaving file in place: {}",
+        path.display()
+      );
       #[cfg(any(test, feature = "test-support"))]
       candidates.progress.send_modify(|progress| *progress += 1);
       continue;
@@ -396,15 +468,21 @@ async fn adopt(
   // A resubmitted result can also be redelivered live; whichever attempt runs second finds the
   // file already consumed.
   if !tokio::fs::try_exists(&path).await.unwrap_or(true) {
-    log::info!("crash profile already handled: {}", path.display());
+    log::debug!("crash profile already handled: {}", path.display());
     return;
   }
   let upload = match candidates.prepare(kind, path.clone()).await {
     Ok(Some(upload)) => upload,
     Ok(None) if retain_unmatched => {
       let retained = retained_path(&path, kind);
+      log::debug!(
+        "retaining unmatched live crash profile for the next process: kind={kind:?}, source={}, \
+         target={}",
+        path.display(),
+        retained.display()
+      );
       match tokio::fs::rename(&path, &retained).await {
-        Ok(()) => log::info!(
+        Ok(()) => log::debug!(
           "crash profile kept for the next process: {}",
           retained.display()
         ),
@@ -419,8 +497,37 @@ async fn adopt(
     },
     result => {
       match result {
-        Ok(_) => log::info!("crash profile has no matching report: {}", path.display()),
-        Err(error) => log::warn!("crash profile attribution failed: {error}"),
+        Ok(_) => log::debug!(
+          "crash profile has no matching report; deleting unmatched resubmission: kind={kind:?}, \
+           path={}",
+          path.display()
+        ),
+        Err(error) => {
+          log::warn!(
+            "crash profile attribution failed: kind={kind:?}, path={}, error={error}",
+            path.display()
+          );
+          #[cfg(debug_assertions)]
+          if log::log_enabled!(log::Level::Debug) {
+            // Fixed names bound retention to one failure per kind and avoid pending-file discovery.
+            let failed = failed_path(&path, kind);
+            match tokio::fs::rename(&path, &failed).await {
+              Ok(()) => {
+                log::debug!(
+                  "crash profile retained for attribution debugging; replaces previous failure: \
+                   kind={kind:?}, path={}",
+                  failed.display()
+                );
+                return;
+              },
+              Err(error) => log::warn!(
+                "failed to retain crash profile for attribution debugging; deleting source: \
+                 path={}, error={error}",
+                path.display()
+              ),
+            }
+          }
+        },
       }
       if let Err(error) = tokio::fs::remove_file(&path).await {
         log::debug!("failed to remove unattributed crash profile: {error}");
@@ -428,6 +535,12 @@ async fn adopt(
       return;
     },
   };
+  log::debug!(
+    "enqueueing attributed crash profile: kind={kind:?}, path={}, report_ids={:?}, captured_at={}",
+    path.display(),
+    upload.report_ids,
+    upload.captured_at
+  );
   let (persisted_tx, persisted_rx) = oneshot::channel();
   let result = client.enqueue_crash_profile(
     UploadSource::Path(path),
@@ -441,13 +554,16 @@ async fn adopt(
     Some(persisted_tx),
   );
   match result {
-    Ok(profile_id) => match persisted_rx.await {
-      Ok(Ok(())) => log::info!(
-        "queued crash profile {profile_id} for reports {:?}",
-        upload.report_ids
-      ),
-      Ok(Err(error)) => log::warn!("failed to persist crash profile {profile_id}: {error:?}"),
-      Err(_) => log::debug!("crash profile {profile_id} persistence was not acknowledged"),
+    Ok(profile_id) => {
+      log::debug!("crash profile {profile_id} waiting for artifact queue persistence");
+      match persisted_rx.await {
+        Ok(Ok(())) => log::debug!(
+          "queued crash profile {profile_id} for reports {:?}",
+          upload.report_ids
+        ),
+        Ok(Err(error)) => log::warn!("failed to persist crash profile {profile_id}: {error:?}"),
+        Err(_) => log::debug!("crash profile {profile_id} persistence was not acknowledged"),
+      }
     },
     Err(error) => log::warn!("failed to enqueue crash profile: {error:?}"),
   }

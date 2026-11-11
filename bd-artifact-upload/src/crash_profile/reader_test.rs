@@ -6,9 +6,10 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{BOOTTIME, CompressedReader, NEEDS_STATE, REALTIME, Reader, STATE_CLEARED};
-use crate::crash_profile::CLOCK_TOLERANCE_NS;
+use crate::crash_profile::{CLOCK_TOLERANCE_NS, Kind, ProcessRun, ReportCandidate, match_reports};
 use protobuf::CodedOutputStream;
 use std::io::{self, Read, Write};
+use uuid::Uuid;
 
 fn message(fields: impl FnOnce(&mut CodedOutputStream<'_>)) -> Vec<u8> {
   let mut bytes = Vec::new();
@@ -50,8 +51,20 @@ fn trace(packets: &[Vec<u8>]) -> Vec<u8> {
 }
 
 fn clock_packet() -> Vec<u8> {
+  clock_packet_at(1_000_000_000_050, 50)
+}
+
+fn clock_packet_at(realtime: u64, boottime: u64) -> Vec<u8> {
   message(|output| {
-    output.write_bytes(6, &clocks()).unwrap();
+    output
+      .write_bytes(
+        6,
+        &clock_snapshot(&[
+          (REALTIME, realtime, false, 1),
+          (BOOTTIME, boottime, false, 1),
+        ]),
+      )
+      .unwrap();
   })
 }
 
@@ -667,7 +680,7 @@ fn reordered_and_repeated_scalar_headers_use_the_final_timestamp_and_clock() {
 }
 
 #[test]
-fn snapshot_extrema_bound_clock_skew_without_retaining_snapshot_history() {
+fn applicable_snapshot_clock_tolerance_is_explicit() {
   for delta in [CLOCK_TOLERANCE_NS, CLOCK_TOLERANCE_NS + 1] {
     let snapshot = message(|output| {
       output
@@ -687,7 +700,7 @@ fn snapshot_extrema_bound_clock_skew_without_retaining_snapshot_history() {
     });
     let result = Reader::read(trace(&[clock_packet(), snapshot, heap_packet()]).as_slice());
     if delta == CLOCK_TOLERANCE_NS {
-      assert_eq!(result.unwrap().boot_epoch_ns, 1_000_000_000_000);
+      assert_eq!(result.unwrap().boot_epoch_ns, 1_000_000_000_000 + delta);
     } else {
       assert!(
         result
@@ -706,6 +719,165 @@ fn snapshot_extrema_bound_clock_skew_without_retaining_snapshot_history() {
       .len(),
     1
   );
+}
+
+#[test]
+fn clock_selection_uses_activity_time_not_offset_magnitude_or_packet_order() {
+  let epoch = 1_000_000_000_000;
+  for delta in [-2_000_000_000, 2_000_000_000] {
+    let packets = vec![
+      clock_packet_at(u64::try_from(epoch + delta + 100).unwrap(), 100),
+      clock_packet_at(u64::try_from(epoch + 200).unwrap(), 200),
+      clock_packet_at(u64::try_from(epoch - delta + 400).unwrap(), 400),
+      heap_with_header(|output| output.write_uint64(8, 250).unwrap()),
+      heap_with_header(|output| output.write_uint64(8, 300).unwrap()),
+    ];
+    let mut reversed = packets.clone();
+    reversed.reverse();
+    for packets in [packets, reversed] {
+      let evidence = Reader::read(trace(&packets).as_slice()).unwrap();
+      assert_eq!(evidence.boot_epoch_ns, epoch);
+      assert_eq!(evidence.captured_at_ns().unwrap(), epoch + 300);
+    }
+  }
+}
+
+#[test]
+fn clock_changes_inside_activity_are_rejected_including_the_last_sample_boundary() {
+  let epoch = 1_000_000_000_000;
+  for delta in [-2_000_000_000, 2_000_000_000] {
+    for (first, last, expected_epoch) in [
+      (150, 199, Some(epoch)),
+      (150, 200, None),
+      (150, 250, None),
+      (200, 250, Some(epoch + delta)),
+    ] {
+      let packets = [
+        clock_packet_at(u64::try_from(epoch + 100).unwrap(), 100),
+        clock_packet_at(u64::try_from(epoch + delta + 200).unwrap(), 200),
+        heap_with_header(|output| output.write_uint64(8, first).unwrap()),
+        heap_with_header(|output| output.write_uint64(8, last).unwrap()),
+      ];
+      let result = Reader::read(trace(&packets).as_slice());
+      if let Some(expected_epoch) = expected_epoch {
+        let evidence = result.unwrap();
+        assert_eq!(evidence.boot_epoch_ns, expected_epoch);
+        assert_eq!(
+          evidence.captured_at_ns().unwrap(),
+          expected_epoch + i128::from(last)
+        );
+      } else {
+        assert!(
+          result
+            .unwrap_err()
+            .to_string()
+            .contains("unstable trace clocks")
+        );
+      }
+    }
+  }
+}
+
+#[test]
+fn historical_anr_clock_corrections_allow_matching_and_correct_capture_time() {
+  // Clock pairs and source facts from an emulator ANR. Its old clock corrections precede all
+  // retained scheduler activity; the final mapping agrees with the source startup clock.
+  let mut packets = vec![
+    clock_packet_at(1_794_355_140_961_886_763, 3_174_675_830_221),
+    clock_packet_at(1_794_355_140_961_898_221, 3_174_675_841_680),
+    clock_packet_at(1_794_356_903_846_970_667, 4_370_004_325_958),
+    clock_packet_at(1_794_357_995_301_455_459, 4_400_001_978_305),
+    clock_packet_at(1_794_358_939_181_852_087, 4_430_001_490_111),
+    clock_packet_at(1_794_359_888_068_375_669, 4_450_001_493_245),
+    clock_packet_at(1_794_360_022_976_033_918, 4_470_003_958_837),
+    clock_packet_at(1_794_360_727_118_252_209, 4_510_001_143_689),
+    process_tree(15872, 15872, None),
+  ];
+  let last_ns = 8_935_178_458_508;
+  packets.push(message(|output| {
+    let bundle = message(|output| {
+      output
+        .write_bytes(2, &sched_event(8_874_702_277_645, 15872, 0))
+        .unwrap();
+      output
+        .write_bytes(2, &sched_event(last_ns, 15872, 0))
+        .unwrap();
+    });
+    output.write_bytes(1, &bundle).unwrap();
+  }));
+  let evidence = Reader::read(trace(&packets).as_slice()).unwrap();
+  let epoch = 1_794_356_217_117_108_520;
+  assert_eq!(evidence.boot_epoch_ns, epoch);
+  assert_eq!(
+    evidence.captured_at_ns().unwrap(),
+    epoch + i128::from(last_ns)
+  );
+  let installation_id = Uuid::new_v4();
+  let report = ReportCandidate {
+    report_id: Uuid::new_v4(),
+    kind: Kind::Anr,
+    run: ProcessRun {
+      installation_id,
+      run_id: Uuid::new_v4(),
+      pid: 15872,
+      boot_count: 1,
+      start_elapsed_ns: 8_874_851_000_000,
+      end_elapsed_ns: Some(8_938_884_815_854),
+      wall_ns: 1_794_365_093_112_000_000,
+      elapsed_ns: 8_875_995_550_854,
+    },
+    event_elapsed_ns: 8_937_883_815_854,
+  };
+  let report_id = report.report_id;
+  assert_eq!(
+    match_reports(installation_id, Kind::Anr, &evidence, &[report]).unwrap(),
+    vec![report_id]
+  );
+}
+
+#[test]
+fn clock_diagnostics_identify_extrema_instead_of_first_and_last_snapshots() {
+  let mut packets = [
+    (1_000_000_000_050, 50),
+    (1_002_000_000_060, 60),
+    (998_000_000_070, 70),
+    (1_000_000_000_080, 80),
+  ]
+  .map(|(realtime, boottime)| {
+    message(|output| {
+      output
+        .write_bytes(
+          6,
+          &clock_snapshot(&[
+            (REALTIME, realtime, false, 1),
+            (BOOTTIME, boottime, false, 1),
+          ]),
+        )
+        .unwrap();
+    })
+  })
+  .to_vec();
+  packets.push(heap_with_header(|output| {
+    output.write_uint64(8, 50).unwrap();
+  }));
+  packets.push(heap_with_header(|output| {
+    output.write_uint64(8, 80).unwrap();
+  }));
+  let error = Reader::read(trace(&packets).as_slice())
+    .unwrap_err()
+    .to_string();
+  for detail in [
+    "unstable trace clocks",
+    "snapshots=4",
+    "min_epoch_ns=998000000000",
+    "max_epoch_ns=1002000000000",
+    "spread_ns=4000000000",
+    "tolerance_ns=1000000000",
+    "min_snapshot_index=3, min_realtime_ns=998000000070, min_boottime_ns=70",
+    "max_snapshot_index=2, max_realtime_ns=1002000000060, max_boottime_ns=60",
+  ] {
+    assert!(error.contains(detail), "missing {detail} in {error}");
+  }
 }
 
 #[test]

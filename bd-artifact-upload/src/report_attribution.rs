@@ -60,12 +60,20 @@ pub async fn restore_pending_reports(attribution: &dyn ReportAttribution, sdk_di
       return;
     },
   };
+  log::debug!(
+    "restoring pending attribution reports: artifacts={}",
+    entries.len()
+  );
   let mut restored = 0;
   for entry in entries {
     if entry.type_id.as_deref() != Some(CLIENT_REPORT_ARTIFACT_TYPE_ID) {
       continue;
     }
     let Ok(report_id) = Uuid::parse_str(&entry.name) else {
+      log::debug!(
+        "skipping pending attribution report: reason=invalid_report_id, artifact={}",
+        entry.name
+      );
       continue;
     };
     let path = sdk_directory
@@ -83,17 +91,23 @@ pub async fn restore_pending_reports(attribution: &dyn ReportAttribution, sdk_di
     } else {
       read_checksummed_data(&payload)
     };
-    match payload
-      .ok()
-      .as_deref()
-      .and_then(|payload| root_as_report(payload).ok())
-    {
-      Some(report) => {
+    let payload = match payload {
+      Ok(payload) => payload,
+      Err(error) => {
+        log::debug!("pending report {report_id} storage decoding failed: {error}");
+        continue;
+      },
+    };
+    match root_as_report(&payload) {
+      Ok(report) => {
+        log::debug!(
+          "restoring crash profile attribution candidate from pending report {report_id}"
+        );
         attribution.add_report(report_id, &report, &entry.session_id);
         restored += 1;
       },
-      None => log::debug!("pending report {report_id} is not a readable report"),
+      Err(error) => log::debug!("pending report {report_id} is not a readable report: {error}"),
     }
   }
-  log::info!("restored {restored} pending reports for attribution");
+  log::debug!("restored {restored} pending reports for attribution");
 }
