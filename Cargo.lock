@@ -1484,6 +1484,7 @@ dependencies = [
  "bd-stats-common",
  "bd-time",
  "bd-workspace-hack",
+ "flate2",
  "futures",
  "futures-core",
  "http-body-util",

@@ -98,6 +98,11 @@ impl MetadataCollector {
     }
   }
 
+  /// The persistent fields: the initial fields and later updates, by key.
+  pub(crate) const fn persistent_fields(&self) -> &AnnotatedLogFields {
+    &self.fields
+  }
+
   pub(crate) fn timestamp(&self) -> anyhow::Result<time::OffsetDateTime> {
     self.metadata_provider.timestamp()
   }

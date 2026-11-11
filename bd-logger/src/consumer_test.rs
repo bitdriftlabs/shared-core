@@ -17,6 +17,7 @@ use super::{
   service,
 };
 use crate::consumer::{BatchBuilder, RemoteFlushStreamingRequest, StreamedBufferUpload};
+use crate::field_interning::FieldSetTable;
 use crate::flush_registry::{
   PendingTriggerUploadsStore,
   PersistedTriggerUpload,
@@ -83,6 +84,7 @@ use uuid::Uuid;
 
 fn make_flags(runtime_loader: &ConfigLoader) -> Flags {
   Flags {
+    field_sets: FieldSetTable::none(),
     max_batch_size_logs: runtime_loader.register_int_watch(),
     max_match_size_bytes: runtime_loader.register_int_watch(),
     batch_deadline: runtime_loader.register_duration_watch(),
@@ -963,6 +965,7 @@ impl SetupMultiConsumer {
         PendingTriggerUploadsStore::new(&sdk_directory_clone),
         process_local_pending_flush_state_clone,
         Some(test_events),
+        FieldSetTable::none(),
       )
       .run()
       .await
@@ -3132,4 +3135,200 @@ fn create_buffer(
     generic_ring_buffer.clone(),
     generic_ring_buffer.new_thread_local_producer().unwrap(),
   )
+}
+
+fn interned_log(version: u8) -> Vec<u8> {
+  // `field_set_version` (field 11) only: enough for the uploader, which reads no other field.
+  vec![0x58, version]
+}
+
+fn string_fields(entries: &[(&str, &str)]) -> crate::field_interning::table::FieldMap {
+  entries
+    .iter()
+    .map(|(key, value)| {
+      (
+        (*key).to_string(),
+        bd_proto::protos::logging::payload::Data {
+          data_type: Some(
+            bd_proto::protos::logging::payload::data::Data_type::StringData((*value).to_string()),
+          ),
+          ..Default::default()
+        },
+      )
+    })
+    .collect()
+}
+
+fn field_set_table(directory: &TempDir, collector: &Collector) -> FieldSetTable {
+  let (table, _) = crate::field_interning::table::VersionTable::open(
+    directory.path(),
+    crate::field_interning::table::MIN_TABLE_BYTES,
+    Arc::new(bd_time::SystemTimeProvider),
+  )
+  .unwrap();
+  FieldSetTable::for_test(table, &collector.scope("field_interning"))
+}
+
+#[tokio::test]
+async fn batch_keeps_field_sets_resolved_before_a_rotation() {
+  let directory = TempDir::with_prefix("consumertest").unwrap();
+  let collector = Collector::default();
+  let table = field_set_table(&directory, &collector);
+  table
+    .with_table(|table| table.write(1, true, &string_fields(&[("a", "1")]), &[]))
+    .unwrap()
+    .unwrap();
+
+  let runtime_loader = ConfigLoader::new(directory.path());
+  let mut flags = make_flags(&runtime_loader);
+  flags.field_sets = table.clone();
+  let mut batch = BatchBuilder::new(flags);
+  batch.add_log(interned_log(1));
+
+  // Later versions push version 1 out of the table's window while the batch is being built.
+  let value = "x".repeat(100);
+  table
+    .with_table(|table| {
+      for version in 2 ..= 100u64 {
+        table
+          .write(
+            version,
+            false,
+            &string_fields(&[("a", &format!("{value}{version}"))]),
+            &[],
+          )
+          .unwrap();
+      }
+    })
+    .unwrap();
+  assert_eq!(table.resolve(1), None);
+
+  // A second log referring to the same version reuses the set already in the batch.
+  batch.add_log(interned_log(1));
+  let (logs, field_sets) = batch.take();
+  assert_eq!(logs.len(), 2);
+  assert_eq!(
+    field_sets,
+    vec![crate::field_interning::table::field_set(
+      1,
+      &string_fields(&[("a", "1")])
+    )]
+  );
+
+  // A new batch can no longer resolve it: the log uploads without its set, the device counts it as
+  // beyond the window, and the server marks it.
+  batch.add_log(interned_log(1));
+  let (logs, field_sets) = batch.take();
+  assert_eq!(field_sets, vec![]);
+  assert_eq!(
+    collector
+      .scope("field_interning")
+      .counter("logs_beyond_window")
+      .get(),
+    1
+  );
+  let hydrated = bd_test_helpers::test_api_server::log_upload::hydrate_logs(
+    &bd_proto::protos::client::api::LogUploadRequest {
+      proto_logs: logs,
+      ..Default::default()
+    },
+  );
+  assert_eq!(hydrated[0].fields.len(), 1);
+  assert_eq!(
+    hydrated[0].fields[0].key,
+    bd_test_helpers::test_api_server::log_upload::PERSISTENT_FIELDS_UNAVAILABLE
+  );
+}
+
+#[tokio::test]
+async fn field_sets_count_toward_the_batch_byte_limit() {
+  let directory = TempDir::with_prefix("consumertest").unwrap();
+  let collector = Collector::default();
+  let table = field_set_table(&directory, &collector);
+  table
+    .with_table(|table| table.write(1, true, &string_fields(&[("large", &"x".repeat(200))]), &[]))
+    .unwrap()
+    .unwrap();
+
+  let runtime_loader = ConfigLoader::new(directory.path());
+  runtime_loader
+    .update_snapshot(make_simple_update(vec![(
+      bd_runtime::runtime::log_upload::BatchSizeBytesFlag::path(),
+      ValueKind::Int(100),
+    )]))
+    .await
+    .unwrap();
+  let mut flags = make_flags(&runtime_loader);
+  flags.field_sets = table;
+
+  // A two-byte log is far below the limit on its own, but its set is not.
+  let mut batch = BatchBuilder::new(flags);
+  batch.add_log(vec![0x08, 0x01]);
+  assert!(!batch.limit_reached());
+  batch.add_log(interned_log(1));
+  assert!(batch.limit_reached());
+}
+
+#[tokio::test(start_paused = true)]
+async fn staged_trigger_batch_uploads_its_field_sets_after_restart() {
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  PendingTriggerUploadsStore::new(temp_directory.path())
+    .upsert(PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
+        uploaded_batches_count: 0,
+        uploaded_logs_count: 0,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+    })
+    .await;
+
+  // The previous process staged an interned log with its set. This process has no version table,
+  // so the upload can only carry the set it was staged with.
+  let field_set =
+    crate::field_interning::table::field_set(1, &string_fields(&[("user_id", "abc")]));
+  let store = TriggerUploadArtifactStore::new(
+    temp_directory.path().join("state").join("logger"),
+    "flush-1",
+    "buffer",
+  );
+  store
+    .stage_batch_with_field_sets(vec![interned_log(1)], vec![field_set.clone()], Vec::new())
+    .await
+    .unwrap();
+  store
+    .promote_queued_batch_to_inflight()
+    .await
+    .unwrap()
+    .unwrap();
+
+  let buffer_path = temp_directory.path().join("buffer");
+  let (buffer, _producer) = create_trigger_buffer(buffer_path.as_path()).await;
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory).await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let recovered_upload = setup.next_upload().await;
+  assert_eq!(
+    recovered_upload.payload.log_upload().proto_logs,
+    vec![interned_log(1)]
+  );
+  assert_eq!(
+    recovered_upload.payload.log_upload().field_sets,
+    vec![field_set]
+  );
+  recovered_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: recovered_upload.uuid,
+    })
+    .unwrap();
 }

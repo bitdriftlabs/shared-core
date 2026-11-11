@@ -64,6 +64,7 @@ async fn test_retry_backoff() {
     LogBatch {
       logs: vec![],
       buffer_id: "buffer".to_string(),
+      field_sets: Vec::new(),
     },
     false,
   );

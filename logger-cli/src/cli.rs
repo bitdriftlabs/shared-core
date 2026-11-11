@@ -113,6 +113,12 @@ pub enum Command {
 
   /// Set the current entity ID
   SetEntityId(SetEntityIdCommand),
+
+  /// Set a persistent field included with every subsequent log
+  AddField(AddFieldCommand),
+
+  /// Remove a persistent field
+  RemoveField(RemoveFieldCommand),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -160,6 +166,10 @@ pub struct StartCommand {
   /// Device model
   #[clap(long, required = false, default_value = "iPhone12,1")]
   pub model: String,
+
+  /// Operating system version reported to the server, which some commands require
+  #[clap(long)]
+  pub os_version: Option<String>,
 }
 
 impl From<StartCommand> for LoggerArgs {
@@ -183,6 +193,7 @@ impl From<StartCommand> for LoggerArgs {
       app_version: cmd.app_version,
       app_version_code: cmd.app_version_code,
       model: cmd.model,
+      os_version: cmd.os_version,
       entity_id: cmd.entity_id,
       session_strategy,
     }
@@ -316,6 +327,21 @@ pub struct SetFeatureFlagCommand {
   /// Optional variant value for the feature flag
   #[clap(long)]
   pub variant: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct AddFieldCommand {
+  /// Field key
+  pub key: String,
+
+  /// Field value
+  pub value: String,
+}
+
+#[derive(Args, Debug)]
+pub struct RemoveFieldCommand {
+  /// Field key
+  pub key: String,
 }
 
 #[derive(Args, Debug)]

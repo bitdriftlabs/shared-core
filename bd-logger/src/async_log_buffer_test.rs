@@ -36,7 +36,7 @@ use crate::device_command::{
   WorkflowCommandCompletion,
   WorkflowCommandDispatcher,
 };
-use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
+use crate::log_replay::{InternContext, LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::{Block, InitializationState, StartupReplayEligibility};
@@ -1413,6 +1413,7 @@ impl LogReplay for TestReplay {
     &mut self,
     log: Log,
     command_event: Option<WorkflowCommandEvent>,
+    intern: Option<InternContext<'_>>,
     processing_pipeline: &mut ProcessingPipeline,
     state: &bd_state::Store,
     now: OffsetDateTime,
@@ -1437,7 +1438,7 @@ impl LogReplay for TestReplay {
 
     if self.forward_logs_to_pipeline {
       return LoggerReplay {}
-        .replay_log(log, command_event, processing_pipeline, state, now)
+        .replay_log(log, command_event, intern, processing_pipeline, state, now)
         .await;
     }
 

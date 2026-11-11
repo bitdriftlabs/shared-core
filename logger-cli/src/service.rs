@@ -39,6 +39,8 @@ pub trait Remote {
   async fn set_sleep_mode(enabled: bool);
   async fn set_feature_flag(name: String, variant: Option<String>);
   async fn set_entity_id(entity_id: String);
+  async fn add_field(key: String, value: String);
+  async fn remove_field(key: String);
 }
 
 #[derive(Clone)]
@@ -270,6 +272,25 @@ impl Remote for Server {
     if let Some(logger) = current_logger() {
       logger.set_entity_id(&entity_id);
       log_current_entity(logger.as_ref());
+    }
+    future::ready(())
+  }
+
+  fn add_field(
+    self,
+    _: ::tarpc::context::Context,
+    key: String,
+    value: String,
+  ) -> impl Future<Output = ()> {
+    if let Some(logger) = current_logger() {
+      logger.add_field(key, value);
+    }
+    future::ready(())
+  }
+
+  fn remove_field(self, _: ::tarpc::context::Context, key: String) -> impl Future<Output = ()> {
+    if let Some(logger) = current_logger() {
+      logger.remove_field(&key);
     }
     future::ready(())
   }

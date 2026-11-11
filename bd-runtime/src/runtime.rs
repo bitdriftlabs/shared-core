@@ -657,6 +657,40 @@ pub mod debugging {
   );
 }
 
+pub mod field_interning {
+  use time::ext::NumericalDuration as _;
+
+  // Stores each persistent field set once on the device and leaves its fields out of buffered
+  // logs, which refer to the set's version instead. The server restores the fields at ingest, so it
+  // must support field sets before this is enabled. Turning it off stops interning new logs at
+  // once; logs already interned still upload with their sets.
+  bool_feature_flag!(Enabled, "field_interning.enabled", false);
+
+  // The size of the field-set version table. When it fills, the oldest versions are folded into the
+  // table's base, and buffered logs that still refer to them upload without their persistent
+  // fields. Clamped to 4 MiB.
+  int_feature_flag!(
+    TableMaxBytes,
+    "field_interning.table_max_bytes",
+    1024 * 1024
+  );
+
+  // A key that has gone this many logs without changing is interned again after it was found to
+  // change too often.
+  int_feature_flag!(WindowLogs, "field_interning.window_logs", 512);
+
+  // A key whose average number of logs between changes falls below this stays inline.
+  int_feature_flag!(MinLogsPerChange, "field_interning.min_logs_per_change", 4);
+
+  // How long the version table is kept after interning is turned off, so that interned logs still
+  // in the buffers can upload with their field sets.
+  duration_feature_flag!(
+    TableRetentionAfterDisable,
+    "field_interning.table_retention_after_disable_ms",
+    7.days()
+  );
+}
+
 pub mod crash_reporting {
   // Enables or disables the detection and reporting of application crashes and
   // other fatal events. This defaults to enabled so fresh installs still monitor

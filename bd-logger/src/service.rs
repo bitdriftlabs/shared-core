@@ -170,6 +170,7 @@ impl tower::Service<UploadRequest> for Uploader {
       upload_uuid: request.uuid.clone(),
       proto_logs: request.log_upload.logs.clone(),
       buffer_uuid: request.log_upload.buffer_id.clone(),
+      field_sets: request.log_upload.field_sets.clone(),
       trigger_uuids: request.request_trigger_uuid.iter().cloned().collect(),
       ackless: request.ackless,
       command_id: request

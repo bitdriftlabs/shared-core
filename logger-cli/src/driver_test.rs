@@ -384,6 +384,7 @@ fn args(port: u16) -> LoggerArgs {
     app_version: "1.2.3".into(),
     app_version_code: "123".into(),
     model: "test-device".into(),
+    os_version: None,
     entity_id: None,
     session_strategy: SessionStrategyConfig::Fixed,
   }

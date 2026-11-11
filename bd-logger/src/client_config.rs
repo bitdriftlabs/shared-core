@@ -499,6 +499,11 @@ impl TailConfigurations {
     })
   }
 
+  /// Whether any live tail stream is active, so a log may be written to the stream buffer.
+  pub(crate) const fn has_active_streams(&self) -> bool {
+    self.inner.is_some()
+  }
+
   pub(crate) fn maybe_stream_log(
     &mut self,
     log: &mut EncodableLog,

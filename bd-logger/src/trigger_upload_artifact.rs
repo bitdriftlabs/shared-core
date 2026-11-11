@@ -18,6 +18,8 @@ use bd_client_common::file::{
 };
 use bd_client_common::file_system::delete_file_if_exists_async;
 use bd_macros::proto_serializable;
+use bd_proto::protos::client::api::FieldSet;
+use protobuf::Message as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -31,11 +33,14 @@ pub const TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY: &str = "trigger_upload_artifacts";
 // Concrete log batch that has been durably staged for a single trigger upload / buffer pair.
 // `upload_uuid` is persisted with the logs so retries and restart recovery keep using the same
 // upload identity instead of minting a fresh UUID for the same payload.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PersistedTriggerUploadArtifactBatch {
   pub upload_uuid: String,
   pub logs: Vec<Vec<u8>>,
   pub workflow_attachments: Vec<WorkflowAttachmentReference>,
+  /// The field sets the batch's interned logs refer to, resolved when the logs were read so the
+  /// staged batch uploads on its own after a restart.
+  pub field_sets: Vec<FieldSet>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -103,9 +108,21 @@ impl TriggerUploadArtifactStore {
     self.stage_batch_with_attachments(logs, Vec::new()).await
   }
 
+  #[cfg(test)]
   pub async fn stage_batch_with_attachments(
     &self,
     logs: Vec<Vec<u8>>,
+    workflow_attachments: Vec<WorkflowAttachmentReference>,
+  ) -> anyhow::Result<PersistedTriggerUploadArtifactBatch> {
+    self
+      .stage_batch_with_field_sets(logs, Vec::new(), workflow_attachments)
+      .await
+  }
+
+  pub async fn stage_batch_with_field_sets(
+    &self,
+    logs: Vec<Vec<u8>>,
+    field_sets: Vec<FieldSet>,
     workflow_attachments: Vec<WorkflowAttachmentReference>,
   ) -> anyhow::Result<PersistedTriggerUploadArtifactBatch> {
     // Staging is the durable handoff point between the live ring buffer and restart-safe replay.
@@ -114,6 +131,7 @@ impl TriggerUploadArtifactStore {
       upload_uuid: TrackedLogBatch::upload_uuid(),
       logs,
       workflow_attachments,
+      field_sets,
     };
 
     self
@@ -250,6 +268,9 @@ struct PersistedTriggerUploadArtifactBatchRecord {
   logs: Vec<PersistedTriggerUploadArtifactLog>,
   #[field(id = 3)]
   workflow_attachments: Vec<WorkflowAttachmentReferenceRecord>,
+  // Each an encoded `FieldSet`.
+  #[field(id = 4)]
+  field_sets: Vec<PersistedTriggerUploadArtifactLog>,
 }
 
 #[proto_serializable]
@@ -274,6 +295,18 @@ impl From<PersistedTriggerUploadArtifactBatchRecord> for PersistedTriggerUploadA
           session_id: reference.session_id,
         })
         .collect(),
+      field_sets: batch
+        .field_sets
+        .into_iter()
+        .filter_map(|set| match FieldSet::parse_from_bytes(&set.data) {
+          Ok(set) => Some(set),
+          Err(error) => {
+            // The logs that refer to it upload with the server's missing-set marker.
+            log::debug!("dropping undecodable staged field set: {error}");
+            None
+          },
+        })
+        .collect(),
     }
   }
 }
@@ -294,6 +327,12 @@ impl From<PersistedTriggerUploadArtifactBatch> for PersistedTriggerUploadArtifac
           artifact_id: reference.artifact_id,
           session_id: reference.session_id,
         })
+        .collect(),
+      field_sets: batch
+        .field_sets
+        .iter()
+        .filter_map(|set| set.write_to_bytes().ok())
+        .map(|data| PersistedTriggerUploadArtifactLog { data })
         .collect(),
     }
   }

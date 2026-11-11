@@ -17,7 +17,8 @@ use crate::device_command::{
   WorkflowCommandDispatcher,
 };
 use crate::device_id::DeviceIdInterceptor;
-use crate::log_replay::{BufferWriteError, LogReplay, LogReplayResult};
+use crate::field_interning::{FieldInterner, FieldSetTable};
+use crate::log_replay::{BufferWriteError, InternContext, LogReplay, LogReplayResult};
 use crate::logger::{
   ReportProcessingRequest,
   StartupReplayEligibility,
@@ -57,6 +58,7 @@ use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
   Log,
+  LogFieldKey,
   LogFieldValue,
   LogFields,
   LogInterceptor,
@@ -506,6 +508,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   session_strategy: Arc<bd_session::Strategy>,
   metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
   metadata_collector: MetadataCollector,
+  field_interner: FieldInterner,
   resource_utilization_reporter: bd_resource_utilization::Reporter,
 
   session_replay_recorder: bd_session_replay::Recorder,
@@ -651,6 +654,16 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           .into_inner(),
       ),
     };
+    let field_interner = FieldInterner::new(
+      uninitialized_logging_context.sdk_directory(),
+      runtime_loader,
+      store.clone(),
+      time_provider.clone(),
+      &uninitialized_logging_context
+        .stats
+        .scope
+        .scope("field_interning"),
+    );
     let event_buffer_scope = uninitialized_logging_context
       .stats
       .scope
@@ -715,6 +728,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           initial_ootb_fields,
           initial_custom_fields,
         ),
+        field_interner,
         resource_utilization_reporter: bd_resource_utilization::Reporter::new(
           resource_utilization_target,
           runtime_loader,
@@ -762,6 +776,34 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   pub(crate) fn workflow_attachment_store(&self) -> AttachmentStoreHandle {
     self.workflow_attachment_store.clone()
+  }
+
+  fn persistent_value(&self, key: &LogFieldKey) -> Option<LogFieldValue> {
+    self
+      .metadata_collector
+      .persistent_fields()
+      .get(key)
+      .map(|field| field.value.clone())
+  }
+
+  fn record_persistent_update(&mut self, key: &LogFieldKey, before: Option<&LogFieldValue>) {
+    let after = self
+      .metadata_collector
+      .persistent_fields()
+      .get(key)
+      .map(|field| &field.value);
+    self.field_interner.record_update(key, before, after);
+  }
+
+  /// Opens a field-set table from an earlier run, or deletes one that is due. Called once the SDK
+  /// directory lock is held and the cached runtime is loaded, before the uploaders start.
+  pub(crate) fn prepare_field_interning(&mut self) {
+    self.field_interner.prepare();
+  }
+
+  /// The handle uploaders use to resolve the field sets interned logs refer to.
+  pub(crate) fn field_set_table(&self) -> FieldSetTable {
+    self.field_interner.table()
   }
 
   pub(crate) fn workflow_attachment_cleanup_ready(&self) -> Arc<AtomicBool> {
@@ -1280,9 +1322,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let command_event = command_event.cloned().or_else(|| {
       matches!(&context, Some(EventContext::Command { .. })).then_some(WorkflowCommandEvent::Log)
     });
+    // Logs from a previous process carry that process's fields, so they are never interned.
+    let current_process = !matches!(&context, Some(EventContext::PreviousProcess { .. }))
+      && !matches!(
+        &log.attributes_overrides,
+        Some(LogAttributesOverrides::PreviousRunSessionID(_))
+      );
     let normalized_log = self.normalize_log(log, state_store, context).await?;
     self
-      .write_log(normalized_log, command_event, state_store)
+      .write_log_with_interning(normalized_log, command_event, state_store, current_process)
       .await
   }
 
@@ -1458,6 +1506,27 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     command_event: Option<WorkflowCommandEvent>,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<LogReplayResult> {
+    self
+      .write_log_with_interning(log, command_event, state_store, true)
+      .await
+  }
+
+  async fn write_log_with_interning(
+    &mut self,
+    log: Log,
+    command_event: Option<WorkflowCommandEvent>,
+    state_store: &bd_state::Store,
+    current_process: bool,
+  ) -> anyhow::Result<LogReplayResult> {
+    let intern = if current_process {
+      self.field_interner.prepare();
+      Some(InternContext {
+        interner: &mut self.field_interner,
+        persistent: self.metadata_collector.persistent_fields(),
+      })
+    } else {
+      None
+    };
     let log_replay_result = match &mut self.logging_state {
       LoggingState::Uninitialized(_) => {
         anyhow::bail!("EventBuffer delivered a log before the processing pipeline was initialized");
@@ -1468,6 +1537,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           .replay_log(
             log,
             command_event,
+            intern,
             &mut initialized_logging_context.processing_pipeline,
             state_store,
             self.time_provider.now(),
@@ -1803,15 +1873,26 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
-        if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value) {
+        let key: LogFieldKey = key.into();
+        let before = self.persistent_value(&key);
+        if let Err(e) = self.metadata_collector.add_field(key.clone(), value) {
           log::warn!("failed to add log field ({key:?}): {e}");
         }
+        self.record_persistent_update(&key, before.as_ref());
       },
       LoggerControl::UpdateOotbLogField(key, value) => {
-        self.metadata_collector.update_ootb_field(key.into(), value);
+        let key: LogFieldKey = key.into();
+        let before = self.persistent_value(&key);
+        self
+          .metadata_collector
+          .update_ootb_field(key.clone(), value);
+        self.record_persistent_update(&key, before.as_ref());
       },
       LoggerControl::RemoveLogField(field_name) => {
-        self.metadata_collector.remove_field(field_name.into());
+        let key: LogFieldKey = field_name.into();
+        let before = self.persistent_value(&key);
+        self.metadata_collector.remove_field(key.clone());
+        self.record_persistent_update(&key, before.as_ref());
       },
       LoggerControl::SetMemoryPressureLevel { level } => {
         if let Err(e) = state_store
