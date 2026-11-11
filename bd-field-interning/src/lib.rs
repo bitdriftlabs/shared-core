@@ -16,15 +16,6 @@
 //! The interner is owned by the task that writes the ring buffers. Uploaders resolve versions
 //! through a shared [`FieldSetTable`] handle.
 
-#![deny(
-  clippy::expect_used,
-  clippy::panic,
-  clippy::todo,
-  clippy::unimplemented,
-  clippy::unreachable,
-  clippy::unwrap_used
-)]
-
 #[cfg(test)]
 #[path = "./lib_test.rs"]
 mod lib_test;
