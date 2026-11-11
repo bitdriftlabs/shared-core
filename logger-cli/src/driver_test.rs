@@ -371,7 +371,7 @@ fn field<'a>(log: &'a Log, key: &str) -> &'a str {
     .iter()
     .find(|field| field.key == key)
     .unwrap()
-    .value
+    .value()
     .string_data()
 }
 

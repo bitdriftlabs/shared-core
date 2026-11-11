@@ -519,7 +519,7 @@ fn log_upload_with_compression() {
         assert_eq!(compressed_contents.message.string_data(), "some log");
         assert_eq!(compressed_contents.fields[0].key, "super_long");
         assert_eq!(
-          compressed_contents.fields[0].value.string_data(),
+          compressed_contents.fields[0].value().string_data(),
           "A".repeat((i + 1) * 1024)
         );
       }

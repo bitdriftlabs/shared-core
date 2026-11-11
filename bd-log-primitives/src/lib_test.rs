@@ -326,7 +326,7 @@ fn encodable_log_produces_valid_proto() {
   let field_map: AHashMap<_, _> = decoded
     .fields
     .iter()
-    .map(|f| (f.key.as_str(), f.value.clone()))
+    .map(|f| (f.key.as_str(), f.has_value().then(|| f.value().clone())))
     .collect();
   assert_eq!(
     field_map.get("key1").unwrap().as_ref().unwrap().data_type,

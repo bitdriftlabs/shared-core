@@ -143,7 +143,9 @@ pub(crate) fn fields_to_crash_state(fields: &LogFields) -> CrashGlobalState {
       .iter()
       .map(|(key, value)| payload::log::Field {
         key: key.clone().into(),
-        value: Some(value.clone().into_proto()).into(),
+        value_type: Some(payload::log::field::Value_type::Value(
+          value.clone().into_proto(),
+        )),
         ..Default::default()
       })
       .collect(),
@@ -168,10 +170,10 @@ impl Reader {
       s.fields
         .into_iter()
         .filter_map(|field| {
-          Some((
-            Cow::Owned(field.key),
-            DataValue::from_proto(field.value.into_option()?)?,
-          ))
+          let Some(payload::log::field::Value_type::Value(value)) = field.value_type else {
+            return None;
+          };
+          Some((Cow::Owned(field.key), DataValue::from_proto(value)?))
         })
         .collect()
     }));
@@ -191,11 +193,11 @@ impl Reader {
         state
           .fields
           .into_iter()
-          .filter_map(|mut field| {
-            Some((
-              field.key.into(),
-              DataValue::from_proto(field.value.take()?)?,
-            ))
+          .filter_map(|field| {
+            let Some(payload::log::field::Value_type::Value(value)) = field.value_type else {
+              return None;
+            };
+            Some((field.key.into(), DataValue::from_proto(value)?))
           })
           .collect()
       })
