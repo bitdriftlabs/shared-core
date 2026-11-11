@@ -44,7 +44,6 @@ fn persisted_batch(logs: &[&[u8]], upload_uuid: &str) -> PersistedTriggerUploadA
     upload_uuid: upload_uuid.to_string(),
     logs: logs.iter().map(|log| log.to_vec()).collect(),
     workflow_attachments: Vec::new(),
-    field_sets: Vec::new(),
   }
 }
 
@@ -64,7 +63,6 @@ async fn stage_batch_round_trips_queued_batch_from_disk() {
       upload_uuid: staged.upload_uuid.clone(),
       logs: vec![b"one".to_vec(), b"two".to_vec()],
       workflow_attachments: Vec::new(),
-      field_sets: Vec::new(),
     })
   );
   assert_eq!(

@@ -42,7 +42,7 @@ fn found(resolution: &Resolution) -> FieldSet {
 fn versions_resolve_to_their_full_sets_and_survive_reopening() {
   let directory = TempDir::new().unwrap();
   let (mut table, recovered) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
-  assert!(recovered.reset);
+  assert!(!recovered.discarded);
   assert_eq!(recovered.newest_version, 0);
 
   table
@@ -72,7 +72,7 @@ fn versions_resolve_to_their_full_sets_and_survive_reopening() {
 
   drop(table);
   let (mut table, recovered) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
-  assert!(!recovered.reset);
+  assert!(!recovered.discarded);
   assert_eq!(recovered.newest_version, 5);
   assert_eq!(
     recovered.newest_fields,
@@ -168,9 +168,8 @@ fn corrupt_table_is_replaced() {
   std::fs::write(&path, bytes).unwrap();
 
   let (mut table, recovered) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
-  // An undecodable first frame loses every entry, so the table starts over and its next version
-  // is written in full.
-  assert!(recovered.reset);
+  // A table that lost entries is discarded, and its next version is written in full.
+  assert!(recovered.discarded);
   assert_eq!(recovered.newest_version, 0);
   assert_eq!(table.resolve(&[1]), vec![(1, Resolution::Missing)]);
   table.write(2, false, &map(&[("b", "2")]), &[]).unwrap();
@@ -181,7 +180,7 @@ fn corrupt_table_is_replaced() {
 }
 
 #[test]
-fn an_unreadable_newest_generation_falls_back_to_the_previous_one() {
+fn an_unreadable_newest_generation_discards_the_table() {
   let directory = TempDir::new().unwrap();
   let (mut table, _) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
   table.write(1, true, &map(&[("a", "1")]), &[]).unwrap();
@@ -198,14 +197,12 @@ fn an_unreadable_newest_generation_falls_back_to_the_previous_one() {
   )
   .unwrap();
 
+  // The older generation is not used: the table starts empty above both, and their files are
+  // removed. Buffered logs that refer to versions 1 and 2 upload without their field sets.
   let (mut table, recovered) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
-  assert!(!recovered.reset);
-  assert_eq!(recovered.newest_version, 2);
-  assert_eq!(
-    found(&table.resolve(&[2])[0].1),
-    field_set(2, &map(&[("a", "1"), ("b", "2")]))
-  );
-  // The recovered entries were rewritten above both earlier generations, which are removed.
+  assert!(recovered.discarded);
+  assert_eq!(recovered.newest_version, 0);
+  assert_eq!(table.resolve(&[2]), vec![(2, Resolution::Missing)]);
   assert_eq!(table.generation, generation + 2);
   let files: Vec<_> = std::fs::read_dir(directory.path())
     .unwrap()
@@ -249,46 +246,6 @@ fn interleaved_resolutions_and_gaps_resolve_correctly() {
     }
   }
   assert!(table.cursors.len() <= super::CURSORS);
-}
-
-#[test]
-fn the_most_complete_generation_wins() {
-  let directory = TempDir::new().unwrap();
-  let (mut table, _) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
-  table.write(1, true, &map(&[("a", "1")]), &[]).unwrap();
-  table.write(2, false, &map(&[("b", "2")]), &[]).unwrap();
-  table.write(3, false, &map(&[("c", "3")]), &[]).unwrap();
-  let generation = table.generation;
-  drop(table);
-
-  // A rotation's output that reached the disk with only its first entry: a valid table at an
-  // older version than the file it replaced.
-  let truncated = TempDir::new().unwrap();
-  let (mut short, _) = VersionTable::open(truncated.path(), 64 * 1024, time()).unwrap();
-  short.write(1, true, &map(&[("a", "1")]), &[]).unwrap();
-  let short_generation = short.generation;
-  drop(short);
-  std::fs::copy(
-    truncated
-      .path()
-      .join(format!("field_sets.jrn.{short_generation}")),
-    directory
-      .path()
-      .join(format!("field_sets.jrn.{}", generation + 1)),
-  )
-  .unwrap();
-
-  let (mut table, recovered) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
-  assert_eq!(recovered.newest_version, 3);
-  assert_eq!(
-    found(&table.resolve(&[3])[0].1),
-    field_set(3, &map(&[("a", "1"), ("b", "2"), ("c", "3")]))
-  );
-  let files: Vec<_> = std::fs::read_dir(directory.path())
-    .unwrap()
-    .map(|entry| entry.unwrap().file_name())
-    .collect();
-  assert_eq!(files.len(), 1, "{files:?}");
 }
 
 #[test]

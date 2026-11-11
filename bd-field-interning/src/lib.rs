@@ -84,6 +84,8 @@ struct Stats {
   rotations: Counter,
   window_span_s: Histogram,
   open_failures: Counter,
+  /// Tables discarded at open because they were unreadable or had lost entries.
+  tables_discarded: Counter,
   logs_interned: Counter,
 }
 
@@ -96,6 +98,7 @@ impl Stats {
       rotations: scope.counter("rotations"),
       window_span_s: scope.histogram("window_span_s"),
       open_failures: scope.counter("open_failures"),
+      tables_discarded: scope.counter("tables_discarded"),
       logs_interned: scope.counter("logs_interned"),
     }
   }
@@ -437,7 +440,12 @@ impl FieldInterner {
           version: recovered.newest_version,
           fields: Arc::new(to_log_fields(recovered.newest_fields)),
         });
-        self.needs_full = recovered.reset;
+        if recovered.discarded {
+          // Buffered logs that refer to its versions upload without their field sets.
+          log::debug!("discarded an unreadable field-set table");
+          self.stats.tables_discarded.inc();
+        }
+        self.needs_full = false;
         self.recompute_all = true;
         *self.table.table.lock() = Some(table);
         self.table_state = TableState::Open { writable };

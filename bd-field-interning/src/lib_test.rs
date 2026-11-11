@@ -356,6 +356,20 @@ async fn a_restart_continues_the_table_above_the_reserved_numbers() {
   table.record_unresolved(&table.resolution(65), 2);
   assert_eq!(setup.counter("logs_missing_version"), 2);
   assert_eq!(setup.counter("logs_beyond_window"), 0);
+  assert_eq!(setup.counter("tables_discarded"), 0);
+
+  // An unreadable table is discarded and counted; numbers still continue above the reservation.
+  drop(interner);
+  for entry in std::fs::read_dir(setup.directory.path().join("field_sets")).unwrap() {
+    let path = entry.unwrap().path();
+    let len = std::fs::metadata(&path).unwrap().len();
+    std::fs::write(&path, vec![0xff; usize::try_from(len).unwrap()]).unwrap();
+  }
+  let mut interner = setup.interner();
+  assert_eq!(setup.counter("tables_discarded"), 1);
+  assert_eq!(interner.table().resolve(129), None);
+  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  assert_eq!(interned.version, 193);
 }
 
 #[tokio::test]

@@ -1263,6 +1263,28 @@ struct BatchBuilder {
   newest_micros: Option<u64>,
 }
 
+/// Resolves the field sets that `logs` refer to, one per version, counting the logs whose set is
+/// not found.
+fn resolve_field_sets(table: &FieldSetTable, logs: &[Vec<u8>]) -> Vec<FieldSet> {
+  let mut resolutions: HashMap<u64, Resolution> = HashMap::new();
+  let mut field_sets = Vec::new();
+  for log in logs {
+    let version = encoded_field_set_version(log);
+    if version == 0 {
+      continue;
+    }
+    let resolution = resolutions.entry(version).or_insert_with(|| {
+      let resolution = table.resolution(version);
+      if let Resolution::Found(set) = &resolution {
+        field_sets.push((**set).clone());
+      }
+      resolution
+    });
+    table.record_unresolved(resolution, 1);
+  }
+  field_sets
+}
+
 impl BatchBuilder {
   fn new(flags: Flags) -> Self {
     Self {
@@ -1837,21 +1859,10 @@ impl CompleteBufferUpload {
     // current buffer head still matches the first log in that artifact, we know this process has
     // not advanced past the staged batch, so it is safe to drop the queued artifact and rebuild it
     // from the live buffer instead of replaying a stale duplicate copy.
-    //
-    // A batch whose staged field sets the table can no longer resolve is kept instead: rebuilt, its
-    // logs would lose their sets. It uploads as staged, and its logs are then retired from the
-    // buffer like any recovered artifact's.
-    let sets_resolvable = queued_batch.field_sets.iter().all(|set| {
-      matches!(
-        self.batch_builder.flags.field_sets.resolution(set.version),
-        Resolution::Found(_)
-      )
-    });
-    if sets_resolvable
-      && queued_batch
-        .logs
-        .first()
-        .is_some_and(|log| *log == buffer_log)
+    if queued_batch
+      .logs
+      .first()
+      .is_some_and(|log| *log == buffer_log)
     {
       log::debug!(
         "dropping recovered queued trigger batch that still exists in buffer {}",
@@ -1886,12 +1897,13 @@ impl CompleteBufferUpload {
       log::debug!("trigger upload canceled during workflow attachment staging");
       return Err(TriggerBatchUploadCanceled.into());
     }
+    // The staged batch does not keep its field sets: they are used from memory below. A batch
+    // recovered after a restart resolves them from the table instead.
     let (logs, field_sets) = self.batch_builder.take();
     self
       .artifact_store
-      .stage_batch_with_field_sets(
+      .stage_batch_with_attachments(
         logs,
-        field_sets,
         workflow_attachment_ids
           .into_iter()
           .map(|(artifact_id, session_id)| WorkflowAttachmentReference {
@@ -1916,7 +1928,7 @@ impl CompleteBufferUpload {
       self.buffer_id
     );
 
-    self.flush_batch(batch, false).await
+    self.flush_batch(batch, Some(field_sets), false).await
   }
 
   async fn flush_persisted_batches(&mut self) -> anyhow::Result<()> {
@@ -1924,7 +1936,7 @@ impl CompleteBufferUpload {
     // always flush the inflight batch first, then keep promoting queued batches until the durable
     // backlog is empty before returning to live buffer reads.
     if let Some(batch) = self.artifact_store.inflight_batch().await? {
-      self.flush_batch(batch, true).await?;
+      self.flush_batch(batch, None, true).await?;
     }
 
     while let Some(batch) = self
@@ -1932,17 +1944,25 @@ impl CompleteBufferUpload {
       .promote_queued_batch_to_inflight()
       .await?
     {
-      self.flush_batch(batch, true).await?;
+      self.flush_batch(batch, None, true).await?;
     }
 
     Ok(())
   }
 
+  /// Uploads a staged batch. `field_sets` are the sets resolved when the batch was read; a batch
+  /// recovered after a restart passes `None` and resolves them from the table now.
   async fn flush_batch(
     &mut self,
     batch: PersistedTriggerUploadArtifactBatch,
+    field_sets: Option<Vec<FieldSet>>,
     discard_recovered_prefix: bool,
   ) -> anyhow::Result<()> {
+    // Accepted loss: if the table has rotated past or lost a recovered batch's versions, its logs
+    // upload without their field sets and the server marks them as missing their persistent
+    // fields. This needs a restart during a trigger upload and the table turning over in between.
+    let field_sets = field_sets
+      .unwrap_or_else(|| resolve_field_sets(&self.batch_builder.flags.field_sets, &batch.logs));
     let logs_len = u64::try_from(batch.logs.len()).unwrap_or(u64::MAX);
     if !stage_workflow_attachments(
       self.workflow_upload_handle.as_ref(),
@@ -1996,7 +2016,7 @@ impl CompleteBufferUpload {
           LogBatch {
             logs: batch.logs,
             buffer_id: self.buffer_id.clone(),
-            field_sets: batch.field_sets,
+            field_sets,
           },
           false,
         )

@@ -154,8 +154,8 @@ pub struct Recovered {
   pub newest_version: u64,
   /// The full field set at the newest version.
   pub newest_fields: FieldMap,
-  /// Whether the table was found corrupt or unreadable and replaced with an empty one.
-  pub reset: bool,
+  /// Whether an existing table was discarded because it was unreadable or had lost entries.
+  pub discarded: bool,
 }
 
 /// Outcome of a successful rotation, for metrics.
@@ -222,10 +222,23 @@ fn generations(directory: &Path) -> Vec<u64> {
   generations
 }
 
+/// Deletes the journal files of `generations`.
+fn remove_generations(directory: &Path, generations: &[u64]) {
+  for generation in generations {
+    if let Err(error) = std::fs::remove_file(journal_path(directory, *generation)) {
+      log::debug!("failed to remove field-set table: {error}");
+    }
+  }
+}
+
 impl VersionTable {
-  /// Opens the table in `directory`, recovering the entries that survive, or creates an empty
-  /// table if there is none or it is unreadable. If the newest journal file is unreadable, for
-  /// example after power loss during a rotation, the previous one is used.
+  /// Opens the table in `directory`, or creates an empty one.
+  ///
+  /// Only an intact newest journal is reopened. If it is unreadable, lost entries (for example on
+  /// power loss) or is missing, every journal file is deleted and the table starts empty. This is
+  /// an accepted loss: logs still buffered that refer to the discarded versions upload without
+  /// their field sets, and the server marks them as missing their persistent fields.
+  /// [`Recovered::discarded`] reports it so the loss is counted.
   pub fn open(
     directory: &Path,
     max_bytes: usize,
@@ -236,84 +249,47 @@ impl VersionTable {
     let generations = generations(directory);
     let newest_generation = generations.first().copied().unwrap_or(0);
 
-    // Use the readable generation with the newest version. A rotation's output can be shorter
-    // than its input if power was lost before it reached the disk; then the older file wins.
-    let mut candidates = Vec::new();
-    for &generation in &generations {
+    if let Some(&generation) = generations.first() {
       let path = journal_path(directory, generation);
       match Self::recover(&path, time_provider.clone()) {
-        Ok((journal, recovered, base_version, partial_data_loss))
-          if recovered.newest_version != 0 =>
-        {
-          candidates.push((
+        Ok((journal, recovered, base_version, false)) => {
+          let mut table = Self {
+            directory: directory.to_path_buf(),
             generation,
             journal,
-            recovered,
+            max_bytes,
+            time_provider,
             base_version,
-            partial_data_loss,
-          ));
+            newest_version: recovered.newest_version,
+            rotation_ineffective: false,
+            versions: Vec::new(),
+            cursors: Vec::new(),
+          };
+          table.rebuild_versions();
+          // An older generation is left only if a rotation was interrupted after its output
+          // reached the disk.
+          remove_generations(directory, &generations[1 ..]);
+          return Ok((table, recovered));
         },
-        Ok(_) => log::debug!("field-set table at {} has no entries", path.display()),
+        Ok(_) => log::debug!(
+          "field-set table at {} lost entries; starting empty",
+          path.display()
+        ),
         Err(error) => log::debug!(
-          "field-set table at {} is unreadable: {error}",
+          "field-set table at {} is unreadable, starting empty: {error}",
           path.display()
         ),
       }
     }
-    // Generations are newest first, so the newest file wins a tie.
-    let best = candidates
-      .iter()
-      .enumerate()
-      .max_by_key(|(index, candidate)| (candidate.2.newest_version, std::cmp::Reverse(*index)))
-      .map(|(index, _)| index);
 
-    let mut opened = None;
-    if let Some(index) = best {
-      let (generation, journal, recovered, base_version, partial_data_loss) =
-        candidates.swap_remove(index);
-      drop(candidates);
-      let mut table = Self {
-        directory: directory.to_path_buf(),
-        generation,
-        journal,
-        max_bytes,
-        time_provider: time_provider.clone(),
-        base_version,
-        newest_version: recovered.newest_version,
-        rotation_ineffective: false,
-        versions: Vec::new(),
-        cursors: Vec::new(),
-      };
-      table.rebuild_versions();
-      // Entries appended after an undecodable frame could never be read back, and a file other
-      // than the newest must not be appended to, so rewrite the surviving entries into a new
-      // generation.
-      if partial_data_loss || generation != newest_generation {
-        match table.rotate_from(newest_generation) {
-          Ok(_) => opened = Some((table, recovered)),
-          Err(error) => log::debug!("failed to rewrite recovered field-set table: {error}"),
-        }
-      } else {
-        opened = Some((table, recovered));
-      }
-    } else {
-      drop(candidates);
-    }
-
-    let (table, recovered) = opened.map_or_else(
-      || Self::new_empty(directory, newest_generation + 1, max_bytes, time_provider),
-      Ok,
-    )?;
-
-    // Only the active generation is kept.
-    for generation in generations {
-      if generation != table.generation
-        && let Err(error) = std::fs::remove_file(journal_path(directory, generation))
-      {
-        log::debug!("failed to remove old field-set table: {error}");
-      }
-    }
-    Ok((table, recovered))
+    remove_generations(directory, &generations);
+    Self::new_empty(
+      directory,
+      newest_generation + 1,
+      max_bytes,
+      time_provider,
+      !generations.is_empty(),
+    )
   }
 
   fn new_empty(
@@ -321,6 +297,7 @@ impl VersionTable {
     generation: u64,
     max_bytes: usize,
     time_provider: Arc<dyn TimeProvider>,
+    discarded: bool,
   ) -> anyhow::Result<(Self, Recovered)> {
     let journal = MemMappedVersionedJournal::new(
       journal_path(directory, generation),
@@ -345,7 +322,7 @@ impl VersionTable {
       Recovered {
         newest_version: 0,
         newest_fields: FieldMap::new(),
-        reset: true,
+        discarded,
       },
     ))
   }
@@ -389,17 +366,12 @@ impl VersionTable {
       return Err(error);
     }
     let partial_data_loss = matches!(partial_data_loss, PartialDataLoss::Yes);
-    if partial_data_loss {
-      // The newest entries were lost, for example on power loss. The surviving prefix is
-      // consistent; version numbers are reserved separately, so none of the lost ones is reused.
-      log::debug!("field-set table lost its newest entries; continuing from {newest_version}");
-    }
     Ok((
       journal,
       Recovered {
         newest_version,
         newest_fields: state,
-        reset: false,
+        discarded: false,
       },
       base_version,
       partial_data_loss,
@@ -494,10 +466,6 @@ impl VersionTable {
   /// Folds the oldest changes into `base` until the rest fit in half the table, and swaps in a
   /// new journal holding `base` and the remaining changes.
   pub fn rotate(&mut self) -> anyhow::Result<Rotation> {
-    self.rotate_from(self.generation)
-  }
-
-  fn rotate_from(&mut self, newest_generation: u64) -> anyhow::Result<Rotation> {
     let mut entries = Vec::new();
     let partial = self
       .journal
@@ -507,7 +475,7 @@ impl VersionTable {
         }
       });
     // A table that lost an entry after it was opened cannot be rewritten without breaking the
-    // chain of changes. Recovery at open rewrites only the readable prefix, which is consistent.
+    // chain of changes.
     anyhow::ensure!(
       matches!(partial, PartialDataLoss::None)
         || entries.last().map(|(_, entry, _)| entry.version) == Some(self.newest_version),
@@ -551,7 +519,7 @@ impl VersionTable {
         (SCOPE, kind.key(entry.version), entry.clone(), *timestamp)
       }));
 
-    let next_generation = self.generation.max(newest_generation) + 1;
+    let next_generation = self.generation + 1;
     let path = journal_path(&self.directory, next_generation);
     let journal = MemMappedVersionedJournal::new(
       &path,

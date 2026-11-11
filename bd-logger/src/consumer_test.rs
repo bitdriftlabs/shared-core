@@ -3270,7 +3270,7 @@ async fn field_sets_count_toward_the_batch_byte_limit() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn staged_trigger_batch_uploads_its_field_sets_after_restart() {
+async fn recovered_trigger_batch_without_its_table_uploads_without_field_sets() {
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   PendingTriggerUploadsStore::new(temp_directory.path())
     .upsert(PersistedTriggerUpload {
@@ -3289,18 +3289,16 @@ async fn staged_trigger_batch_uploads_its_field_sets_after_restart() {
     })
     .await;
 
-  // The previous process staged an interned log with its set. This process has no version table,
-  // so the upload can only carry the set it was staged with.
-  let field_set = bd_field_interning::table::field_set(1, &string_fields(&[("user_id", "abc")]));
+  // The previous process staged an interned log. Staged batches do not keep their field sets, and
+  // this process has no version table, so the batch uploads without its set and the server marks
+  // its logs: the accepted loss when a trigger upload is interrupted and the table is lost or
+  // rotates past the batch before the restart.
   let store = TriggerUploadArtifactStore::new(
     temp_directory.path().join("state").join("logger"),
     "flush-1",
     "buffer",
   );
-  store
-    .stage_batch_with_field_sets(vec![interned_log(1)], vec![field_set.clone()], Vec::new())
-    .await
-    .unwrap();
+  store.stage_batch(vec![interned_log(1)]).await.unwrap();
   store
     .promote_queued_batch_to_inflight()
     .await
@@ -3319,10 +3317,7 @@ async fn staged_trigger_batch_uploads_its_field_sets_after_restart() {
     recovered_upload.payload.log_upload().proto_logs,
     vec![interned_log(1)]
   );
-  assert_eq!(
-    recovered_upload.payload.log_upload().field_sets,
-    vec![field_set]
-  );
+  assert_eq!(recovered_upload.payload.log_upload().field_sets, vec![]);
   recovered_upload
     .response_tx
     .send(UploadResponse {
@@ -3332,61 +3327,36 @@ async fn staged_trigger_batch_uploads_its_field_sets_after_restart() {
     .unwrap();
 }
 
-#[tokio::test(start_paused = true)]
-async fn rebuilt_queued_batch_keeps_its_staged_field_sets() {
-  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
-  PendingTriggerUploadsStore::new(temp_directory.path())
-    .upsert(PersistedTriggerUpload {
-      id: "flush-1".to_string(),
-      source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
-      request_trigger_uuid: None,
-      session_id: "session-1".to_string(),
-      buffers: vec![PersistedTriggerUploadBufferProgress {
-        buffer_id: "buffer".to_string(),
-        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer,
-        uploaded_batches_count: 0,
-        uploaded_logs_count: 0,
-      }],
-      streaming: None,
-      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
-    })
-    .await;
-
-  // The previous process staged a batch with its set, then died before advancing the buffer. This
-  // process has no version table to resolve the log's version, so it uploads the staged batch,
-  // which keeps the set, instead of rebuilding it from the buffer.
-  let field_set = bd_field_interning::table::field_set(1, &string_fields(&[("user_id", "abc")]));
-  TriggerUploadArtifactStore::new(
-    temp_directory.path().join("state").join("logger"),
-    "flush-1",
-    "buffer",
-  )
-  .stage_batch_with_field_sets(vec![interned_log(1)], vec![field_set.clone()], Vec::new())
-  .await
-  .unwrap();
-
-  let buffer_path = temp_directory.path().join("buffer");
-  let (buffer, mut producer) = create_trigger_buffer(buffer_path.as_path()).await;
-  producer.write(&interned_log(1)).unwrap();
-
-  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory).await;
-  setup.add_trigger_buffer("buffer", buffer).await;
-  setup.sync_trigger_buffer_config(&["buffer"]).await;
-
-  let recovered_upload = setup.next_upload().await;
-  assert_eq!(
-    recovered_upload.payload.log_upload().proto_logs,
-    vec![interned_log(1)]
-  );
-  assert_eq!(
-    recovered_upload.payload.log_upload().field_sets,
-    vec![field_set]
-  );
-  recovered_upload
-    .response_tx
-    .send(UploadResponse {
-      success: true,
-      uuid: recovered_upload.uuid,
-    })
+#[tokio::test]
+async fn recovered_batch_field_sets_resolve_once_per_version() {
+  let directory = TempDir::with_prefix("consumertest").unwrap();
+  let collector = Collector::default();
+  let table = field_set_table(&directory, &collector);
+  table
+    .with_table(|table| table.write(1, true, &string_fields(&[("a", "1")]), &[]))
+    .unwrap()
     .unwrap();
+
+  let logs = [
+    interned_log(1),
+    interned_log(1),
+    interned_log(2),
+    // A log without a version.
+    Vec::new(),
+  ];
+  assert_eq!(
+    super::resolve_field_sets(&table, &logs),
+    vec![bd_field_interning::table::field_set(
+      1,
+      &string_fields(&[("a", "1")])
+    )]
+  );
+  // Version 2 is not in the table; its log is counted as missing its set.
+  assert_eq!(
+    collector
+      .scope("field_interning")
+      .counter("logs_missing_version")
+      .get(),
+    1
+  );
 }
