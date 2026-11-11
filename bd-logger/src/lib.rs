@@ -24,7 +24,6 @@ mod consumer;
 mod device_command;
 mod device_id;
 mod directory_lock;
-mod field_interning;
 mod flush_registry;
 pub mod internal;
 mod internal_report;

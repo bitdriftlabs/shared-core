@@ -9,7 +9,6 @@
 #[path = "./consumer_test.rs"]
 mod consumer_test;
 
-use crate::field_interning::{FieldSetTable, Resolution};
 use crate::flush_registry::{
   PendingTriggerUploadsStore,
   PersistedTriggerUpload,
@@ -41,6 +40,7 @@ use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
+use bd_field_interning::{FieldSetTable, Resolution};
 use bd_log_primitives::command_attachment::{AttachmentSource, extract_command_attachment};
 use bd_log_primitives::{EncodableLog, encoded_field_set_version};
 use bd_proto::protos::client::api::FieldSet;

@@ -16,9 +16,24 @@
 //! The interner is owned by the task that writes the ring buffers. Uploaders resolve versions
 //! through a shared [`FieldSetTable`] handle.
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 #[cfg(test)]
-#[path = "./mod_test.rs"]
-mod mod_test;
+#[path = "./lib_test.rs"]
+mod lib_test;
+
+#[cfg(test)]
+#[ctor::ctor(unsafe)]
+fn test_global_init() {
+  bd_test_helpers_core::test_global_init();
+}
 
 pub mod table;
 
@@ -135,7 +150,6 @@ impl FieldSetTable {
   }
 
   /// A handle with no table, for uploaders that never see interned logs.
-  #[cfg(test)]
   #[must_use]
   pub fn none() -> Self {
     Self {
@@ -145,7 +159,7 @@ impl FieldSetTable {
   }
 
   /// A handle to `table`, for tests that drive uploaders against a real table.
-  #[cfg(test)]
+  #[doc(hidden)]
   #[must_use]
   pub fn for_test(table: VersionTable, scope: &Scope) -> Self {
     let handle = Self::new(scope);
@@ -154,13 +168,12 @@ impl FieldSetTable {
   }
 
   /// Runs `f` on the table, for tests that write or rotate it while an uploader holds the handle.
-  #[cfg(test)]
+  #[doc(hidden)]
   pub fn with_table<R>(&self, f: impl FnOnce(&mut VersionTable) -> R) -> Option<R> {
     self.table.lock().as_mut().map(f)
   }
 
   /// Returns the full field set for `version`, or `None` if it cannot be resolved.
-  #[cfg(test)]
   #[must_use]
   pub fn resolve(&self, version: u64) -> Option<Arc<bd_proto::protos::client::api::FieldSet>> {
     match self.resolution(version) {

@@ -17,7 +17,6 @@ use super::{
   service,
 };
 use crate::consumer::{BatchBuilder, RemoteFlushStreamingRequest, StreamedBufferUpload};
-use crate::field_interning::FieldSetTable;
 use crate::flush_registry::{
   PendingTriggerUploadsStore,
   PersistedTriggerUpload,
@@ -51,6 +50,7 @@ use bd_buffer::{
 };
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
+use bd_field_interning::FieldSetTable;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::{COMMAND_OUTCOME_MESSAGE, EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::ApiRequest;
@@ -3142,7 +3142,7 @@ fn interned_log(version: u8) -> Vec<u8> {
   vec![0x58, version]
 }
 
-fn string_fields(entries: &[(&str, &str)]) -> crate::field_interning::table::FieldMap {
+fn string_fields(entries: &[(&str, &str)]) -> bd_field_interning::table::FieldMap {
   entries
     .iter()
     .map(|(key, value)| {
@@ -3160,9 +3160,9 @@ fn string_fields(entries: &[(&str, &str)]) -> crate::field_interning::table::Fie
 }
 
 fn field_set_table(directory: &TempDir, collector: &Collector) -> FieldSetTable {
-  let (table, _) = crate::field_interning::table::VersionTable::open(
+  let (table, _) = bd_field_interning::table::VersionTable::open(
     directory.path(),
-    crate::field_interning::table::MIN_TABLE_BYTES,
+    bd_field_interning::table::MIN_TABLE_BYTES,
     Arc::new(bd_time::SystemTimeProvider),
   )
   .unwrap();
@@ -3209,7 +3209,7 @@ async fn batch_keeps_field_sets_resolved_before_a_rotation() {
   assert_eq!(logs.len(), 2);
   assert_eq!(
     field_sets,
-    vec![crate::field_interning::table::field_set(
+    vec![bd_field_interning::table::field_set(
       1,
       &string_fields(&[("a", "1")])
     )]
@@ -3291,8 +3291,7 @@ async fn staged_trigger_batch_uploads_its_field_sets_after_restart() {
 
   // The previous process staged an interned log with its set. This process has no version table,
   // so the upload can only carry the set it was staged with.
-  let field_set =
-    crate::field_interning::table::field_set(1, &string_fields(&[("user_id", "abc")]));
+  let field_set = bd_field_interning::table::field_set(1, &string_fields(&[("user_id", "abc")]));
   let store = TriggerUploadArtifactStore::new(
     temp_directory.path().join("state").join("logger"),
     "flush-1",
@@ -3356,8 +3355,7 @@ async fn rebuilt_queued_batch_keeps_its_staged_field_sets() {
   // The previous process staged a batch with its set, then died before advancing the buffer. This
   // process discards the queued copy and rebuilds the batch from the buffer, with no version table
   // to resolve the log's version.
-  let field_set =
-    crate::field_interning::table::field_set(1, &string_fields(&[("user_id", "abc")]));
+  let field_set = bd_field_interning::table::field_set(1, &string_fields(&[("user_id", "abc")]));
   TriggerUploadArtifactStore::new(
     temp_directory.path().join("state").join("logger"),
     "flush-1",

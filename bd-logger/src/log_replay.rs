@@ -8,7 +8,6 @@
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::consumer::RemoteFlushStreamingRequest;
-use crate::field_interning::FieldInterner;
 use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::logger::TestHooks;
 use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingContextStats};
@@ -17,6 +16,7 @@ use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::{Counter, Histogram};
+use bd_field_interning::FieldInterner;
 use bd_log_filter::{FilterChain, ScrubRules};
 use bd_log_metadata::LogFields;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};

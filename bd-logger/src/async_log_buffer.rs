@@ -17,7 +17,6 @@ use crate::device_command::{
   WorkflowCommandDispatcher,
 };
 use crate::device_id::DeviceIdInterceptor;
-use crate::field_interning::{FieldInterner, FieldSetTable};
 use crate::log_replay::{BufferWriteError, InternContext, LogReplay, LogReplayResult};
 use crate::logger::{
   ReportProcessingRequest,
@@ -53,6 +52,7 @@ use bd_event_buffer::{
   StartupGateOpening,
   StartupGateReleaseReason,
 };
+use bd_field_interning::{FieldInterner, FieldSetTable};
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
