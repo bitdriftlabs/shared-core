@@ -197,13 +197,16 @@ async fn staged_batch_round_trips_field_sets() {
     version: 7,
     fields: vec![bd_proto::protos::logging::payload::log::Field {
       key: "user_id".to_string(),
-      value: Some(bd_proto::protos::logging::payload::Data {
-        data_type: Some(
-          bd_proto::protos::logging::payload::data::Data_type::StringData("abc".to_string()),
+      value_type: Some(
+        bd_proto::protos::logging::payload::log::field::Value_type::Value(
+          bd_proto::protos::logging::payload::Data {
+            data_type: Some(
+              bd_proto::protos::logging::payload::data::Data_type::StringData("abc".to_string()),
+            ),
+            ..Default::default()
+          },
         ),
-        ..Default::default()
-      })
-      .into(),
+      ),
       ..Default::default()
     }],
     ..Default::default()

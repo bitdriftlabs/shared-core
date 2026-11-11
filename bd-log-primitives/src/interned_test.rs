@@ -53,11 +53,10 @@ fn decoded_fields(
   fields
     .iter()
     .map(|field| {
-      let value = if field.cleared {
-        assert!(field.value.is_none());
+      let value = if field.cleared() {
         None
       } else {
-        Some(field.value.string_data().to_string())
+        Some(field.value().string_data().to_string())
       };
       (field.key.clone(), value)
     })

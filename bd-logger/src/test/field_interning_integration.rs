@@ -208,7 +208,7 @@ fn previous_run_logs_are_not_interned() {
     for log in &raw {
       let previous_run = log.message.string_data() == "previous run";
       assert_eq!(log.field_set_version == 0, previous_run, "{}", log.message.string_data());
-      assert!(log.fields.iter().all(|field| !field.cleared));
+      assert!(log.fields.iter().all(|field| !field.cleared()));
     }
   });
 }

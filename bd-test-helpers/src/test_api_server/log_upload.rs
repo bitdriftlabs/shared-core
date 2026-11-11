@@ -8,6 +8,7 @@
 use bd_log_primitives::DataValue;
 use bd_proto::protos::client::api::{FieldSet, LogUploadRequest};
 use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::logging::payload::log::field::Value_type;
 use bd_proto::protos::logging::payload::log::{CompressedContents, Field};
 use bd_proto::protos::logging::payload::{CommandAttachment, Data, Log, LogType};
 use protobuf::Message;
@@ -207,9 +208,7 @@ pub fn hydrate_logs(request: &LogUploadRequest) -> Vec<Log> {
     let fields = set
       .fields
       .iter()
-      .filter(|field| {
-        !field.key.is_empty() && !field.cleared && field.value.is_some() && keys.insert(&field.key)
-      })
+      .filter(|field| !field.key.is_empty() && field.has_value() && keys.insert(&field.key))
       .cloned()
       .collect();
     field_sets.insert(set.version, fields);
@@ -238,17 +237,17 @@ fn hydrate_log(log: &mut Log, field_sets: &HashMap<u64, Vec<Field>>) {
     log.fields = contents.fields;
     log.compressed_contents.clear();
   }
-  if !interned && !log.fields.iter().any(|field| field.cleared) {
+  if !interned && !log.fields.iter().any(Field::cleared) {
     return;
   }
 
   let cleared: HashSet<String> = log
     .fields
     .iter()
-    .filter(|field| field.cleared)
+    .filter(|field| field.cleared())
     .map(|field| field.key.clone())
     .collect();
-  log.fields.retain(|field| !field.cleared);
+  log.fields.retain(|field| !field.cleared());
   if interned {
     match field_sets.get(&log.field_set_version) {
       Some(fields) => {
@@ -268,11 +267,10 @@ fn hydrate_log(log: &mut Log, field_sets: &HashMap<u64, Vec<Field>>) {
         {
           log.fields.push(Field {
             key: PERSISTENT_FIELDS_UNAVAILABLE.to_string(),
-            value: Some(Data {
+            value_type: Some(Value_type::Value(Data {
               data_type: Some(Data_type::BoolData(true)),
               ..Default::default()
-            })
-            .into(),
+            })),
             ..Default::default()
           });
         }

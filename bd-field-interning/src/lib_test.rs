@@ -150,7 +150,7 @@ fn string_fields(
 ) -> BTreeMap<String, String> {
   fields
     .iter()
-    .map(|field| (field.key.clone(), field.value.string_data().to_string()))
+    .map(|field| (field.key.clone(), field.value().string_data().to_string()))
     .collect()
 }
 

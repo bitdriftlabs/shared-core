@@ -116,13 +116,16 @@ fn rate_limited_size_includes_field_sets() {
     version: 1,
     fields: vec![bd_proto::protos::logging::payload::log::Field {
       key: "user_id".to_string(),
-      value: Some(bd_proto::protos::logging::payload::Data {
-        data_type: Some(
-          bd_proto::protos::logging::payload::data::Data_type::StringData("x".repeat(100)),
+      value_type: Some(
+        bd_proto::protos::logging::payload::log::field::Value_type::Value(
+          bd_proto::protos::logging::payload::Data {
+            data_type: Some(
+              bd_proto::protos::logging::payload::data::Data_type::StringData("x".repeat(100)),
+            ),
+            ..Default::default()
+          },
         ),
-        ..Default::default()
-      })
-      .into(),
+      ),
       ..Default::default()
     }],
     ..Default::default()

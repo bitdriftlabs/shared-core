@@ -26,6 +26,7 @@ mod table_test;
 use bd_proto::protos::client::api::FieldSet;
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::log::Field;
+use bd_proto::protos::logging::payload::log::field::Value_type;
 use bd_time::TimeProvider;
 use bd_versioned_kv::Scope;
 use bd_versioned_kv::versioned_kv_journal::journal::PartialDataLoss;
@@ -103,15 +104,19 @@ fn apply_sized(state: &mut FieldMap, size: &mut usize, kind: EntryKind, entry: &
     *size = 0;
   }
   for field in &entry.fields {
-    if field.cleared {
-      if let Some(old) = state.remove(&field.key) {
-        *size = size.saturating_sub(field_size(&field.key, &old));
-      }
-    } else if let Some(value) = field.value.as_ref() {
-      *size = size.saturating_add(field_size(&field.key, value));
-      if let Some(old) = state.insert(field.key.clone(), value.clone()) {
-        *size = size.saturating_sub(field_size(&field.key, &old));
-      }
+    match &field.value_type {
+      Some(Value_type::Cleared(true)) => {
+        if let Some(old) = state.remove(&field.key) {
+          *size = size.saturating_sub(field_size(&field.key, &old));
+        }
+      },
+      Some(Value_type::Value(value)) => {
+        *size = size.saturating_add(field_size(&field.key, value));
+        if let Some(old) = state.insert(field.key.clone(), value.clone()) {
+          *size = size.saturating_sub(field_size(&field.key, &old));
+        }
+      },
+      Some(Value_type::Cleared(false)) | None => {},
     }
   }
 }
@@ -125,7 +130,7 @@ pub fn field_set(version: u64, fields: &FieldMap) -> FieldSet {
       .iter()
       .map(|(key, value)| Field {
         key: key.clone(),
-        value: Some(value.clone()).into(),
+        value_type: Some(Value_type::Value(value.clone())),
         ..Default::default()
       })
       .collect(),
@@ -444,7 +449,7 @@ impl VersionTable {
     if kind == EntryKind::Change {
       entry.fields.extend(removed.iter().map(|key| Field {
         key: key.clone(),
-        cleared: true,
+        value_type: Some(Value_type::Cleared(true)),
         ..Default::default()
       }));
     }
