@@ -15,9 +15,10 @@
 //!   previous version.
 //!
 //! A version's full set is found by replaying the entries in order up to it. When the journal
-//! reaches its high-water mark, the oldest changes are folded into `base` until the rest fit in
-//! half of the table, and the rewritten journal replaces the table's file by an atomic rename. The
-//! table never leaves the device.
+//! reaches its high-water mark it is rewritten into a new file, which replaces the table's file by
+//! an atomic rename. A new table's file is small: until it reaches its cap, the rewrite only grows
+//! it, a power of two at a time, as the state store does. At the cap, the oldest changes are
+//! folded into `base` until the rest fit in half of it. The table never leaves the device.
 
 #[cfg(test)]
 #[path = "./table_test.rs"]
@@ -47,6 +48,8 @@ const FRAME_OVERHEAD_BYTES: usize = 32;
 
 /// The smallest and largest table sizes accepted from runtime.
 pub const MIN_TABLE_BYTES: usize = 4 * 1024;
+/// The size of a new table's file. Rotation grows it, a power of two at a time, up to the cap.
+pub const INITIAL_TABLE_BYTES: usize = 16 * 1024;
 pub const MAX_TABLE_BYTES: usize = 4 * 1024 * 1024;
 
 /// A full field set by key, holding proto values so resolution never converts them.
@@ -161,8 +164,9 @@ pub struct Recovered {
 /// Outcome of a successful rotation, for metrics.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Rotation {
-  /// Microseconds between the new base's creation and the rotation.
-  pub window_span_micros: u64,
+  /// For a rotation that folded versions into `base`, the microseconds between the new base's
+  /// creation and the rotation. `None` for a rotation that only grew the table.
+  pub window_span_micros: Option<u64>,
 }
 
 pub struct VersionTable {
@@ -276,7 +280,7 @@ impl VersionTable {
   ) -> anyhow::Result<(Self, Recovered)> {
     let journal = MemMappedVersionedJournal::new(
       journal_path(directory),
-      max_bytes,
+      INITIAL_TABLE_BYTES.min(max_bytes),
       HIGH_WATER_MARK_RATIO,
       time_provider.clone(),
       std::iter::empty(),
@@ -404,7 +408,9 @@ impl VersionTable {
     match self.journal.insert_entry_ref(SCOPE, &key, &entry) {
       Ok(_) => {},
       Err(UpdateError::CapacityExceeded) => {
-        rotation = Some(self.rotate()?);
+        let size =
+          usize::try_from(entry.compute_size()).unwrap_or(usize::MAX) + FRAME_OVERHEAD_BYTES;
+        rotation = Some(self.rotate_with(size)?);
         self
           .journal
           .insert_entry_ref(SCOPE, &key, &entry)
@@ -437,9 +443,15 @@ impl VersionTable {
     Ok(rotation)
   }
 
-  /// Folds the oldest changes into `base` until the rest fit in half the table, and swaps in a
-  /// new journal holding `base` and the remaining changes.
+  /// Rewrites the journal into a new file. Below its cap the table grows: the entries are kept and
+  /// the new file is the next power of two that holds them under the high-water mark. At its cap,
+  /// the oldest changes are folded into `base` until the rest fit in half of it.
   pub fn rotate(&mut self) -> anyhow::Result<Rotation> {
+    self.rotate_with(0)
+  }
+
+  /// Rotates with room for `additional` bytes, the size of an entry that did not fit.
+  fn rotate_with(&mut self, additional: usize) -> anyhow::Result<Rotation> {
     let mut entries = Vec::new();
     let partial = self
       .journal
@@ -460,8 +472,31 @@ impl VersionTable {
     let entry_size = |entry: &FieldSet| {
       usize::try_from(entry.compute_size()).unwrap_or(usize::MAX) + FRAME_OVERHEAD_BYTES + 8
     };
-    let target = self.max_bytes / 2;
     let mut remaining: usize = entries.iter().map(|(_, entry, _)| entry_size(entry)).sum();
+
+    // Grow while the entries, plus room for the next one, stay under the high-water mark of a file
+    // within the cap. The file never shrinks below its current size unless the cap was lowered.
+    #[allow(
+      clippy::cast_precision_loss,
+      clippy::cast_possible_truncation,
+      clippy::cast_sign_loss
+    )]
+    let needed = ((remaining + additional) as f32 / HIGH_WATER_MARK_RATIO).ceil() as usize;
+    if needed <= self.max_bytes {
+      let size = needed
+        .next_power_of_two()
+        .max(self.journal.buffer_len())
+        .min(self.max_bytes);
+      let rebuilt = entries.iter().map(|(kind, entry, timestamp)| {
+        (SCOPE, kind.key(entry.version), entry.clone(), *timestamp)
+      });
+      self.replace_journal(size, rebuilt)?;
+      return Ok(Rotation {
+        window_span_micros: None,
+      });
+    }
+
+    let target = self.max_bytes / 2;
 
     // Fold from the front until the rest, plus the new base, fit in the target. Folding every
     // entry leaves a base at the newest version.
@@ -493,13 +528,28 @@ impl VersionTable {
         (SCOPE, kind.key(entry.version), entry.clone(), *timestamp)
       }));
 
+    self.replace_journal(self.max_bytes, rebuilt)?;
+    self.base_version = base_version;
+
+    let now = u64::try_from(self.time_provider.now().unix_timestamp_nanos() / 1_000).unwrap_or(0);
+    Ok(Rotation {
+      window_span_micros: Some(now.saturating_sub(base_timestamp)),
+    })
+  }
+
+  /// Writes `entries` into a new journal of `size` bytes and swaps it in for the table's file.
+  fn replace_journal(
+    &mut self,
+    size: usize,
+    entries: impl Iterator<Item = (Scope, String, FieldSet, u64)>,
+  ) -> anyhow::Result<()> {
     let path = rotation_path(&self.directory);
     let journal = MemMappedVersionedJournal::new(
       &path,
-      self.max_bytes,
+      size,
       HIGH_WATER_MARK_RATIO,
       self.time_provider.clone(),
-      rebuilt,
+      entries,
     )
     .inspect_err(|_| remove_file(&path))?;
     // The new journal must be on disk before it replaces the old one. The rename is atomic, so a
@@ -508,17 +558,12 @@ impl VersionTable {
     std::fs::rename(&path, journal_path(&self.directory)).inspect_err(|_| remove_file(&path))?;
 
     self.journal = journal;
-    self.base_version = base_version;
     // A journal created with entries does not report its high-water mark until the next write,
     // so check the position directly.
     self.rotation_ineffective = self.above_high_water();
     self.cursors.clear();
     self.rebuild_versions();
-
-    let now = u64::try_from(self.time_provider.now().unix_timestamp_nanos() / 1_000).unwrap_or(0);
-    Ok(Rotation {
-      window_span_micros: now.saturating_sub(base_timestamp),
-    })
+    Ok(())
   }
 
   /// Resolves each of `versions`.

@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{FieldMap, MIN_TABLE_BYTES, Resolution, VersionTable, field_set};
+use super::{FieldMap, INITIAL_TABLE_BYTES, MIN_TABLE_BYTES, Resolution, VersionTable, field_set};
 use bd_proto::protos::client::api::FieldSet;
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
@@ -267,4 +267,50 @@ fn a_base_above_the_high_water_mark_is_not_rotated_on_every_write() {
       None
     );
   }
+}
+
+#[test]
+fn the_table_grows_to_its_cap_before_folding_versions_away() {
+  let directory = TempDir::new().unwrap();
+  let cap = 64 * 1024;
+  let (mut table, _) = VersionTable::open(directory.path(), cap, time()).unwrap();
+  assert_eq!(table.journal.buffer_len(), INITIAL_TABLE_BYTES);
+
+  let value = "x".repeat(200);
+  let write = |table: &mut VersionTable, version: u64| {
+    table
+      .write(
+        version,
+        version == 1,
+        &map(&[("a", &format!("{value}{version}"))]),
+        &[],
+      )
+      .unwrap()
+  };
+
+  // Below the cap, rotations grow the file and keep every version.
+  let mut version = 0;
+  while table.journal.buffer_len() < cap {
+    version += 1;
+    if let Some(rotation) = write(&mut table, version) {
+      assert_eq!(rotation.window_span_micros, None);
+    }
+    assert!(matches!(table.resolve(&[1])[0].1, Resolution::Found(_)));
+  }
+
+  // At the cap, the next rotation folds the oldest versions into `base`.
+  loop {
+    version += 1;
+    if let Some(rotation) = write(&mut table, version) {
+      assert!(rotation.window_span_micros.is_some());
+      break;
+    }
+  }
+  assert_eq!(table.resolve(&[1]), vec![(1, Resolution::BeyondWindow)]);
+  assert_eq!(table.journal.buffer_len(), cap);
+
+  // The table reopens at its grown size.
+  drop(table);
+  let (table, _) = VersionTable::open(directory.path(), cap, time()).unwrap();
+  assert_eq!(table.journal.buffer_len(), cap);
 }

@@ -711,13 +711,14 @@ impl FieldInterner {
     if full {
       self.stats.full_versions_written.inc();
     }
-    if let Some(rotation) = rotation {
+    // Only rotations that fold versions away count; growing the table loses nothing.
+    if let Some(window_span_micros) = rotation.and_then(|rotation| rotation.window_span_micros) {
       self.stats.rotations.inc();
       #[allow(clippy::cast_precision_loss)]
       self
         .stats
         .window_span_s
-        .observe(rotation.window_span_micros as f64 / 1_000_000.0);
+        .observe(window_span_micros as f64 / 1_000_000.0);
     }
     log::debug!(
       "wrote field-set version {version} ({} fields set, {} removed, full: {full})",

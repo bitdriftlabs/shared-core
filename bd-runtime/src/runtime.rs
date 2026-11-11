@@ -666,9 +666,9 @@ pub mod field_interning {
   // once; logs already interned still upload with their sets.
   bool_feature_flag!(Enabled, "field_interning.enabled", false);
 
-  // The size of the field-set version table. When it fills, the oldest versions are folded into the
-  // table's base, and buffered logs that still refer to them upload without their persistent
-  // fields. Clamped to 4 MiB.
+  // The largest size of the field-set version table. The table starts at 16 KiB and grows to this
+  // cap as needed; at the cap, the oldest versions are folded into the table's base, and buffered
+  // logs that still refer to them upload without their persistent fields. Clamped to 4 MiB.
   int_feature_flag!(
     TableMaxBytes,
     "field_interning.table_max_bytes",
