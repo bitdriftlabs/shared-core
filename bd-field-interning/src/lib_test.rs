@@ -373,33 +373,31 @@ async fn a_restart_continues_the_table_above_the_reserved_numbers() {
 }
 
 #[tokio::test]
-async fn a_field_set_the_table_cannot_hold_pauses_interning() {
+async fn a_failed_write_stops_interning_for_the_process() {
   let mut setup = Setup::new(true).await;
   setup
     .set_runtime(vec![
       (field_interning::Enabled::path(), ValueKind::Bool(true)),
-      (field_interning::WindowLogs::path(), ValueKind::Int(8)),
       (field_interning::TableMaxBytes::path(), ValueKind::Int(0)),
     ])
     .await;
   let mut interner = setup.interner();
   setup.set(&mut interner, "huge", &"x".repeat(8 * 1024));
 
-  // The write fails, the log is written inline, and interning pauses for `W` logs instead of
-  // retrying on every log.
-  for _ in 0 ..= 8 {
-    assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
-  }
+  // The table cannot hold the set: the log is written inline and interning stops, even once the
+  // set would fit.
+  assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
+  setup.remove(&mut interner, "huge");
+  setup.set(&mut interner, "small", "1");
+  assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
   assert_eq!(setup.counter("write_failures"), 1);
   assert_eq!(setup.counter("versions_written"), 0);
 
-  // After the pause it retries once with a full version, and resumes once the set fits.
-  setup.remove(&mut interner, "huge");
-  setup.set(&mut interner, "small", "1");
+  // The next process interns again.
+  drop(interner);
+  let mut interner = setup.interner();
   let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
   assert_eq!(keys(&interned.field_set), ["small"]);
-  assert_eq!(setup.counter("write_failures"), 1);
-  assert_eq!(setup.counter("full_versions_written"), 1);
 }
 
 #[tokio::test]

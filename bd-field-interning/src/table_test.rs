@@ -133,7 +133,7 @@ fn rotation_folds_the_oldest_changes_into_base() {
     Resolution::Found(_)
   ));
 
-  // Only the active generation is left on disk, and it reopens to the same state.
+  // Only the table's file is left on disk, and it reopens to the same state.
   let files: Vec<_> = std::fs::read_dir(directory.path())
     .unwrap()
     .map(|entry| entry.unwrap().file_name())
@@ -180,36 +180,32 @@ fn corrupt_table_is_replaced() {
 }
 
 #[test]
-fn an_unreadable_newest_generation_discards_the_table() {
+fn an_interrupted_rotation_leaves_the_table_intact() {
   let directory = TempDir::new().unwrap();
   let (mut table, _) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
   table.write(1, true, &map(&[("a", "1")]), &[]).unwrap();
   table.write(2, false, &map(&[("b", "2")]), &[]).unwrap();
-  let generation = table.generation;
   drop(table);
 
-  // A rotation that died after creating the next generation's file but before writing it.
+  // A rotation that died before renaming its output over the table.
   std::fs::write(
-    directory
-      .path()
-      .join(format!("field_sets.jrn.{}", generation + 1)),
+    directory.path().join("field_sets.jrn.tmp"),
     vec![0xff; MIN_TABLE_BYTES],
   )
   .unwrap();
 
-  // The older generation is not used: the table starts empty above both, and their files are
-  // removed. Buffered logs that refer to versions 1 and 2 upload without their field sets.
   let (mut table, recovered) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
-  assert!(recovered.discarded);
-  assert_eq!(recovered.newest_version, 0);
-  assert_eq!(table.resolve(&[2]), vec![(2, Resolution::Missing)]);
-  assert_eq!(table.generation, generation + 2);
+  assert!(!recovered.discarded);
+  assert_eq!(recovered.newest_version, 2);
+  assert_eq!(
+    found(&table.resolve(&[2])[0].1),
+    field_set(2, &map(&[("a", "1"), ("b", "2")]))
+  );
   let files: Vec<_> = std::fs::read_dir(directory.path())
     .unwrap()
     .map(|entry| entry.unwrap().file_name())
     .collect();
   assert_eq!(files.len(), 1, "{files:?}");
-  table.write(3, false, &map(&[("c", "3")]), &[]).unwrap();
 }
 
 #[test]
@@ -256,7 +252,6 @@ fn a_base_above_the_high_water_mark_is_not_rotated_on_every_write() {
   table
     .write(1, true, &map(&[("large", &"x".repeat(3400))]), &[])
     .unwrap();
-  let generation = table.generation;
   assert!(table.rotation_ineffective);
 
   for version in 2 ..= 5u64 {
@@ -272,5 +267,4 @@ fn a_base_above_the_high_water_mark_is_not_rotated_on_every_write() {
       None
     );
   }
-  assert_eq!(table.generation, generation);
 }

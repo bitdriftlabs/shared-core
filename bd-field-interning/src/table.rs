@@ -10,14 +10,14 @@
 //! The table is an append-only journal of `FieldSet` entries keyed by kind:
 //!
 //! * `base`: the full field set at the oldest retained version.
-//! * `f/<version>`: a full field set, written for a new table and after a failed write so that the
-//!   chain of changes is never broken.
+//! * `f/<version>`: a full field set, written for a new table and when interning is turned back on.
 //! * `v/<version>`: the fields set (with values) and removed (as `cleared` fields) since the
 //!   previous version.
 //!
 //! A version's full set is found by replaying the entries in order up to it. When the journal
 //! reaches its high-water mark, the oldest changes are folded into `base` until the rest fit in
-//! half of the table, and a new journal file is swapped in. The table never leaves the device.
+//! half of the table, and the rewritten journal replaces the table's file by an atomic rename. The
+//! table never leaves the device.
 
 #[cfg(test)]
 #[path = "./table_test.rs"]
@@ -167,7 +167,6 @@ pub struct Rotation {
 
 pub struct VersionTable {
   directory: PathBuf,
-  generation: u64,
   journal: MemMappedVersionedJournal<FieldSet>,
   max_bytes: usize,
   time_provider: Arc<dyn TimeProvider>,
@@ -198,47 +197,33 @@ struct Cursor {
 
 const CURSORS: usize = 4;
 
-fn journal_path(directory: &Path, generation: u64) -> PathBuf {
-  directory.join(format!("{JOURNAL_NAME}.jrn.{generation}"))
+/// The table's journal file.
+fn journal_path(directory: &Path) -> PathBuf {
+  directory.join(format!("{JOURNAL_NAME}.jrn"))
 }
 
-/// The generations of journal files in `directory`, newest first.
-fn generations(directory: &Path) -> Vec<u64> {
-  let prefix = format!("{JOURNAL_NAME}.jrn.");
-  let mut generations: Vec<u64> = std::fs::read_dir(directory)
-    .into_iter()
-    .flatten()
-    .filter_map(|entry| {
-      entry
-        .ok()?
-        .file_name()
-        .to_str()?
-        .strip_prefix(&prefix)?
-        .parse()
-        .ok()
-    })
-    .collect();
-  generations.sort_unstable_by(|a, b| b.cmp(a));
-  generations
+/// Where a rotation writes the new journal before renaming it over the table's file, so a crash
+/// leaves either the old journal or the new one.
+fn rotation_path(directory: &Path) -> PathBuf {
+  directory.join(format!("{JOURNAL_NAME}.jrn.tmp"))
 }
 
-/// Deletes the journal files of `generations`.
-fn remove_generations(directory: &Path, generations: &[u64]) {
-  for generation in generations {
-    if let Err(error) = std::fs::remove_file(journal_path(directory, *generation)) {
-      log::debug!("failed to remove field-set table: {error}");
-    }
+fn remove_file(path: &Path) {
+  match std::fs::remove_file(path) {
+    Ok(()) => {},
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+    Err(error) => log::debug!("failed to remove {}: {error}", path.display()),
   }
 }
 
 impl VersionTable {
   /// Opens the table in `directory`, or creates an empty one.
   ///
-  /// Only an intact newest journal is reopened. If it is unreadable, lost entries (for example on
-  /// power loss) or is missing, every journal file is deleted and the table starts empty. This is
-  /// an accepted loss: logs still buffered that refer to the discarded versions upload without
-  /// their field sets, and the server marks them as missing their persistent fields.
-  /// [`Recovered::discarded`] reports it so the loss is counted.
+  /// An intact journal is reopened. If it is unreadable or lost entries (for example on power
+  /// loss), it is deleted and the table starts empty. This is an accepted loss: logs still buffered
+  /// that refer to the discarded versions upload without their field sets, and the server marks
+  /// them as missing their persistent fields. [`Recovered::discarded`] reports it so the loss is
+  /// counted.
   pub fn open(
     directory: &Path,
     max_bytes: usize,
@@ -246,16 +231,16 @@ impl VersionTable {
   ) -> anyhow::Result<(Self, Recovered)> {
     let max_bytes = max_bytes.clamp(MIN_TABLE_BYTES, MAX_TABLE_BYTES);
     std::fs::create_dir_all(directory)?;
-    let generations = generations(directory);
-    let newest_generation = generations.first().copied().unwrap_or(0);
+    // Left only by a rotation interrupted before its rename.
+    remove_file(&rotation_path(directory));
 
-    if let Some(&generation) = generations.first() {
-      let path = journal_path(directory, generation);
+    let path = journal_path(directory);
+    let exists = std::fs::exists(&path).unwrap_or(false);
+    if exists {
       match Self::recover(&path, time_provider.clone()) {
         Ok((journal, recovered, base_version, false)) => {
           let mut table = Self {
             directory: directory.to_path_buf(),
-            generation,
             journal,
             max_bytes,
             time_provider,
@@ -266,9 +251,6 @@ impl VersionTable {
             cursors: Vec::new(),
           };
           table.rebuild_versions();
-          // An older generation is left only if a rotation was interrupted after its output
-          // reached the disk.
-          remove_generations(directory, &generations[1 ..]);
           return Ok((table, recovered));
         },
         Ok(_) => log::debug!(
@@ -280,27 +262,20 @@ impl VersionTable {
           path.display()
         ),
       }
+      remove_file(&path);
     }
 
-    remove_generations(directory, &generations);
-    Self::new_empty(
-      directory,
-      newest_generation + 1,
-      max_bytes,
-      time_provider,
-      !generations.is_empty(),
-    )
+    Self::new_empty(directory, max_bytes, time_provider, exists)
   }
 
   fn new_empty(
     directory: &Path,
-    generation: u64,
     max_bytes: usize,
     time_provider: Arc<dyn TimeProvider>,
     discarded: bool,
   ) -> anyhow::Result<(Self, Recovered)> {
     let journal = MemMappedVersionedJournal::new(
-      journal_path(directory, generation),
+      journal_path(directory),
       max_bytes,
       HIGH_WATER_MARK_RATIO,
       time_provider.clone(),
@@ -309,7 +284,6 @@ impl VersionTable {
     Ok((
       Self {
         directory: directory.to_path_buf(),
-        generation,
         journal,
         max_bytes,
         time_provider,
@@ -519,8 +493,7 @@ impl VersionTable {
         (SCOPE, kind.key(entry.version), entry.clone(), *timestamp)
       }));
 
-    let next_generation = self.generation + 1;
-    let path = journal_path(&self.directory, next_generation);
+    let path = rotation_path(&self.directory);
     let journal = MemMappedVersionedJournal::new(
       &path,
       self.max_bytes,
@@ -528,26 +501,19 @@ impl VersionTable {
       self.time_provider.clone(),
       rebuilt,
     )
-    .inspect_err(|_| {
-      let _ignored = std::fs::remove_file(&path);
-    })?;
-    // The new file must be on disk before the old one is removed.
-    MemMappedVersionedJournal::sync(&journal).inspect_err(|_| {
-      let _ignored = std::fs::remove_file(&path);
-    })?;
+    .inspect_err(|_| remove_file(&path))?;
+    // The new journal must be on disk before it replaces the old one. The rename is atomic, so a
+    // crash leaves one complete journal.
+    MemMappedVersionedJournal::sync(&journal).inspect_err(|_| remove_file(&path))?;
+    std::fs::rename(&path, journal_path(&self.directory)).inspect_err(|_| remove_file(&path))?;
 
-    let old_path = journal_path(&self.directory, self.generation);
     self.journal = journal;
-    self.generation = next_generation;
     self.base_version = base_version;
     // A journal created with entries does not report its high-water mark until the next write,
     // so check the position directly.
     self.rotation_ineffective = self.above_high_water();
     self.cursors.clear();
     self.rebuild_versions();
-    if let Err(error) = std::fs::remove_file(&old_path) {
-      log::debug!("failed to remove rotated field-set table: {error}");
-    }
 
     let now = u64::try_from(self.time_provider.now().unix_timestamp_nanos() / 1_000).unwrap_or(0);
     Ok(Rotation {

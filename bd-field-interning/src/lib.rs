@@ -253,8 +253,6 @@ pub struct FieldInterner {
   dirty: HashMap<LogFieldKey, bool>,
   /// Recompute every key, for example after a restart or a scrub-rule change.
   recompute_all: bool,
-  /// The next version is written as a full set.
-  needs_full: bool,
   scrub_rules: Option<Arc<ScrubRules>>,
 
   rates: HashMap<LogFieldKey, KeyRate>,
@@ -262,9 +260,6 @@ pub struct FieldInterner {
   /// The earliest log count at which a volatile key can be re-admitted.
   next_readmission: u64,
   logs_written: u64,
-  /// After a failed table write, interning pauses until this many logs have been written, so a
-  /// table that cannot hold the field set is not retried on every log.
-  paused_until: u64,
 
   next_version: u64,
   reserved_end: u64,
@@ -297,13 +292,11 @@ impl FieldInterner {
       current: None,
       dirty: HashMap::new(),
       recompute_all: true,
-      needs_full: false,
       scrub_rules: None,
       rates: HashMap::new(),
       volatile: HashSet::new(),
       next_readmission: u64::MAX,
       logs_written: 0,
-      paused_until: 0,
       next_version: 1,
       reserved_end: 0,
     }
@@ -445,7 +438,6 @@ impl FieldInterner {
           log::debug!("discarded an unreadable field-set table");
           self.stats.tables_discarded.inc();
         }
-        self.needs_full = false;
         self.recompute_all = true;
         *self.table.table.lock() = Some(table);
         self.table_state = TableState::Open { writable };
@@ -517,17 +509,16 @@ impl FieldInterner {
 
     self.readmit_quiet_keys();
 
-    if self.logs_written < self.paused_until {
-      self.logs_written += 1;
-      return None;
-    }
-    if let Err(error) = self.materialize(persistent, scrub_rules) {
-      log::debug!("failed to write field-set version, writing logs inline for a while: {error}");
-      self.logs_written += 1;
-      self.paused_until = self.logs_written + u64::from(*self.flags.window_logs.read());
-      return None;
-    }
     self.logs_written += 1;
+    if let Err(error) = self.materialize(persistent, scrub_rules) {
+      // Interning stops for the rest of the process, for example when the table cannot hold the
+      // field set; the table stays open to resolve logs already buffered. This costs savings only.
+      log::debug!("failed to write field-set version, interning stops for this process: {error}");
+      self.stats.write_failures.inc();
+      self.table_state = TableState::Open { writable: false };
+      self.current = None;
+      return None;
+    }
 
     let current = self.current.as_ref()?;
     let interned = InternedFields::new(&log.fields, current.version, current.fields.clone())?;
@@ -683,7 +674,7 @@ impl FieldInterner {
   }
 
   fn write_version(&mut self, next: LogFields, previous: &LogFields) -> anyhow::Result<()> {
-    let full = self.needs_full || self.current.is_none();
+    let full = self.current.is_none();
     let set: FieldMap = next
       .iter()
       .filter(|(key, value)| {
@@ -715,42 +706,29 @@ impl FieldInterner {
       Ok((version, rotation))
     });
 
-    match result {
-      Ok((version, rotation)) => {
-        self.stats.versions_written.inc();
-        if full {
-          self.stats.full_versions_written.inc();
-        }
-        if let Some(rotation) = rotation {
-          self.stats.rotations.inc();
-          #[allow(clippy::cast_precision_loss)]
-          self
-            .stats
-            .window_span_s
-            .observe(rotation.window_span_micros as f64 / 1_000_000.0);
-        }
-        log::debug!(
-          "wrote field-set version {version} ({} fields set, {} removed, full: {full})",
-          set.len(),
-          removed.len()
-        );
-        self.needs_full = false;
-        self.current = Some(Current {
-          version,
-          fields: Arc::new(next),
-        });
-        Ok(())
-      },
-      Err(error) => {
-        // The next version is written in full so the chain of changes is never broken, and every
-        // key is recomputed for it.
-        self.stats.write_failures.inc();
-        self.needs_full = true;
-        self.recompute_all = true;
-        self.current = None;
-        Err(error)
-      },
+    let (version, rotation) = result?;
+    self.stats.versions_written.inc();
+    if full {
+      self.stats.full_versions_written.inc();
     }
+    if let Some(rotation) = rotation {
+      self.stats.rotations.inc();
+      #[allow(clippy::cast_precision_loss)]
+      self
+        .stats
+        .window_span_s
+        .observe(rotation.window_span_micros as f64 / 1_000_000.0);
+    }
+    log::debug!(
+      "wrote field-set version {version} ({} fields set, {} removed, full: {full})",
+      set.len(),
+      removed.len()
+    );
+    self.current = Some(Current {
+      version,
+      fields: Arc::new(next),
+    });
+    Ok(())
   }
 
   fn allocate_version(&mut self) -> anyhow::Result<u64> {
