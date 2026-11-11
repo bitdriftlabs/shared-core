@@ -525,26 +525,9 @@ impl FieldInterner {
     self.logs_written += 1;
 
     let current = self.current.as_ref()?;
-    let mut left_out = 0;
-    let mut cleared = Vec::new();
-    for (key, value) in current.fields.iter() {
-      match log.fields.get(key) {
-        Some(log_value) if same_value(log_value, value) => left_out += 1,
-        Some(_) => {},
-        // A filter removed the key.
-        None => cleared.push(key.clone()),
-      }
-    }
-    if left_out == 0 {
-      return None;
-    }
-
+    let interned = InternedFields::new(&log.fields, current.version, current.fields.clone())?;
     self.stats.logs_interned.inc();
-    Some(InternedFields {
-      version: current.version,
-      field_set: current.fields.clone(),
-      cleared,
-    })
+    Some(interned)
   }
 
   /// Makes volatile keys that have not changed for `W` logs eligible again.

@@ -63,33 +63,27 @@ fn decoded_fields(
     .collect()
 }
 
-fn interned(
-  version: u64,
-  set: &[(&'static str, &str)],
-  cleared: &[&'static str],
-) -> InternedFields {
-  InternedFields {
-    version,
-    field_set: Arc::new(fields(set)),
-    cleared: cleared.iter().map(|key| (*key).into()).collect(),
-  }
+fn interned(log: &Log, version: u64, set: &[(&'static str, &str)]) -> Option<InternedFields> {
+  InternedFields::new(&log.fields, version, Arc::new(fields(set)))
 }
 
 #[test]
 fn interned_log_leaves_out_unchanged_fields() {
-  let bytes = encode(
-    log(fields(&[
-      ("user_id", "abc"),
-      ("theme", "dark"),
-      ("screen", "home"),
-    ])),
-    Some(interned(
-      42,
-      &[("user_id", "abc"), ("theme", "light"), ("locale", "en")],
-      &["locale"],
-    )),
-    0,
+  let log = log(fields(&[
+    ("user_id", "abc"),
+    ("theme", "dark"),
+    ("screen", "home"),
+  ]));
+  let interned = interned(
+    &log,
+    42,
+    &[("user_id", "abc"), ("theme", "light"), ("locale", "en")],
   );
+  assert_eq!(
+    interned.as_ref().map(|interned| interned.cleared.clone()),
+    Some(vec!["locale".into()])
+  );
+  let bytes = encode(log, interned, 0);
 
   let decoded = ProtoLog::parse_from_bytes(&bytes).unwrap();
   assert_eq!(decoded.field_set_version, 42);
@@ -119,15 +113,9 @@ fn log_without_interning_is_unchanged() {
 
 #[test]
 fn compressed_interned_log_keeps_the_version_outside_the_contents() {
-  let bytes = encode(
-    log(fields(&[("user_id", "abc"), ("screen", "home")])),
-    Some(interned(
-      7,
-      &[("user_id", "abc"), ("locale", "en")],
-      &["locale"],
-    )),
-    1,
-  );
+  let log = log(fields(&[("user_id", "abc"), ("screen", "home")]));
+  let interned = interned(&log, 7, &[("user_id", "abc"), ("locale", "en")]);
+  let bytes = encode(log, interned, 1);
 
   let decoded = ProtoLog::parse_from_bytes(&bytes).unwrap();
   assert_eq!(decoded.field_set_version, 7);
@@ -150,8 +138,14 @@ fn compressed_interned_log_keeps_the_version_outside_the_contents() {
 
 #[test]
 fn computed_size_matches_the_encoding() {
-  let mut encodable = EncodableLog::new(log(fields(&[("a", "1"), ("b", "2")])), 0);
-  encodable.set_interned(Some(interned(300, &[("a", "1")], &["gone", "also_gone"])));
+  let log = log(fields(&[("a", "1"), ("b", "2")]));
+  let interned = interned(&log, 300, &[("a", "1"), ("gone", "x"), ("also_gone", "y")]);
+  assert_eq!(
+    interned.as_ref().map(|interned| interned.cleared.len()),
+    Some(2)
+  );
+  let mut encodable = EncodableLog::new(log, 0);
+  encodable.set_interned(interned);
   let size = encodable.compute_size(&["action"], &["stream"]).unwrap();
   let mut bytes = vec![0; usize::try_from(size).unwrap()];
   encodable
@@ -189,4 +183,12 @@ fn values_compare_as_they_encode() {
   let array = |value: f64| DataValue::Array(crate::LogArrayData::new(vec![double(value)]));
   assert!(same_value(&array(1.5), &array(1.5)));
   assert!(!same_value(&array(0.0), &array(-0.0)));
+}
+
+#[test]
+fn nothing_to_leave_out_is_not_interned() {
+  let log = log(fields(&[("user_id", "abc"), ("screen", "home")]));
+  assert_eq!(interned(&log, 1, &[("user_id", "xyz")]), None);
+  assert_eq!(interned(&log, 1, &[("locale", "en")]), None);
+  assert_eq!(interned(&log, 1, &[]), None);
 }

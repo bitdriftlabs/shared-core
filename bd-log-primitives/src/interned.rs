@@ -35,6 +35,51 @@ pub struct InternedFields {
   pub version: u64,
   pub field_set: Arc<LogFields>,
   pub cleared: Vec<LogFieldKey>,
+  /// For each field of the log, in the log's iteration order, whether it is left out. The log's
+  /// fields must not change after this is computed, as with the rest of the log's encoding.
+  left_out: Vec<bool>,
+}
+
+impl InternedFields {
+  /// Compares `fields` with the field set in one pass. Returns `None` if no field would be left
+  /// out, so the log should be written fully inline.
+  #[must_use]
+  pub fn new(fields: &LogFields, version: u64, field_set: Arc<LogFields>) -> Option<Self> {
+    let mut present = 0;
+    let mut left_out_count = 0;
+    let left_out: Vec<bool> = fields
+      .iter()
+      .map(|(key, value)| {
+        let Some(set_value) = field_set.get(key) else {
+          return false;
+        };
+        present += 1;
+        let same = same_value(set_value, value);
+        left_out_count += usize::from(same);
+        same
+      })
+      .collect();
+    if left_out_count == 0 {
+      return None;
+    }
+
+    // A key of the set that the log does not carry was removed by a filter.
+    let cleared = if present == field_set.len() {
+      Vec::new()
+    } else {
+      field_set
+        .keys()
+        .filter(|key| !fields.contains_key(*key))
+        .cloned()
+        .collect()
+    };
+    Some(Self {
+      version,
+      field_set,
+      cleared,
+      left_out,
+    })
+  }
 }
 
 /// Whether two field values encode identically. String values compare by content, so the
@@ -102,14 +147,19 @@ impl<'a> LogFieldsRef<'a> {
   }
 
   fn encoded_fields(&self) -> impl Iterator<Item = (&'a LogFieldKey, &'a LogFieldValue)> {
-    let interned = self.interned;
-    self.fields.iter().filter(move |(key, value)| {
-      interned.is_none_or(|interned| {
-        !interned
-          .field_set
-          .get(*key)
-          .is_some_and(|set_value| same_value(set_value, value))
-      })
+    let left_out = self.interned.map(|interned| {
+      debug_assert_eq!(
+        interned.left_out.len(),
+        self.fields.len(),
+        "log fields changed after interning"
+      );
+      &interned.left_out
+    });
+    let mut left_out = left_out.map(|left_out| left_out.iter());
+    self.fields.iter().filter(move |_| {
+      !left_out
+        .as_mut()
+        .is_some_and(|left_out| left_out.next().copied().unwrap_or(false))
     })
   }
 
