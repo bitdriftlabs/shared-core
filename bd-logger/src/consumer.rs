@@ -1259,6 +1259,9 @@ struct BatchBuilder {
   field_sets: Vec<FieldSet>,
   // How each version referred to by the batch resolved.
   field_set_versions: HashMap<u64, Resolution>,
+  // Sets recovered from a staged batch that was discarded to be rebuilt from the buffer, used for
+  // versions the table can no longer resolve. Kept across batches.
+  recovered_field_sets: HashMap<u64, Arc<FieldSet>>,
   oldest_micros: Option<u64>,
   newest_micros: Option<u64>,
 }
@@ -1271,6 +1274,7 @@ impl BatchBuilder {
       logs: Vec::new(),
       field_sets: Vec::new(),
       field_set_versions: HashMap::new(),
+      recovered_field_sets: HashMap::new(),
       oldest_micros: None,
       newest_micros: None,
     }
@@ -1292,19 +1296,34 @@ impl BatchBuilder {
       return;
     }
     let resolution = self.field_set_versions.entry(version).or_insert_with(|| {
-      match self.flags.field_sets.resolution(version) {
-        Resolution::Found(set) => {
-          // Field sets count toward the batch size limit like the logs that refer to them.
-          self.total_bytes += usize::try_from(set.compute_size()).unwrap_or(usize::MAX);
-          self.field_sets.push((*set).clone());
-          Resolution::Found(set)
+      let resolution = match self.flags.field_sets.resolution(version) {
+        Resolution::BeyondWindow | Resolution::Missing
+          if let Some(set) = self.recovered_field_sets.get(&version) =>
+        {
+          Resolution::Found(set.clone())
         },
-        unresolved => unresolved,
+        resolution => resolution,
+      };
+      if let Resolution::Found(set) = &resolution {
+        // Field sets count toward the batch size limit like the logs that refer to them.
+        self.total_bytes += usize::try_from(set.compute_size()).unwrap_or(usize::MAX);
+        self.field_sets.push((**set).clone());
       }
+      resolution
     });
     // A log whose set is missing uploads without it; the server marks it as missing its persistent
     // fields.
     self.flags.field_sets.record_unresolved(resolution, 1);
+  }
+
+  /// Keeps the field sets of a staged batch that is rebuilt from the buffer, so its logs keep
+  /// their sets even if the table has since rotated them out or lost them.
+  fn recover_field_sets(&mut self, field_sets: Vec<FieldSet>) {
+    self.recovered_field_sets.extend(
+      field_sets
+        .into_iter()
+        .map(|set| (set.version, Arc::new(set))),
+    );
   }
 
   fn limit_reached(&self) -> bool {
@@ -1848,6 +1867,9 @@ impl CompleteBufferUpload {
         "dropping recovered queued trigger batch that still exists in buffer {}",
         self.buffer_id
       );
+      self
+        .batch_builder
+        .recover_field_sets(queued_batch.field_sets);
       self.artifact_store.remove_queued_batch().await?;
     }
 

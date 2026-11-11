@@ -307,3 +307,30 @@ fn the_most_complete_generation_wins() {
     .collect();
   assert_eq!(files.len(), 1, "{files:?}");
 }
+
+#[test]
+fn a_base_above_the_high_water_mark_is_not_rotated_on_every_write() {
+  let directory = TempDir::new().unwrap();
+  let (mut table, _) = VersionTable::open(directory.path(), MIN_TABLE_BYTES, time()).unwrap();
+  // A set that alone fills most of the table: the rotation after it cannot get below the mark.
+  table
+    .write(1, true, &map(&[("large", &"x".repeat(3400))]), &[])
+    .unwrap();
+  let generation = table.generation;
+  assert!(table.rotation_ineffective);
+
+  for version in 2 ..= 5u64 {
+    assert_eq!(
+      table
+        .write(
+          version,
+          false,
+          &map(&[("small", &version.to_string())]),
+          &[]
+        )
+        .unwrap(),
+      None
+    );
+  }
+  assert_eq!(table.generation, generation);
+}

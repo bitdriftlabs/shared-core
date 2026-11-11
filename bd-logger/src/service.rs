@@ -114,12 +114,17 @@ impl UploadRequest {
 // overhead).
 impl RequestSized for UploadRequest {
   fn per_request_size(&self) -> u32 {
-    self
+    // Field sets are charged like logs: interning moves persistent fields from the logs into them.
+    let field_set_bytes: u64 = self
       .log_upload
-      .logs
+      .field_sets
       .iter()
-      .map(Vec::len)
-      .sum::<usize>()
+      .map(protobuf::Message::compute_size)
+      .sum();
+    let log_bytes =
+      u64::try_from(self.log_upload.logs.iter().map(Vec::len).sum::<usize>()).unwrap_or(u64::MAX);
+    log_bytes
+      .saturating_add(field_set_bytes)
       .try_into()
       .unwrap_or(u32::MAX)
   }

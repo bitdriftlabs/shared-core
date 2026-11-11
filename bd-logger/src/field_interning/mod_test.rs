@@ -543,4 +543,72 @@ async fn removed_keys_do_not_keep_change_rates() {
   }
   setup.intern(&mut interner, &setup.log(&[]));
   assert_eq!(interner.rates.len(), 0);
+
+  // A key that became volatile and was then removed is dropped once it is re-admitted.
+  for change in 0 .. 10 {
+    setup.set(&mut interner, "churny", &change.to_string());
+    setup.intern(&mut interner, &setup.log(&[]));
+  }
+  assert!(interner.volatile.contains("churny"));
+  setup.remove(&mut interner, "churny");
+  for _ in 0 .. 10 {
+    setup.intern(&mut interner, &setup.log(&[]));
+  }
+  assert!(!interner.volatile.contains("churny"));
+  assert_eq!(interner.rates.len(), 0);
+}
+
+#[tokio::test]
+async fn empty_keys_stay_inline() {
+  let mut setup = Setup::new(true).await;
+  let mut interner = setup.interner();
+  setup.set(&mut interner, "", "value");
+  setup.set(&mut interner, "user_id", "abc");
+  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  assert_eq!(keys(&interned.field_set), ["user_id"]);
+}
+
+/// Storage whose reads of one key fail, as a platform store might.
+#[derive(Default)]
+struct FailingReads {
+  inner: InMemoryStorage,
+}
+
+impl bd_key_value::Storage for FailingReads {
+  fn set_string(&self, key: &str, value: &str) -> anyhow::Result<()> {
+    self.inner.set_string(key, value)
+  }
+
+  fn get_string(&self, key: &str) -> anyhow::Result<Option<String>> {
+    if key == super::RESERVED_VERSION_END.key() {
+      anyhow::bail!("read failed");
+    }
+    self.inner.get_string(key)
+  }
+
+  fn delete(&self, key: &str) -> anyhow::Result<()> {
+    self.inner.delete(key)
+  }
+}
+
+#[tokio::test]
+async fn an_unreadable_reservation_stops_interning_but_keeps_the_table() {
+  let mut setup = Setup::new(true).await;
+  let mut interner = setup.interner();
+  setup.set(&mut interner, "user_id", "abc");
+  assert_eq!(
+    setup
+      .intern(&mut interner, &setup.log(&[]))
+      .unwrap()
+      .version,
+    1
+  );
+  drop(interner);
+
+  // The next process cannot read the reservation, so it might reuse a number. It writes no new
+  // versions but still resolves the existing ones for buffered logs.
+  setup.store = Arc::new(Store::new(Box::<FailingReads>::default()));
+  let mut interner = setup.interner();
+  assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
+  assert!(interner.table().resolve(1).is_some());
 }

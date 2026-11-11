@@ -106,3 +106,35 @@ async fn test_retry_backoff() {
     assert_eq!(backoff.current_interval(), Duration::milliseconds(67500));
   });
 }
+
+#[test]
+fn rate_limited_size_includes_field_sets() {
+  use crate::service::ratelimit::RequestSized as _;
+  use protobuf::Message as _;
+
+  let field_set = bd_proto::protos::client::api::FieldSet {
+    version: 1,
+    fields: vec![bd_proto::protos::logging::payload::log::Field {
+      key: "user_id".to_string(),
+      value: Some(bd_proto::protos::logging::payload::Data {
+        data_type: Some(
+          bd_proto::protos::logging::payload::data::Data_type::StringData("x".repeat(100)),
+        ),
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    }],
+    ..Default::default()
+  };
+  let set_bytes = u32::try_from(field_set.compute_size()).unwrap();
+  let request = UploadRequest::new(
+    LogBatch {
+      logs: vec![vec![0; 10], vec![0; 5]],
+      buffer_id: "buffer".to_string(),
+      field_sets: vec![field_set],
+    },
+    false,
+  );
+  assert_eq!(request.per_request_size(), 15 + set_bytes);
+}

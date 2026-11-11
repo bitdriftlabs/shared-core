@@ -239,6 +239,8 @@ pub struct FieldInterner {
   stats: Stats,
 
   table_state: TableState,
+  /// Whether new versions may be written; false if the number reservation could not be read.
+  writable: bool,
   /// Whether interning was enabled at the last `prepare`, or `None` before the first.
   last_enabled: Option<bool>,
   /// When interning was turned off, in microseconds since the epoch, while it is off.
@@ -286,6 +288,7 @@ impl FieldInterner {
       },
       stats: Stats::new(scope),
       table_state: TableState::Closed,
+      writable: false,
       last_enabled: None,
       disabled_at_micros: None,
       current: None,
@@ -401,16 +404,22 @@ impl FieldInterner {
     let max_bytes = usize::try_from(*self.flags.table_max_bytes.read()).unwrap_or(usize::MAX);
     match VersionTable::open(&self.directory, max_bytes, self.time_provider.clone()) {
       Ok((table, recovered)) => {
-        let persisted_end = self
-          .store
-          .get_internal_string(&RESERVED_VERSION_END)
-          .ok()
-          .flatten()
-          .and_then(|end| end.parse::<u64>().ok())
-          .unwrap_or(0);
         // A fresh block above every number used before, even if the table lost its newest
-        // entries.
-        self.next_version = persisted_end.max(recovered.newest_version) + 1;
+        // entries. If the reservation cannot be read, numbers could be reused, so the table is
+        // kept only to resolve buffered logs and nothing new is interned in this process.
+        let persisted_end = match self.store.get_internal_string(&RESERVED_VERSION_END) {
+          Ok(None) => Some(0),
+          Ok(Some(end)) => end.parse::<u64>().ok(),
+          Err(error) => {
+            log::debug!("failed to read the field-set version reservation: {error}");
+            None
+          },
+        };
+        self.writable = persisted_end.is_some();
+        if !self.writable {
+          self.stats.open_failures.inc();
+        }
+        self.next_version = persisted_end.unwrap_or(0).max(recovered.newest_version) + 1;
         self.reserved_end = self.next_version - 1;
         self.current = (recovered.newest_version != 0).then(|| Current {
           version: recovered.newest_version,
@@ -482,7 +491,7 @@ impl FieldInterner {
     persistent: &AnnotatedLogFields,
     scrub_rules: &Arc<ScrubRules>,
   ) -> Option<InternedFields> {
-    if self.table_state != TableState::Open || self.last_enabled != Some(true) {
+    if self.table_state != TableState::Open || !self.writable || self.last_enabled != Some(true) {
       return None;
     }
 
@@ -634,6 +643,15 @@ impl FieldInterner {
 
     let mut next = (*previous).clone();
     for (key, counts) in changed {
+      // An empty key stays inline: the server does not restore a set field without a key.
+      if key.is_empty() {
+        next.remove(&key);
+        continue;
+      }
+      if !persistent.contains_key(&key) && !self.volatile.contains(&key) {
+        // A removed key's change rate is not kept, so dynamically named keys do not accumulate.
+        self.rates.remove(&key);
+      }
       if counts && persistent.contains_key(&key) && self.record_change(&key) {
         next.remove(&key);
         continue;

@@ -568,7 +568,9 @@ impl VersionTable {
     self.journal = journal;
     self.generation = next_generation;
     self.base_version = base_version;
-    self.rotation_ineffective = self.journal.is_high_water_mark_triggered();
+    // A journal created with entries does not report its high-water mark until the next write,
+    // so check the position directly.
+    self.rotation_ineffective = self.above_high_water();
     self.cursors.clear();
     self.rebuild_versions();
     self.cache.retain(|(version, _)| *version >= base_version);
@@ -669,6 +671,14 @@ impl VersionTable {
       },
     );
     self.versions = versions;
+  }
+
+  fn above_high_water(&self) -> bool {
+    #[allow(clippy::cast_precision_loss)]
+    let high_water = self.journal.buffer_len() as f32 * HIGH_WATER_MARK_RATIO;
+    #[allow(clippy::cast_precision_loss)]
+    let position = self.journal.position() as f32;
+    position >= high_water
   }
 
   /// Applies a new size cap at the next rotation.

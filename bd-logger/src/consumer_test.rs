@@ -3332,3 +3332,63 @@ async fn staged_trigger_batch_uploads_its_field_sets_after_restart() {
     })
     .unwrap();
 }
+
+#[tokio::test(start_paused = true)]
+async fn rebuilt_queued_batch_keeps_its_staged_field_sets() {
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  PendingTriggerUploadsStore::new(temp_directory.path())
+    .upsert(PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer,
+        uploaded_batches_count: 0,
+        uploaded_logs_count: 0,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
+    })
+    .await;
+
+  // The previous process staged a batch with its set, then died before advancing the buffer. This
+  // process discards the queued copy and rebuilds the batch from the buffer, with no version table
+  // to resolve the log's version.
+  let field_set =
+    crate::field_interning::table::field_set(1, &string_fields(&[("user_id", "abc")]));
+  TriggerUploadArtifactStore::new(
+    temp_directory.path().join("state").join("logger"),
+    "flush-1",
+    "buffer",
+  )
+  .stage_batch_with_field_sets(vec![interned_log(1)], vec![field_set.clone()], Vec::new())
+  .await
+  .unwrap();
+
+  let buffer_path = temp_directory.path().join("buffer");
+  let (buffer, mut producer) = create_trigger_buffer(buffer_path.as_path()).await;
+  producer.write(&interned_log(1)).unwrap();
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory).await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let recovered_upload = setup.next_upload().await;
+  assert_eq!(
+    recovered_upload.payload.log_upload().proto_logs,
+    vec![interned_log(1)]
+  );
+  assert_eq!(
+    recovered_upload.payload.log_upload().field_sets,
+    vec![field_set]
+  );
+  recovered_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: recovered_upload.uuid,
+    })
+    .unwrap();
+}
