@@ -191,11 +191,43 @@ pub fn match_reports(
     "missing profile installation identity"
   );
   evidence.validate()?;
+  log::debug!(
+    "crash profile matching started: kind={kind:?}, candidates={}, observations={}, \
+     profile_boot_epoch_ns={}",
+    reports.len(),
+    evidence.observations.len(),
+    evidence.boot_epoch_ns
+  );
   let mut matched = Vec::new();
   for report in reports {
     // Invalid local facts are errors, not an apparent successful "no matches" result.
     report.run.validate()?;
-    if report.run.installation_id != installation_id || report.kind != kind {
+    log::debug!(
+      "crash profile considering report {}: kind={:?}, pid={}, run_id={}, boot_count={}, \
+       start_elapsed_ns={}, end_elapsed_ns={:?}, event_elapsed_ns={}",
+      report.report_id,
+      report.kind,
+      report.run.pid,
+      report.run.run_id,
+      report.run.boot_count,
+      report.run.start_elapsed_ns,
+      report.run.end_elapsed_ns,
+      report.event_elapsed_ns
+    );
+    if report.run.installation_id != installation_id {
+      log::debug!(
+        "crash profile rejected report {}: reason=installation_mismatch",
+        report.report_id
+      );
+      continue;
+    }
+    if report.kind != kind {
+      log::debug!(
+        "crash profile rejected report {}: reason=kind_mismatch, profile_kind={kind:?}, \
+         report_kind={:?}",
+        report.report_id,
+        report.kind
+      );
       continue;
     }
     ensure!(
@@ -206,22 +238,39 @@ pub fn match_reports(
       !report.report_id.is_nil(),
       "missing report artifact identity"
     );
-    let delta = report
-      .run
-      .boot_epoch_ns()?
+    let report_boot_epoch_ns = report.run.boot_epoch_ns()?;
+    let delta = report_boot_epoch_ns
       .checked_sub(evidence.boot_epoch_ns)
       .and_then(i128::checked_abs)
       .ok_or_else(|| anyhow::anyhow!("clock comparison overflow"))?;
     if delta > CLOCK_TOLERANCE_NS {
+      log::debug!(
+        "crash profile rejected report {}: reason=boot_epoch_mismatch, \
+         report_boot_epoch_ns={report_boot_epoch_ns}, profile_boot_epoch_ns={}, delta_ns={delta}, \
+         tolerance_ns={CLOCK_TOLERANCE_NS}",
+        report.report_id,
+        evidence.boot_epoch_ns
+      );
       continue;
     }
+    let mut observed_pid = false;
     for observation in &evidence.observations {
       if observation.pid != report.run.pid {
         continue;
       }
+      observed_pid = true;
       if let Some(start) = observation.process_start_ns
         && start.abs_diff(report.run.start_elapsed_ns) > PROCESS_START_TOLERANCE_NS
       {
+        log::debug!(
+          "crash profile rejected observation for report {}: reason=process_start_mismatch, \
+           pid={}, profile_start_ns={start}, report_start_ns={}, delta_ns={}, \
+           tolerance_ns={PROCESS_START_TOLERANCE_NS}",
+          report.report_id,
+          observation.pid,
+          report.run.start_elapsed_ns,
+          start.abs_diff(report.run.start_elapsed_ns)
+        );
         continue;
       }
       let first = observation
@@ -233,7 +282,7 @@ pub fn match_reports(
         .min(report.run.end_elapsed_ns.unwrap_or(u64::MAX));
       if first <= last {
         // A trace start only disambiguates reused PIDs when one overlapping run fits its tolerance.
-        if reports.iter().any(|other| {
+        if let Some(other) = reports.iter().find(|other| {
           other.run.run_id != report.run.run_id
             && other.run.installation_id == installation_id
             && other.run.pid == report.run.pid
@@ -247,14 +296,53 @@ pub fn match_reports(
             && other.run.start_elapsed_ns <= last
             && other.run.end_elapsed_ns.unwrap_or(u64::MAX) >= first
         }) {
+          log::debug!(
+            "crash profile attribution ambiguous: report_id={}, conflicting_report_id={}, pid={}, \
+             run_id={}, conflicting_run_id={}, overlap_first_ns={first}, overlap_last_ns={last}, \
+             profile_process_start_ns={:?}, reason=ambiguous_process_start_with_pid_reuse",
+            report.report_id,
+            other.report_id,
+            report.run.pid,
+            report.run.run_id,
+            other.run.run_id,
+            observation.process_start_ns
+          );
           bail!("ambiguous reused source PID");
         }
+        log::debug!(
+          "crash profile matched report {}: pid={}, overlap_first_ns={first}, \
+           overlap_last_ns={last}, profile_process_start_ns={:?}",
+          report.report_id,
+          report.run.pid,
+          observation.process_start_ns
+        );
         matched.push(report.report_id);
         break;
       }
+      log::debug!(
+        "crash profile rejected observation for report {}: reason=no_lifetime_overlap, pid={}, \
+         profile_first_ns={}, profile_last_ns={}, overlap_first_ns={first}, overlap_last_ns={last}",
+        report.report_id,
+        observation.pid,
+        observation.first_ns,
+        observation.last_ns
+      );
+    }
+    if !observed_pid {
+      log::debug!(
+        "crash profile rejected report {}: reason=pid_absent, report_pid={}, observations={}",
+        report.report_id,
+        report.run.pid,
+        evidence.observations.len()
+      );
     }
   }
   matched.sort_unstable();
   matched.dedup();
+  log::debug!(
+    "crash profile matching complete: kind={kind:?}, candidates={}, matched_reports={}",
+    reports.len(),
+    matched.len()
+  );
   Ok(matched)
 }

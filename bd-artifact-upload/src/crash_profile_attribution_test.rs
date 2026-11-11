@@ -536,6 +536,58 @@ async fn unmatched_profiles_are_deleted_and_not_reconsidered_for_later_reports()
 }
 
 #[tokio::test]
+async fn failed_profiles_have_debug_only_retention_bounded_to_one_file_per_kind() {
+  std::fs::create_dir_all(".tmp").unwrap();
+  let directory = TempDir::with_prefix_in("failed-profile", ".tmp").unwrap();
+  let attribution = attribution();
+  let client = MockClient::new();
+  let debug_enabled = cfg!(debug_assertions)
+    && log::log_enabled!(target: "bd_artifact_upload::crash_profile_attribution", log::Level::Debug);
+  for kind in [Kind::Anr, Kind::JavaOutOfMemory] {
+    for iteration in 0 .. 3 {
+      let path = directory.path().join(format!("{iteration}.perfetto-trace"));
+      let contents = format!("not a trace: {kind:?} {iteration}");
+      std::fs::write(&path, &contents).unwrap();
+      adopt(&attribution.candidates, &client, kind, path.clone(), true).await;
+      assert!(!path.exists());
+      let failed = directory.path().join(match kind {
+        Kind::Anr => "bitdrift-attribution-failed-anr.perfetto-trace",
+        Kind::JavaOutOfMemory => "bitdrift-attribution-failed-oom.perfetto-trace",
+      });
+      assert_eq!(failed.exists(), debug_enabled);
+      if debug_enabled {
+        assert_eq!(std::fs::read(&failed).unwrap(), contents.as_bytes());
+      }
+    }
+  }
+  assert_eq!(
+    std::fs::read_dir(directory.path()).unwrap().count(),
+    if debug_enabled { 2 } else { 0 }
+  );
+}
+
+#[tokio::test]
+#[cfg(debug_assertions)]
+async fn failed_debug_retention_falls_back_to_deleting_the_source() {
+  std::fs::create_dir_all(".tmp").unwrap();
+  let directory = TempDir::with_prefix_in("failed-profile", ".tmp").unwrap();
+  let path = directory.path().join("corrupt.perfetto-trace");
+  std::fs::write(&path, b"not a trace").unwrap();
+  let failed = failed_path(&path, Kind::Anr);
+  std::fs::create_dir(&failed).unwrap();
+  adopt(
+    &attribution().candidates,
+    &MockClient::new(),
+    Kind::Anr,
+    path.clone(),
+    true,
+  )
+  .await;
+  assert!(!path.exists());
+  assert!(failed.is_dir());
+}
+
+#[tokio::test]
 async fn disabled_kind_leaves_profiles_untouched() {
   let worker = Worker::new(false).await;
   let mut progress = worker.attribution.processing_revision_for_test();
