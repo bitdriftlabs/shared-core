@@ -118,13 +118,14 @@ fn custom_proto_encoder() {
       | "log_type"
       | "stream_ids"
       | "compressed_contents"
-      | "command_attachment" => {},
+      | "command_attachment"
+      | "field_set_version" => {},
       other => panic!("unexpected field added to Log proto: {other}"),
     });
   Field::descriptor()
     .fields()
     .for_each(|field| match field.name() {
-      "key" | "value" => {},
+      "key" | "value" | "cleared" => {},
       other => panic!("unexpected field added to Field proto: {other}"),
     });
   Data::descriptor()
@@ -325,7 +326,7 @@ fn encodable_log_produces_valid_proto() {
   let field_map: AHashMap<_, _> = decoded
     .fields
     .iter()
-    .map(|f| (f.key.as_str(), f.value.clone()))
+    .map(|f| (f.key.as_str(), f.has_value().then(|| f.value().clone())))
     .collect();
   assert_eq!(
     field_map.get("key1").unwrap().as_ref().unwrap().data_type,

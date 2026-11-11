@@ -113,9 +113,8 @@ impl WrappedLog {
       .iter()
       .map(|field| {
         let value = field
-          .value
-          .clone()
-          .into_option()
+          .has_value()
+          .then(|| field.value().clone())
           .and_then(DataValue::from_proto)
           .expect("missing field value");
         (field.key.clone(), value)
@@ -129,7 +128,7 @@ impl WrappedLog {
       .0
       .fields
       .iter()
-      .find_map(|field| (field.key == key).then(|| field.value.string_data()))
+      .find_map(|field| (field.key == key).then(|| field.value().string_data()))
       .unwrap_or_else(|| {
         panic!(
           "field {key:?} should exist, keys: {:?}",
@@ -149,7 +148,7 @@ impl WrappedLog {
       .0
       .fields
       .iter()
-      .find_map(|field| (field.key == key).then(|| &field.value.binary_data().payload))
+      .find_map(|field| (field.key == key).then(|| &field.value().binary_data().payload))
       .expect("field should exist")
   }
 
