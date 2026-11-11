@@ -118,13 +118,14 @@ fn custom_proto_encoder() {
       | "log_type"
       | "stream_ids"
       | "compressed_contents"
-      | "command_attachment" => {},
+      | "command_attachment"
+      | "field_set_version" => {},
       other => panic!("unexpected field added to Log proto: {other}"),
     });
   Field::descriptor()
     .fields()
     .for_each(|field| match field.name() {
-      "key" | "value" => {},
+      "key" | "value" | "cleared" => {},
       other => panic!("unexpected field added to Field proto: {other}"),
     });
   Data::descriptor()
