@@ -8,11 +8,15 @@
 use super::setup::Setup;
 use crate::{AnnotatedLogField, LogAttributesOverrides, log_level};
 use assert_matches::assert_matches;
+use bd_log_matcher::builder::message_equals;
 use bd_log_primitives::AnnotatedLogFields;
+use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
+use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{FeatureFlag as _, field_interning};
 use bd_test_helpers::config_helper::{
+  self,
   BufferConfigBuilder,
   ConfigurationUpdateParts,
   configuration_update_from_parts,
@@ -266,4 +270,58 @@ fn logs_that_reach_no_buffer_write_no_version() {
     [].into(),
   );
   assert!(table_contains(&setup, b"user_id"));
+}
+
+#[test]
+fn logs_no_stream_takes_write_no_version() {
+  let mut setup = Setup::new();
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
+    "",
+    StateOfTheWorld {
+      bdtail_configuration: Some(BdTailConfigurations {
+        active_streams: vec![BdTailStream {
+          stream_id: "streamed".into(),
+          matcher: Some(message_equals("streamed")).into(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+  enable_field_interning(&mut setup);
+
+  // A log that no buffer or stream takes is not interned, so it writes no version.
+  setup
+    .logger_handle
+    .add_log_field("user_id".to_string(), "abc".into());
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "ignored".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+  setup
+    .logger_handle
+    .add_log_field("user_id".to_string(), "def".into());
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "streamed".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "streamed");
+    let raw = log_upload.raw_logs();
+    assert_eq!(raw.len(), 1);
+    assert_eq!(raw[0].field_set_version, 1);
+    assert_eq!(log_upload.logs()[0].field("user_id"), "def");
+  });
 }

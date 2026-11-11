@@ -30,7 +30,7 @@ use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::{FilterChain, ScrubRules};
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{EncodableLog, FieldsRef};
+use bd_log_primitives::{EncodableLog, FieldsRef, Log};
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, DeviceCommandRequest};
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -499,47 +499,57 @@ impl TailConfigurations {
     })
   }
 
-  /// Whether any live tail stream is active, so a log may be written to the stream buffer.
-  pub(crate) const fn has_active_streams(&self) -> bool {
-    self.inner.is_some()
+  /// The indices of the live tail streams that `log` matches.
+  pub(crate) fn matching_streams(
+    &self,
+    log: &Log,
+    state: &dyn bd_state::StateReader,
+  ) -> Vec<usize> {
+    let Some(inner) = &self.inner else {
+      return Vec::new();
+    };
+    inner
+      .active_streams
+      .iter()
+      .enumerate()
+      .filter(|(_, (_, matcher))| {
+        matcher.as_ref().is_none_or(|matcher| {
+          matcher.do_match(
+            log.log_level,
+            log.log_type,
+            &log.message,
+            FieldsRef::new(&log.fields, &log.matching_fields),
+            state,
+            &TinyMap::default(),
+            0,
+            MatchContext::default(),
+          )
+        })
+      })
+      .map(|(index, _)| index)
+      .collect()
   }
 
-  pub(crate) fn maybe_stream_log(
+  /// Writes `log` to the stream buffer for the streams from `matching_streams`. Returns whether it
+  /// was written.
+  pub(crate) fn stream_log(
     &mut self,
     log: &mut EncodableLog,
-    state: &dyn bd_state::StateReader,
+    streams: &[usize],
   ) -> anyhow::Result<bool> {
     let Some(inner) = &mut self.inner else {
       return Ok(false);
     };
-
-    let active_streams = inner
-      .active_streams
+    let stream_ids = streams
       .iter()
-      .filter_map(|(id, matcher)| {
-        matcher
-          .as_ref()
-          .is_none_or(|matcher| {
-            matcher.do_match(
-              log.log.log_level,
-              log.log.log_type,
-              &log.log.message,
-              FieldsRef::new(&log.log.fields, &log.log.matching_fields),
-              state,
-              &TinyMap::default(),
-              0,
-              MatchContext::default(),
-            )
-          })
-          .then_some(id.as_str())
-      })
+      .filter_map(|index| inner.active_streams.get(*index))
+      .map(|(id, _)| id.as_str())
       .collect_vec();
-
-    if active_streams.is_empty() {
+    if stream_ids.is_empty() {
       return Ok(false);
     }
 
-    write_log_to_buffer(&mut inner.stream_producer, log, &[], &active_streams)?;
+    write_log_to_buffer(&mut inner.stream_producer, log, &[], &stream_ids)?;
 
     Ok(true)
   }

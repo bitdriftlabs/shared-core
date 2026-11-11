@@ -3353,8 +3353,8 @@ async fn rebuilt_queued_batch_keeps_its_staged_field_sets() {
     .await;
 
   // The previous process staged a batch with its set, then died before advancing the buffer. This
-  // process discards the queued copy and rebuilds the batch from the buffer, with no version table
-  // to resolve the log's version.
+  // process has no version table to resolve the log's version, so it uploads the staged batch,
+  // which keeps the set, instead of rebuilding it from the buffer.
   let field_set = bd_field_interning::table::field_set(1, &string_fields(&[("user_id", "abc")]));
   TriggerUploadArtifactStore::new(
     temp_directory.path().join("state").join("logger"),

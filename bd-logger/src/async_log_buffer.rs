@@ -778,23 +778,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self.workflow_attachment_store.clone()
   }
 
-  fn persistent_value(&self, key: &LogFieldKey) -> Option<LogFieldValue> {
-    self
-      .metadata_collector
-      .persistent_fields()
-      .get(key)
-      .map(|field| field.value.clone())
-  }
-
-  fn record_persistent_update(&mut self, key: &LogFieldKey, before: Option<&LogFieldValue>) {
-    let after = self
-      .metadata_collector
-      .persistent_fields()
-      .get(key)
-      .map(|field| &field.value);
-    self.field_interner.record_update(key, before, after);
-  }
-
   /// Opens a field-set table from an earlier run, or deletes one that is due. Called once the SDK
   /// directory lock is held and the cached runtime is loaded, before the uploaders start.
   pub(crate) fn prepare_field_interning(&mut self) {
@@ -1874,25 +1857,22 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
         let key: LogFieldKey = key.into();
-        let before = self.persistent_value(&key);
-        if let Err(e) = self.metadata_collector.add_field(key.clone(), value) {
-          log::warn!("failed to add log field ({key:?}): {e}");
+        match self.metadata_collector.add_field(key.clone(), value) {
+          Ok(changed) => self.field_interner.record_update(&key, changed, true),
+          Err(e) => log::warn!("failed to add log field ({key:?}): {e}"),
         }
-        self.record_persistent_update(&key, before.as_ref());
       },
       LoggerControl::UpdateOotbLogField(key, value) => {
         let key: LogFieldKey = key.into();
-        let before = self.persistent_value(&key);
-        self
+        let changed = self
           .metadata_collector
           .update_ootb_field(key.clone(), value);
-        self.record_persistent_update(&key, before.as_ref());
+        self.field_interner.record_update(&key, changed, true);
       },
       LoggerControl::RemoveLogField(field_name) => {
         let key: LogFieldKey = field_name.into();
-        let before = self.persistent_value(&key);
-        self.metadata_collector.remove_field(key.clone());
-        self.record_persistent_update(&key, before.as_ref());
+        let removed = self.metadata_collector.remove_field(key.clone());
+        self.field_interner.record_update(&key, removed, !removed);
       },
       LoggerControl::SetMemoryPressureLevel { level } => {
         if let Err(e) = state_store

@@ -182,10 +182,9 @@ pub struct VersionTable {
   /// table is answered without walking it.
   versions: Vec<(u64, u64)>,
   /// Where recent resolutions stopped, most recently used last. Each uploader reads versions in
-  /// order, so it walks the table forward from its own cursor instead of replaying it.
+  /// order, so it walks the table forward from its own cursor instead of replaying it, and a
+  /// repeated version is answered from the cursor.
   cursors: Vec<Cursor>,
-  /// Recently resolved versions, shared between uploaders.
-  cache: Vec<(u64, Arc<FieldSet>)>,
 }
 
 /// The running field set after the entry ending at `offset`.
@@ -193,9 +192,10 @@ struct Cursor {
   offset: usize,
   version: u64,
   fields: FieldMap,
+  /// The encoded set at `version`, once resolved.
+  set: Option<Arc<FieldSet>>,
 }
 
-const CACHE_ENTRIES: usize = 16;
 const CURSORS: usize = 4;
 
 fn journal_path(directory: &Path, generation: u64) -> PathBuf {
@@ -283,7 +283,6 @@ impl VersionTable {
         rotation_ineffective: false,
         versions: Vec::new(),
         cursors: Vec::new(),
-        cache: Vec::new(),
       };
       table.rebuild_versions();
       // Entries appended after an undecodable frame could never be read back, and a file other
@@ -342,7 +341,6 @@ impl VersionTable {
         rotation_ineffective: false,
         versions: Vec::new(),
         cursors: Vec::new(),
-        cache: Vec::new(),
       },
       Recovered {
         newest_version: 0,
@@ -420,6 +418,7 @@ impl VersionTable {
   }
 
   /// The number of bytes the journal holds.
+  #[cfg(test)]
   #[must_use]
   pub fn size_bytes(&self) -> usize {
     self.journal.position()
@@ -578,7 +577,6 @@ impl VersionTable {
     self.rotation_ineffective = self.above_high_water();
     self.cursors.clear();
     self.rebuild_versions();
-    self.cache.retain(|(version, _)| *version >= base_version);
     if let Err(error) = std::fs::remove_file(&old_path) {
       log::debug!("failed to remove rotated field-set table: {error}");
     }
@@ -601,9 +599,6 @@ impl VersionTable {
   /// Returns the full field set at `version`. Resolving versions in increasing order, as uploaders
   /// reading a buffer oldest first do, walks the table forward once.
   pub fn resolve_one(&mut self, version: u64) -> Resolution {
-    if let Some((_, set)) = self.cache.iter().find(|(cached, _)| *cached == version) {
-      return Resolution::Found(set.clone());
-    }
     if version < self.base_version {
       return Resolution::BeyondWindow;
     }
@@ -624,6 +619,7 @@ impl VersionTable {
           offset: HEADER_SIZE,
           version: 0,
           fields: FieldMap::new(),
+          set: None,
         },
         |index| self.cursors.remove(index),
       );
@@ -637,16 +633,16 @@ impl VersionTable {
           apply(&mut cursor.fields, kind, entry);
           cursor.offset = offset;
           cursor.version = entry.version;
+          cursor.set = None;
           entry.version < version
         });
     }
 
     let resolution = if cursor.version == version {
-      let set = Arc::new(field_set(version, &cursor.fields));
-      self.cache.push((version, set.clone()));
-      if self.cache.len() > CACHE_ENTRIES {
-        self.cache.remove(0);
-      }
+      let set = cursor
+        .set
+        .get_or_insert_with(|| Arc::new(field_set(version, &cursor.fields)))
+        .clone();
       Resolution::Found(set)
     } else {
       Resolution::Missing

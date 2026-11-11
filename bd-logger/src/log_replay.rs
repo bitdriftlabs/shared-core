@@ -437,8 +437,9 @@ impl ProcessingPipeline {
     // Interning compares the final log, after scrub rules and filters, with the current field set.
     // It is decided once, so every buffer and the stream store the same encoding, and only for a
     // log that may be written, so every version has a log that refers to it.
+    let streams = self.tail_configs.matching_streams(&log.log, &state_reader);
     if let Some(intern) = intern
-      && (!result.log_destination_buffer_ids.is_empty() || self.tail_configs.has_active_streams())
+      && (!result.log_destination_buffer_ids.is_empty() || !streams.is_empty())
     {
       let interned = intern
         .interner
@@ -493,7 +494,7 @@ impl ProcessingPipeline {
       // committed reference is not upload readiness: continuous uploads can lag, and an unflushed
       // trigger buffer may never upload the payload. Direct command attachments are already
       // uploaded before their terminal logs are emitted.
-      match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
+      match self.tail_configs.stream_log(&mut log, &streams) {
         Ok(true) => self.stats.streamed_logs.inc(),
         Ok(false) => {},
         Err(error) => log::debug!("failed to stream log: {error:?}"),

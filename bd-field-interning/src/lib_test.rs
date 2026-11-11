@@ -18,6 +18,7 @@ use bd_log_primitives::{
   Log,
   LogFieldKey,
   LogFields,
+  same_value,
 };
 use bd_proto::protos::client::api::LogUploadRequest;
 use bd_proto::protos::filter::scrub::ScrubConfiguration;
@@ -93,17 +94,15 @@ impl Setup {
       key.clone(),
       AnnotatedLogField::new_custom(value.to_string()),
     );
-    interner.record_update(
-      &key,
-      before.as_ref().map(|field| &field.value),
-      self.persistent.get(&key).map(|field| &field.value),
-    );
+    let changed =
+      before.is_none_or(|before| !same_value(&before.value, &self.persistent[&key].value));
+    interner.record_update(&key, changed, true);
   }
 
   fn remove(&mut self, interner: &mut FieldInterner, key: &'static str) {
     let key: LogFieldKey = key.into();
-    let before = self.persistent.remove(&key);
-    interner.record_update(&key, before.as_ref().map(|field| &field.value), None);
+    let removed = self.persistent.remove(&key).is_some();
+    interner.record_update(&key, removed, false);
   }
 
   /// A log carrying every persistent field, as normalization produces, plus `extra`.
@@ -272,7 +271,7 @@ async fn field_sets_hold_scrubbed_values() {
     ])
   );
   // The rule change is not counted as a change of `email`.
-  assert_eq!(setup.counter("volatile_keys"), 0);
+  assert!(interner.volatile.is_empty());
 }
 
 #[tokio::test]
@@ -298,7 +297,7 @@ async fn keys_that_change_too_often_stay_inline_until_they_settle() {
   // With `W = 8` and `R = 4`, a key changing on every log becomes volatile after a few changes.
   let volatile_after = volatile_after.expect("churny key never became volatile");
   assert!(volatile_after < 10, "{volatile_after}");
-  assert_eq!(setup.counter("volatile_keys"), 1);
+  assert!(interner.volatile.contains("churny"));
   let version = interner.current.as_ref().unwrap().version;
 
   // While volatile, its changes write no versions.
@@ -381,7 +380,7 @@ async fn setting_a_key_to_its_current_value_is_not_a_change() {
     assert!(interned.field_set.contains_key("user_id"));
     assert_eq!(interned.version, 1);
   }
-  assert_eq!(setup.counter("volatile_keys"), 0);
+  assert!(interner.volatile.is_empty());
 }
 
 #[tokio::test]
@@ -447,7 +446,6 @@ async fn the_table_is_kept_after_disabling_until_the_retention_period() {
   interner.prepare();
   assert_eq!(interner.table().resolve(1), None);
   assert!(!setup.directory.path().join("field_sets").exists());
-  assert_eq!(setup.counter("tables_deleted"), 1);
 
   // Turning interning back on starts a new table, numbered above every earlier version.
   setup
@@ -611,4 +609,12 @@ async fn an_unreadable_reservation_stops_interning_but_keeps_the_table() {
   let mut interner = setup.interner();
   assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
   assert!(interner.table().resolve(1).is_some());
+
+  // Changes are not tracked either, so dynamically named keys do not accumulate.
+  for index in 0 .. 10 {
+    let key: &'static str = Box::leak(format!("request_{index}").into_boxed_str());
+    setup.set(&mut interner, key, "1");
+    setup.remove(&mut interner, key);
+  }
+  assert!(interner.dirty.is_empty());
 }

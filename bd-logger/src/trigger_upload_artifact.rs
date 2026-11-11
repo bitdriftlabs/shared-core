@@ -268,9 +268,16 @@ struct PersistedTriggerUploadArtifactBatchRecord {
   logs: Vec<PersistedTriggerUploadArtifactLog>,
   #[field(id = 3)]
   workflow_attachments: Vec<WorkflowAttachmentReferenceRecord>,
-  // Each an encoded `FieldSet`.
   #[field(id = 4)]
-  field_sets: Vec<PersistedTriggerUploadArtifactLog>,
+  field_sets: Vec<PersistedFieldSet>,
+}
+
+// An encoded `FieldSet`, kept as bytes so the record layer does not depend on its schema.
+#[proto_serializable]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct PersistedFieldSet {
+  #[field(id = 1)]
+  data: Vec<u8>,
 }
 
 #[proto_serializable]
@@ -332,7 +339,7 @@ impl From<PersistedTriggerUploadArtifactBatch> for PersistedTriggerUploadArtifac
         .field_sets
         .iter()
         .filter_map(|set| set.write_to_bytes().ok())
-        .map(|data| PersistedTriggerUploadArtifactLog { data })
+        .map(|data| PersistedFieldSet { data })
         .collect(),
     }
   }

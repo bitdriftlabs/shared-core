@@ -19,6 +19,7 @@ use bd_log_primitives::{
   LogFieldKind,
   LogFieldValue,
   LogFields,
+  same_value,
 };
 use bd_log_util::warn_every;
 use bd_proto::protos::logging::payload::LogType;
@@ -262,32 +263,47 @@ impl MetadataCollector {
     }
   }
 
-  pub(crate) fn add_field(&mut self, key: LogFieldKey, value: LogFieldValue) -> anyhow::Result<()> {
+  /// Sets a custom field, unless an OOTB field has the key. Returns whether the value changed.
+  pub(crate) fn add_field(
+    &mut self,
+    key: LogFieldKey,
+    value: LogFieldValue,
+  ) -> anyhow::Result<bool> {
     verify_custom_field_name(&key)?;
 
-    match self.fields.entry(key) {
+    Ok(match self.fields.entry(key) {
       Entry::Occupied(mut entry) if entry.get().kind != LogFieldKind::Ootb => {
+        let changed = !same_value(&entry.get().value, &value);
         entry.insert(AnnotatedLogField::new_custom(value));
+        changed
       },
       Entry::Vacant(entry) => {
         entry.insert(AnnotatedLogField::new_custom(value));
+        true
       },
-      Entry::Occupied(_) => {},
-    }
-
-    Ok(())
+      Entry::Occupied(_) => false,
+    })
   }
 
-  pub(crate) fn update_ootb_field(&mut self, key: LogFieldKey, value: LogFieldValue) {
+  /// Sets an OOTB field. Returns whether the value changed.
+  pub(crate) fn update_ootb_field(&mut self, key: LogFieldKey, value: LogFieldValue) -> bool {
+    let changed = self
+      .fields
+      .get(&key)
+      .is_none_or(|field| !same_value(&field.value, &value));
     self.fields.insert(key, AnnotatedLogField::new_ootb(value));
+    changed
   }
 
-  pub(crate) fn remove_field(&mut self, field_key: LogFieldKey) {
+  /// Removes a custom field. Returns whether it was removed.
+  pub(crate) fn remove_field(&mut self, field_key: LogFieldKey) -> bool {
     if let Entry::Occupied(entry) = self.fields.entry(field_key)
       && entry.get().kind != LogFieldKind::Ootb
     {
       entry.remove();
+      return true;
     }
+    false
   }
 }
 
