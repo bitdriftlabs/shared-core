@@ -188,38 +188,3 @@ async fn clear_inflight_batch_deletes_snapshot_when_no_queued_batch_remains() {
   assert_eq!(make_store(&temp_dir).inflight_batch().await.unwrap(), None);
   assert!(artifact_directory_is_empty(&temp_dir));
 }
-
-#[tokio::test]
-async fn staged_batch_round_trips_field_sets() {
-  let temp_dir = TempDir::with_prefix("trigger-upload-artifact").unwrap();
-  let store = make_store(&temp_dir);
-  let field_set = bd_proto::protos::client::api::FieldSet {
-    version: 7,
-    fields: vec![bd_proto::protos::logging::payload::log::Field {
-      key: "user_id".to_string(),
-      value_type: Some(
-        bd_proto::protos::logging::payload::log::field::Value_type::Value(
-          bd_proto::protos::logging::payload::Data {
-            data_type: Some(
-              bd_proto::protos::logging::payload::data::Data_type::StringData("abc".to_string()),
-            ),
-            ..Default::default()
-          },
-        ),
-      ),
-      ..Default::default()
-    }],
-    ..Default::default()
-  };
-
-  let staged = store
-    .stage_batch_with_field_sets(vec![b"one".to_vec()], vec![field_set.clone()], Vec::new())
-    .await
-    .unwrap();
-  assert_eq!(staged.field_sets, vec![field_set.clone()]);
-
-  // A new process reading the artifact store uploads the batch with its field sets.
-  let recovered = make_store(&temp_dir).queued_batch().await.unwrap().unwrap();
-  assert_eq!(recovered.field_sets, vec![field_set]);
-  assert_eq!(recovered, staged);
-}

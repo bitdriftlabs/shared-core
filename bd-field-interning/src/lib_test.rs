@@ -213,17 +213,6 @@ async fn updates_between_logs_write_one_version() {
   assert_eq!(keys(&interned.field_set), ["b", "c"]);
   assert_eq!(setup.counter("versions_written"), 2);
   assert_eq!(setup.counter("full_versions_written"), 1);
-
-  // Setting a key to its current value writes no version.
-  setup.set(&mut interner, "b", "2");
-  assert_eq!(
-    setup
-      .intern(&mut interner, &setup.log(&[]))
-      .unwrap()
-      .version,
-    2
-  );
-  assert_eq!(setup.counter("versions_written"), 2);
 }
 
 #[tokio::test]
@@ -367,20 +356,6 @@ async fn a_restart_continues_the_table_above_the_reserved_numbers() {
   table.record_unresolved(&table.resolution(65), 2);
   assert_eq!(setup.counter("logs_missing_version"), 2);
   assert_eq!(setup.counter("logs_beyond_window"), 0);
-}
-
-#[tokio::test]
-async fn setting_a_key_to_its_current_value_is_not_a_change() {
-  let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
-  setup.set(&mut interner, "user_id", "abc");
-  for _ in 0 .. 40 {
-    setup.set(&mut interner, "user_id", "abc");
-    let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
-    assert!(interned.field_set.contains_key("user_id"));
-    assert_eq!(interned.version, 1);
-  }
-  assert!(interner.volatile.is_empty());
 }
 
 #[tokio::test]

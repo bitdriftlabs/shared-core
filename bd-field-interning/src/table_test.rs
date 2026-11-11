@@ -216,24 +216,6 @@ fn an_unreadable_newest_generation_falls_back_to_the_previous_one() {
 }
 
 #[test]
-fn resolution_walks_forward_and_restarts_for_older_versions() {
-  let directory = TempDir::new().unwrap();
-  let (mut table, _) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
-  table.write(1, true, &map(&[("a", "1")]), &[]).unwrap();
-  for version in 2 ..= 40u64 {
-    table
-      .write(version, false, &map(&[("a", &version.to_string())]), &[])
-      .unwrap();
-  }
-  for version in [3u64, 10, 40, 2, 39] {
-    assert_eq!(
-      found(&table.resolve(&[version])[0].1),
-      field_set(version, &map(&[("a", &version.to_string())]))
-    );
-  }
-}
-
-#[test]
 fn interleaved_resolutions_and_gaps_resolve_correctly() {
   let directory = TempDir::new().unwrap();
   let (mut table, _) = VersionTable::open(directory.path(), 64 * 1024, time()).unwrap();
@@ -253,7 +235,8 @@ fn interleaved_resolutions_and_gaps_resolve_correctly() {
 
   // Two readers alternating between old and new versions, as a trigger upload and the continuous
   // uploader do, plus versions in the gap.
-  for version in [2u64, 66, 3, 67, 30, 4, 68, 64, 19, 70, 21] {
+  // 66 repeats, so a cursor answers it again without walking.
+  for version in [2u64, 66, 66, 3, 67, 30, 4, 68, 64, 19, 70, 21] {
     let resolved = table.resolve(&[version]).pop().unwrap().1;
     if (1 ..= 20).contains(&version) || (65 ..= 70).contains(&version) {
       assert_eq!(

@@ -222,20 +222,41 @@ fn collector_fields_management() {
 
   let mut collector = MetadataCollector::new(Arc::new(metadata), [].into(), [].into());
 
-  collector
-    .add_field("key".into(), DataValue::String("collector_field_1".into()))
-    .unwrap();
-
-  collector
-    .add_field("key".into(), DataValue::String("collector_field_2".into()))
-    .unwrap();
+  // Each update reports whether the value changed, which field interning counts as a change.
+  assert!(
+    collector
+      .add_field("key".into(), DataValue::String("collector_field_1".into()))
+      .unwrap()
+  );
+  assert!(
+    !collector
+      .add_field("key".into(), DataValue::String("collector_field_1".into()))
+      .unwrap()
+  );
+  assert!(
+    collector
+      .add_field("key".into(), DataValue::String("collector_field_2".into()))
+      .unwrap()
+  );
 
   assert_eq!(collector.fields.len(), 1);
   assert_matches!(&collector.fields["key"].value, DataValue::String(value) if value == "collector_field_2");
 
-  collector.remove_field("key".into());
+  assert!(collector.update_ootb_field("ootb".into(), DataValue::String("a".into())));
+  assert!(!collector.update_ootb_field("ootb".into(), DataValue::String("a".into())));
+  // A custom field cannot replace or remove an OOTB one.
+  assert!(
+    !collector
+      .add_field("ootb".into(), DataValue::String("b".into()))
+      .unwrap()
+  );
+  assert!(!collector.remove_field("ootb".into()));
+  assert!(collector.update_ootb_field("ootb".into(), DataValue::String("b".into())));
 
-  assert!(collector.fields.is_empty());
+  assert!(collector.remove_field("key".into()));
+  assert!(!collector.remove_field("key".into()));
+
+  assert_eq!(collector.fields.len(), 1);
 }
 
 #[test]

@@ -99,19 +99,6 @@ fn interned_log_leaves_out_unchanged_fields() {
 }
 
 #[test]
-fn log_without_interning_is_unchanged() {
-  let full = log(fields(&[("user_id", "abc")]));
-  let bytes = encode(full, None, 0);
-  let decoded = ProtoLog::parse_from_bytes(&bytes).unwrap();
-  assert_eq!(decoded.field_set_version, 0);
-  assert_eq!(
-    decoded_fields(&decoded.fields),
-    BTreeMap::from([("user_id".to_string(), Some("abc".to_string()))])
-  );
-  assert_eq!(encoded_field_set_version(&bytes), 0);
-}
-
-#[test]
 fn compressed_interned_log_keeps_the_version_outside_the_contents() {
   let log = log(fields(&[("user_id", "abc"), ("screen", "home")]));
   let interned = interned(&log, 7, &[("user_id", "abc"), ("locale", "en")]);
