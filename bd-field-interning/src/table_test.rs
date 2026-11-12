@@ -5,6 +5,8 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+
 use super::{FieldMap, INITIAL_TABLE_BYTES, MIN_TABLE_BYTES, Resolution, VersionTable, field_set};
 use bd_proto::protos::client::api::FieldSet;
 use bd_proto::protos::logging::payload::Data;

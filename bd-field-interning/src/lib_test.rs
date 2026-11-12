@@ -5,6 +5,8 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+
 use super::{FieldInterner, FieldSetTable, Resolution};
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
