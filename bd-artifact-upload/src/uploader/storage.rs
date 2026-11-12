@@ -153,7 +153,7 @@ impl Uploader {
   pub(super) async fn retire_files(&mut self, paths: &[PathBuf]) -> anyhow::Result<()> {
     // The caller has removed the entry from its in-memory collection. Persist that removal first;
     // on failure keep every byte, and let index_retry + orphan reconciliation finish retirement.
-    // This same ordering covers success, intent rejection, eviction and chunk deadline expiry.
+    // This same ordering covers success, intent rejection, eviction and explicit chunk rejection.
     self.write_index().await?;
     self.delete_paths(paths).await
   }

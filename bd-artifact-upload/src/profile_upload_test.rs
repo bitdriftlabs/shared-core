@@ -111,9 +111,14 @@ async fn profile_links_survive_restart_and_use_standard_intent_and_ack() {
           let success = links.is_none() || retried;
           upload
             .response_tx
-            .send(UploadResponse {
-              uuid: upload.uuid,
-              success,
+            .send(UploadArtifactResponse {
+              upload_uuid: upload.uuid,
+              error: if success {
+                String::new()
+              } else {
+                "temporary failure".into()
+              },
+              ..Default::default()
             })
             .unwrap();
           if success {

@@ -8,7 +8,7 @@
 use super::{AttachmentStore, AttachmentStoreHandle, TestHooks, WorkflowAttachmentCleanupWorker};
 use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
+use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_artifact_upload::{Client as _, MockClient, UploadSource, Uploader};
 use bd_buffer::Buffer as RingBuffer;
 use bd_buffer::buffer::NonVolatileFileHeader;
@@ -20,7 +20,7 @@ use bd_client_common::file::{
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::Collector;
 use bd_log_primitives::{EncodableLog, Log, log_level};
-use bd_proto::protos::client::api::RuntimeUpdate;
+use bd_proto::protos::client::api::{RuntimeUpdate, UploadArtifactResponse};
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, WorkflowAttachmentState};
 use bd_proto::protos::client::runtime::Runtime;
@@ -252,9 +252,9 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
     let previous = *revision.borrow();
     upload
       .response_tx
-      .send(UploadResponse {
-        uuid: upload.uuid,
-        success: true,
+      .send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
       })
       .unwrap();
     let _ = revision

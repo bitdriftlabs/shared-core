@@ -64,6 +64,12 @@ impl Uploader {
       source_lease,
       mut source_cleanup,
     } = upload;
+    let mut request = request;
+    if mode == PreparationMode::Chunked {
+      // The scrubbed Begin is immutable after admission, including across restart/config changes.
+      request.state_metadata =
+        super::scrub_metadata(&self.scrub_rules.borrow(), &request.state_metadata);
+    }
     let id = request.artifact_id.clone();
     let retained = matches!(source, UploadSource::Retained(_));
     let mut files = StagedFiles::default();

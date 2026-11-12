@@ -15,8 +15,8 @@
 //!
 //! Preparation holds at most one logical chunk and one awaited compression job at a time. Files
 //! become durable before their descriptors are published in the common index. Recovery ignores
-//! current admission flags/limits: accepted bytes survive runtime reductions until their fixed
-//! deadline, and only malformed or missing data—not an unexpected I/O error—may invalidate them.
+//! current admission flags/limits: accepted bytes survive runtime reductions and offline periods,
+//! and only malformed or missing data—not an unexpected I/O error—may invalidate them.
 //!
 //! The code follows the ownership lifecycle: validate capture/index metadata, bound index decoding,
 //! encode or verify individual chunks, then admit/recover/retire entries through the shared
@@ -24,7 +24,6 @@
 //! recovery then validates artifact metadata and the corresponding staged files.
 
 use super::staging::StagedFiles;
-use super::storage::StoredArtifact;
 use super::{
   ARTIFACT_UPLOAD_DIRECTORY,
   UploadSource,
@@ -43,7 +42,6 @@ use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::ChunkedArtifact;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, IntWatch, chunked_artifact_upload};
-use bd_time::OffsetDateTimeExt;
 use protobuf::Message;
 use protobuf::well_known_types::timestamp::Timestamp;
 use sha2::{Digest, Sha256};
@@ -58,7 +56,7 @@ use uuid::Uuid;
 pub(super) const CHUNK_BYTES: u64 = 1024 * 1024;
 pub(super) const MAX_INDEX_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
-// Reserve room for request framing and an eventual accepted deadline before staging new ownership.
+// Reserve room for request framing before staging new ownership.
 const RESERVED_INDEX_ENTRY_BYTES: u64 = MAX_MANIFEST_BYTES + 64;
 const MAX_CAPTURE_METADATA_BYTES: u64 = 8 * 1024;
 const MAX_FILES: usize = 2;
@@ -166,18 +164,15 @@ fn validate_metadata(request: &UploadArtifactRequest, limit: u64) -> anyhow::Res
     anyhow::bail!("chunked origin metadata exceeds its size limit");
   }
   timestamp(request.time.as_ref())?;
-  timestamp(request.upload_deadline.as_ref())?;
   Ok(id)
 }
 
 pub(super) fn validate_capture_request(request: &UploadArtifactRequest) -> anyhow::Result<Uuid> {
   let id = validate_metadata(request, MAX_CAPTURE_METADATA_BYTES)?;
-  // Producers supply capture identity and timestamps. Only staging may add file geometry/hashes
-  // or start the durable admission clock.
+  // Producers supply capture identity and timestamp. Only staging may add file geometry/hashes.
   if request.logical_bytes.is_some()
     || !request.logical_sha256.is_empty()
     || !request.chunks.is_empty()
-    || request.admitted_at.is_some()
   {
     anyhow::bail!("capture metadata contains staging-only fields");
   }
@@ -196,8 +191,6 @@ fn validate_entry(entry: &ChunkedArtifact) -> anyhow::Result<&UploadArtifactRequ
   let size = request
     .logical_bytes
     .ok_or_else(|| anyhow::anyhow!("missing artifact logical size"))?;
-  let admitted = timestamp(request.admitted_at.as_ref())?;
-  let deadline = timestamp(request.upload_deadline.as_ref())?;
   if size > u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES)
     || (size == 0 && request.command_id.is_none())
     || request.logical_sha256.len() != 32
@@ -206,19 +199,6 @@ fn validate_entry(entry: &ChunkedArtifact) -> anyhow::Result<&UploadArtifactRequ
     anyhow::bail!("inconsistent local chunked artifact geometry");
   }
 
-  // Persisted admission/deadline values do not move on retry or after runtime policy reductions.
-  if timestamp(request.time.as_ref())? > admitted
-    || admitted >= deadline
-    || deadline - admitted > time::Duration::hours(24)
-  {
-    anyhow::bail!("inconsistent local chunked artifact deadline");
-  }
-  if let Some(accepted) = entry.accepted_deadline.as_ref() {
-    let accepted = timestamp(Some(accepted))?;
-    if accepted <= admitted || accepted > deadline {
-      anyhow::bail!("invalid persisted accepted deadline");
-    }
-  }
   // Descriptor position determines logical offset/length. Compression is valid only when smaller
   // than RAW; verify these bounds before recovery allocates or decompresses any payload.
   for (index, descriptor) in request.chunks.iter().enumerate() {
@@ -239,7 +219,7 @@ fn validate_entry(entry: &ChunkedArtifact) -> anyhow::Result<&UploadArtifactRequ
   Ok(request)
 }
 
-// Shared spool names and retirement policy.
+// Shared spool names.
 
 pub(super) fn chunk_path(id: &str, index: usize) -> PathBuf {
   ARTIFACT_UPLOAD_DIRECTORY.join(format!("chunk-{id}-{index}"))
@@ -247,20 +227,6 @@ pub(super) fn chunk_path(id: &str, index: usize) -> PathBuf {
 
 pub(super) fn source_path(id: &str) -> PathBuf {
   ARTIFACT_UPLOAD_DIRECTORY.join(format!("chunk-{id}.source"))
-}
-
-fn retirement_deadline(entry: &ChunkedArtifact) -> anyhow::Result<OffsetDateTime> {
-  // Once admitted by the server, its fixed deadline takes precedence over the SDK proposal.
-  let request = entry
-    .request
-    .as_ref()
-    .ok_or_else(|| anyhow::anyhow!("missing local artifact request"))?;
-  timestamp(
-    entry
-      .accepted_deadline
-      .as_ref()
-      .or(request.upload_deadline.as_ref()),
-  )
 }
 
 // Bounded index decoding.
@@ -425,7 +391,7 @@ impl Uploader {
   pub(super) async fn prepare_chunked(
     &self,
     source: UploadSource,
-    mut request: UploadArtifactRequest,
+    request: UploadArtifactRequest,
     source_cleanup: &mut Option<OwnedFile>,
     files: &mut StagedFiles,
   ) -> anyhow::Result<ChunkedArtifact> {
@@ -473,15 +439,6 @@ impl Uploader {
     if available < size.saturating_add(FREE_SPACE_HEADROOM) {
       anyhow::bail!("insufficient free space for staged chunks and metadata");
     }
-    // Fix admission time and clamp the requested deadline before moving ownership. Neither retries
-    // nor later policy changes may extend this window.
-    let now = self.time_provider.now();
-    let deadline = timestamp(request.upload_deadline.as_ref())?;
-    if timestamp(request.time.as_ref())? > now || deadline <= now {
-      anyhow::bail!("capture timestamp/deadline outside admission window");
-    }
-    request.admitted_at = now.into_proto();
-    request.upload_deadline = deadline.min(now + time::Duration::hours(24)).into_proto();
     // Move first: interrupted preparations have only SDK-local, safely named orphan files.
     // Cross-filesystem rename errors reject admission rather than creating an untracked copy.
     let retained_source = source_path(&request.artifact_id);
@@ -508,13 +465,7 @@ impl Uploader {
       .file_system
       .sync_file_and_parent(&retained_source)
       .await?;
-    // Encoding can outlast the remaining deadline. Recheck before index publication so expired
-    // preparation never receives a successful persistence acknowledgement.
-    let entry = stage(self.file_system.as_ref(), file, &metadata, request, files).await?;
-    if retirement_deadline(&entry)? <= self.time_provider.now() {
-      anyhow::bail!("artifact expired during staging");
-    }
-    Ok(entry)
+    stage(self.file_system.as_ref(), file, &metadata, request, files).await
   }
 
   async fn chunked_usage(&self) -> anyhow::Result<(u64, HashSet<(u64, u64)>)> {
@@ -574,15 +525,8 @@ impl Uploader {
         *modified = true;
         continue;
       }
-      // Expired or corrupt payloads retire normally. Unexpected filesystem errors must stop
-      // initialization without publishing a reduced index that would lose accepted ownership.
-      if retirement_deadline(&entry)? <= self.time_provider.now() {
-        log::debug!("retiring expired recovered chunked artifact {id}");
-        *modified = true;
-        continue;
-      }
       // The shared initializer persists any removals before orphan cleanup may delete payload
-      // files.
+      // files. Unexpected I/O errors must not discard accepted ownership.
       if let Err(error) = validate_files(self.file_system.as_ref(), request).await {
         if error.downcast_ref::<io::Error>().is_some_and(|error| {
           !matches!(
@@ -601,36 +545,5 @@ impl Uploader {
     self.chunked.entries = retained;
     self.index_sync_required |= *modified;
     Ok(())
-  }
-
-  pub(super) async fn retire_expired_chunks(&mut self) -> anyhow::Result<()> {
-    let now = self.time_provider.now();
-    let mut expired = Vec::new();
-    let mut ids = HashSet::new();
-    // Collect ownership removals and their exact payload paths before mutating the live index.
-    for entry in &self.chunked.entries {
-      let request = entry
-        .request
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("missing request"))?;
-      if retirement_deadline(entry)? <= now {
-        ids.insert(request.artifact_id.clone());
-        expired.extend(StoredArtifact::Chunked(entry).owned_paths()?);
-      }
-    }
-    if ids.is_empty() {
-      return Ok(());
-    }
-    // Publish index retirement before unlinking. Failed commits leave the payloads intact for the
-    // common index retry/orphan-cleanup path; failed unlinks remain charged to physical usage.
-    self.chunked.entries.retain(|entry| {
-      entry
-        .request
-        .as_ref()
-        .is_none_or(|request| !ids.contains(&request.artifact_id))
-    });
-    self.index_sync_required = true;
-    log::debug!("retiring expired chunked artifact files");
-    self.retire_files(&expired).await
   }
 }

@@ -20,13 +20,17 @@ use crate::uploader::{
 };
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
+use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_log_filter::ScrubRules;
-use bd_proto::protos::client::api::{ArtifactPayloadEncoding, UploadArtifactRequest};
+use bd_proto::protos::client::api::{
+  ArtifactPayloadEncoding,
+  UploadArtifactRequest,
+  UploadArtifactResponse,
+};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
@@ -67,6 +71,7 @@ fn no_scrub_rules() -> watch::Receiver<Arc<ScrubRules>> {
 // The uploader is serial, so lifecycle callbacks describe one staging attempt at a time. Keep
 // fixture notification policy here rather than adding test-only phases to the ownership ledger.
 struct UploadTestHooks {
+  chunk_transfer_gate: Option<watch::Receiver<bool>>,
   initialized_tx: Option<mpsc::Sender<()>>,
   upload_complete_tx: mpsc::Sender<String>,
   entry_received_tx: mpsc::Sender<String>,
@@ -77,6 +82,11 @@ struct UploadTestHooks {
 
 #[async_trait::async_trait]
 impl TestHooks for UploadTestHooks {
+  async fn before_chunk_transfer(&self) {
+    if let Some(mut gate) = self.chunk_transfer_gate.clone() {
+      gate.wait_for(|enabled| *enabled).await.unwrap();
+    }
+  }
   async fn initialized(&self) {
     if let Some(sender) = &self.initialized_tx {
       sender.send(()).await.unwrap();
@@ -118,7 +128,8 @@ impl TestHooks for UploadTestHooks {
 }
 
 pub(super) struct Setup {
-  upload_complete_rx: tokio::sync::mpsc::Receiver<String>,
+  pub(super) chunk_transfer_enabled: watch::Sender<bool>,
+  pub(super) upload_complete_rx: tokio::sync::mpsc::Receiver<String>,
   pub(super) entry_received_rx: tokio::sync::mpsc::Receiver<String>,
   pub(super) client: UploadClient,
   pub(super) filesystem: Arc<TestFileSystem>,
@@ -182,6 +193,7 @@ impl Setup {
     let (entry_received_tx, entry_received_rx) = tokio::sync::mpsc::channel(1);
     let (initialized_tx, mut initialized_rx) = mpsc::channel(1);
     uploader.test_hooks = Some(Arc::new(UploadTestHooks {
+      chunk_transfer_gate: Some(self.chunk_transfer_enabled.subscribe()),
       initialized_tx: Some(initialized_tx),
       upload_complete_tx,
       entry_received_tx,
@@ -195,6 +207,7 @@ impl Setup {
 
     Self {
       upload_complete_rx,
+      chunk_transfer_enabled: self.chunk_transfer_enabled,
       entry_received_rx,
       client,
       filesystem: self.filesystem,
@@ -210,6 +223,7 @@ impl Setup {
   }
 
   pub(super) async fn new(max_entries: u32) -> Self {
+    let (chunk_transfer_enabled, chunk_transfer_gate) = watch::channel(false);
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
     let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
 
@@ -245,6 +259,7 @@ impl Setup {
 
     uploader.test_hooks = Some(Arc::new(UploadTestHooks {
       initialized_tx: None,
+      chunk_transfer_gate: Some(chunk_transfer_gate),
       upload_complete_tx,
       entry_received_tx,
       persistence_ack_tx: None,
@@ -256,6 +271,7 @@ impl Setup {
 
     Self {
       upload_complete_rx,
+      chunk_transfer_enabled,
       entry_received_rx,
       client,
       filesystem,
@@ -420,9 +436,9 @@ async fn failed_workflow_unpin_is_retried_after_success_or_rejection() {
       fail_index();
       upload
         .response_tx
-        .send(UploadResponse {
-          uuid: upload.uuid,
-          success: true,
+        .send(UploadArtifactResponse {
+          upload_uuid: upload.uuid,
+          ..Default::default()
         })
         .unwrap();
     } else {
@@ -545,7 +561,10 @@ async fn basic_flow() {
           ..Default::default()
       })].into());
 
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
+      }).unwrap();
   });
 
   setup.upload_complete_rx.recv().await.unwrap();
@@ -624,7 +643,10 @@ async fn metadata_is_scrubbed_with_the_rules_current_when_each_request_is_built(
       ("email", "a@<redacted>"),
       ("keep", "value"),
     ]));
-    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true }).unwrap();
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
+    }).unwrap();
   });
 
   setup.upload_complete_rx.recv().await.unwrap();
@@ -961,7 +983,10 @@ async fn feature_flags() {
           },
       ]);
 
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
+      }).unwrap();
   });
 
   setup.upload_complete_rx.recv().await.unwrap();
@@ -1059,7 +1084,10 @@ async fn pending_upload_limit() {
       assert_eq!(upload.payload.contents, b"2");
       assert_eq!(upload.payload.type_id, "client_report");
 
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
+      }).unwrap();
   });
 
   let upload = setup.data_upload_rx.recv().await.unwrap();
@@ -1078,7 +1106,10 @@ async fn pending_upload_limit() {
       assert_eq!(upload.payload.contents, b"3");
       assert_eq!(upload.payload.type_id, "client_report");
 
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
+      }).unwrap();
   });
 }
 
@@ -1197,7 +1228,10 @@ async fn inconsistent_state_extra_file() {
       assert_eq!(upload.payload.artifact_id, id1.to_string());
       assert_eq!(upload.payload.type_id, "client_report");
 
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
+      }).unwrap();
   });
   setup.upload_complete_rx.recv().await.unwrap();
 
@@ -1326,9 +1360,9 @@ async fn command_upload_persistence_reports_original_size() {
       let mut decoded = Vec::new();
       ZlibDecoder::new(upload.payload.contents.as_slice()).read_to_end(&mut decoded).unwrap();
       assert_eq!(decoded, contents[..usize::try_from(expected_size_bytes).unwrap()]);
-      upload.response_tx.send(UploadResponse {
-        uuid: upload.uuid,
-        success: true,
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
       }).unwrap();
     });
     completion_rx.await.unwrap().unwrap();
@@ -1448,7 +1482,10 @@ async fn workflow_upload_preserves_content_type_after_restart() {
     let mut decoded = Vec::new();
     ZlibDecoder::new(upload.payload.contents.as_slice()).read_to_end(&mut decoded).unwrap();
     assert_eq!(decoded, b"attachment");
-    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true }).unwrap();
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
+    }).unwrap();
   });
   assert_eq!(
     setup.upload_complete_rx.recv().await.unwrap(),
@@ -1705,7 +1742,7 @@ async fn retries_scrub_metadata_with_the_rules_current_at_each_attempt() {
       scrub_rule(remove_field!("secret")),
       scrub_rule(remove_field!("keep")),
     ]));
-    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: false }).unwrap();
+    upload.response_tx.send(UploadArtifactResponse { upload_uuid: upload.uuid, error: "temporary failure".into(), ..Default::default() }).unwrap();
   });
 
   let upload = setup.data_upload_rx.recv().await.unwrap();
@@ -1928,18 +1965,19 @@ async fn command_upload_negative_ack_retries_without_stopping_uploader() {
   });
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: false,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      error: "temporary failure".into(),
+      ..Default::default()
     }).unwrap();
   });
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
     assert_eq!(upload.payload.artifact_id, id.to_string());
     assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     }).unwrap();
   });
   completion_rx.await.unwrap().unwrap();
@@ -2053,9 +2091,9 @@ async fn corrupt_command_upload_discard_completes_without_retry() {
       upload.payload.payload_encoding.enum_value_or_default(),
       ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
     );
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     }).unwrap();
   });
   completion_rx.await.unwrap().unwrap();
@@ -2120,9 +2158,9 @@ async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
       .read_to_end(&mut contents)
       .unwrap();
     assert_eq!(contents, b"screenshot");
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     }).unwrap();
   });
   completion_rx.await.unwrap().unwrap();
@@ -2317,6 +2355,7 @@ async fn assert_command_source_consumed_before_error_ack(failure: PersistenceFai
   let (entry_received_tx, _entry_received_rx) = mpsc::channel(1);
   let (persistence_ack_tx, mut persistence_ack_rx) = mpsc::channel(1);
   uploader.test_hooks = Some(Arc::new(UploadTestHooks {
+    chunk_transfer_gate: None,
     initialized_tx: None,
     upload_complete_tx,
     entry_received_tx,
@@ -2503,9 +2542,9 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       upload.payload.payload_encoding.enum_value_or_default(),
       ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
     );
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     }).unwrap();
   });
   completion_rx.await.unwrap().unwrap();
@@ -2638,9 +2677,9 @@ async fn snapshot_copy_fallback_preserves_raw_wire_bytes() {
   );
   upload
     .response_tx
-    .send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    .send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     })
     .unwrap();
   setup.upload_complete_rx.recv().await.unwrap();

@@ -17,6 +17,7 @@ use crate::upload::{
   DeviceCommandUpdateTracker,
   MAX_KNOWN_COMMANDS,
   Tracked,
+  TrackedArtifactUpload,
   TrackedDeviceCommandUpdate,
 };
 use crate::{
@@ -84,7 +85,6 @@ use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
-use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::{EnumOrUnknown, Message, MessageField};
 use std::collections::{BTreeMap, HashMap};
 use std::future::{Future, poll_fn};
@@ -1440,7 +1440,7 @@ async fn data_idle_timeout_data_resets_timeout() {
 }
 
 #[tokio::test]
-async fn zlib_workflow_and_command_artifacts_skip_grpc_compression() {
+async fn preencoded_artifacts_and_chunks_skip_grpc_compression() {
   let mut setup = Setup::new().await;
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -1491,6 +1491,25 @@ async fn zlib_workflow_and_command_artifacts_skip_grpc_compression() {
       if request.command_id.as_deref() == Some("command_id")
         && request.payload_encoding.enum_value_or_default()
           == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+  );
+
+  let (tracked, _response) = TrackedArtifactUpload::new(
+    "chunk".into(),
+    UploadArtifactRequest {
+      logical_bytes: Some(1000),
+      chunk_index: Some(0),
+      contents: vec![b'a'; 1000],
+      ..Default::default()
+    },
+  );
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  let skipped_frame = setup.send_data_rx.recv().await.unwrap();
+  assert_eq!(skipped_frame[0], 0);
+  assert_matches!(
+    setup.decode(&skipped_frame).unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.chunk_index == Some(0)
   );
 
   let ordinary_upload = UploadArtifactRequest {
@@ -2022,7 +2041,7 @@ async fn command_artifact_acknowledgements_use_standard_upload_results() {
         ..Default::default()
       })
       .await;
-    assert_eq!(response.await.unwrap().success, error.is_empty());
+    assert_eq!(response.await.unwrap().error, error);
   }
 }
 
@@ -2797,10 +2816,6 @@ async fn chunk_progress_cannot_complete_a_whole_file_artifact_upload() {
       ..Default::default()
     },
     UploadArtifactResponse {
-      accepted_deadline: Some(Timestamp::default()).into(),
-      ..Default::default()
-    },
-    UploadArtifactResponse {
       received_chunks: vec![1],
       ..Default::default()
     },
@@ -2830,6 +2845,136 @@ async fn chunk_progress_cannot_complete_a_whole_file_artifact_upload() {
     assert!(receiver.await.is_err());
     setup.wait_for_reconnect_backoff_started().await;
   }
+}
+
+#[tokio::test(start_paused = true)]
+async fn chunk_acknowledgements_are_typed_and_thin_operations_can_cross_streams() {
+  let mut setup = Setup::new().await;
+  setup.next_stream(1.seconds()).await.unwrap();
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+  let (tracked, response) = TrackedArtifactUpload::new(
+    "begin".into(),
+    UploadArtifactRequest {
+      upload_uuid: "begin".into(),
+      logical_bytes: Some(0),
+      ..Default::default()
+    },
+  );
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "begin");
+  let ack = UploadArtifactResponse {
+    upload_uuid: "begin".into(),
+    state: ArtifactUploadState::STATE_RECEIVING.into(),
+    ..Default::default()
+  };
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ArtifactUpload(ack.clone())),
+      ..Default::default()
+    })
+    .await;
+  assert_eq!(response.await.unwrap(), ack);
+  let (tracked, lost_ack) = TrackedArtifactUpload::new(
+    "lost-chunk".into(),
+    UploadArtifactRequest {
+      upload_uuid: "lost-chunk".into(),
+      logical_bytes: Some(1),
+      chunk_index: Some(0),
+      contents: vec![42],
+      ..Default::default()
+    },
+  );
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "lost-chunk");
+  setup.close_stream().await;
+  setup.wait_for_reconnect_backoff_started().await;
+  assert!(lost_ack.await.is_err());
+  let (cancelled, cancelled_response) = TrackedArtifactUpload::new(
+    "cancelled".into(),
+    UploadArtifactRequest {
+      upload_uuid: "cancelled".into(),
+      logical_bytes: Some(0),
+      ..Default::default()
+    },
+  );
+  drop(cancelled_response);
+  setup
+    .send_request(DataUpload::ArtifactUpload(cancelled))
+    .await;
+  let (tracked, response) = TrackedArtifactUpload::new(
+    "query".into(),
+    UploadArtifactRequest {
+      upload_uuid: "query".into(),
+      logical_bytes: Some(0),
+      ..Default::default()
+    },
+  );
+  setup.next_stream(2.seconds()).await.unwrap();
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "cancelled");
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
+        upload_uuid: "cancelled".into(),
+        state: ArtifactUploadState::STATE_RECEIVING.into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })
+    .await;
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "query");
+  let ack = UploadArtifactResponse {
+    upload_uuid: "query".into(),
+    state: ArtifactUploadState::STATE_RECEIVING.into(),
+    ..Default::default()
+  };
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ArtifactUpload(ack.clone())),
+      ..Default::default()
+    })
+    .await;
+  assert_eq!(response.await.unwrap(), ack);
+  let (tracked, response) = TrackedArtifactUpload::new(
+    "resume".into(),
+    UploadArtifactRequest {
+      upload_uuid: "resume".into(),
+      logical_bytes: Some(0),
+      ..Default::default()
+    },
+  );
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "resume");
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
+        upload_uuid: "wrong-correlation".into(),
+        state: ArtifactUploadState::STATE_RECEIVING.into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })
+    .await;
+  assert!(response.await.is_err());
+  setup.wait_for_reconnect_backoff_started().await;
 }
 
 #[tokio::test(start_paused = true)]

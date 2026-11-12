@@ -14,10 +14,9 @@
 //! entries share the index, but their spool files stay separate and workflow payloads remain
 //! borrowed.
 //!
-//! The whole-file transfer scheduler still owns intent negotiation and whole-artifact transfer.
-//! Chunked producers and transport remain disabled until their later milestones; consolidation does
-//! not change wire selection, restore invocation authority, or make persistence equivalent to
-//! upload success.
+//! Whole-file uploads retain their intent/order policy. Runtime-enabled remote file attachments
+//! use durable chunks and share fair network capacity between attempts. Workflow chunk producers
+//! remain disabled; persistence never implies upload success or restored invocation authority.
 //!
 //! Optional lifecycle hooks let tests observe recovery and gate staging/upload completion without
 //! changing the ownership algorithm. Notification bookkeeping belongs to the hook implementation,
@@ -36,6 +35,8 @@ mod chunked;
 mod staging;
 
 mod storage;
+
+mod transfer;
 
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_api::{DataUpload, RuntimeBackoffPolicy};
@@ -66,7 +67,14 @@ use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, StorageFormat};
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
-use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload, attachment};
+use bd_runtime::runtime::{
+  BoolWatch,
+  ConfigLoader,
+  IntWatch,
+  artifact_upload,
+  attachment,
+  chunked_artifact_upload,
+};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
@@ -79,7 +87,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::io::AsyncRead;
-use tokio::sync::{OwnedSemaphorePermit, oneshot, watch};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::time::{MissedTickBehavior, interval};
 use uuid::Uuid;
 
@@ -98,7 +106,6 @@ pub enum ArtifactType {
   Report,
   StateSnapshot,
 }
-
 impl ArtifactType {
   fn to_type_id(self) -> &'static str {
     match self {
@@ -376,15 +383,16 @@ pub trait Client: Send + Sync {
   fn upload_queue_revision(&self) -> watch::Receiver<u64>;
 
   /// Stages an owned, absolute regular-file path. Metadata is a payload-free capture request
-  /// with a fixed deadline; size, descriptors, hashes and admission time are filled by the spool.
+  /// whose size, descriptors and hashes are filled by the spool.
   /// Takes ownership even on rejection. Sources must share the SDK spool's filesystem so ownership
   /// can move atomically before preparation; cross-filesystem moves fail explicitly.
-  /// Existing producers do not call this runtime-gated entry point until transport is supported.
+  /// Completion requires Finalized; a restored upload has no predecessor command waiter.
   fn enqueue_chunked_file(
     &self,
     source_path: PathBuf,
     request: UploadArtifactRequest,
     persisted_tx: oneshot::Sender<std::result::Result<u64, EnqueueError>>,
+    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<(), EnqueueError>;
 
   /// Borrows the canonical payload. A workflow store must supply its cleanup-exclusion permit;
@@ -414,6 +422,7 @@ pub trait Client: Send + Sync {
 
   /// Takes ownership of absolute path sources even on rejection. Persistence acknowledgements
   /// report the uncompressed payload size; dropping the caller's waits does not cancel the upload.
+  /// Runtime-enabled path sources use chunks; offline uploads have no overall timeout.
   fn enqueue_command_upload(
     &self,
     source: UploadSource,
@@ -445,6 +454,8 @@ pub struct UploadClient {
   queue_revision: watch::Receiver<u64>,
   counter_stats: SendCounters,
   command_artifact_metadata: LogFields,
+  chunked_enabled: BoolWatch<chunked_artifact_upload::Enabled>,
+  time_provider: Arc<dyn TimeProvider>,
 }
 
 impl UploadClient {
@@ -478,6 +489,14 @@ impl UploadClient {
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<Uuid, EnqueueError> {
+    let chunked = command_id.is_some()
+      && matches!(source, UploadSource::Path(_))
+      && *self.chunked_enabled.read();
+    let timestamp = if chunked {
+      Some(timestamp.unwrap_or_else(|| self.time_provider.now()))
+    } else {
+      timestamp
+    };
     let request = UploadArtifactRequest {
       artifact_id: uuid.to_string(),
       type_id,
@@ -503,10 +522,24 @@ impl UploadClient {
       crash_profile: crash_profile.into(),
       ..Default::default()
     };
-    let mut upload = NewUpload::new(source, request, PreparationMode::WholeFile);
+    let mut upload = NewUpload::new(
+      source,
+      request,
+      if chunked {
+        PreparationMode::Chunked
+      } else {
+        PreparationMode::WholeFile
+      },
+    );
     upload.persisted_tx = persisted_tx;
     upload.completion_tx = completion_tx;
     upload.source_lease = source_lease;
+    if chunked {
+      chunked::validate_capture_request(&upload.request).map_err(|error| {
+        log::warn!("invalid command chunk capture metadata: {error}");
+        EnqueueError::Other(error)
+      })?;
+    }
     self.submit(upload)?;
     Ok(uuid)
   }
@@ -522,6 +555,7 @@ impl Client for UploadClient {
     source_path: PathBuf,
     request: UploadArtifactRequest,
     persisted_tx: oneshot::Sender<std::result::Result<u64, EnqueueError>>,
+    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
   ) -> std::result::Result<(), EnqueueError> {
     let mut upload = NewUpload::new(
       UploadSource::Path(source_path),
@@ -541,6 +575,7 @@ impl Client for UploadClient {
       )));
     }
     upload.persisted_tx = Some(PersistenceAck::Command(persisted_tx));
+    upload.completion_tx = completion_tx;
     self.submit(upload)
   }
 
@@ -698,6 +733,8 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[async_trait::async_trait]
 trait TestHooks: Send + Sync {
+  async fn before_chunk_transfer(&self) {}
+
   async fn initialized(&self);
 
   fn whole_file_preparation_started(&self, source: &UploadSource, request: &UploadArtifactRequest);
@@ -739,10 +776,23 @@ pub struct Uploader {
 
   intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
   upload_task_handle: Option<tokio::task::JoinHandle<Result<()>>>,
+  artifact_rpc_capacity: Arc<Semaphore>,
+  chunk_task_handle: Option<tokio::task::JoinHandle<transfer::Attempt>>,
+  chunk_progress: HashMap<String, transfer::Progress>,
+  chunk_cursor: usize,
 
   stats: Stats,
 
   test_hooks: Option<Arc<dyn TestHooks>>,
+}
+
+impl Drop for Uploader {
+  fn drop(&mut self) {
+    self.stop_current_upload();
+    if let Some(task) = self.chunk_task_handle.take() {
+      task.abort();
+    }
+  }
 }
 
 impl Uploader {
@@ -839,7 +889,7 @@ impl Uploader {
       data_upload_tx,
       upload_queued_rx: upload_rx,
       shutdown,
-      time_provider,
+      time_provider: time_provider.clone(),
       file_system,
       index: VecDeque::default(),
       chunked: chunked::Spool::new(runtime),
@@ -853,6 +903,10 @@ impl Uploader {
       scrub_rules,
       upload_task_handle: None,
       intent_task_handle: None,
+      artifact_rpc_capacity: Arc::new(Semaphore::new(1)),
+      chunk_task_handle: None,
+      chunk_progress: HashMap::new(),
+      chunk_cursor: 0,
       stats: Stats::new(&scope),
       test_hooks: None,
     };
@@ -861,6 +915,8 @@ impl Uploader {
       upload_tx,
       queue_revision: queue_revision_rx,
       counter_stats: SendCounters::new(&scope, "enqueue"),
+      chunked_enabled: runtime.register_bool_watch(),
+      time_provider,
       command_artifact_metadata: command_artifact_metadata
         .into_iter()
         .map(|(key, value)| (key.into(), value.into()))
@@ -901,6 +957,7 @@ impl Uploader {
     // remains at the head of the list during intent negotiation/uploads and is only removed after
     // the upload completes or we decide to not upload the file.
     loop {
+      self.start_chunk_attempt();
       // If we're not currently processing an entry and there are pending work to do, check the
       // next entry in the list and perform the next step.
       if self.intent_task_handle.is_none()
@@ -923,6 +980,7 @@ impl Uploader {
             self.request_metadata(&next.metadata),
             next.crash_profile.as_ref().cloned(),
             self.backoff_policy.backoff_mark_update(),
+            self.artifact_rpc_capacity.clone(),
           )));
           continue;
         }
@@ -981,6 +1039,7 @@ impl Uploader {
           next.content_type.clone(),
           next.payload_encoding.enum_value_or_default(),
           next.crash_profile.as_ref().cloned(),
+          self.artifact_rpc_capacity.clone(),
         )));
       }
 
@@ -995,9 +1054,6 @@ impl Uploader {
           if self.index_dirty && let Err(error) = self.write_index().await {
             log::warn!("failed to reconcile artifact index; will retry: {error}");
           }
-          if let Err(error) = self.retire_expired_chunks().await {
-            log::warn!("failed to retire expired chunked artifacts; will retry: {error}");
-          }
           if !self.index_dirty {
             self.clean_sources().await;
             if let Err(error) = self.clean_orphan_files().await {
@@ -1008,6 +1064,9 @@ impl Uploader {
         () = self.shutdown.cancelled() => {
           log::debug!("shutting down uploader");
           self.stop_current_upload();
+          if let Some(task) = self.chunk_task_handle.take() {
+            task.abort();
+          }
 
           return Err(Error::Shutdown);
         }
@@ -1016,6 +1075,11 @@ impl Uploader {
         }
         intent_decision = maybe_await(&mut self.intent_task_handle) => {
             self.handle_intent_negotiation_decision(intent_decision??).await?;
+        }
+        result = maybe_await(&mut self.chunk_task_handle) => {
+          if let Err(error) = self.handle_chunk_attempt(result?).await {
+            log::warn!("failed to persist chunked transfer progress; will reconcile: {error}");
+          }
         }
         result = maybe_await(&mut self.upload_task_handle) => {
             match result? {
@@ -1277,6 +1341,7 @@ impl Uploader {
     content_type: Option<String>,
     payload_encoding: ArtifactPayloadEncoding,
     crash_profile: Option<CrashProfileMetadata>,
+    capacity: Arc<Semaphore>,
   ) -> Result<()> {
     let path = ARTIFACT_UPLOAD_DIRECTORY.join(&name);
     log::debug!(
@@ -1296,6 +1361,7 @@ impl Uploader {
     retry_notify(
       || Some(retry_policy.next_backoff()),
       || async {
+        let _permit = capacity.acquire().await.map_err(|_| Error::Shutdown)?;
         let upload_uuid = TrackedArtifactUpload::upload_uuid();
         let (tracked, response) = TrackedArtifactUpload::new(
           upload_uuid.clone(),
@@ -1320,7 +1386,7 @@ impl Uploader {
           .await
           .map_err(|_| Error::Shutdown)?;
         match response.await {
-          Ok(response) if response.success => {
+          Ok(response) if response.error.is_empty() => {
             log::debug!("artifact upload succeeded: artifact_id={name}, type={type_id}");
             Ok(())
           },
@@ -1347,10 +1413,12 @@ impl Uploader {
     state_metadata: RequestMetadata,
     crash_profile: Option<CrashProfileMetadata>,
     mut retry_policy: ExponentialBackoff,
+    capacity: Arc<Semaphore>,
   ) -> Result<IntentDecision> {
     retry_notify(
       || Some(retry_policy.next_backoff()),
       || async {
+        let _permit = capacity.acquire().await.map_err(|_| Error::Shutdown)?;
         let upload_uuid = TrackedArtifactIntent::upload_uuid();
         let (tracked, response) = TrackedArtifactIntent::new(
           upload_uuid.clone(),
