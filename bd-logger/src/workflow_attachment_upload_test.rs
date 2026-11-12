@@ -8,11 +8,12 @@
 use super::*;
 use crate::workflow_attachment::AttachmentStoreHandle;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
+use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_artifact_upload::{EnqueueError, UploadSource, Uploader};
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
+use bd_proto::protos::client::api::UploadArtifactResponse;
 use bd_runtime::runtime::ConfigLoader;
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
@@ -129,9 +130,9 @@ async fn cancelled_staging_retains_real_admission_ownership_through_both_syncs()
   let previous = *revision.borrow();
   upload
     .response_tx
-    .send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    .send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     })
     .unwrap();
   let _ = revision
@@ -250,9 +251,9 @@ async fn single_payload_survives_log_retirement_until_real_upload_completes() {
   assert_eq!(decoded, b"attachment");
   upload
     .response_tx
-    .send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    .send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     })
     .unwrap();
   assert_eq!(completed_rx.await.unwrap(), attachment.id);

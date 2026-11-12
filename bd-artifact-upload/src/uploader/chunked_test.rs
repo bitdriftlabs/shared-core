@@ -17,14 +17,18 @@ use super::{
   UploadSource,
   Uploader,
 };
+use bd_api::DataUpload;
+use bd_api::upload::{IntentDecision, IntentResponse, TrackedArtifactUpload};
 use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::FileSystem;
 use bd_log_primitives::LogFields;
+use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{
   ArtifactChunkDescriptor,
   ArtifactPayloadEncoding,
   UploadArtifactRequest,
+  UploadArtifactResponse,
 };
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
@@ -34,6 +38,7 @@ use bd_runtime::runtime::{FeatureFlag as _, chunked_artifact_upload};
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_time::{OffsetDateTimeExt as _, TimeProvider as _};
 use flate2::read::ZlibDecoder;
+use protobuf::Message;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -42,6 +47,17 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 impl Setup {
+  async fn next_chunk_operation(&mut self) -> TrackedArtifactUpload {
+    loop {
+      let DataUpload::ArtifactUpload(operation) = self.data_upload_rx.recv().await.unwrap() else {
+        panic!("expected chunk-mode operation");
+      };
+      assert!(operation.payload.logical_bytes.is_some());
+      if !operation.response_tx.is_closed() {
+        return operation;
+      }
+    }
+  }
   async fn enable_chunked(&self, extra: Vec<(&str, ValueKind)>) {
     let mut flags = vec![
       (
@@ -73,7 +89,10 @@ impl Setup {
     request: UploadArtifactRequest,
   ) -> oneshot::Receiver<Result<u64, EnqueueError>> {
     let (tx, rx) = oneshot::channel();
-    self.client.enqueue_chunked_file(path, request, tx).unwrap();
+    self
+      .client
+      .enqueue_chunked_file(path, request, tx, None)
+      .unwrap();
     rx
   }
 
@@ -105,11 +124,359 @@ impl Setup {
       type_id: "java_heap_dump".into(),
       session_id: "session".into(),
       time: now.into_proto(),
-      upload_deadline: (now + time::Duration::hours(1)).into_proto(),
       content_type: Some("application/octet-stream".into()),
       ..Default::default()
     }
   }
+}
+
+fn progress(operation: TrackedArtifactUpload, state: State, receipts: &[u8]) {
+  operation
+    .response_tx
+    .send(UploadArtifactResponse {
+      upload_uuid: operation.uuid,
+      state: state.into(),
+      received_chunks: receipts.to_vec(),
+      ..Default::default()
+    })
+    .unwrap();
+}
+
+fn thin(template: &UploadArtifactRequest, operation: &TrackedArtifactUpload, chunk: Option<u32>) {
+  let request = &operation.payload;
+  let expected = UploadArtifactRequest {
+    upload_uuid: operation.uuid.clone(),
+    artifact_id: template.artifact_id.clone(),
+    command_id: template.command_id.clone(),
+    logical_bytes: template.logical_bytes,
+    chunk_index: chunk,
+    contents: request.contents.clone(),
+    ..Default::default()
+  };
+  assert_eq!(request, &expected);
+  if let Some(index) = chunk {
+    assert_eq!(
+      Sha256::digest(&request.contents).as_slice(),
+      template.chunks[index as usize].encoded_sha256
+    );
+  } else {
+    assert_eq!(request.contents, b"");
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn chunk_transfer_replays_each_lost_ack_and_waits_for_durable_finalization() {
+  let mut setup = Setup::new(1).await;
+  setup.enable_chunked(Vec::new()).await;
+  let id = Uuid::new_v4();
+  let path = setup
+    .capture(id, &vec![42; usize::try_from(CHUNK_BYTES).unwrap() + 1])
+    .await;
+  let (persisted_tx, persisted_rx) = oneshot::channel();
+  let (completion_tx, mut completion_rx) = oneshot::channel();
+  setup
+    .client
+    .enqueue_chunked_file(path, setup.request(id), persisted_tx, Some(completion_tx))
+    .unwrap();
+  assert_eq!(persisted_rx.await.unwrap().unwrap(), CHUNK_BYTES + 1);
+  let template = setup
+    .chunk_index()
+    .await
+    .chunked_artifact
+    .remove(0)
+    .request
+    .unwrap();
+  let original_bytes = template.write_to_bytes().unwrap();
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let first = setup.next_chunk_operation().await;
+  drop(first);
+  let begin = setup.next_chunk_operation().await;
+  let mut expected = template.clone();
+  expected.upload_uuid.clone_from(&begin.uuid);
+  assert_eq!(begin.payload, expected);
+  progress(begin, State::STATE_RECEIVING, &[0]);
+  // Lose chunk zero's ACK, then prove resume reconciles its durable receipt rather than resending
+  // an already-received payload or assuming that a sent chunk has been committed.
+  let chunk = setup.next_chunk_operation().await;
+  thin(&template, &chunk, Some(0));
+  drop(chunk);
+  let resume = setup.next_chunk_operation().await;
+  assert_eq!(resume.payload.chunks, template.chunks);
+  progress(resume, State::STATE_RECEIVING, &[1]);
+  let chunk = setup.next_chunk_operation().await;
+  thin(&template, &chunk, Some(1));
+  let chunk_bytes = chunk.payload.contents.clone();
+  drop(chunk);
+  let resume = setup.next_chunk_operation().await;
+  progress(resume, State::STATE_RECEIVING, &[1]);
+  let chunk = setup.next_chunk_operation().await;
+  assert_eq!(chunk.payload.contents, chunk_bytes);
+  progress(chunk, State::STATE_RECEIVING, &[3]);
+  let query = setup.next_chunk_operation().await;
+  thin(&template, &query, None);
+  assert!(completion_rx.try_recv().is_err());
+  assert!(
+    setup
+      .filesystem
+      .exists(&chunk_path(&id.to_string(), 0))
+      .await
+      .unwrap()
+  );
+  progress(query, State::STATE_FINALIZING, &[3]);
+  let query = setup.next_chunk_operation().await;
+  thin(&template, &query, None);
+  drop(query);
+  let resume = setup.next_chunk_operation().await;
+  let mut replayed = resume.payload.clone();
+  replayed.upload_uuid.clear();
+  assert_eq!(replayed.write_to_bytes().unwrap(), original_bytes);
+  progress(resume, State::STATE_FINALIZED, &[3]);
+  completion_rx.await.unwrap().unwrap();
+  // Completion is sent after the durable retirement, so no extra wait is needed for index state.
+  assert_eq!(setup.chunk_index().await.chunked_artifact, []);
+  assert!(
+    !setup
+      .filesystem
+      .exists(&chunk_path(&id.to_string(), 1))
+      .await
+      .unwrap()
+  );
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn chunk_transfer_is_fair_resumes_after_restart_and_does_not_expire() {
+  let mut setup = Setup::new(1).await;
+  setup.enable_chunked(Vec::new()).await;
+  let ids = [Uuid::new_v4(), Uuid::new_v4()];
+  for id in ids {
+    let path = setup.capture(id, b"file").await;
+    setup
+      .stage_capture(path, setup.request(id))
+      .await
+      .unwrap()
+      .unwrap();
+  }
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let first = setup.next_chunk_operation().await;
+  assert_eq!(first.payload.artifact_id, ids[0].to_string());
+  assert!(
+    setup.data_upload_rx.try_recv().is_err(),
+    "only one outstanding chunk-mode RPC"
+  );
+  progress(first, State::STATE_RECEIVING, &[0]);
+  let second = setup.next_chunk_operation().await;
+  assert_eq!(second.payload.artifact_id, ids[1].to_string());
+  progress(second, State::STATE_RECEIVING, &[0]);
+  let first = setup.next_chunk_operation().await;
+  assert_eq!(first.payload.artifact_id, ids[0].to_string());
+  let bytes = first.payload.contents.clone();
+  drop(first);
+  // Restart owns committed bytes but has no predecessor command waiter or execution authority.
+  setup = setup.crash_and_reinitialize().await;
+  let resumed = setup.next_chunk_operation().await;
+  assert!(resumed.payload.time.is_some());
+  assert_eq!(resumed.payload.artifact_id, ids[0].to_string());
+  progress(resumed, State::STATE_RECEIVING, &[0]);
+  let second = setup.next_chunk_operation().await;
+  progress(second, State::STATE_RECEIVING, &[0]);
+  let chunk = setup.next_chunk_operation().await;
+  assert_eq!(chunk.payload.contents, bytes);
+  setup.time_provider.advance(time::Duration::days(3));
+  tokio::time::advance(std::time::Duration::from_secs(2)).await;
+  assert_eq!(setup.chunk_index().await.chunked_artifact.len(), 2);
+  assert!(!chunk.response_tx.is_closed());
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn invalid_chunk_acknowledgements_and_retryable_errors_resume_without_releasing_bytes() {
+  let mut setup = Setup::new(1).await;
+  setup.enable_chunked(Vec::new()).await;
+  let id = Uuid::new_v4();
+  let path = setup.capture(id, b"file").await;
+  let (persisted_tx, persisted_rx) = oneshot::channel();
+  let (completion_tx, mut completion_rx) = oneshot::channel();
+  setup
+    .client
+    .enqueue_chunked_file(path, setup.request(id), persisted_tx, Some(completion_tx))
+    .unwrap();
+  persisted_rx.await.unwrap().unwrap();
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let begin = setup.next_chunk_operation().await;
+  let template = begin.payload.clone();
+  progress(begin, State::STATE_RECEIVING, &[0]);
+  for case in 0 .. 9 {
+    let operation = setup.next_chunk_operation().await;
+    let mut response = UploadArtifactResponse {
+      upload_uuid: operation.uuid,
+      state: State::STATE_RECEIVING.into(),
+      received_chunks: vec![0],
+      ..Default::default()
+    };
+    match case {
+      0 => response.state = protobuf::EnumOrUnknown::from_i32(99),
+      1 => response.state = State::STATE_UNSPECIFIED.into(),
+      2 => response.upload_uuid = "wrong-correlation".into(),
+      3 => response.received_chunks.clear(),
+      4 => response.received_chunks = vec![2],
+      5 => response.received_chunks = vec![0, 0],
+      6 => response.state = State::STATE_FINALIZED.into(),
+      7 => response.error = "unexpected error on progress".into(),
+      8 => {
+        response.state = State::STATE_RETRYABLE.into();
+        response.error = "admission temporarily unavailable".into();
+        response.received_chunks.clear();
+      },
+      _ => panic!("unknown acknowledgement case"),
+    }
+    operation.response_tx.send(response).unwrap();
+    let resume = setup.next_chunk_operation().await;
+    let mut request = resume.payload.clone();
+    request.upload_uuid.clone_from(&template.upload_uuid);
+    assert_eq!(request, template);
+    assert!(completion_rx.try_recv().is_err());
+    assert!(
+      setup
+        .filesystem
+        .exists(&chunk_path(&id.to_string(), 0))
+        .await
+        .unwrap()
+    );
+    progress(resume, State::STATE_RECEIVING, &[0]);
+  }
+  let operation = setup.next_chunk_operation().await;
+  operation
+    .response_tx
+    .send(UploadArtifactResponse {
+      upload_uuid: operation.uuid,
+      state: State::STATE_REJECTED.into(),
+      error: "permanent retirement".into(),
+      ..Default::default()
+    })
+    .unwrap();
+  assert_eq!(
+    completion_rx.await.unwrap(),
+    Err("permanent retirement".into())
+  );
+  assert_eq!(setup.chunk_index().await.chunked_artifact, []);
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn chunk_transfers_interleave_whole_file_traffic_without_eviction_or_fallback() {
+  let mut setup = Setup::new(1).await;
+  setup.enable_chunked(Vec::new()).await;
+  let mut completions = Vec::new();
+  for _ in 0 .. 2 {
+    let path = setup.capture(Uuid::new_v4(), b"file").await;
+    let (persisted_tx, persisted_rx) = oneshot::channel();
+    let (completion_tx, completion_rx) = oneshot::channel();
+    setup
+      .client
+      .enqueue_command_upload(
+        UploadSource::Path(path),
+        "device_command_attachment".into(),
+        None,
+        "session".into(),
+        Vec::new(),
+        Uuid::new_v4().to_string(),
+        None,
+        Some(persisted_tx),
+        Some(completion_tx),
+      )
+      .unwrap();
+    persisted_rx.await.unwrap().unwrap();
+    completions.push(completion_rx);
+  }
+  // Exhausting dedicated chunk capacity is explicit rejection, never whole-file admission/eviction.
+  let id = Uuid::new_v4();
+  let path = setup.capture(id, b"third").await;
+  assert!(
+    setup
+      .stage_capture(path, setup.request(id))
+      .await
+      .unwrap()
+      .is_err()
+  );
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let begin = setup.next_chunk_operation().await;
+  let first = begin.payload.artifact_id.clone();
+  let report = setup
+    .client
+    .enqueue_upload(
+      UploadSource::Bytes(b"report".to_vec()),
+      "report".into(),
+      [].into(),
+      None,
+      "session".into(),
+      Vec::new(),
+      None,
+      None,
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    report.to_string()
+  );
+  progress(begin, State::STATE_RECEIVING, &[0]);
+  // Depending on task polling, a waiting whole-file intent may precede the next Begin; both must
+  // get capacity without allowing another chunk RPC to pass its predecessor's acknowledgement.
+  let mut chunk_operations = Vec::new();
+  let mut report_done = false;
+  let mut completed = 0;
+  while chunk_operations.len() < 3 || !report_done || completed < 3 {
+    let upload = tokio::select! {
+      upload = setup.data_upload_rx.recv() => upload.unwrap(),
+      Some(_) = setup.upload_complete_rx.recv() => { completed += 1; continue; }
+    };
+    match upload {
+      DataUpload::ArtifactUpload(operation) if operation.payload.logical_bytes.is_some() => {
+        let request = &operation.payload;
+        chunk_operations.push(request.artifact_id.clone());
+        let state = if request.chunk_index.is_some() {
+          State::STATE_FINALIZED
+        } else {
+          State::STATE_RECEIVING
+        };
+        let receipts: &[u8] = if request.chunk_index.is_some() {
+          &[1]
+        } else {
+          &[0]
+        };
+        progress(operation, state, receipts);
+      },
+      DataUpload::ArtifactUploadIntent(intent) => {
+        assert_eq!(intent.payload.artifact_id, report.to_string());
+        intent
+          .response_tx
+          .send(IntentResponse {
+            uuid: intent.uuid,
+            decision: IntentDecision::UploadImmediately,
+          })
+          .unwrap();
+      },
+      DataUpload::ArtifactUpload(upload) => {
+        assert_eq!(upload.payload.artifact_id, report.to_string());
+        upload
+          .response_tx
+          .send(UploadArtifactResponse {
+            upload_uuid: upload.uuid,
+            ..Default::default()
+          })
+          .unwrap();
+        report_done = true;
+      },
+      other => panic!("unexpected upload: {other:?}"),
+    }
+  }
+  assert_ne!(chunk_operations[0], first);
+  assert_eq!(chunk_operations[1], first);
+  assert_ne!(chunk_operations[2], first);
+  for completion in completions {
+    completion.await.unwrap().unwrap();
+  }
+  setup.shutdown().await;
 }
 
 async fn recovered(setup: Setup) -> Setup {
@@ -235,7 +602,7 @@ async fn chunked_mixed_encoding_hashes_geometry_and_restart() {
   bytes.extend_from_slice(b"short last chunk");
   let path = setup.capture(id, &bytes).await;
   let metadata = setup.request(id);
-  let original_deadline = metadata.upload_deadline.clone();
+  let capture_time = metadata.time.clone();
   assert_eq!(
     setup
       .stage_capture(path.clone(), metadata)
@@ -256,11 +623,9 @@ async fn chunked_mixed_encoding_hashes_geometry_and_restart() {
   assert_eq!(index.artifact, []);
   let template = index.chunked_artifact[0].request.as_ref().unwrap();
   assert_eq!(template.chunks.len(), 3);
-  assert_eq!(template.upload_deadline, original_deadline);
-  assert!(template.admitted_at.is_some());
+  assert_eq!(template.time, capture_time);
   assert!(template.contents.is_empty() && template.upload_uuid.is_empty());
   assert!(template.chunk_index.is_none());
-  assert!(index.chunked_artifact[0].accepted_deadline.is_none());
   assert_eq!(template.logical_sha256, Sha256::digest(&bytes).as_slice());
   let mut reconstructed = Vec::new();
   for (position, descriptor) in template.chunks.iter().enumerate() {
@@ -454,7 +819,7 @@ async fn chunked_source_change_and_disk_full_reclaim_preparation() {
 }
 
 #[tokio::test]
-async fn chunked_runtime_reduction_preserves_accepted_slots_and_deadlines() {
+async fn chunked_runtime_reduction_preserves_accepted_slots_and_bytes() {
   let setup = Setup::new(1).await;
   setup.enable_chunked(Vec::new()).await;
   for _ in 0 .. 2 {
@@ -777,7 +1142,7 @@ async fn chunked_crash_reclaims_uncommitted_files_and_preserves_published_index(
 }
 
 #[tokio::test]
-async fn chunked_deadline_clamp_accepted_deadline_recovery_and_expiry_release_credits() {
+async fn chunked_recovery_retains_old_bytes_and_keeps_admission_charged() {
   let setup = Setup::new(1).await;
   setup
     .enable_chunked(vec![
@@ -792,29 +1157,15 @@ async fn chunked_deadline_clamp_accepted_deadline_recovery_and_expiry_release_cr
     ])
     .await;
   let id = Uuid::new_v4();
-  let mut metadata = setup.request(id);
-  let now = setup.time_provider.now();
-  metadata.upload_deadline = (now + time::Duration::days(2)).into_proto();
+  let metadata = setup.request(id);
   let path = setup.capture(id, b"file").await;
   setup.stage_capture(path, metadata).await.unwrap().unwrap();
-  let mut index = setup.chunk_index().await;
-  assert_eq!(
-    index.chunked_artifact[0]
-      .request
-      .as_ref()
-      .unwrap()
-      .upload_deadline,
-    (now + time::Duration::hours(24)).into_proto()
-  );
-  index.chunked_artifact[0].accepted_deadline = (now + time::Duration::minutes(10)).into_proto();
-  setup.write_chunk_index(&index).await;
+  let index = setup.chunk_index().await;
+  setup.time_provider.advance(time::Duration::days(3));
   let setup = recovered(setup).await;
   assert_eq!(setup.chunk_index().await, index);
-  setup.time_provider.advance(time::Duration::minutes(10));
-  let setup = recovered(setup).await;
-  assert_eq!(setup.chunk_index().await.chunked_artifact, []);
   assert!(
-    !setup
+    setup
       .filesystem
       .exists(&chunk_path(&id.to_string(), 0))
       .await
@@ -822,11 +1173,13 @@ async fn chunked_deadline_clamp_accepted_deadline_recovery_and_expiry_release_cr
   );
   let id = Uuid::new_v4();
   let path = setup.capture(id, b"next").await;
-  setup
-    .stage_capture(path, setup.request(id))
-    .await
-    .unwrap()
-    .unwrap();
+  assert!(
+    setup
+      .stage_capture(path, setup.request(id))
+      .await
+      .unwrap()
+      .is_err()
+  );
   setup.shutdown().await;
 }
 
@@ -878,22 +1231,22 @@ async fn chunked_empty_remote_and_nonempty_workflow_and_master_gate() {
 }
 
 #[tokio::test]
-async fn chunked_disk_headroom_and_expiry_during_preparation_fail_explicitly() {
-  for expire in [false, true] {
+async fn chunked_disk_headroom_rejects_but_slow_preparation_does_not_expire() {
+  for slow_preparation in [false, true] {
     let setup = Setup::new(1).await;
     setup.enable_chunked(Vec::new()).await;
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
     let metadata = setup.request(id);
-    if expire {
+    if slow_preparation {
       let gate = setup
         .filesystem
         .gate_next_sync(chunk_path(&id.to_string(), 0));
       let rx = setup.stage_capture(path.clone(), metadata);
       let resume = gate.await.unwrap();
-      setup.time_provider.advance(time::Duration::hours(1));
+      setup.time_provider.advance(time::Duration::days(3));
       resume.send(()).unwrap();
-      assert!(rx.await.unwrap().is_err());
+      rx.await.unwrap().unwrap();
     } else {
       // Wait until startup has created the spool before injecting full-disk admission.
       let mut revision = setup.client.upload_queue_revision();
@@ -909,12 +1262,13 @@ async fn chunked_disk_headroom_and_expiry_during_preparation_fail_explicitly() {
       setup.filesystem.disk_full.store(false, Ordering::Relaxed);
     }
     assert!(!path.exists());
-    assert!(
-      !setup
+    assert_eq!(
+      setup
         .filesystem
         .exists(&chunk_path(&id.to_string(), 0))
         .await
-        .unwrap()
+        .unwrap(),
+      slow_preparation
     );
     setup.shutdown().await;
   }
@@ -994,7 +1348,7 @@ async fn chunked_invalid_capture_metadata_consumes_owned_source_without_index_co
     assert!(
       setup
         .client
-        .enqueue_chunked_file(path.clone(), metadata, tx)
+        .enqueue_chunked_file(path.clone(), metadata, tx, None)
         .is_err()
     );
     assert!(!path.exists());
@@ -1190,7 +1544,8 @@ async fn chunked_rejects_symlinks_and_non_files_without_touching_targets() {
       .enqueue_chunked_file(
         Path::new("relative").into(),
         setup.request(Uuid::new_v4()),
-        tx
+        tx,
+        None
       )
       .is_err()
   );

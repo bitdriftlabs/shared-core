@@ -345,10 +345,11 @@ impl StreamState {
         self.send_request(req).await
       },
       DataUpload::ArtifactUpload(tracked) => {
-        let req = self.upload_state_tracker.track_upload(tracked);
-        let mode = if req.payload_encoding.enum_value_or_default()
-          == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-          && (req.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID || req.command_id.is_some())
+        let req = self.upload_state_tracker.track_artifact(tracked);
+        let mode = if req.logical_bytes.is_some()
+          || (req.payload_encoding.enum_value_or_default()
+            == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+            && (req.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID || req.command_id.is_some()))
         {
           EncodeMode::SkipCompression
         } else {
@@ -1384,12 +1385,6 @@ impl Api {
           )?;
         },
         Some(Response_type::ArtifactUpload(artifact_upload)) => {
-          if artifact_upload.state.value() != 0
-            || artifact_upload.accepted_deadline.is_some()
-            || !artifact_upload.received_chunks.is_empty()
-          {
-            anyhow::bail!("unexpected chunked artifact acknowledgement before transfer support");
-          }
           log::debug!(
             "received ack for artifact upload {:?}, error: {:?}",
             artifact_upload.upload_uuid,
@@ -1398,7 +1393,7 @@ impl Api {
 
           stream_state
             .upload_state_tracker
-            .resolve_pending_upload(&artifact_upload.upload_uuid, &artifact_upload.error)?;
+            .resolve_artifact(artifact_upload)?;
         },
         Some(Response_type::ArtifactIntent(artifact_upload_intent)) => {
           log::debug!(

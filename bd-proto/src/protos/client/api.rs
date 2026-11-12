@@ -6142,10 +6142,6 @@ pub struct UploadArtifactRequest {
     pub logical_sha256: ::std::vec::Vec<u8>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.chunks)
     pub chunks: ::std::vec::Vec<ArtifactChunkDescriptor>,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.upload_deadline)
-    pub upload_deadline: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.admitted_at)
-    pub admitted_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactRequest.chunk_index)
     pub chunk_index: ::std::option::Option<u32>,
     // special fields
@@ -6165,7 +6161,7 @@ impl UploadArtifactRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(19);
+        let mut fields = ::std::vec::Vec::with_capacity(17);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "upload_uuid",
@@ -6246,16 +6242,6 @@ impl UploadArtifactRequest {
             "chunks",
             |m: &UploadArtifactRequest| { &m.chunks },
             |m: &mut UploadArtifactRequest| { &mut m.chunks },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
-            "upload_deadline",
-            |m: &UploadArtifactRequest| { &m.upload_deadline },
-            |m: &mut UploadArtifactRequest| { &mut m.upload_deadline },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
-            "admitted_at",
-            |m: &UploadArtifactRequest| { &m.admitted_at },
-            |m: &mut UploadArtifactRequest| { &mut m.admitted_at },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
             "chunk_index",
@@ -6340,13 +6326,7 @@ impl ::protobuf::Message for UploadArtifactRequest {
                 130 => {
                     self.chunks.push(is.read_message()?);
                 },
-                138 => {
-                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.upload_deadline)?;
-                },
-                146 => {
-                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.admitted_at)?;
-                },
-                152 => {
+                136 => {
                     self.chunk_index = ::std::option::Option::Some(is.read_uint32()?);
                 },
                 tag => {
@@ -6418,16 +6398,8 @@ impl ::protobuf::Message for UploadArtifactRequest {
             let len = value.compute_size();
             my_size += 2 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
-        if let Some(v) = self.upload_deadline.as_ref() {
-            let len = v.compute_size();
-            my_size += 2 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
-        if let Some(v) = self.admitted_at.as_ref() {
-            let len = v.compute_size();
-            my_size += 2 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
         if let Some(v) = self.chunk_index {
-            my_size += ::protobuf::rt::uint32_size(19, v);
+            my_size += ::protobuf::rt::uint32_size(17, v);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -6490,14 +6462,8 @@ impl ::protobuf::Message for UploadArtifactRequest {
         for v in &self.chunks {
             ::protobuf::rt::write_message_field_with_cached_size(16, v, os)?;
         };
-        if let Some(v) = self.upload_deadline.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(17, v, os)?;
-        }
-        if let Some(v) = self.admitted_at.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(18, v, os)?;
-        }
         if let Some(v) = self.chunk_index {
-            os.write_uint32(19, v)?;
+            os.write_uint32(17, v)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -6532,8 +6498,6 @@ impl ::protobuf::Message for UploadArtifactRequest {
         self.logical_bytes = ::std::option::Option::None;
         self.logical_sha256.clear();
         self.chunks.clear();
-        self.upload_deadline.clear();
-        self.admitted_at.clear();
         self.chunk_index = ::std::option::Option::None;
         self.special_fields.clear();
     }
@@ -6571,8 +6535,6 @@ pub struct UploadArtifactResponse {
     pub error: ::std::string::String,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactResponse.state)
     pub state: ::protobuf::EnumOrUnknown<upload_artifact_response::State>,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactResponse.accepted_deadline)
-    pub accepted_deadline: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.UploadArtifactResponse.received_chunks)
     pub received_chunks: ::std::vec::Vec<u8>,
     // special fields
@@ -6592,7 +6554,7 @@ impl UploadArtifactResponse {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "upload_uuid",
@@ -6608,11 +6570,6 @@ impl UploadArtifactResponse {
             "state",
             |m: &UploadArtifactResponse| { &m.state },
             |m: &mut UploadArtifactResponse| { &mut m.state },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
-            "accepted_deadline",
-            |m: &UploadArtifactResponse| { &m.accepted_deadline },
-            |m: &mut UploadArtifactResponse| { &mut m.accepted_deadline },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "received_chunks",
@@ -6647,9 +6604,6 @@ impl ::protobuf::Message for UploadArtifactResponse {
                     self.state = is.read_enum_or_unknown()?;
                 },
                 34 => {
-                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.accepted_deadline)?;
-                },
-                42 => {
                     self.received_chunks = is.read_bytes()?;
                 },
                 tag => {
@@ -6673,12 +6627,8 @@ impl ::protobuf::Message for UploadArtifactResponse {
         if self.state != ::protobuf::EnumOrUnknown::new(upload_artifact_response::State::STATE_UNSPECIFIED) {
             my_size += ::protobuf::rt::int32_size(3, self.state.value());
         }
-        if let Some(v) = self.accepted_deadline.as_ref() {
-            let len = v.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
         if !self.received_chunks.is_empty() {
-            my_size += ::protobuf::rt::bytes_size(5, &self.received_chunks);
+            my_size += ::protobuf::rt::bytes_size(4, &self.received_chunks);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -6695,11 +6645,8 @@ impl ::protobuf::Message for UploadArtifactResponse {
         if self.state != ::protobuf::EnumOrUnknown::new(upload_artifact_response::State::STATE_UNSPECIFIED) {
             os.write_enum(3, ::protobuf::EnumOrUnknown::value(&self.state))?;
         }
-        if let Some(v) = self.accepted_deadline.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
-        }
         if !self.received_chunks.is_empty() {
-            os.write_bytes(5, &self.received_chunks)?;
+            os.write_bytes(4, &self.received_chunks)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -6721,7 +6668,6 @@ impl ::protobuf::Message for UploadArtifactResponse {
         self.upload_uuid.clear();
         self.error.clear();
         self.state = ::protobuf::EnumOrUnknown::new(upload_artifact_response::State::STATE_UNSPECIFIED);
-        self.accepted_deadline.clear();
         self.received_chunks.clear();
         self.special_fields.clear();
     }
@@ -6731,7 +6677,6 @@ impl ::protobuf::Message for UploadArtifactResponse {
             upload_uuid: ::std::string::String::new(),
             error: ::std::string::String::new(),
             state: ::protobuf::EnumOrUnknown::from_i32(0),
-            accepted_deadline: ::protobuf::MessageField::none(),
             received_chunks: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -14445,19 +14390,19 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     atelyH\0R\x11uploadImmediately\x12[\n\x04drop\x18\x04\x20\x01(\x0b2E.bit\
     drift_public.protobuf.client.v1.UploadArtifactIntentResponse.DropH\0R\
     \x04drop\x1a\x13\n\x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08decisi\
-    on\"\x97\x0b\n\x15UploadArtifactRequest\x12(\n\x0bupload_uuid\x18\x01\
-    \x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x17\n\x07type_id\
-    \x18\x02\x20\x01(\tR\x06typeId\x12\x1a\n\x08contents\x18\x03\x20\x01(\
-    \x0cR\x08contents\x12(\n\x0bartifact_id\x18\x04\x20\x01(\tR\nartifactIdB\
-    \x07\xfaB\x04r\x02\x10\x01\x12s\n\x0estate_metadata\x18\x05\x20\x03(\x0b\
-    2L.bitdrift_public.protobuf.client.v1.UploadArtifactRequest.StateMetadat\
-    aEntryR\rstateMetadata\x12.\n\x04time\x18\x06\x20\x01(\x0b2\x1a.google.p\
-    rotobuf.TimestampR\x04time\x12\x1d\n\nsession_id\x18\x07\x20\x01(\tR\tse\
-    ssionId\x12T\n\rfeature_flags\x18\x08\x20\x03(\x0b2/.bitdrift_public.pro\
-    tobuf.client.v1.FeatureFlagR\x0cfeatureFlags\x12x\n\x17workflow_report_h\
-    andoff\x18\t\x20\x01(\x0b2;.bitdrift_public.protobuf.workflow.v1.Workflo\
-    wReportHandoffH\0R\x15workflowReportHandoff\x88\x01\x01\x12,\n\ncommand_\
-    id\x18\n\x20\x01(\tH\x01R\tcommandIdB\x08\xfaB\x05r\x03\xb0\x01\x01\x88\
+    on\"\x95\n\n\x15UploadArtifactRequest\x12(\n\x0bupload_uuid\x18\x01\x20\
+    \x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x17\n\x07type_id\x18\
+    \x02\x20\x01(\tR\x06typeId\x12\x1a\n\x08contents\x18\x03\x20\x01(\x0cR\
+    \x08contents\x12(\n\x0bartifact_id\x18\x04\x20\x01(\tR\nartifactIdB\x07\
+    \xfaB\x04r\x02\x10\x01\x12s\n\x0estate_metadata\x18\x05\x20\x03(\x0b2L.b\
+    itdrift_public.protobuf.client.v1.UploadArtifactRequest.StateMetadataEnt\
+    ryR\rstateMetadata\x12.\n\x04time\x18\x06\x20\x01(\x0b2\x1a.google.proto\
+    buf.TimestampR\x04time\x12\x1d\n\nsession_id\x18\x07\x20\x01(\tR\tsessio\
+    nId\x12T\n\rfeature_flags\x18\x08\x20\x03(\x0b2/.bitdrift_public.protobu\
+    f.client.v1.FeatureFlagR\x0cfeatureFlags\x12x\n\x17workflow_report_hando\
+    ff\x18\t\x20\x01(\x0b2;.bitdrift_public.protobuf.workflow.v1.WorkflowRep\
+    ortHandoffH\0R\x15workflowReportHandoff\x88\x01\x01\x12,\n\ncommand_id\
+    \x18\n\x20\x01(\tH\x01R\tcommandIdB\x08\xfaB\x05r\x03\xb0\x01\x01\x88\
     \x01\x01\x12f\n\x10payload_encoding\x18\x0b\x20\x01(\x0e2;.bitdrift_publ\
     ic.protobuf.client.v1.ArtifactPayloadEncodingR\x0fpayloadEncoding\x12&\n\
     \x0ccontent_type\x18\x0c\x20\x01(\tH\x02R\x0bcontentType\x88\x01\x01\x12\
@@ -14467,92 +14412,88 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x80\x01\x88\x01\x01\x120\n\x0elogical_sha256\x18\x0f\x20\x01(\x0cR\rlog\
     icalSha256B\t\xfaB\x06z\x04h\x20p\x01\x12^\n\x06chunks\x18\x10\x20\x03(\
     \x0b2;.bitdrift_public.protobuf.client.v1.ArtifactChunkDescriptorR\x06ch\
-    unksB\t\xfaB\x06\x92\x01\x03\x10\x80\x02\x12C\n\x0fupload_deadline\x18\
-    \x11\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0euploadDeadline\x12;\
-    \n\x0badmitted_at\x18\x12\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\n\
-    admittedAt\x12.\n\x0bchunk_index\x18\x13\x20\x01(\rH\x04R\nchunkIndexB\
-    \x08\xfaB\x05*\x03\x10\x80\x02\x88\x01\x01\x1ak\n\x12StateMetadataEntry\
-    \x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\
-    \x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value:\x028\x01\
-    B\x1a\n\x18_workflow_report_handoffB\r\n\x0b_command_idB\x0f\n\r_content\
-    _typeB\x10\n\x0e_logical_bytesB\x0e\n\x0c_chunk_index\"\xbf\x03\n\x16Upl\
-    oadArtifactResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUui\
-    dB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05e\
-    rror\x12`\n\x05state\x18\x03\x20\x01(\x0e2@.bitdrift_public.protobuf.cli\
-    ent.v1.UploadArtifactResponse.StateR\x05stateB\x08\xfaB\x05\x82\x01\x02\
-    \x10\x01\x12G\n\x11accepted_deadline\x18\x04\x20\x01(\x0b2\x1a.google.pr\
-    otobuf.TimestampR\x10acceptedDeadline\x120\n\x0freceived_chunks\x18\x05\
-    \x20\x01(\x0cR\x0ereceivedChunksB\x07\xfaB\x04z\x02\x18\x20\"\x87\x01\n\
-    \x05State\x12\x15\n\x11STATE_UNSPECIFIED\x10\0\x12\x13\n\x0fSTATE_RECEIV\
-    ING\x10\x01\x12\x14\n\x10STATE_FINALIZING\x10\x02\x12\x13\n\x0fSTATE_FIN\
-    ALIZED\x10\x03\x12\x13\n\x0fSTATE_RETRYABLE\x10\x04\x12\x12\n\x0eSTATE_R\
-    EJECTED\x10\x05\"\x8e\x02\n\x17ArtifactChunkDescriptor\x120\n\rencoded_b\
-    ytes\x18\x01\x20\x01(\rR\x0cencodedBytesB\x0b\xfaB\x08*\x06\x18\x80\x80@\
-    \x20\0\x12a\n\x08encoding\x18\x02\x20\x01(\x0e2;.bitdrift_public.protobu\
-    f.client.v1.ArtifactPayloadEncodingR\x08encodingB\x08\xfaB\x05\x82\x01\
-    \x02\x10\x01\x12.\n\x0elogical_sha256\x18\x03\x20\x01(\x0cR\rlogicalSha2\
-    56B\x07\xfaB\x04z\x02h\x20\x12.\n\x0eencoded_sha256\x18\x04\x20\x01(\x0c\
-    R\rencodedSha256B\x07\xfaB\x04z\x02h\x20\"\xf6\x04\n\x11HandshakeRespons\
-    e\x12m\n\x0fstream_settings\x18\x01\x20\x01(\x0b2D.bitdrift_public.proto\
-    buf.client.v1.HandshakeResponse.StreamSettingsR\x0estreamSettings\x12>\n\
-    \x1bconfiguration_update_status\x18\x02\x20\x01(\rR\x19configurationUpda\
-    teStatus\x12A\n\x1bopaque_client_state_to_echo\x18\x03\x20\x01(\x0cH\0R\
-    \x17opaqueClientStateToEcho\x88\x01\x01\x12g\n\x14client_state_updates\
-    \x18\x04\x20\x03(\x0b25.bitdrift_public.protobuf.client.v1.ClientStateUp\
-    dateR\x12clientStateUpdates\x12g\n\ranalytics_ack\x18\x05\x20\x01(\x0b2B\
-    .bitdrift_public.protobuf.client.v1.HandshakeResponse.AnalyticsAckR\x0ca\
-    nalyticsAck\x1a+\n\x0cAnalyticsAck\x12\x1b\n\treport_id\x18\x01\x20\x01(\
-    \tR\x08reportId\x1aP\n\x0eStreamSettings\x12>\n\rping_interval\x18\x01\
-    \x20\x01(\x0b2\x19.google.protobuf.DurationR\x0cpingIntervalB\x1e\n\x1c_\
-    opaque_client_state_to_echo\"I\n\x0bRateLimited\x12:\n\x0bretry_after\
-    \x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\nretryAfter\"\xca\
-    \x01\n\x11LogUploadResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nu\
-    ploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\
-    \tR\x05error\x12!\n\x0clogs_dropped\x18\x03\x20\x01(\rR\x0blogsDropped\
-    \x12R\n\x0crate_limited\x18\x04\x20\x01(\x0b2/.bitdrift_public.protobuf.\
-    client.v1.RateLimitedR\x0brateLimited\"\x91\x0b\n\x12StatsUploadRequest\
-    \x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\
-    \x02\x10\x01\x12e\n\x08snapshot\x18\x02\x20\x03(\x0b2?.bitdrift_public.p\
-    rotobuf.client.v1.StatsUploadRequest.SnapshotR\x08snapshotB\x08\xfaB\x05\
-    \x92\x01\x02\x08\x01\x123\n\x07sent_at\x18\x03\x20\x01(\x0b2\x1a.google.\
-    protobuf.TimestampR\x06sentAt\x12h\n\rupload_reason\x18\x04\x20\x01(\x0e\
-    2C.bitdrift_public.protobuf.client.v1.StatsUploadRequest.UploadReasonR\
-    \x0cuploadReason\x1a\xbe\x07\n\x08Snapshot\x12K\n\x07metrics\x18\x01\x20\
-    \x01(\x0b2/.bitdrift_public.protobuf.client.v1.MetricsListH\0R\x07metric\
-    s\x12l\n\naggregated\x18\x02\x20\x01(\x0b2J.bitdrift_public.protobuf.cli\
-    ent.v1.StatsUploadRequest.Snapshot.AggregatedH\x01R\naggregated\x12\x86\
-    \x01\n\x13metric_id_overflows\x18\x03\x20\x03(\x0b2V.bitdrift_public.pro\
-    tobuf.client.v1.StatsUploadRequest.Snapshot.MetricIdOverflowsEntryR\x11m\
-    etricIdOverflows\x12\x86\x01\n\x13workflow_debug_data\x18\x04\x20\x03(\
-    \x0b2V.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Snapshot.Wo\
-    rkflowDebugDataEntryR\x11workflowDebugData\x12\x1f\n\x0bretry_count\x18\
-    \x05\x20\x01(\rR\nretryCount\x122\n\x15client_stats_sequence\x18\x06\x20\
-    \x01(\x04R\x13clientStatsSequence\x1a\x90\x01\n\nAggregated\x12G\n\x0cpe\
-    riod_start\x18\x04\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0bperio\
-    dStartB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x129\n\nperiod_end\x18\x05\x20\
-    \x01(\x0b2\x1a.google.protobuf.TimestampR\tperiodEnd\x1aD\n\x16MetricIdO\
-    verflowsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05v\
-    alue\x18\x02\x20\x01(\x04R\x05value:\x028\x01\x1a\x8c\x01\n\x16WorkflowD\
-    ebugDataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\\\n\x05val\
-    ue\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.client.v1.DebugDataRe\
-    quest.WorkflowDebugDataR\x05value:\x028\x01B\x14\n\rsnapshot_type\x12\
-    \x03\xf8B\x01B\x12\n\x0boccurred_at\x12\x03\xf8B\x01\"\x89\x01\n\x0cUplo\
-    adReason\x12\x1d\n\x19UPLOAD_REASON_UNSPECIFIED\x10\0\x12\x1a\n\x16UPLOA\
-    D_REASON_PERIODIC\x10\x01\x12!\n\x1dUPLOAD_REASON_EVENT_TRIGGERED\x10\
-    \x02\x12\x1b\n\x17UPLOAD_REASON_HANDSHAKE\x10\x03\"~\n\x13StatsUploadRes\
-    ponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\
-    \x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\x12'\n\
-    \x0fmetrics_dropped\x18\x03\x20\x01(\rR\x0emetricsDropped\"\x0e\n\x0cPon\
-    gResponse\"\xf3\x07\n\x13ConfigurationUpdate\x12#\n\rversion_nonce\x18\
-    \x01\x20\x01(\tR\x0cversionNonce\x12v\n\x12state_of_the_world\x18\x02\
-    \x20\x01(\x0b2G.bitdrift_public.protobuf.client.v1.ConfigurationUpdate.S\
-    tateOfTheWorldH\0R\x0fstateOfTheWorld\x12g\n\x14client_state_updates\x18\
-    \x03\x20\x03(\x0b25.bitdrift_public.protobuf.client.v1.ClientStateUpdate\
-    R\x12clientStateUpdates\x1a\xc6\x05\n\x0fStateOfTheWorld\x12b\n\x12buffe\
-    r_config_list\x18\x03\x20\x01(\x0b24.bitdrift_public.protobuf.config.v1.\
-    BufferConfigListR\x10bufferConfigList\x12u\n\x17workflows_configuration\
-    \x18\x04\x20\x01(\x0b2<.bitdrift_public.protobuf.workflow.v1.WorkflowsCo\
-    nfigurationR\x16workflowsConfiguration\x12k\n\x14bdtail_configuration\
+    unksB\t\xfaB\x06\x92\x01\x03\x10\x80\x02\x12.\n\x0bchunk_index\x18\x11\
+    \x20\x01(\rH\x04R\nchunkIndexB\x08\xfaB\x05*\x03\x10\x80\x02\x88\x01\x01\
+    \x1ak\n\x12StateMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03ke\
+    y\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.loggin\
+    g.v1.DataR\x05value:\x028\x01B\x1a\n\x18_workflow_report_handoffB\r\n\
+    \x0b_command_idB\x0f\n\r_content_typeB\x10\n\x0e_logical_bytesB\x0e\n\
+    \x0c_chunk_index\"\xf6\x02\n\x16UploadArtifactResponse\x12(\n\x0bupload_\
+    uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\
+    \n\x05error\x18\x02\x20\x01(\tR\x05error\x12`\n\x05state\x18\x03\x20\x01\
+    (\x0e2@.bitdrift_public.protobuf.client.v1.UploadArtifactResponse.StateR\
+    \x05stateB\x08\xfaB\x05\x82\x01\x02\x10\x01\x120\n\x0freceived_chunks\
+    \x18\x04\x20\x01(\x0cR\x0ereceivedChunksB\x07\xfaB\x04z\x02\x18\x20\"\
+    \x87\x01\n\x05State\x12\x15\n\x11STATE_UNSPECIFIED\x10\0\x12\x13\n\x0fST\
+    ATE_RECEIVING\x10\x01\x12\x14\n\x10STATE_FINALIZING\x10\x02\x12\x13\n\
+    \x0fSTATE_FINALIZED\x10\x03\x12\x13\n\x0fSTATE_RETRYABLE\x10\x04\x12\x12\
+    \n\x0eSTATE_REJECTED\x10\x05\"\x8e\x02\n\x17ArtifactChunkDescriptor\x120\
+    \n\rencoded_bytes\x18\x01\x20\x01(\rR\x0cencodedBytesB\x0b\xfaB\x08*\x06\
+    \x18\x80\x80@\x20\0\x12a\n\x08encoding\x18\x02\x20\x01(\x0e2;.bitdrift_p\
+    ublic.protobuf.client.v1.ArtifactPayloadEncodingR\x08encodingB\x08\xfaB\
+    \x05\x82\x01\x02\x10\x01\x12.\n\x0elogical_sha256\x18\x03\x20\x01(\x0cR\
+    \rlogicalSha256B\x07\xfaB\x04z\x02h\x20\x12.\n\x0eencoded_sha256\x18\x04\
+    \x20\x01(\x0cR\rencodedSha256B\x07\xfaB\x04z\x02h\x20\"\xf6\x04\n\x11Han\
+    dshakeResponse\x12m\n\x0fstream_settings\x18\x01\x20\x01(\x0b2D.bitdrift\
+    _public.protobuf.client.v1.HandshakeResponse.StreamSettingsR\x0estreamSe\
+    ttings\x12>\n\x1bconfiguration_update_status\x18\x02\x20\x01(\rR\x19conf\
+    igurationUpdateStatus\x12A\n\x1bopaque_client_state_to_echo\x18\x03\x20\
+    \x01(\x0cH\0R\x17opaqueClientStateToEcho\x88\x01\x01\x12g\n\x14client_st\
+    ate_updates\x18\x04\x20\x03(\x0b25.bitdrift_public.protobuf.client.v1.Cl\
+    ientStateUpdateR\x12clientStateUpdates\x12g\n\ranalytics_ack\x18\x05\x20\
+    \x01(\x0b2B.bitdrift_public.protobuf.client.v1.HandshakeResponse.Analyti\
+    csAckR\x0canalyticsAck\x1a+\n\x0cAnalyticsAck\x12\x1b\n\treport_id\x18\
+    \x01\x20\x01(\tR\x08reportId\x1aP\n\x0eStreamSettings\x12>\n\rping_inter\
+    val\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x0cpingIntervalB\
+    \x1e\n\x1c_opaque_client_state_to_echo\"I\n\x0bRateLimited\x12:\n\x0bret\
+    ry_after\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\nretryAfter\
+    \"\xca\x01\n\x11LogUploadResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\
+    \tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\
+    \x20\x01(\tR\x05error\x12!\n\x0clogs_dropped\x18\x03\x20\x01(\rR\x0blogs\
+    Dropped\x12R\n\x0crate_limited\x18\x04\x20\x01(\x0b2/.bitdrift_public.pr\
+    otobuf.client.v1.RateLimitedR\x0brateLimited\"\x91\x0b\n\x12StatsUploadR\
+    equest\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\
+    \x04r\x02\x10\x01\x12e\n\x08snapshot\x18\x02\x20\x03(\x0b2?.bitdrift_pub\
+    lic.protobuf.client.v1.StatsUploadRequest.SnapshotR\x08snapshotB\x08\xfa\
+    B\x05\x92\x01\x02\x08\x01\x123\n\x07sent_at\x18\x03\x20\x01(\x0b2\x1a.go\
+    ogle.protobuf.TimestampR\x06sentAt\x12h\n\rupload_reason\x18\x04\x20\x01\
+    (\x0e2C.bitdrift_public.protobuf.client.v1.StatsUploadRequest.UploadReas\
+    onR\x0cuploadReason\x1a\xbe\x07\n\x08Snapshot\x12K\n\x07metrics\x18\x01\
+    \x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.MetricsListH\0R\x07me\
+    trics\x12l\n\naggregated\x18\x02\x20\x01(\x0b2J.bitdrift_public.protobuf\
+    .client.v1.StatsUploadRequest.Snapshot.AggregatedH\x01R\naggregated\x12\
+    \x86\x01\n\x13metric_id_overflows\x18\x03\x20\x03(\x0b2V.bitdrift_public\
+    .protobuf.client.v1.StatsUploadRequest.Snapshot.MetricIdOverflowsEntryR\
+    \x11metricIdOverflows\x12\x86\x01\n\x13workflow_debug_data\x18\x04\x20\
+    \x03(\x0b2V.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Snapsh\
+    ot.WorkflowDebugDataEntryR\x11workflowDebugData\x12\x1f\n\x0bretry_count\
+    \x18\x05\x20\x01(\rR\nretryCount\x122\n\x15client_stats_sequence\x18\x06\
+    \x20\x01(\x04R\x13clientStatsSequence\x1a\x90\x01\n\nAggregated\x12G\n\
+    \x0cperiod_start\x18\x04\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\
+    \x0bperiodStartB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x129\n\nperiod_end\x18\
+    \x05\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tperiodEnd\x1aD\n\x16M\
+    etricIdOverflowsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\
+    \x14\n\x05value\x18\x02\x20\x01(\x04R\x05value:\x028\x01\x1a\x8c\x01\n\
+    \x16WorkflowDebugDataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\
+    \x12\\\n\x05value\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.client\
+    .v1.DebugDataRequest.WorkflowDebugDataR\x05value:\x028\x01B\x14\n\rsnaps\
+    hot_type\x12\x03\xf8B\x01B\x12\n\x0boccurred_at\x12\x03\xf8B\x01\"\x89\
+    \x01\n\x0cUploadReason\x12\x1d\n\x19UPLOAD_REASON_UNSPECIFIED\x10\0\x12\
+    \x1a\n\x16UPLOAD_REASON_PERIODIC\x10\x01\x12!\n\x1dUPLOAD_REASON_EVENT_T\
+    RIGGERED\x10\x02\x12\x1b\n\x17UPLOAD_REASON_HANDSHAKE\x10\x03\"~\n\x13St\
+    atsUploadResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\
+    \x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05err\
+    or\x12'\n\x0fmetrics_dropped\x18\x03\x20\x01(\rR\x0emetricsDropped\"\x0e\
+    \n\x0cPongResponse\"\xf3\x07\n\x13ConfigurationUpdate\x12#\n\rversion_no\
+    nce\x18\x01\x20\x01(\tR\x0cversionNonce\x12v\n\x12state_of_the_world\x18\
+    \x02\x20\x01(\x0b2G.bitdrift_public.protobuf.client.v1.ConfigurationUpda\
+    te.StateOfTheWorldH\0R\x0fstateOfTheWorld\x12g\n\x14client_state_updates\
+    \x18\x03\x20\x03(\x0b25.bitdrift_public.protobuf.client.v1.ClientStateUp\
+    dateR\x12clientStateUpdates\x1a\xc6\x05\n\x0fStateOfTheWorld\x12b\n\x12b\
+    uffer_config_list\x18\x03\x20\x01(\x0b24.bitdrift_public.protobuf.config\
+    .v1.BufferConfigListR\x10bufferConfigList\x12u\n\x17workflows_configurat\
+    ion\x18\x04\x20\x01(\x0b2<.bitdrift_public.protobuf.workflow.v1.Workflow\
+    sConfigurationR\x16workflowsConfiguration\x12k\n\x14bdtail_configuration\
     \x18\x06\x20\x01(\x0b28.bitdrift_public.protobuf.bdtail.v1.BdTailConfigu\
     rationsR\x13bdtailConfiguration\x12m\n\x15filters_configuration\x18\x08\
     \x20\x01(\x0b28.bitdrift_public.protobuf.filter.v1.FiltersConfigurationR\

@@ -25,6 +25,7 @@ use bd_proto::protos::client::api::{
   StatsUploadRequest,
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
+  UploadArtifactResponse,
   device_command_update,
   upload_artifact_intent_response,
 };
@@ -35,7 +36,7 @@ use protobuf::Message;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use upload_artifact_intent_response::Decision as ArtifactIntentDecision;
@@ -98,6 +99,15 @@ pub struct IntentResponse {
   pub decision: IntentDecision,
 }
 
+//
+// PendingArtifact
+//
+
+struct PendingArtifact {
+  chunked: bool,
+  response_tx: oneshot::Sender<UploadArtifactResponse>,
+}
+
 /// Used to track pending upload requests. Requests are identified by a UUID recorded at
 /// upload time, which is used to correlate it with incoming response. Each pending request
 /// maintains a oneshot channel which is used to signal back to the uploader the result of the
@@ -110,6 +120,7 @@ pub struct StateTracker {
   // A map of pending log intents to their response channel. This is used to communicate back the
   // result of an intent request back to the upload task.
   pending_intents: HashMap<String, tokio::sync::oneshot::Sender<IntentResponse>>,
+  pending_artifacts: HashMap<String, PendingArtifact>,
 }
 
 impl StateTracker {
@@ -118,12 +129,45 @@ impl StateTracker {
     Self {
       pending_uploads: HashMap::new(),
       pending_intents: HashMap::new(),
+      pending_artifacts: HashMap::new(),
     }
   }
 
   #[must_use]
   pub fn has_pending_requests(&self) -> bool {
-    !self.pending_uploads.is_empty() || !self.pending_intents.is_empty()
+    !self.pending_uploads.is_empty()
+      || !self.pending_intents.is_empty()
+      || !self.pending_artifacts.is_empty()
+  }
+
+  pub fn track_artifact(&mut self, upload: TrackedArtifactUpload) -> UploadArtifactRequest {
+    let uuid = upload.uuid.clone();
+    let (request, response_tx) = upload.into_parts();
+    self.pending_artifacts.insert(
+      uuid,
+      PendingArtifact {
+        chunked: request.logical_bytes.is_some(),
+        response_tx,
+      },
+    );
+    request
+  }
+
+  pub fn resolve_artifact(&mut self, response: UploadArtifactResponse) -> anyhow::Result<()> {
+    let pending = self
+      .pending_artifacts
+      .remove(&response.upload_uuid)
+      .ok_or_else(|| {
+        anyhow!(
+          "State for artifact request with uuid {:?} was inconsistent",
+          response.upload_uuid
+        )
+      })?;
+    if !pending.chunked && (response.state.value() != 0 || !response.received_chunks.is_empty()) {
+      anyhow::bail!("chunked acknowledgement does not match a whole-file artifact request");
+    }
+    let _ignored = pending.response_tx.send(response);
+    Ok(())
   }
 
   /// Track a log upload intent, converting it into an upload intent request.
@@ -492,7 +536,7 @@ pub type TrackedSankeyPathUploadIntentRequest = Tracked<SankeyIntentRequest, Int
 /// response to a specific listener.
 pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, IntentResponse>;
 
-pub type TrackedArtifactUpload = Tracked<UploadArtifactRequest, UploadResponse>;
+pub type TrackedArtifactUpload = Tracked<UploadArtifactRequest, UploadArtifactResponse>;
 pub type TrackedArtifactIntent = Tracked<UploadArtifactIntentRequest, IntentResponse>;
 
 #[derive(Debug)]

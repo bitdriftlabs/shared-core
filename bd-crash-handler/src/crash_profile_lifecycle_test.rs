@@ -8,7 +8,7 @@
 use super::{CrashReportBuilder, Setup};
 use crate::ReportOrigin;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
+use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_artifact_upload::crash_profile::Kind;
 use bd_artifact_upload::crash_profile_attribution::CrashProfileAttribution;
 use bd_artifact_upload::test::heap_profile;
@@ -19,6 +19,7 @@ use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::ReportType;
+use bd_proto::protos::client::api::UploadArtifactResponse;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_runtime::runtime::{FeatureFlag as _, attachment};
 use bd_runtime::test::TestConfigLoader;
@@ -203,9 +204,9 @@ impl Pipeline {
     let before_ack = *self.queue_revision.borrow_and_update();
     upload
       .response_tx
-      .send(UploadResponse {
-        uuid: upload.uuid,
-        success: true,
+      .send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
       })
       .unwrap();
     // This observes the real uploader retiring its durable index entry, not merely sending ACK.
