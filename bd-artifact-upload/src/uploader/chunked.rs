@@ -31,7 +31,11 @@ use super::{
   Uploader,
   WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID,
 };
-use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
+use bd_client_common::artifact::{
+  CRASH_PROFILE_ARTIFACT_TYPE_ID,
+  CRASH_PROFILE_MAX_REPORT_IDS,
+  MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES,
+};
 use bd_client_common::file::{read_compressed_limited, read_limited, write_compressed};
 use bd_client_common::file_system::{FileSystem, OwnedFile};
 use bd_proto::protos::client::api::{
@@ -130,12 +134,34 @@ fn validate_metadata(request: &UploadArtifactRequest, limit: u64) -> anyhow::Res
     anyhow::bail!("invalid local chunked artifact metadata");
   }
 
-  // Remote results require command provenance; workflow attachments use session provenance only.
+  // Parent report IDs are immutable crash-profile associations, never command authority.
+  if request.type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID {
+    let parents = request
+      .crash_profile
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("missing profile parent metadata"))?;
+    let mut ids = HashSet::new();
+    if parents.report_ids.is_empty() || parents.report_ids.len() > CRASH_PROFILE_MAX_REPORT_IDS {
+      anyhow::bail!("invalid profile parent count");
+    }
+    for parent in &parents.report_ids {
+      if !ids.insert(safe_id(parent)?) {
+        anyhow::bail!("duplicate profile parent");
+      }
+    }
+  } else if request.crash_profile.is_some() {
+    anyhow::bail!("profile metadata on a non-profile artifact");
+  }
   match &request.command_id {
-    Some(command_id) if request.type_id != WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID => {
+    Some(command_id)
+      if request.type_id != WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
+        && request.type_id != CRASH_PROFILE_ARTIFACT_TYPE_ID =>
+    {
       safe_id(command_id)?;
     },
-    None if request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID => {},
+    None
+      if request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
+        || request.type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID => {},
     _ => anyhow::bail!("invalid local chunked artifact provenance"),
   }
 

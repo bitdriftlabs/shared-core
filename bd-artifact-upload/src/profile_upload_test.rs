@@ -7,10 +7,266 @@
 
 use super::*;
 use crate::uploader::NewUpload;
+use bd_api::upload::TrackedArtifactUpload;
 use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, CRASH_PROFILE_ARTIFACT_TYPE_ID};
 use bd_client_common::file::{read_compressed, write_compressed};
 use bd_macros::ApproximateSize;
 use bd_proto::protos::client::api::CrashProfileMetadata;
+use bd_proto::protos::client::api::upload_artifact_response::State;
+use bd_runtime::runtime::chunked_artifact_upload;
+
+async fn enable_chunks(setup: &Setup) {
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_update(
+      vec![
+        (
+          chunked_artifact_upload::Enabled::path(),
+          ValueKind::Bool(true),
+        ),
+        (attachment::MaxBytes::path(), ValueKind::Int(4)),
+      ],
+      "profiles".into(),
+    ))
+    .await
+    .unwrap();
+}
+
+async fn chunk_request(setup: &mut Setup) -> TrackedArtifactUpload {
+  loop {
+    match timeout(5.std_seconds(), setup.data_upload_rx.recv())
+      .await
+      .unwrap()
+      .unwrap()
+    {
+      DataUpload::ArtifactUpload(upload) if !upload.response_tx.is_closed() => return upload,
+      DataUpload::ArtifactUpload(_) => {},
+      _ => panic!("profile chunks must not use a whole-file intent"),
+    }
+  }
+}
+
+#[tokio::test]
+async fn profile_chunks_survive_restart_and_policy_reduction_with_original_parents() {
+  let mut setup = Setup::new(4).await;
+  enable_chunks(&setup).await;
+  let relative = PathBuf::from("crash_profiles/profile.data");
+  fs::create_dir_all(setup.filesystem.directory().join("crash_profiles")).unwrap();
+  let bytes = vec![37; 1024 * 1024 + 19];
+  setup
+    .filesystem
+    .write_file(&relative, &bytes)
+    .await
+    .unwrap();
+  let source = setup.filesystem.directory().join(&relative);
+  let captured = datetime!(2025-01-02 03:04:05 UTC);
+  let parents = CrashProfileMetadata {
+    report_ids: (0 .. 16).map(|_| Uuid::new_v4().to_string()).collect(),
+    ..Default::default()
+  };
+  let (tx, rx) = oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_crash_profile(
+      UploadSource::Path(source.clone()),
+      captured,
+      "original-session".into(),
+      "application/vnd.bitdrift.perfetto-trace".into(),
+      parents.clone(),
+      Some(tx),
+    )
+    .unwrap();
+  rx.await.unwrap().unwrap();
+  assert!(!source.exists());
+  // Only durable uploader ownership survives admission-policy reductions.
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_update(
+      vec![
+        (
+          chunked_artifact_upload::Enabled::path(),
+          ValueKind::Bool(false),
+        ),
+        (
+          chunked_artifact_upload::MaxLogicalBytes::path(),
+          ValueKind::Int(1),
+        ),
+        (
+          chunked_artifact_upload::MaxAdmittedFiles::path(),
+          ValueKind::Int(0),
+        ),
+      ],
+      "reduced".into(),
+    ))
+    .await
+    .unwrap();
+  setup = setup.crash_and_reinitialize().await;
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let begin = chunk_request(&mut setup).await;
+  let template = begin.payload.clone();
+  assert_eq!(template.artifact_id, id.to_string());
+  assert_eq!(template.session_id, "original-session");
+  assert_eq!(template.time, captured.into_proto());
+  assert_eq!(template.crash_profile.as_ref(), Some(&parents));
+  assert_eq!(template.state_metadata, command_state_metadata());
+  assert!(template.command_id.is_none());
+  let chunks = template.chunks.len();
+  // Lose the first Begin ACK, then recover without attribution or a parent re-enqueue.
+  drop(begin);
+  setup = setup.crash_and_reinitialize().await;
+  let begin = chunk_request(&mut setup).await;
+  let mut replay = begin.payload.clone();
+  replay.upload_uuid = template.upload_uuid.clone();
+  assert_eq!(replay, template);
+  let reply = |request: TrackedArtifactUpload, finalized: bool, received_chunks: Vec<u8>| {
+    request
+      .response_tx
+      .send(UploadArtifactResponse {
+        upload_uuid: request.uuid,
+        state: if finalized {
+          State::STATE_FINALIZED
+        } else {
+          State::STATE_RECEIVING
+        }
+        .into(),
+        received_chunks,
+        ..Default::default()
+      })
+      .unwrap();
+  };
+  reply(begin, false, vec![0]);
+  let mut reconstructed = Vec::new();
+  for (index, descriptor) in template.chunks.iter().enumerate() {
+    let upload = chunk_request(&mut setup).await;
+    assert_eq!(
+      upload.payload.chunk_index,
+      Some(u32::try_from(index).unwrap())
+    );
+    assert!(upload.payload.crash_profile.is_none());
+    assert!(upload.payload.state_metadata.is_empty());
+    assert_eq!(upload.payload.session_id, "");
+    if descriptor.encoding.enum_value_or_default()
+      == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+    {
+      reconstructed.extend(read_compressed(&upload.payload.contents).unwrap());
+    } else {
+      reconstructed.extend_from_slice(&upload.payload.contents);
+    }
+    if index + 1 == chunks {
+      // Persistence and intermediate ACKs do not delete the durable upload.
+      assert!(!setup.filesystem.files().is_empty());
+    }
+    reply(upload, index + 1 == chunks, vec![(1 << (index + 1)) - 1]);
+  }
+  assert_eq!(reconstructed, bytes);
+  assert_eq!(
+    setup.upload_complete_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  setup.shutdown().await;
+}
+
+#[tokio::test]
+async fn chunked_profile_parent_validation_and_owned_failure_cleanup() {
+  let setup = Setup::new(4).await;
+  enable_chunks(&setup).await;
+  let parent = Uuid::new_v4().to_string();
+  for parents in [
+    vec![],
+    vec![parent.clone(); 2],
+    vec![parent.clone(); 17],
+    vec![Uuid::nil().to_string()],
+    vec![parent.to_uppercase()],
+    vec!["invalid".into()],
+  ] {
+    let source = setup
+      .filesystem
+      .directory()
+      .join(Uuid::new_v4().to_string());
+    fs::write(&source, b"profile larger than ordinary limit").unwrap();
+    let (tx, rx) = oneshot::channel();
+    assert!(
+      setup
+        .client
+        .enqueue_crash_profile(
+          UploadSource::Path(source.clone()),
+          OffsetDateTime::now_utc(),
+          "session".into(),
+          "application/vnd.bitdrift.perfetto-trace".into(),
+          CrashProfileMetadata {
+            report_ids: parents,
+            ..Default::default()
+          },
+          Some(tx),
+        )
+        .is_err()
+    );
+    assert!(rx.await.is_err());
+    assert!(!source.exists());
+  }
+  setup.shutdown().await;
+}
+
+#[tokio::test]
+async fn profile_handoff_applies_current_admission_regardless_of_filename() {
+  let mut setup = Setup::new(4).await;
+  enable_chunks(&setup).await;
+  fs::create_dir_all(setup.filesystem.directory().join("crash_profiles")).unwrap();
+  for enabled in [true, false] {
+    setup
+      .runtime
+      .update_snapshot(bd_test_helpers::runtime::make_update(
+        vec![
+          (
+            chunked_artifact_upload::Enabled::path(),
+            ValueKind::Bool(enabled),
+          ),
+          (
+            chunked_artifact_upload::MaxLogicalBytes::path(),
+            ValueKind::Int(16),
+          ),
+          (attachment::MaxBytes::path(), ValueKind::Int(4)),
+        ],
+        format!("policy-{enabled}"),
+      ))
+      .await
+      .unwrap();
+    for name in [
+      "profile.anr".to_string(),
+      format!("{}.chunked.oom", Uuid::new_v4()),
+      format!("{}.chunked.anr.bitdrift-retained-anr", Uuid::new_v4()),
+    ] {
+      let source = setup
+        .filesystem
+        .directory()
+        .join("crash_profiles")
+        .join(name);
+      fs::write(&source, [7; 32]).unwrap();
+      let (tx, rx) = oneshot::channel();
+      setup
+        .client
+        .enqueue_crash_profile(
+          UploadSource::Path(source.clone()),
+          OffsetDateTime::now_utc(),
+          "session".into(),
+          "application/vnd.bitdrift.perfetto-trace".into(),
+          CrashProfileMetadata {
+            report_ids: vec![Uuid::new_v4().to_string()],
+            ..Default::default()
+          },
+          Some(tx),
+        )
+        .unwrap();
+      assert!(rx.await.unwrap().is_err());
+      assert!(!source.exists());
+      if !enabled {
+        // Whole-file test hooks also report rejected preparation attempts.
+        setup.entry_received_rx.recv().await.unwrap();
+      }
+    }
+  }
+  setup.shutdown().await;
+}
 
 #[test]
 fn legacy_indexes_decode_without_profile_metadata() {

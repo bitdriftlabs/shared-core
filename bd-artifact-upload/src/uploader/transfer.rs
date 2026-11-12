@@ -8,9 +8,9 @@
 //! One bounded chunk-mode RPC at a time, round-robin across durable artifacts. Receipt progress is
 //! queried again after restart or a failed attempt; retained uploads have no overall timeout.
 
+use super::Uploader;
 use super::chunked::{CHUNK_BYTES, chunk_path};
 use super::storage::StoredArtifact;
-use super::{Uploader, WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID};
 use bd_api::DataUpload;
 use bd_api::upload::TrackedArtifactUpload;
 use bd_backoff::{ExponentialBackoff, InfiniteBackoff};
@@ -139,9 +139,6 @@ impl Uploader {
       let Some(template) = entry.request.as_ref() else {
         continue;
       };
-      if template.command_id.is_none() && template.type_id != WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID {
-        continue;
-      }
       let progress = self
         .chunk_progress
         .entry(template.artifact_id.clone())
