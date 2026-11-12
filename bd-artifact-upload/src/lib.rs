@@ -29,7 +29,15 @@ pub mod test;
 pub use bd_metadata::artifact::PERFETTO_CONTENT_TYPE;
 pub use crash_profile_source::encode_source;
 pub use report_attribution::{ReportAttribution, restore_pending_reports};
-pub use uploader::{Client, EnqueueError, MockClient, SnappedFeatureFlag, UploadSource, Uploader};
+pub use uploader::{
+  ChunkedFileAdmission,
+  Client,
+  EnqueueError,
+  MockClient,
+  SnappedFeatureFlag,
+  UploadSource,
+  Uploader,
+};
 
 #[cfg(test)]
 #[ctor::ctor(unsafe)]

@@ -30,6 +30,7 @@ mod tests;
 #[path = "./chunked_test.rs"]
 mod chunked_tests;
 
+mod admission;
 mod chunked;
 
 mod staging;
@@ -98,6 +99,7 @@ pub static ARTIFACT_UPLOAD_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "repo
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
 
 pub const WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID: &str = "workflow_attachment";
+pub use admission::ChunkedFileAdmission;
 const INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Default, Clone, Copy)]
@@ -234,7 +236,8 @@ pub enum UploadSource {
   // intended for use cases where the data format is already self-validating (e.g. crc checksum or
   // zlib compression).
   Path(PathBuf),
-  // A checksum-verified workflow payload borrowed in place through a durable upload-index lease.
+  // A workflow payload borrowed through a durable upload-index lease: .payload is zlib; .raw is
+  // streamed, checksummed input for chunk preparation.
   Retained(PathBuf),
 }
 
@@ -252,7 +255,7 @@ impl UploadSource {
   ///
   /// Root resolution belongs to the supplied filesystem. Regular-file and size checks happen here
   /// once; the bounded reader still enforces the limit while reading, so growth cannot yield a
-  /// truncated success. Retained payloads are already encoded and must not be compressed again.
+  /// truncated success. Retained payloads have their own envelope and preparation path.
   pub async fn into_reader(
     self,
     filesystem: &dyn FileSystem,
@@ -397,6 +400,7 @@ pub trait Client: Send + Sync {
 
   /// Borrows the canonical payload. A workflow store must supply its cleanup-exclusion permit;
   /// the queue holds that permit until its durable index lease replaces it.
+  /// Checksummed `.raw` sources retain their admitted chunk mode across runtime reductions.
   fn enqueue_workflow_attachment(
     &self,
     artifact_id: Uuid,
@@ -489,9 +493,10 @@ impl UploadClient {
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<Uuid, EnqueueError> {
-    let chunked = command_id.is_some()
+    let chunked = (command_id.is_some()
       && matches!(source, UploadSource::Path(_))
-      && *self.chunked_enabled.read();
+      && *self.chunked_enabled.read())
+      || matches!(&source, UploadSource::Retained(path) if path.extension().is_some_and(|extension| extension == "raw"));
     let timestamp = if chunked {
       Some(timestamp.unwrap_or_else(|| self.time_provider.now()))
     } else {
@@ -536,7 +541,7 @@ impl UploadClient {
     upload.source_lease = source_lease;
     if chunked {
       chunked::validate_capture_request(&upload.request).map_err(|error| {
-        log::warn!("invalid command chunk capture metadata: {error}");
+        log::warn!("invalid artifact chunk capture metadata: {error}");
         EnqueueError::Other(error)
       })?;
     }
@@ -589,7 +594,9 @@ impl Client for UploadClient {
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<(), EnqueueError> {
-    if source_path != Path::new(&format!("workflow-attachments/{artifact_id}.payload")) {
+    if source_path != Path::new(&format!("workflow-attachments/{artifact_id}.payload"))
+      && source_path != Path::new(&format!("workflow-attachments/{artifact_id}.raw"))
+    {
       return Err(EnqueueError::Other(anyhow::anyhow!(
         "invalid workflow attachment path"
       )));

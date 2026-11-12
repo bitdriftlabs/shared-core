@@ -29,10 +29,11 @@ use bd_proto::protos::client::runtime::runtime::value::Type;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::workflow_attachment::{MaxOwnedBytes, MaxOwnedFiles};
-use bd_runtime::runtime::{ConfigLoader, FeatureFlag, IntWatch};
+use bd_runtime::runtime::{ConfigLoader, FeatureFlag, IntWatch, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::{RetentionHandle, RetentionRegistry};
+use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_time::TestTimeProvider;
 use flate2::read::ZlibDecoder;
 use parking_lot::Mutex;
@@ -78,9 +79,28 @@ impl TestHooks for AdmissionTestHooks {
 
 #[tokio::test]
 async fn cancelled_admission_never_leaks_files_or_capacity() {
-  for phase in ["waiting", "writing", "delivered"] {
+  for (phase, chunked) in ["waiting", "writing", "delivered"]
+    .into_iter()
+    .flat_map(|phase| [false, true].map(|chunked| (phase, chunked)))
+  {
     let directory = tempfile::tempdir().unwrap();
     let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
+    runtime
+      .update_snapshot(make_update(
+        vec![
+          (
+            chunked_artifact_upload::Enabled::path(),
+            ValueKind::Bool(chunked),
+          ),
+          (
+            chunked_artifact_upload::WorkflowEnabled::path(),
+            ValueKind::Bool(chunked),
+          ),
+        ],
+        Uuid::new_v4().to_string(),
+      ))
+      .await
+      .unwrap();
     let mut store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
       .get()
       .await
@@ -96,7 +116,14 @@ async fn cancelled_admission_never_leaks_files_or_capacity() {
     } else {
       None
     };
-    let mut admission = Box::pin(store.admit(UploadSource::Bytes(b"cancelled".to_vec()), None));
+    let source = if chunked {
+      let path = directory.path().join("capture");
+      fs::write(&path, b"cancelled").await.unwrap();
+      UploadSource::Path(path)
+    } else {
+      UploadSource::Bytes(b"cancelled".to_vec())
+    };
+    let mut admission = Box::pin(store.admit(source, None));
     assert!(futures_util::poll!(&mut admission).is_pending());
     if phase != "waiting" {
       started_rx.await.unwrap();

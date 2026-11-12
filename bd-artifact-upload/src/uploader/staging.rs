@@ -24,6 +24,7 @@ use super::{
   Artifact,
   ArtifactPayloadEncoding,
   ArtifactType,
+  ChunkedFileAdmission,
   EnqueueError,
   NewUpload,
   PreparationMode,
@@ -140,12 +141,20 @@ impl Uploader {
         .map_err(|error| EnqueueError::RetryablePersistence(error.into()))?;
     }
     let id = &request.artifact_id;
-    if self.chunked.entries.iter().any(|entry| {
+    if let Some(existing) = self.chunked.entries.iter().find(|entry| {
       entry
         .request
         .as_ref()
         .is_some_and(|entry| entry.artifact_id == *id)
     }) {
+      if mode == PreparationMode::Chunked
+        && request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
+        && let Some(existing) = existing.request.as_ref()
+        && existing.type_id == request.type_id
+        && existing.session_id == request.session_id
+      {
+        return Ok(existing.logical_bytes);
+      }
       return Err(EnqueueError::Other(anyhow::anyhow!(
         "artifact ID already has chunked ownership"
       )));
@@ -163,12 +172,27 @@ impl Uploader {
       )));
     }
     let retained = matches!(source, UploadSource::Retained(_));
+    let _preparation = if mode == PreparationMode::Chunked {
+      Some(
+        ChunkedFileAdmission::lock()
+          .await
+          .map_err(EnqueueError::Other)?,
+      )
+    } else {
+      None
+    };
     let size = match mode {
       PreparationMode::Chunked => {
         let entry = self
           .prepare_chunked(source, request, source_cleanup, files)
           .await
-          .map_err(EnqueueError::Other)?;
+          .map_err(|error| {
+            if retained {
+              retained_persistence_error(error)
+            } else {
+              EnqueueError::Other(error)
+            }
+          })?;
         let size = entry
           .request
           .as_ref()
