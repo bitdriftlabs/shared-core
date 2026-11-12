@@ -493,7 +493,7 @@ impl UploadClient {
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<Uuid, EnqueueError> {
-    let chunked = (command_id.is_some()
+    let chunked = ((command_id.is_some() || type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID)
       && matches!(source, UploadSource::Path(_))
       && *self.chunked_enabled.read())
       || matches!(&source, UploadSource::Retained(path) if path.extension().is_some_and(|extension| extension == "raw"));
@@ -509,9 +509,7 @@ impl UploadClient {
         .into_iter()
         .map(|(key, value)| (key.into(), value.into_proto()))
         .collect(),
-      time: timestamp
-        .map(OffsetDateTimeExt::into_proto)
-        .unwrap_or_default(),
+      time: timestamp.map_or_else(Default::default, OffsetDateTimeExt::into_proto),
       session_id,
       feature_flags: feature_flags
         .into_iter()

@@ -102,6 +102,8 @@ impl ChunkedFileAdmission {
   ) -> anyhow::Result<()> {
     let logical_limit =
       u64::from((*self.max_logical_bytes.read()).min(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES));
+    let owned_limit = u64::from(*self.max_owned_bytes.read()).min(MAX_OWNED_BYTES);
+    let files_limit = (*self.max_files.read() as usize).min(MAX_FILES);
     if logical_bytes > logical_limit {
       anyhow::bail!("chunked artifact logical byte admission exhausted");
     }
@@ -171,16 +173,18 @@ impl ChunkedFileAdmission {
       }
       ids.insert(id);
     }
+    // TODO: Account for pre-attribution private profile storage in the shared byte budget.
+    // It is separately bounded today and only enters this inventory at uploader handoff.
     let source_charge = if source_identity.is_some_and(|key| identities.contains(&key)) {
       0
     } else {
       source_bytes
     };
-    if ids.len() >= (*self.max_files.read() as usize).min(MAX_FILES)
+    if ids.len() >= files_limit
       || used
         .saturating_add(source_charge)
         .saturating_add(logical_bytes)
-        > u64::from(*self.max_owned_bytes.read()).min(MAX_OWNED_BYTES)
+        > owned_limit
     {
       anyhow::bail!("chunked artifact slots or physical byte admission exhausted");
     }
