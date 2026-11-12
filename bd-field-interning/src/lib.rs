@@ -525,8 +525,7 @@ impl FieldInterner {
     let previous = self
       .current
       .as_ref()
-      .map(|current| current.fields.clone())
-      .unwrap_or_default();
+      .map_or_default(|current| current.fields.clone());
     let changed: Vec<(LogFieldKey, bool)> = if self.recompute_all {
       persistent
         .keys()
