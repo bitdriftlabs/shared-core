@@ -1452,6 +1452,8 @@ pub enum WellKnownCommandType {
     TAKE_SCREENSHOT = 2,
     // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.WellKnownCommandType.STACK_SAMPLING_TRACE)
     STACK_SAMPLING_TRACE = 3,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.WellKnownCommandType.MEMORY_DUMP)
+    MEMORY_DUMP = 12,
 }
 
 impl ::protobuf::Enum for WellKnownCommandType {
@@ -1467,6 +1469,7 @@ impl ::protobuf::Enum for WellKnownCommandType {
             1 => ::std::option::Option::Some(WellKnownCommandType::DUMP_DEVICE_BUFFER),
             2 => ::std::option::Option::Some(WellKnownCommandType::TAKE_SCREENSHOT),
             3 => ::std::option::Option::Some(WellKnownCommandType::STACK_SAMPLING_TRACE),
+            12 => ::std::option::Option::Some(WellKnownCommandType::MEMORY_DUMP),
             _ => ::std::option::Option::None
         }
     }
@@ -1477,6 +1480,7 @@ impl ::protobuf::Enum for WellKnownCommandType {
             "DUMP_DEVICE_BUFFER" => ::std::option::Option::Some(WellKnownCommandType::DUMP_DEVICE_BUFFER),
             "TAKE_SCREENSHOT" => ::std::option::Option::Some(WellKnownCommandType::TAKE_SCREENSHOT),
             "STACK_SAMPLING_TRACE" => ::std::option::Option::Some(WellKnownCommandType::STACK_SAMPLING_TRACE),
+            "MEMORY_DUMP" => ::std::option::Option::Some(WellKnownCommandType::MEMORY_DUMP),
             _ => ::std::option::Option::None
         }
     }
@@ -1486,6 +1490,7 @@ impl ::protobuf::Enum for WellKnownCommandType {
         WellKnownCommandType::DUMP_DEVICE_BUFFER,
         WellKnownCommandType::TAKE_SCREENSHOT,
         WellKnownCommandType::STACK_SAMPLING_TRACE,
+        WellKnownCommandType::MEMORY_DUMP,
     ];
 }
 
@@ -1496,7 +1501,13 @@ impl ::protobuf::EnumFull for WellKnownCommandType {
     }
 
     fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
-        let index = *self as usize;
+        let index = match self {
+            WellKnownCommandType::TYPE_UNSPECIFIED => 0,
+            WellKnownCommandType::DUMP_DEVICE_BUFFER => 1,
+            WellKnownCommandType::TAKE_SCREENSHOT => 2,
+            WellKnownCommandType::STACK_SAMPLING_TRACE => 3,
+            WellKnownCommandType::MEMORY_DUMP => 4,
+        };
         Self::enum_descriptor().value_by_index(index)
     }
 }
@@ -1566,7 +1577,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     mmandTypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\x10\x01\x1ag\n\x0eArguments\
     Entry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\
     \x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value:\
-    \x028\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01*\xc8\x04\n\x14Well\
+    \x028\x01B\x17\n\x10command_selector\x12\x03\xf8B\x01*\x98\x07\n\x14Well\
     KnownCommandType\x12\x14\n\x10TYPE_UNSPECIFIED\x10\0\x12o\n\x12DUMP_DEVI\
     CE_BUFFER\x10\x01\x1aW\xc2\xf3\x18S\n\x12dump_device_buffer\x12$Requests\
     \x20the\x20device's\x20buffered\x20logs.*\x17\n\t\x08\x01\x12\x036.0\x18\
@@ -1580,10 +1591,19 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ow\x20long\x20to\x20sample,\x20in\x20milliseconds.2\x03(\xb8\x17\x1a/\n\
     \x0cfrequency_hz\x10\x05\x1a\x19Sampling\x20frequency\x20in\x20Hz.2\x02(\
     d\x1a1\n\x0ebuffer_size_kb\x10\x05\x1a\x18Trace\x20buffer\x20size\x20in\
-    \x20KB.2\x03(\x80\x10*\n\n\x08\x08\x01\x12\x0215\x182:\x9f\x01\n\x1awell\
-    _known_command_options\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.pr\
-    otobuf.workflow.v1.WellKnownCommandOptions\x12!.google.protobuf.EnumValu\
-    eOptionsR\x17wellKnownCommandOptionsb\x06proto3\
+    \x20KB.2\x03(\x80\x10*\n\n\x08\x08\x01\x12\x0215\x182\x12\xcd\x02\n\x0bM\
+    EMORY_DUMP\x10\x0c\x1a\xbb\x02\xc2\xf3\x18\xb6\x02\n\x0bmemory_dump\x120\
+    Captures\x20a\x20snapshot\x20of\x20the\x20application's\x20memory.\x1ay\
+    \n\x0cinclude_heap\x10\x06\x1a]Includes\x20a\x20census\x20of\x20the\x20m\
+    alloc\x20heap,\x20which\x20briefly\x20locks\x20each\x20malloc\x20zone.\
+    \x20Defaults\x20to\x20true.\x20\x01*\x06\n\x04\x08\x02\x184\x1ab\n\x0ebu\
+    ffer_size_kb\x10\x05\x1aDTrace\x20buffer\x20size\x20in\x20KB.\x20A\x20du\
+    mp\x20larger\x20than\x20the\x20buffer\x20is\x20truncated.\x20\x01*\x06\n\
+    \x04\x08\x01\x185*\x16\n\x08\x08\x01\x12\x0215\x185\n\n\x08\x02\x12\x041\
+    5.0\x184:\x9f\x01\n\x1awell_known_command_options\x18\xb8\x8e\x03\x20\
+    \x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.WellKnownCommandOptions\
+    \x12!.google.protobuf.EnumValueOptionsR\x17wellKnownCommandOptionsb\x06p\
+    roto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

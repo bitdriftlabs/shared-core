@@ -1710,6 +1710,7 @@ impl From<Report<'_>> for ScriptValue {
       ("app_metrics", value.app_metrics().into()),
       ("binary_images", value.binary_images().into()),
       ("crash_info", value.crash_info().into()),
+      ("crash_profile_source", value.crash_profile_source().into()),
       ("device_metrics", value.device_metrics().into()),
       ("errors", value.errors().into()),
       ("feature_flags", value.feature_flags().into()),
@@ -1754,6 +1755,12 @@ impl Scriptable for Report<'_> {
         };
         values.resolve(&path[1 ..])
       },
+      "crash_profile_source" => {
+        let Some(values) = self.crash_profile_source() else {
+          return Ok(None);
+        };
+        values.resolve(&path[1 ..])
+      },
       "device_metrics" => self.device_metrics().resolve(&path[1 ..]),
       "errors" => {
         let Some(values) = self.errors() else {
@@ -1793,6 +1800,10 @@ impl Scriptable for Report<'_> {
         .with_known(
           "crash_info",
           Kind::array(Collection::empty().with_unknown(CrashInfo::schema())),
+        )
+        .with_known(
+          "crash_profile_source",
+          Kind::array(Collection::empty().with_unknown(Kind::integer())),
         )
         .with_known(
           "errors",
