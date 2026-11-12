@@ -10,7 +10,13 @@
 mod interned_test;
 
 use crate::{DataValue, LogFieldKey, LogFieldValue, LogFields};
-use bd_proto_util::serialization::{CanonicalType, ProtoFieldSerialize, ProtoType};
+use bd_proto_util::serialization::{
+  CanonicalType,
+  ProtoFieldSerialize,
+  ProtoType,
+  compute_map_size,
+  serialize_map,
+};
 use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
 use std::sync::Arc;
@@ -120,6 +126,11 @@ pub fn same_value(a: &LogFieldValue, b: &LogFieldValue) -> bool {
 
 /// The fields of a log as they are encoded: the inline fields minus those left out by interning,
 /// followed by any `cleared` markers.
+///
+/// This replaces encoding `&LogFields` directly for two reasons. Leaving fields out by filtering
+/// the log's own map avoids copying it on every buffer write. And a `cleared` marker is a
+/// `Log.Field` with `cleared = 3` set instead of a value, so it cannot be written as a map entry;
+/// it shares the repeated `fields` field with the entries, so the two are written together here.
 #[derive(Debug, Clone, Copy)]
 pub struct LogFieldsRef<'a> {
   fields: &'a LogFields,
@@ -174,27 +185,19 @@ impl<'a> LogFieldsRef<'a> {
 
   fn compute(&self, field_number: u32) -> u64 {
     let tag_size = protobuf::rt::tag_size(field_number);
-    let entry =
-      |entry_size: u64| tag_size + protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size;
-    self
-      .encoded_fields()
-      .map(|(key, value)| entry(key.compute_size(1) + value.compute_size(2)))
-      .chain(
-        self
-          .cleared()
-          .iter()
-          .map(|key| entry(Self::cleared_entry_size(key))),
-      )
-      .sum()
+    let cleared: u64 = self
+      .cleared()
+      .iter()
+      .map(|key| {
+        let entry_size = Self::cleared_entry_size(key);
+        tag_size + protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
+      })
+      .sum();
+    compute_map_size(self.encoded_fields(), field_number) + cleared
   }
 
   fn write(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> anyhow::Result<()> {
-    for (key, value) in self.encoded_fields() {
-      os.write_tag(field_number, WireType::LengthDelimited)?;
-      os.write_raw_varint64(key.compute_size(1) + value.compute_size(2))?;
-      key.serialize(1, os)?;
-      value.serialize(2, os)?;
-    }
+    serialize_map(self.encoded_fields(), field_number, os)?;
     for key in self.cleared() {
       os.write_tag(field_number, WireType::LengthDelimited)?;
       os.write_raw_varint64(Self::cleared_entry_size(key))?;
@@ -239,8 +242,9 @@ impl ProtoFieldSerialize for LogFieldsRef<'_> {
 
 /// Returns the `field_set_version` of an encoded log, or 0 if it has none or cannot be read.
 ///
-/// Only top-level tags are read, so compressed contents are never decompressed. If the field is
-/// repeated, the last value wins, as in the generated parser.
+/// This runs for every uploaded log, so it reads only top-level tags instead of parsing the whole
+/// log, and compressed contents are never decompressed. If the field is repeated, the last value
+/// wins, as in the generated parser.
 #[must_use]
 pub fn encoded_field_set_version(log: &[u8]) -> u64 {
   let mut input = CodedInputStream::from_bytes(log);
