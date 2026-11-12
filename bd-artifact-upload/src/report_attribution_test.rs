@@ -5,8 +5,6 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::unwrap_used)]
-
 use super::*;
 use bd_client_common::file::{write_checksummed_data, write_compressed_protobuf};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
