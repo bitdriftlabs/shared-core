@@ -175,9 +175,6 @@ pub struct VersionTable {
   /// Set when a rotation could not bring the table below its high-water mark, so later writes do
   /// not rotate again until the table is actually full.
   rotation_ineffective: bool,
-  /// The versions in the table, as ranges of consecutive numbers, so a version that is not in the
-  /// table is answered without walking it.
-  versions: Vec<(u64, u64)>,
   /// Where recent resolutions stopped, most recently used last. Each uploader reads versions in
   /// order, so it walks the table forward from its own cursor instead of replaying it, and a
   /// repeated version is answered from the cursor.
@@ -236,8 +233,8 @@ impl VersionTable {
     let exists = std::fs::exists(&path).unwrap_or(false);
     if exists {
       match Self::recover(&path, time_provider.clone()) {
-        Ok((journal, recovered, base_version, false)) => {
-          let mut table = Self {
+        Ok((journal, recovered, base_version)) => {
+          let table = Self {
             directory: directory.to_path_buf(),
             journal,
             max_bytes,
@@ -245,18 +242,12 @@ impl VersionTable {
             base_version,
             newest_version: recovered.newest_version,
             rotation_ineffective: false,
-            versions: Vec::new(),
             cursors: Vec::new(),
           };
-          table.rebuild_versions();
           return Ok((table, recovered));
         },
-        Ok(_) => log::debug!(
-          "field-set table at {} lost entries; starting empty",
-          path.display()
-        ),
         Err(error) => log::debug!(
-          "field-set table at {} is unreadable, starting empty: {error}",
+          "field-set table at {} is unusable, starting empty: {error}",
           path.display()
         ),
       }
@@ -288,7 +279,6 @@ impl VersionTable {
         base_version: 0,
         newest_version: 0,
         rotation_ineffective: false,
-        versions: Vec::new(),
         cursors: Vec::new(),
       },
       Recovered {
@@ -300,10 +290,11 @@ impl VersionTable {
   }
 
   /// Replays a journal file, checking that each key matches its entry and that versions increase.
+  /// A journal that lost entries is an error: its chain of changes is broken.
   fn recover(
     path: &Path,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<(MemMappedVersionedJournal<FieldSet>, Recovered, u64, bool)> {
+  ) -> anyhow::Result<(MemMappedVersionedJournal<FieldSet>, Recovered, u64)> {
     let mut state = FieldMap::new();
     let mut newest_version = 0;
     let mut base_version = 0;
@@ -337,7 +328,10 @@ impl VersionTable {
     if let Some(error) = error {
       return Err(error);
     }
-    let partial_data_loss = matches!(partial_data_loss, PartialDataLoss::Yes);
+    anyhow::ensure!(
+      !matches!(partial_data_loss, PartialDataLoss::Yes),
+      "lost entries"
+    );
     Ok((
       journal,
       Recovered {
@@ -346,7 +340,6 @@ impl VersionTable {
         discarded: false,
       },
       base_version,
-      partial_data_loss,
     ))
   }
 
@@ -413,10 +406,6 @@ impl VersionTable {
       Err(UpdateError::System(error)) => return Err(error),
     }
     self.newest_version = version;
-    match self.versions.last_mut() {
-      Some((_, end)) if *end + 1 == version => *end = version,
-      _ => self.versions.push((version, version)),
-    }
 
     // A rotation that could not get below the high-water mark, because `base` alone is that large,
     // is not repeated on every write; the next one happens when the table is full.
@@ -558,7 +547,6 @@ impl VersionTable {
     // so check the position directly.
     self.rotation_ineffective = self.above_high_water();
     self.cursors.clear();
-    self.rebuild_versions();
     Ok(())
   }
 
@@ -577,7 +565,9 @@ impl VersionTable {
     if version < self.base_version {
       return Resolution::BeyondWindow;
     }
-    if version == 0 || version > self.newest_version || !self.contains(version) {
+    // A version in a gap, such as the rest of a block reserved by an earlier process, stops the
+    // walk at the next entry and is reported missing.
+    if version == 0 || version > self.newest_version {
       return Resolution::Missing;
     }
 
@@ -627,26 +617,6 @@ impl VersionTable {
       self.cursors.remove(0);
     }
     resolution
-  }
-
-  /// Whether `version` was written to the table and is at or after its `base`.
-  fn contains(&self, version: u64) -> bool {
-    let index = self.versions.partition_point(|(_, end)| *end < version);
-    self
-      .versions
-      .get(index)
-      .is_some_and(|(start, _)| *start <= version)
-  }
-
-  fn rebuild_versions(&mut self) {
-    let mut versions: Vec<(u64, u64)> = Vec::new();
-    self.journal.for_each_entry(
-      |_scope, _key, entry, _timestamp| match versions.last_mut() {
-        Some((_, end)) if *end + 1 == entry.version => *end = entry.version,
-        _ => versions.push((entry.version, entry.version)),
-      },
-    );
-    self.versions = versions;
   }
 
   fn above_high_water(&self) -> bool {

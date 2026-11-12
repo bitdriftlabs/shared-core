@@ -224,8 +224,6 @@ fn interleaved_resolutions_and_gaps_resolve_correctly() {
       .write(version, false, &map(&[("a", &version.to_string())]), &[])
       .unwrap();
   }
-  assert_eq!(table.versions, vec![(1, 20), (65, 70)]);
-
   // Two readers alternating between old and new versions, as a trigger upload and the continuous
   // uploader do, plus versions in the gap.
   // 66 repeats, so a cursor answers it again without walking.
