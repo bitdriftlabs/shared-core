@@ -87,41 +87,35 @@ impl EntryKind {
 
 /// Applies an entry to a running field set.
 fn apply(state: &mut FieldMap, kind: EntryKind, entry: &FieldSet) {
-  let mut size = 0;
-  apply_sized(state, &mut size, kind, entry);
-}
-
-/// The encoded size of one field of a `FieldSet`, as an entry of its repeated field.
-fn field_size(key: &str, value: &Data) -> usize {
-  let size = protobuf::rt::string_size(1, key) + {
-    let value_size = value.compute_size();
-    1 + protobuf::rt::compute_raw_varint64_size(value_size) + value_size
-  };
-  usize::try_from(1 + protobuf::rt::compute_raw_varint64_size(size) + size).unwrap_or(usize::MAX)
-}
-
-/// Applies an entry and keeps `size` equal to the encoded size of the full set's fields.
-fn apply_sized(state: &mut FieldMap, size: &mut usize, kind: EntryKind, entry: &FieldSet) {
   if kind != EntryKind::Change {
     state.clear();
-    *size = 0;
   }
   for field in &entry.fields {
     match &field.value_type {
       Some(Value_type::Cleared(true)) => {
-        if let Some(old) = state.remove(&field.key) {
-          *size = size.saturating_sub(field_size(&field.key, &old));
-        }
+        state.remove(&field.key);
       },
       Some(Value_type::Value(value)) => {
-        *size = size.saturating_add(field_size(&field.key, value));
-        if let Some(old) = state.insert(field.key.clone(), value.clone()) {
-          *size = size.saturating_sub(field_size(&field.key, &old));
-        }
+        state.insert(field.key.clone(), value.clone());
       },
       Some(Value_type::Cleared(false)) | None => {},
     }
   }
+}
+
+/// The encoded size of a full set's fields, without building the set.
+fn fields_size(fields: &FieldMap) -> usize {
+  fields
+    .iter()
+    .map(|(key, value)| {
+      let size = protobuf::rt::string_size(1, key) + {
+        let value_size = value.compute_size();
+        1 + protobuf::rt::compute_raw_varint64_size(value_size) + value_size
+      };
+      usize::try_from(1 + protobuf::rt::compute_raw_varint64_size(size) + size)
+        .unwrap_or(usize::MAX)
+    })
+    .fold(0, usize::saturating_add)
 }
 
 /// Encodes a full field set, ordered by key.
@@ -510,7 +504,9 @@ impl VersionTable {
         break;
       }
       let (kind, entry, timestamp) = &entries[folded];
-      apply_sized(&mut base, &mut base_size, *kind, entry);
+      apply(&mut base, *kind, entry);
+      // Folding is rare, so the base is measured again rather than tracked as it changes.
+      base_size = fields_size(&base);
       base_version = entry.version;
       base_timestamp = *timestamp;
       remaining -= entry_size(entry);
