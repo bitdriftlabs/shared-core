@@ -26,6 +26,7 @@
 use super::staging::StagedFiles;
 use super::{
   ARTIFACT_UPLOAD_DIRECTORY,
+  ChunkedFileAdmission,
   UploadSource,
   Uploader,
   WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID,
@@ -41,7 +42,7 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::ChunkedArtifact;
 use bd_proto::protos::logging::payload::data::Data_type;
-use bd_runtime::runtime::{BoolWatch, ConfigLoader, IntWatch, chunked_artifact_upload};
+use bd_runtime::runtime::ConfigLoader;
 use protobuf::Message;
 use protobuf::well_known_types::timestamp::Timestamp;
 use sha2::{Digest, Sha256};
@@ -59,9 +60,6 @@ const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 // Reserve room for request framing before staging new ownership.
 const RESERVED_INDEX_ENTRY_BYTES: u64 = MAX_MANIFEST_BYTES + 64;
 const MAX_CAPTURE_METADATA_BYTES: u64 = 8 * 1024;
-const MAX_FILES: usize = 2;
-const MAX_OWNED_BYTES: u64 = 640 * 1024 * 1024;
-const FREE_SPACE_HEADROOM: u64 = MAX_INDEX_BYTES + 1024 * 1024;
 
 //
 // Spool
@@ -69,22 +67,14 @@ const FREE_SPACE_HEADROOM: u64 = MAX_INDEX_BYTES + 1024 * 1024;
 
 pub(super) struct Spool {
   pub(super) entries: Vec<ChunkedArtifact>,
-  enabled: BoolWatch<chunked_artifact_upload::Enabled>,
-  workflow_enabled: BoolWatch<chunked_artifact_upload::WorkflowEnabled>,
-  max_logical_bytes: IntWatch<chunked_artifact_upload::MaxLogicalBytes>,
-  max_owned_bytes: IntWatch<chunked_artifact_upload::MaxOwnedPayloadBytes>,
-  max_files: IntWatch<chunked_artifact_upload::MaxAdmittedFiles>,
+  admission: ChunkedFileAdmission,
 }
 
 impl Spool {
   pub(super) fn new(runtime: &ConfigLoader) -> Self {
     Self {
       entries: Vec::new(),
-      enabled: runtime.register_bool_watch(),
-      workflow_enabled: runtime.register_bool_watch(),
-      max_logical_bytes: runtime.register_int_watch(),
-      max_owned_bytes: runtime.register_int_watch(),
-      max_files: runtime.register_int_watch(),
+      admission: ChunkedFileAdmission::new(runtime),
     }
   }
 }
@@ -247,13 +237,13 @@ pub(super) async fn read_index(
 #[cfg(unix)]
 // Other platforms have no portable inode identity and conservatively charge each path.
 #[allow(clippy::unnecessary_wraps)]
-fn file_identity(metadata: &Metadata) -> Option<(u64, u64)> {
+pub(super) fn file_identity(metadata: &Metadata) -> Option<(u64, u64)> {
   use std::os::unix::fs::MetadataExt;
   Some((metadata.dev(), metadata.ino()))
 }
 
 #[cfg(not(unix))]
-fn file_identity(_: &Metadata) -> Option<(u64, u64)> {
+pub(super) fn file_identity(_: &Metadata) -> Option<(u64, u64)> {
   None
 }
 
@@ -293,9 +283,14 @@ async fn stage(
   original: &Metadata,
   mut request: UploadArtifactRequest,
   files: &mut StagedFiles,
+  checksummed: bool,
 ) -> anyhow::Result<ChunkedArtifact> {
-  let size = original.len();
+  let size = original
+    .len()
+    .checked_sub(if checksummed { 4 } else { 0 })
+    .ok_or_else(|| anyhow::anyhow!("invalid checksummed workflow input"))?;
   let mut whole = Sha256::new();
+  let mut crc = checksummed.then(crc32fast::Hasher::new);
   let mut remaining = size;
   let mut chunks = Vec::new();
 
@@ -306,6 +301,9 @@ async fn stage(
     let mut raw = vec![0; usize::try_from(logical_bytes)?];
     file.read_exact(&mut raw).await?;
     whole.update(&raw);
+    if let Some(crc) = &mut crc {
+      crc.update(&raw);
+    }
     let (encoded, descriptor) = tokio::task::spawn_blocking(move || encode_chunk(raw)).await??;
 
     // Make each payload durable before its descriptor can reach the index. Include a partially
@@ -322,10 +320,15 @@ async fn stage(
 
   // Detect observed growth, truncation or modification of the pinned input. This is not a snapshot:
   // the capture owner must stop writing when it hands over the file.
+  if let Some(crc) = crc
+    && file.read_u32_le().await? != crc.finalize()
+  {
+    anyhow::bail!("retained workflow checksum mismatch");
+  }
   let mut trailing = [0; 1];
   let current = file.metadata().await?;
   if file.read(&mut trailing).await? != 0
-    || current.len() != size
+    || current.len() != original.len()
     || current.modified()? != original.modified()?
   {
     anyhow::bail!("capture file changed during staging");
@@ -395,50 +398,49 @@ impl Uploader {
     source_cleanup: &mut Option<OwnedFile>,
     files: &mut StagedFiles,
   ) -> anyhow::Result<ChunkedArtifact> {
-    // Runtime policy gates new ownership only. Reserve both a chunk slot and enough bounded index
-    // capacity before touching the producer's input; recovery deliberately ignores these knobs.
-    let enabled = *self.chunked.enabled.read()
-      && (request.type_id != WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
-        || *self.chunked.workflow_enabled.read());
-    let max_files = (*self.chunked.max_files.read() as usize).min(MAX_FILES);
-    if !enabled || self.chunked.entries.len() >= max_files {
-      anyhow::bail!("chunked artifact admission disabled or slots exhausted");
-    }
     if self.index_proto().compute_size() + RESERVED_INDEX_ENTRY_BYTES > MAX_INDEX_BYTES {
       anyhow::bail!("insufficient bounded index space for chunked artifact metadata");
     }
-    // Pin a regular capture file. Charge its existing bytes plus worst-case RAW chunk output;
-    // aliases of already-owned inodes must not be charged twice.
-    let UploadSource::Path(path) = source else {
-      anyhow::bail!("chunked staging requires an owned capture path");
+    let (path, retained) = match source {
+      UploadSource::Path(path) => (path, false),
+      UploadSource::Retained(path)
+        if request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
+          && path == Path::new(&format!("workflow-attachments/{}.raw", request.artifact_id)) =>
+      {
+        (path, true)
+      },
+      _ => anyhow::bail!("chunked staging requires an owned capture or retained workflow file"),
     };
     let file = self.file_system.open_regular_file(&path).await?;
     let metadata = file.metadata().await?;
-    let size = metadata.len();
-    let logical_limit =
-      u64::from((*self.chunked.max_logical_bytes.read()).min(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES));
-    let (used, identities) = self.chunked_usage().await?;
-    let source_charge = if file_identity(&metadata).is_some_and(|key| identities.contains(&key)) {
-      0
-    } else {
-      size
-    };
-    let budget = u64::from(*self.chunked.max_owned_bytes.read()).min(MAX_OWNED_BYTES);
-    if size > logical_limit
-      || (size == 0 && request.command_id.is_none())
-      || used.saturating_add(source_charge).saturating_add(size) > budget
-    {
-      anyhow::bail!("chunked artifact logical or physical byte admission exhausted");
+    if retained {
+      // The retained store already admitted these bytes and reserved RAW staging headroom.
+      // Runtime reductions cannot strand an accepted workflow attachment before its first flush.
+      if metadata.len() <= 4 || metadata.len() - 4 > u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES) {
+        anyhow::bail!("retained workflow logical byte limit exceeded");
+      }
+      return stage(
+        self.file_system.as_ref(),
+        file,
+        &metadata,
+        request,
+        files,
+        true,
+      )
+      .await;
     }
-    // Disk headroom also covers an atomic index replacement. Source bytes already exist on disk,
-    // so only new chunk output and metadata headroom need to fit in currently available space.
-    let available = self
-      .file_system
-      .available_space(&ARTIFACT_UPLOAD_DIRECTORY)
+    if metadata.len() == 0 && request.command_id.is_none() {
+      anyhow::bail!("empty workflow artifact");
+    }
+    self
+      .chunked
+      .admission
+      .admit_capture(
+        self.file_system.as_ref(),
+        &metadata,
+        request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID,
+      )
       .await?;
-    if available < size.saturating_add(FREE_SPACE_HEADROOM) {
-      anyhow::bail!("insufficient free space for staged chunks and metadata");
-    }
     // Move first: interrupted preparations have only SDK-local, safely named orphan files.
     // Cross-filesystem rename errors reject admission rather than creating an untracked copy.
     let retained_source = source_path(&request.artifact_id);
@@ -458,41 +460,22 @@ impl Uploader {
       .await?
       .metadata()
       .await?;
-    if file_identity(&moved) != file_identity(&metadata) || moved.len() != size {
+    if file_identity(&moved) != file_identity(&metadata) || moved.len() != metadata.len() {
       anyhow::bail!("capture path changed during ownership transfer");
     }
     self
       .file_system
       .sync_file_and_parent(&retained_source)
       .await?;
-    stage(self.file_system.as_ref(), file, &metadata, request, files).await
-  }
-
-  async fn chunked_usage(&self) -> anyhow::Result<(u64, HashSet<(u64, u64)>)> {
-    let mut identities = HashSet::new();
-    let mut used = 0_u64;
-    // Count physical spool files, including interrupted/retired data whose unlink failed. The
-    // index alone cannot account for those bytes; inode deduplication handles hard-link aliases.
-    for path in self
-      .file_system
-      .list_files(&ARTIFACT_UPLOAD_DIRECTORY)
-      .await?
-    {
-      let path = Path::new(&path);
-      if !path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("chunk-"))
-      {
-        continue;
-      }
-      let file = self.file_system.open_regular_file(path).await?;
-      let metadata = file.metadata().await?;
-      if file_identity(&metadata).is_none_or(|key| identities.insert(key)) {
-        used = used.saturating_add(metadata.len());
-      }
-    }
-    Ok((used, identities))
+    stage(
+      self.file_system.as_ref(),
+      file,
+      &metadata,
+      request,
+      files,
+      false,
+    )
+    .await
   }
 
   pub(super) async fn recover_chunks(&mut self, modified: &mut bool) -> anyhow::Result<()> {

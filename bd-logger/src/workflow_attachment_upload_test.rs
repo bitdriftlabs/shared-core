@@ -6,22 +6,575 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::*;
-use crate::workflow_attachment::AttachmentStoreHandle;
+use crate::workflow_attachment::{AdmittedAttachment, AttachmentStore, AttachmentStoreHandle};
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_artifact_upload::{EnqueueError, UploadSource, Uploader};
+use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
-use bd_proto::protos::client::api::UploadArtifactResponse;
-use bd_runtime::runtime::ConfigLoader;
+use bd_proto::protos::client::api::upload_artifact_response::State;
+use bd_proto::protos::client::api::{UploadArtifactRequest, UploadArtifactResponse};
+use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _, attachment, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_time::TestTimeProvider;
+use bd_test_helpers::runtime::{ValueKind, make_update};
+use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
 use flate2::read::ZlibDecoder;
-use std::io::Read as _;
+use std::io::{self, Read as _};
+use std::path::Path;
 use std::sync::Mutex;
+use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
+
+async fn configure_chunks(runtime: &ConfigLoader, extra: Vec<(&str, ValueKind)>) {
+  let mut flags = vec![
+    (
+      chunked_artifact_upload::Enabled::path(),
+      ValueKind::Bool(true),
+    ),
+    (
+      chunked_artifact_upload::WorkflowEnabled::path(),
+      ValueKind::Bool(true),
+    ),
+  ];
+  flags.extend(extra);
+  runtime
+    .update_snapshot(make_update(flags, Uuid::new_v4().to_string()))
+    .await
+    .unwrap();
+}
+
+async fn admit_file(
+  store: &Arc<AttachmentStore>,
+  directory: &Path,
+  size: u64,
+) -> io::Result<AdmittedAttachment> {
+  let path = directory.join(format!("capture-{}", Uuid::new_v4()));
+  tokio::fs::File::create(&path).await?.set_len(size).await?;
+  let source = UploadSource::Path(path);
+  let _owned = source.owned_file();
+  store
+    .admit(source, Some("application/octet-stream".into()))
+    .await
+}
+
+#[tokio::test]
+async fn workflow_chunk_admission_is_gated_without_raising_ordinary_limits() {
+  for (enabled, workflow_enabled) in [(false, false), (true, false), (false, true), (true, true)] {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
+    configure_chunks(
+      &runtime,
+      vec![
+        (attachment::MaxBytes::path(), ValueKind::Int(1)),
+        (
+          chunked_artifact_upload::Enabled::path(),
+          ValueKind::Bool(enabled),
+        ),
+        (
+          chunked_artifact_upload::WorkflowEnabled::path(),
+          ValueKind::Bool(workflow_enabled),
+        ),
+      ],
+    )
+    .await;
+    let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
+      .get()
+      .await
+      .unwrap();
+    let result = admit_file(&store, directory.path(), 1025).await;
+    if enabled && workflow_enabled {
+      let attachment = result.unwrap();
+      let source = store.upload_source(attachment.id).await.unwrap();
+      assert_eq!(source.extension().unwrap(), "raw");
+      assert_eq!(
+        tokio::fs::metadata(directory.path().join(source))
+          .await
+          .unwrap()
+          .len(),
+        1029
+      );
+      store.release(attachment.id).await.unwrap();
+    } else {
+      assert!(result.is_err());
+    }
+    assert!(
+      store
+        .admit(UploadSource::Bytes(vec![0; 2]), None)
+        .await
+        .is_err()
+    );
+    assert!(
+      tokio::fs::read_dir(directory.path().join("workflow-attachments"))
+        .await
+        .unwrap()
+        .next_entry()
+        .await
+        .unwrap()
+        .is_none()
+    );
+  }
+}
+
+#[tokio::test]
+async fn workflow_retained_files_reserve_shared_chunk_slots_and_staging_bytes() {
+  for budget in [4103, 4104] {
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
+    configure_chunks(
+      &runtime,
+      vec![
+        (
+          chunked_artifact_upload::MaxOwnedPayloadBytes::path(),
+          ValueKind::Int(budget),
+        ),
+        (
+          chunked_artifact_upload::MaxAdmittedFiles::path(),
+          ValueKind::Int(u32::MAX),
+        ),
+      ],
+    )
+    .await;
+    let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
+      .get()
+      .await
+      .unwrap();
+    let first = admit_file(&store, directory.path(), 1024).await.unwrap();
+    let second = admit_file(&store, directory.path(), 1024).await;
+    if budget == 4104 {
+      let second = second.unwrap();
+      assert!(admit_file(&store, directory.path(), 1).await.is_err());
+      store.release(second.id).await.unwrap();
+    } else {
+      assert!(second.is_err());
+    }
+    // Both source ownership and its future RAW chunk reservation survive store reconstruction.
+    drop(store);
+    let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
+      .get()
+      .await
+      .unwrap();
+    assert!(admit_file(&store, directory.path(), 1025).await.is_err());
+    store.release(first.id).await.unwrap();
+    let next = admit_file(&store, directory.path(), 1025).await.unwrap();
+    store.release(next.id).await.unwrap();
+  }
+}
+
+#[tokio::test]
+async fn workflow_chunk_logical_limit_is_inclusive_and_hard_bounded() {
+  let directory = tempfile::tempdir().unwrap();
+  let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
+  configure_chunks(
+    &runtime,
+    vec![(
+      chunked_artifact_upload::MaxLogicalBytes::path(),
+      ValueKind::Int(1024),
+    )],
+  )
+  .await;
+  let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
+    .get()
+    .await
+    .unwrap();
+  assert!(admit_file(&store, directory.path(), 0).await.is_err());
+  assert!(admit_file(&store, directory.path(), 1025).await.is_err());
+  let attachment = admit_file(&store, directory.path(), 1024).await.unwrap();
+  store.release(attachment.id).await.unwrap();
+  configure_chunks(
+    &runtime,
+    vec![(
+      chunked_artifact_upload::MaxLogicalBytes::path(),
+      ValueKind::Int(u32::MAX),
+    )],
+  )
+  .await;
+  let maximum = u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES);
+  assert!(
+    admit_file(&store, directory.path(), maximum + 1)
+      .await
+      .is_err()
+  );
+  let attachment = admit_file(&store, directory.path(), maximum).await.unwrap();
+  assert_eq!(
+    tokio::fs::metadata(
+      directory
+        .path()
+        .join(store.upload_source(attachment.id).await.unwrap())
+    )
+    .await
+    .unwrap()
+    .len(),
+    maximum + 4
+  );
+  store.release(attachment.id).await.unwrap();
+}
+
+#[tokio::test]
+async fn retained_workflows_and_direct_commands_share_chunk_admission() {
+  let directory = tempfile::tempdir().unwrap();
+  let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
+  configure_chunks(&runtime, Vec::new()).await;
+  let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
+    .get()
+    .await
+    .unwrap();
+  let first = admit_file(&store, directory.path(), 1024).await.unwrap();
+  let second = admit_file(&store, directory.path(), 1024).await.unwrap();
+  let (tx, _rx) = tokio::sync::mpsc::channel(1);
+  let shutdown = ComponentShutdownTrigger::default();
+  let (uploader, client) = Uploader::new(
+    Arc::new(RealFileSystem::new(directory.path().to_owned())),
+    tx,
+    Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+    &runtime,
+    &Collector::default(),
+    HashMap::new(),
+    tokio::sync::watch::channel(Arc::default()).1,
+    shutdown.make_shutdown(),
+  );
+  let uploader = tokio::spawn(uploader.run());
+  for admitted in [false, true] {
+    let id = Uuid::new_v4();
+    let path = directory.path().join(format!("command-{id}"));
+    tokio::fs::write(&path, b"").await.unwrap();
+    let (tx, rx) = oneshot::channel();
+    client
+      .enqueue_chunked_file(
+        path.clone(),
+        UploadArtifactRequest {
+          artifact_id: id.to_string(),
+          command_id: Some(Uuid::new_v4().to_string()),
+          type_id: "device_command_attachment".into(),
+          session_id: "session".into(),
+          time: OffsetDateTime::now_utc().into_proto(),
+          ..Default::default()
+        },
+        tx,
+        None,
+      )
+      .unwrap();
+    let result = rx.await.unwrap();
+    assert_eq!(result.is_ok(), admitted);
+    assert!(!path.exists());
+    if admitted {
+      assert_eq!(result.unwrap(), 0);
+      assert!(admit_file(&store, directory.path(), 1).await.is_err());
+    } else {
+      store.release(second.id).await.unwrap();
+    }
+  }
+  store.release(first.id).await.unwrap();
+  shutdown.shutdown().await;
+  uploader.await.unwrap();
+}
+
+#[tokio::test]
+async fn workflow_chunk_failed_persistence_and_restart_keep_retained_ownership() {
+  for fault in ["chunk_sync", "published_index_sync", "crc"] {
+    let filesystem = Arc::new(TestFileSystem::new());
+    let directory = filesystem.directory();
+    let runtime = TestConfigLoader::new_in_directory(directory).await;
+    configure_chunks(&runtime, Vec::new()).await;
+    let store = AttachmentStoreHandle::new(directory.to_owned(), runtime.clone())
+      .get()
+      .await
+      .unwrap();
+    let attachment = admit_file(&store, directory, 1024 * 1024 + 17)
+      .await
+      .unwrap();
+    let id = attachment.id;
+    store
+      .record_timestamp(id, OffsetDateTime::from_unix_timestamp(10).unwrap())
+      .await
+      .unwrap();
+    let source = store.upload_source(id).await.unwrap();
+    let payload = directory.join(&source);
+    let (data_upload_tx, _data_upload_rx) = tokio::sync::mpsc::channel(1);
+    let shutdown = ComponentShutdownTrigger::default();
+    let (uploader, client) = Uploader::new(
+      filesystem.clone(),
+      data_upload_tx,
+      Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+      &runtime,
+      &Collector::default(),
+      HashMap::new(),
+      tokio::sync::watch::channel(Arc::default()).1,
+      shutdown.make_shutdown(),
+    );
+    let mut revision = client.upload_queue_revision();
+    let uploader = tokio::spawn(uploader.run());
+    let _ = revision.wait_for(|revision| *revision > 0).await.unwrap();
+    match fault {
+      "chunk_sync" => filesystem.fail_next_sync.store(true, Ordering::Relaxed),
+      "published_index_sync" => {
+        filesystem.fail_next_sync_at("report_uploads/report_index.pb".into());
+      },
+      _ => {
+        assert_eq!(fault, "crc");
+        let mut bytes = tokio::fs::read(&payload).await.unwrap();
+        bytes[0] ^= 1;
+        tokio::fs::write(&payload, bytes).await.unwrap();
+      },
+    }
+    let (tx, rx) = oneshot::channel();
+    client
+      .enqueue_workflow_attachment(
+        id,
+        source.clone(),
+        "session".into(),
+        Some("application/octet-stream".into()),
+        Some(tx),
+        None,
+        Some(store.upload_lease().await.unwrap()),
+      )
+      .unwrap();
+    assert!(rx.await.unwrap().is_err());
+    assert!(payload.exists());
+    assert!(!store.is_uploaded(id).await.unwrap());
+    let pending = Uploader::pending_workflow_attachments(directory)
+      .await
+      .unwrap();
+    assert_eq!(pending.contains(&id), fault == "published_index_sync");
+    shutdown.shutdown().await;
+    uploader.await.unwrap();
+    if fault == "crc" {
+      assert!(pending.is_empty());
+      store.release(id).await.unwrap();
+      assert!(!payload.exists());
+      continue;
+    }
+    drop(store);
+    configure_chunks(
+      &runtime,
+      vec![
+        (
+          chunked_artifact_upload::Enabled::path(),
+          ValueKind::Bool(false),
+        ),
+        (
+          chunked_artifact_upload::WorkflowEnabled::path(),
+          ValueKind::Bool(false),
+        ),
+        (
+          chunked_artifact_upload::MaxLogicalBytes::path(),
+          ValueKind::Int(0),
+        ),
+        (
+          chunked_artifact_upload::MaxOwnedPayloadBytes::path(),
+          ValueKind::Int(0),
+        ),
+        (
+          chunked_artifact_upload::MaxAdmittedFiles::path(),
+          ValueKind::Int(0),
+        ),
+      ],
+    )
+    .await;
+    let store = AttachmentStoreHandle::new(directory.to_owned(), runtime.clone())
+      .get()
+      .await
+      .unwrap();
+    let (data_upload_tx, mut data_upload_rx) = tokio::sync::mpsc::channel(1);
+    let shutdown = ComponentShutdownTrigger::default();
+    let (uploader, client) = Uploader::new(
+      filesystem.clone(),
+      data_upload_tx,
+      Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+      &runtime,
+      &Collector::default(),
+      HashMap::new(),
+      tokio::sync::watch::channel(Arc::default()).1,
+      shutdown.make_shutdown(),
+    );
+    let uploader = tokio::spawn(uploader.run());
+    let (persisted_tx, persisted_rx) = oneshot::channel();
+    let (completed_tx, completed_rx) = oneshot::channel();
+    client
+      .enqueue_workflow_attachment(
+        id,
+        source,
+        "session".into(),
+        Some("application/octet-stream".into()),
+        Some(persisted_tx),
+        Some(completed_tx),
+        Some(store.upload_lease().await.unwrap()),
+      )
+      .unwrap();
+    persisted_rx.await.unwrap().unwrap();
+    store.cleanup_all().await.unwrap();
+    assert!(payload.exists());
+    let Some(DataUpload::ArtifactUpload(upload)) = data_upload_rx.recv().await else {
+      panic!("expected recovered workflow Begin");
+    };
+    assert_eq!(upload.payload.artifact_id, id.to_string());
+    assert_eq!(upload.payload.session_id, "session");
+    assert_eq!(upload.payload.logical_bytes, Some(1024 * 1024 + 17));
+    assert_eq!(upload.payload.chunks.len(), 2);
+    upload
+      .response_tx
+      .send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        state: State::STATE_FINALIZED.into(),
+        received_chunks: vec![3],
+        ..Default::default()
+      })
+      .unwrap();
+    completed_rx.await.unwrap().unwrap();
+    store.complete_upload(id).await.unwrap();
+    assert!(!payload.exists());
+    shutdown.shutdown().await;
+    uploader.await.unwrap();
+  }
+}
+
+#[tokio::test]
+async fn workflow_chunk_handoff_is_durable_idempotent_and_protected_until_finalized() {
+  let filesystem = Arc::new(TestFileSystem::new());
+  let directory = filesystem.directory();
+  let runtime = TestConfigLoader::new_in_directory(directory).await;
+  configure_chunks(&runtime, Vec::new()).await;
+  let attachment_store = AttachmentStoreHandle::new(directory.to_owned(), runtime.clone());
+  let store = attachment_store.get().await.unwrap();
+  let attachment = admit_file(&store, directory, 1024 * 1024 + 1)
+    .await
+    .unwrap();
+  let id = attachment.id;
+  store
+    .record_timestamp(id, OffsetDateTime::from_unix_timestamp(10).unwrap())
+    .await
+    .unwrap();
+  let payload = directory.join(store.upload_source(id).await.unwrap());
+  // Admission, not the later flush, fixes policy. Disabling new work cannot strand this source.
+  configure_chunks(
+    &runtime,
+    vec![
+      (
+        chunked_artifact_upload::Enabled::path(),
+        ValueKind::Bool(false),
+      ),
+      (
+        chunked_artifact_upload::WorkflowEnabled::path(),
+        ValueKind::Bool(false),
+      ),
+      (
+        chunked_artifact_upload::MaxLogicalBytes::path(),
+        ValueKind::Int(0),
+      ),
+      (
+        chunked_artifact_upload::MaxOwnedPayloadBytes::path(),
+        ValueKind::Int(0),
+      ),
+      (
+        chunked_artifact_upload::MaxAdmittedFiles::path(),
+        ValueKind::Int(0),
+      ),
+    ],
+  )
+  .await;
+  let chunk_sync = filesystem.gate_next_sync(format!("report_uploads/chunk-{id}-0").into());
+  let (data_upload_tx, mut data_upload_rx) = tokio::sync::mpsc::channel(1);
+  let shutdown = ComponentShutdownTrigger::default();
+  let (uploader, client) = Uploader::new(
+    filesystem.clone(),
+    data_upload_tx,
+    Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+    &runtime,
+    &Collector::default(),
+    HashMap::new(),
+    tokio::sync::watch::channel(Arc::default()).1,
+    shutdown.make_shutdown(),
+  );
+  let uploader = tokio::spawn(uploader.run());
+  let (completed_tx, completed_rx) = oneshot::channel();
+  let (handle, worker) = WorkflowAttachmentUploadHandle::new_with_attachment_store_and_test_hooks(
+    Arc::new(client),
+    attachment_store,
+    Some(Arc::new(UploadCompletionHook {
+      completion_tx: Mutex::new(Some(completed_tx)),
+    })),
+  );
+  let handle = Arc::new(handle);
+  let worker = tokio::spawn(worker.run());
+  let stage_handle = handle.clone();
+  let stage = tokio::spawn(async move {
+    stage_handle
+      .stage(HashMap::from([(id, "session".into())]))
+      .await
+  });
+  let resume_chunk = chunk_sync.await.unwrap();
+  assert!(!stage.is_finished());
+  let mut cleanup = Box::pin(store.cleanup_all());
+  assert!(futures_util::poll!(cleanup.as_mut()).is_pending());
+  let index_sync = filesystem.gate_next_sync("report_uploads/report_index.pb".into());
+  resume_chunk.send(()).unwrap();
+  let resume_index = index_sync.await.unwrap();
+  assert!(!stage.is_finished());
+  assert_eq!(
+    Uploader::pending_workflow_attachments(directory)
+      .await
+      .unwrap(),
+    [id].into()
+  );
+  assert!(futures_util::poll!(cleanup.as_mut()).is_pending());
+  resume_index.send(()).unwrap();
+  assert!(stage.await.unwrap().unwrap().is_empty());
+  cleanup.await.unwrap();
+  assert!(payload.exists());
+  assert!(
+    handle
+      .stage(HashMap::from([(id, "session".into())]))
+      .await
+      .unwrap()
+      .is_empty()
+  );
+  assert_eq!(
+    handle
+      .stage(HashMap::from([(id, "other-session".into())]))
+      .await
+      .unwrap()
+      .len(),
+    1
+  );
+  for (chunk, state, receipts) in [
+    (None, State::STATE_RECEIVING, 0),
+    (Some(0), State::STATE_RECEIVING, 1),
+    (Some(1), State::STATE_FINALIZING, 3),
+    (None, State::STATE_FINALIZED, 3),
+  ] {
+    let Some(DataUpload::ArtifactUpload(upload)) = data_upload_rx.recv().await else {
+      panic!("expected shared chunk transport, not intent negotiation");
+    };
+    assert_eq!(upload.payload.artifact_id, id.to_string());
+    assert_eq!(upload.payload.command_id, None);
+    assert_eq!(upload.payload.logical_bytes, Some(1024 * 1024 + 1));
+    assert_eq!(upload.payload.chunk_index, chunk);
+    if upload.payload.time.is_some() {
+      assert_eq!(upload.payload.type_id, "workflow_attachment");
+      assert_eq!(upload.payload.session_id, "session");
+      assert_eq!(upload.payload.chunks.len(), 2);
+    }
+    assert!(payload.exists());
+    upload
+      .response_tx
+      .send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        state: state.into(),
+        received_chunks: vec![receipts],
+        ..Default::default()
+      })
+      .unwrap();
+  }
+  assert_eq!(completed_rx.await.unwrap(), id);
+  assert!(!payload.exists());
+  assert!(store.is_uploaded(id).await.unwrap());
+  drop(handle);
+  worker.await.unwrap();
+  shutdown.shutdown().await;
+  uploader.await.unwrap();
+}
 
 #[tokio::test]
 async fn cancelled_staging_retains_real_admission_ownership_through_both_syncs() {
