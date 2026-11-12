@@ -33,7 +33,7 @@ use super::{
 use crate::async_log_buffer::Sender as LogSender;
 use crate::workflow_attachment::AttachmentStoreHandle;
 use bd_api::DataUpload;
-use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
+use bd_api::upload::{DEVICE_COMMAND_RETENTION, DeviceCommandState, TrackedDeviceCommandUpdate};
 use bd_artifact_upload::{Client, MockClient, UploadSource};
 use bd_event_buffer::{
   EventBuffer,
@@ -438,7 +438,7 @@ fn direct_dispatcher(
       artifacts,
       registry,
       policy,
-      Arc::new(DeviceCommandState::new(Arc::new(SystemTimeProvider))),
+      Arc::new(DeviceCommandState::new()),
       Arc::new(SystemTimeProvider),
     ),
     upload_rx,
@@ -953,7 +953,71 @@ async fn direct_registered_command_timeout_reports_one_terminal_failure() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn direct_command_update_expiry_bounds_channel_byte_budget_and_ack_wait() {
+async fn direct_command_local_deadline_survives_wall_clock_changes_and_updates() {
+  let (directory, _runtime, policy) = command_runtime();
+  let (handler, mut started_rx, dropped_rx) = pending_handler();
+  let registry = RegisteredCommandDispatcher::default();
+  registry
+    .register(CommandRegistration::Registered("pending".into(), handler))
+    .unwrap();
+  let (mut dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    registry,
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(MockClient::new()),
+  );
+  let now = OffsetDateTime::now_utc();
+  let clock = Arc::new(TestTimeProvider::new(now + Duration::days(365)));
+  dispatcher.time_provider = clock.clone();
+  let command = DeviceCommandRequest {
+    command_id: Uuid::new_v4().to_string().into(),
+    command_selector: Some(registered_selector()).into(),
+    sdk_instance_id: dispatcher.command_state.sdk_instance_id.clone().into(),
+    expires_at: (now + Duration::days(1)).into_proto(),
+    ..Default::default()
+  };
+  dispatcher.dispatch_configuration(vec![command.clone()]);
+  let deadline = dispatcher
+    .command_state
+    .deadline(&command.command_id)
+    .unwrap();
+  assert_eq!(
+    acknowledge_update(&mut updates)
+      .await
+      .update_sequence_number,
+    1
+  );
+  started_rx.recv().await.unwrap();
+  clock.set_time(now - Duration::days(365));
+  dispatcher.dispatch_configuration(vec![]);
+  dispatcher.dispatch_configuration(vec![command.clone()]);
+  tokio::time::advance(std::time::Duration::from_secs(5)).await;
+  dropped_rx.await.unwrap();
+  clock.set_time(now + Duration::days(730));
+  let Some(DataUpload::DeviceCommandUpdate(terminal)) = updates.recv().await else {
+    panic!("expected terminal command update");
+  };
+  assert_timeout_update(terminal.payload);
+  assert_eq!(
+    dispatcher.command_state.deadline(&command.command_id),
+    Some(deadline)
+  );
+  let execution = dispatcher
+    .execution_tasks
+    .lock()
+    .as_mut()
+    .unwrap()
+    .pop()
+    .unwrap();
+  assert!(!execution.is_finished());
+  tokio::time::advance(deadline.saturating_duration_since(tokio::time::Instant::now())).await;
+  assert!(terminal.response_tx.send(()).is_err());
+  execution.await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn direct_command_local_deadline_bounds_channel_byte_budget_and_ack_wait() {
   let (directory, _runtime, policy) = command_runtime();
   let (mut dispatcher, _updates) = direct_dispatcher(
     directory.path(),
@@ -962,18 +1026,22 @@ async fn direct_command_update_expiry_bounds_channel_byte_budget_and_ack_wait() 
     RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
     Arc::new(MockClient::new()),
   );
-  let state = Arc::new(DeviceCommandState::new(Arc::new(
-    bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH),
-  )));
-  dispatcher.senders.command_state = state.clone();
-  let command = DeviceCommandRequest {
-    command_id: Uuid::new_v4().to_string().into(),
-    sdk_instance_id: state.sdk_instance_id.clone().into(),
-    expires_at: (OffsetDateTime::UNIX_EPOCH + Duration::seconds(2)).into_proto(),
-    ..Default::default()
-  };
-  assert!(state.admit(&command));
   for blocked in ["ack", "channel", "bytes"] {
+    let state = Arc::new(DeviceCommandState::new());
+    dispatcher.senders.command_state = state.clone();
+    let command = DeviceCommandRequest {
+      command_id: Uuid::new_v4().to_string().into(),
+      sdk_instance_id: state.sdk_instance_id.clone().into(),
+      expires_at: (OffsetDateTime::UNIX_EPOCH + Duration::seconds(2)).into_proto(),
+      ..Default::default()
+    };
+    assert!(state.admit(&command));
+    tokio::time::advance(
+      DEVICE_COMMAND_RETENTION
+        .checked_sub(std::time::Duration::from_secs(2))
+        .unwrap(),
+    )
+    .await;
     let (upload_tx, mut upload_rx) = mpsc::channel(1);
     dispatcher.senders.data_upload_tx = upload_tx;
     let reservation = if blocked == "channel" {
@@ -994,7 +1062,10 @@ async fn direct_command_update_expiry_bounds_channel_byte_budget_and_ack_wait() 
     let error = send_device_command_update(&execution, update)
       .await
       .unwrap_err();
-    assert_eq!(error.to_string(), "command expired while submitting update");
+    assert_eq!(
+      error.to_string(),
+      "command delivery deadline elapsed while submitting update"
+    );
     assert_eq!(started_at.elapsed(), std::time::Duration::from_secs(2));
     drop(reservation);
     if blocked == "ack" {
@@ -1077,7 +1148,7 @@ async fn direct_command_updates_backpressure_without_losing_large_results() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn direct_command_admission_resumes_only_after_original_capacity_expiry() {
+async fn direct_command_admission_resumes_only_after_local_capacity_deadline() {
   let (directory, _runtime, policy) = command_runtime();
   let (handler, mut started_rx, dropped_rx) = pending_handler();
   let registry = RegisteredCommandDispatcher::default();
@@ -1091,9 +1162,8 @@ async fn direct_command_admission_resumes_only_after_original_capacity_expiry() 
     RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
     Arc::new(MockClient::new()),
   );
-  let clock = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
   let logs = command_event_buffer(&mut dispatcher).await;
-  let state = Arc::new(DeviceCommandState::new(clock.clone()));
+  let state = Arc::new(DeviceCommandState::new());
   dispatcher.command_state = state.clone();
   dispatcher.senders.command_state = state.clone();
   let command = DeviceCommandRequest {
@@ -1109,6 +1179,12 @@ async fn direct_command_admission_resumes_only_after_original_capacity_expiry() 
     occupied.expires_at = (OffsetDateTime::UNIX_EPOCH + Duration::seconds(2)).into_proto();
     assert!(state.admit(&occupied));
   }
+  tokio::time::advance(
+    DEVICE_COMMAND_RETENTION
+      .checked_sub(std::time::Duration::from_secs(2))
+      .unwrap(),
+  )
+  .await;
   let hooks = Arc::new(AdmissionTestHooks::default());
   dispatcher.test_hooks = Some(hooks.clone());
   let mut replaced = command.clone();
@@ -1128,10 +1204,13 @@ async fn direct_command_admission_resumes_only_after_original_capacity_expiry() 
     started_rx.try_recv().unwrap_err(),
     mpsc::error::TryRecvError::Empty
   );
-  clock.advance(Duration::seconds(2));
   tokio::time::advance(std::time::Duration::from_secs(2)).await;
   let accepted = acknowledge_update(&mut updates).await;
   assert_eq!(accepted.command_id, command.command_id.to_string());
+  assert_eq!(
+    state.deadline(&command.command_id),
+    Some(tokio::time::Instant::now() + DEVICE_COMMAND_RETENTION)
+  );
   started_rx.recv().await.unwrap();
   assert_eq!(logs.next_batch(64).await.entries.len(), 1);
   dispatcher.dispatch_configuration(vec![command]);
@@ -1157,8 +1236,7 @@ async fn replaced_configuration_fences_already_running_admission_task() {
     RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
     Arc::new(MockClient::new()),
   );
-  let clock = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
-  let state = Arc::new(DeviceCommandState::new(clock.clone()));
+  let state = Arc::new(DeviceCommandState::new());
   dispatcher.command_state = state.clone();
   dispatcher.senders.command_state = state.clone();
   let hooks = Arc::new(AdmissionTestHooks::default());
@@ -1178,9 +1256,14 @@ async fn replaced_configuration_fences_already_running_admission_task() {
     occupied.expires_at = (OffsetDateTime::UNIX_EPOCH + Duration::seconds(2)).into_proto();
     assert!(state.admit(&occupied));
   }
+  tokio::time::advance(
+    DEVICE_COMMAND_RETENTION
+      .checked_sub(std::time::Duration::from_secs(2))
+      .unwrap(),
+  )
+  .await;
   dispatcher.dispatch_configuration(vec![command.clone()]);
   hooks.sleep_started.notified().await;
-  clock.advance(Duration::seconds(2));
   tokio::time::advance(std::time::Duration::from_secs(2)).await;
   hooks.sleep_finished.notified().await;
   // The hook replaces config on the same worker after sleep, so abort cannot interrupt the

@@ -528,7 +528,7 @@ impl Api {
 
     let reconnect_state = crate::reconnect::ReconnectState::new(store, time_provider.clone());
     let session_updates = session_strategy.subscribe_updates();
-    let device_command_state = Arc::new(DeviceCommandState::new(time_provider.clone()));
+    let device_command_state = Arc::new(DeviceCommandState::new());
     Self {
       sdk_directory,
       api_key,

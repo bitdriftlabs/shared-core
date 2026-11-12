@@ -3116,7 +3116,7 @@ async fn direct_commands_use_processed_session_boundary_without_rewinding_loggin
         }),
       ))
       .unwrap();
-    let command_state = Arc::new(DeviceCommandState::new(Arc::new(SystemTimeProvider)));
+    let command_state = Arc::new(DeviceCommandState::new());
     let (upload_tx, mut updates) = mpsc::channel(16);
     let (trigger_tx, _trigger_rx) = mpsc::channel(1);
     let dispatcher = DeviceCommandDispatcher::new(
