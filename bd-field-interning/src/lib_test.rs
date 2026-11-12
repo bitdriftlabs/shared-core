@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{FieldInterner, FieldSetTable};
+use super::{FieldInterner, FieldSetTable, Resolution};
 use bd_client_stats_store::Collector;
 use bd_key_value::Store;
 use bd_log_filter::ScrubRules;
@@ -33,7 +33,6 @@ use bd_time::TestTimeProvider;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tempfile::TempDir;
-use time::ext::NumericalDuration as _;
 use time::macros::datetime;
 
 struct Setup {
@@ -187,8 +186,6 @@ async fn unchanged_fields_are_left_out_and_others_stay_inline() {
   let mut log = setup.log(&[("theme", "light"), ("user_id", "other")]);
   log.fields.remove("locale");
   assert_eq!(setup.intern(&mut interner, &log), None);
-  assert_eq!(setup.counter("versions_written"), 1);
-  assert_eq!(setup.counter("full_versions_written"), 1);
 }
 
 #[tokio::test]
@@ -211,8 +208,6 @@ async fn updates_between_logs_write_one_version() {
   let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
   assert_eq!(interned.version, 2);
   assert_eq!(keys(&interned.field_set), ["b", "c"]);
-  assert_eq!(setup.counter("versions_written"), 2);
-  assert_eq!(setup.counter("full_versions_written"), 1);
 }
 
 #[tokio::test]
@@ -335,7 +330,6 @@ async fn a_restart_continues_the_table_above_the_reserved_numbers() {
   let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
   assert_eq!(interned.version, 65);
   assert_eq!(keys(&interned.field_set), ["a", "b"]);
-  assert_eq!(setup.counter("full_versions_written"), 1);
 
   // A new process can resolve the table's versions as soon as it is built, before any log, so
   // uploaders reading buffered logs from the earlier run find their sets.
@@ -349,14 +343,12 @@ async fn a_restart_continues_the_table_above_the_reserved_numbers() {
   let mut interner = setup.interner();
   let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
   assert_eq!(interned.version, 129);
-  assert_eq!(setup.counter("full_versions_written"), 2);
   // Versions lost with the table are missing, not beyond the window.
-  assert_eq!(interner.table().resolve(65), None);
   let table = interner.table();
+  assert_eq!(table.resolution(65), Resolution::Missing);
   table.record_unresolved(&table.resolution(65), 2);
-  assert_eq!(setup.counter("logs_missing_version"), 2);
   assert_eq!(setup.counter("logs_beyond_window"), 0);
-  assert_eq!(setup.counter("tables_discarded"), 0);
+  assert_eq!(setup.counter("failures"), 0);
 
   // An unreadable table is discarded and counted; numbers still continue above the reservation.
   drop(interner);
@@ -366,7 +358,7 @@ async fn a_restart_continues_the_table_above_the_reserved_numbers() {
     std::fs::write(&path, vec![0xff; usize::try_from(len).unwrap()]).unwrap();
   }
   let mut interner = setup.interner();
-  assert_eq!(setup.counter("tables_discarded"), 1);
+  assert_eq!(setup.counter("failures"), 1);
   assert_eq!(interner.table().resolve(129), None);
   let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
   assert_eq!(interned.version, 193);
@@ -390,8 +382,7 @@ async fn a_failed_write_stops_interning_for_the_process() {
   setup.remove(&mut interner, "huge");
   setup.set(&mut interner, "small", "1");
   assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
-  assert_eq!(setup.counter("write_failures"), 1);
-  assert_eq!(setup.counter("versions_written"), 0);
+  assert_eq!(setup.counter("failures"), 1);
 
   // The next process interns again.
   drop(interner);
@@ -401,7 +392,7 @@ async fn a_failed_write_stops_interning_for_the_process() {
 }
 
 #[tokio::test]
-async fn the_table_is_kept_after_disabling_until_the_retention_period() {
+async fn turning_interning_off_deletes_the_table() {
   let mut setup = Setup::new(true).await;
   let mut interner = setup.interner();
   setup.set(&mut interner, "a", "1");
@@ -420,17 +411,8 @@ async fn the_table_is_kept_after_disabling_until_the_retention_period() {
     )])
     .await;
   interner.prepare();
-  // No new versions, and buffered interned logs still resolve.
+  // No new versions, and the table is gone: buffered interned logs upload without their sets.
   assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
-  assert!(interner.table().resolve(1).is_some());
-
-  // A new process with interning off still opens the table for uploads.
-  drop(interner);
-  let mut interner = setup.interner();
-  assert!(interner.table().resolve(1).is_some());
-
-  setup.time.advance(7.days() + 1.seconds());
-  interner.prepare();
   assert_eq!(interner.table().resolve(1), None);
   assert!(!setup.directory.path().join("field_sets").exists());
 
@@ -450,6 +432,25 @@ async fn the_table_is_kept_after_disabling_until_the_retention_period() {
       .version,
     65
   );
+}
+
+#[tokio::test]
+async fn a_table_from_an_earlier_run_is_deleted_if_interning_is_off() {
+  let mut setup = Setup::new(true).await;
+  let mut interner = setup.interner();
+  setup.set(&mut interner, "a", "1");
+  setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  drop(interner);
+
+  setup
+    .set_runtime(vec![(
+      field_interning::Enabled::path(),
+      ValueKind::Bool(false),
+    )])
+    .await;
+  let interner = setup.interner();
+  assert_eq!(interner.table().resolve(1), None);
+  assert!(!setup.directory.path().join("field_sets").exists());
 }
 
 #[tokio::test]
@@ -527,7 +528,7 @@ async fn removed_keys_do_not_keep_change_rates() {
     setup.remove(&mut interner, key);
   }
   setup.intern(&mut interner, &setup.log(&[]));
-  assert_eq!(interner.rates.len(), 0);
+  assert_eq!(interner.last_changes.len(), 0);
 
   // A key that became volatile and was then removed is dropped once it is re-admitted.
   for change in 0 .. 10 {
@@ -540,7 +541,7 @@ async fn removed_keys_do_not_keep_change_rates() {
     setup.intern(&mut interner, &setup.log(&[]));
   }
   assert!(!interner.volatile.contains("churny"));
-  assert_eq!(interner.rates.len(), 0);
+  assert_eq!(interner.last_changes.len(), 0);
 }
 
 #[tokio::test]

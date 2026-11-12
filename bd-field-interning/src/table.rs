@@ -155,14 +155,6 @@ pub struct Recovered {
   pub discarded: bool,
 }
 
-/// Outcome of a successful rotation, for metrics.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Rotation {
-  /// For a rotation that folded versions into `base`, the microseconds between the new base's
-  /// creation and the rotation. `None` for a rotation that only grew the table.
-  pub window_span_micros: Option<u64>,
-}
-
 pub struct VersionTable {
   directory: PathBuf,
   journal: MemMappedVersionedJournal<FieldSet>,
@@ -175,6 +167,9 @@ pub struct VersionTable {
   /// Set when a rotation could not bring the table below its high-water mark, so later writes do
   /// not rotate again until the table is actually full.
   rotation_ineffective: bool,
+  /// Rotations started, for tests that check when the table rotates.
+  #[cfg(test)]
+  rotations_started: usize,
   /// Where recent resolutions stopped, most recently used last. Each uploader reads versions in
   /// order, so it walks the table forward from its own cursor instead of replaying it, and a
   /// repeated version is answered from the cursor.
@@ -242,6 +237,8 @@ impl VersionTable {
             base_version,
             newest_version: recovered.newest_version,
             rotation_ineffective: false,
+            #[cfg(test)]
+            rotations_started: 0,
             cursors: Vec::new(),
           };
           return Ok((table, recovered));
@@ -279,6 +276,8 @@ impl VersionTable {
         base_version: 0,
         newest_version: 0,
         rotation_ineffective: false,
+        #[cfg(test)]
+        rotations_started: 0,
         cursors: Vec::new(),
       },
       Recovered {
@@ -369,7 +368,7 @@ impl VersionTable {
     full: bool,
     set: &FieldMap,
     removed: &[String],
-  ) -> anyhow::Result<Option<Rotation>> {
+  ) -> anyhow::Result<()> {
     anyhow::ensure!(
       version > self.newest_version,
       "field-set version {version} does not follow {}",
@@ -391,13 +390,14 @@ impl VersionTable {
     }
     let key = kind.key(version);
 
-    let mut rotation = None;
+    let mut rotated = false;
     match self.journal.insert_entry_ref(SCOPE, &key, &entry) {
       Ok(_) => {},
       Err(UpdateError::CapacityExceeded) => {
         let size =
           usize::try_from(entry.compute_size()).unwrap_or(usize::MAX) + FRAME_OVERHEAD_BYTES;
-        rotation = Some(self.rotate_with(size)?);
+        self.rotate_with(size)?;
+        rotated = true;
         self
           .journal
           .insert_entry_ref(SCOPE, &key, &entry)
@@ -409,32 +409,30 @@ impl VersionTable {
 
     // A rotation that could not get below the high-water mark, because `base` alone is that large,
     // is not repeated on every write; the next one happens when the table is full.
-    if rotation.is_none()
-      && !self.rotation_ineffective
-      && self.journal.is_high_water_mark_triggered()
-    {
-      match self.rotate() {
-        Ok(completed) => rotation = Some(completed),
-        // The version is written. The rotation is retried when the table is full rather than on
-        // every write.
-        Err(error) => {
-          log::debug!("failed to rotate field-set table: {error}");
-          self.rotation_ineffective = true;
-        },
+    if !rotated && !self.rotation_ineffective && self.journal.is_high_water_mark_triggered() {
+      // The version is written. A failed rotation is retried when the table is full rather than on
+      // every write.
+      if let Err(error) = self.rotate() {
+        log::debug!("failed to rotate field-set table: {error}");
+        self.rotation_ineffective = true;
       }
     }
-    Ok(rotation)
+    Ok(())
   }
 
   /// Rewrites the journal into a new file. Below its cap the table grows: the entries are kept and
   /// the new file is the next power of two that holds them under the high-water mark. At its cap,
   /// the oldest changes are folded into `base` until the rest fit in half of it.
-  pub fn rotate(&mut self) -> anyhow::Result<Rotation> {
+  pub fn rotate(&mut self) -> anyhow::Result<()> {
     self.rotate_with(0)
   }
 
   /// Rotates with room for `additional` bytes, the size of an entry that did not fit.
-  fn rotate_with(&mut self, additional: usize) -> anyhow::Result<Rotation> {
+  fn rotate_with(&mut self, additional: usize) -> anyhow::Result<()> {
+    #[cfg(test)]
+    {
+      self.rotations_started += 1;
+    }
     let mut entries = Vec::new();
     let partial = self
       .journal
@@ -474,9 +472,7 @@ impl VersionTable {
         (SCOPE, kind.key(entry.version), entry.clone(), *timestamp)
       });
       self.replace_journal(size, rebuilt)?;
-      return Ok(Rotation {
-        window_span_micros: None,
-      });
+      return Ok(());
     }
 
     let target = self.max_bytes / 2;
@@ -515,11 +511,7 @@ impl VersionTable {
 
     self.replace_journal(self.max_bytes, rebuilt)?;
     self.base_version = base_version;
-
-    let now = u64::try_from(self.time_provider.now().unix_timestamp_nanos() / 1_000).unwrap_or(0);
-    Ok(Rotation {
-      window_span_micros: Some(now.saturating_sub(base_timestamp)),
-    })
+    Ok(())
   }
 
   /// Writes `entries` into a new journal of `size` bytes and swaps it in for the table's file.

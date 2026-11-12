@@ -5,6 +5,15 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![deny(
+  clippy::expect_used,
+  clippy::panic,
+  clippy::todo,
+  clippy::unimplemented,
+  clippy::unreachable,
+  clippy::unwrap_used
+)]
+
 //! Persistent field interning.
 //!
 //! Persistent fields (`add_log_field`, `update_ootb_log_field` and the initial fields) are stored
@@ -12,6 +21,27 @@
 //! a ring buffer leaves out each field of the current version that it carries unchanged and
 //! records the version instead. Uploaders add the full field set of every version their logs refer
 //! to, and the server restores the fields at ingest.
+//!
+//! # How it works
+//!
+//! * **Versions.** An update to a persistent field marks its key dirty. The next log written to a
+//!   ring buffer first writes one version for every dirty key, with scrub rules applied. The log
+//!   then leaves out each field whose value equals the current version's. A key of the version that
+//!   the log does not carry, because a filter removed it, is written as a `cleared` field so the
+//!   server does not restore it.
+//! * **Version numbers.** A number is never reused, so a log buffered by an earlier process always
+//!   resolves to the set it was written with. Each process reserves blocks of numbers in the
+//!   key-value store, above every number used before. If the reservation cannot be read, the table
+//!   only resolves buffered logs and nothing new is interned.
+//! * **Keys that change often.** A key that changes again within `min_logs_per_change` logs of its
+//!   previous change stays inline, because a version per change would cost more than carrying it in
+//!   each log. After `window_logs` logs without a change it is interned again.
+//! * **Turning it off.** When `field_interning.enabled` is off, nothing new is interned and the
+//!   table is deleted as soon as the interner sees the flag off. Interned logs still in the buffers
+//!   then upload without their field sets, and the server marks them as missing their persistent
+//!   fields. The SDK cannot cheaply tell when the last interned log has left every buffer, and
+//!   turning interning off is rare, so that loss is accepted instead of keeping the table for a
+//!   retention period.
 //!
 //! The interner is owned by the task that writes the ring buffers. Uploaders resolve versions
 //! through a shared [`FieldSetTable`] handle.
@@ -28,7 +58,7 @@ fn test_global_init() {
 
 pub mod table;
 
-use bd_client_stats_store::{Counter, Histogram, Scope};
+use bd_client_stats_store::{Counter, Scope};
 use bd_key_value::{Key, Store};
 use bd_log_filter::ScrubRules;
 use bd_log_primitives::{
@@ -40,16 +70,10 @@ use bd_log_primitives::{
   LogFields,
   same_value,
 };
-use bd_runtime::runtime::field_interning::{
-  Enabled,
-  MinLogsPerChange,
-  TableMaxBytes,
-  TableRetentionAfterDisable,
-  WindowLogs,
-};
-use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, IntWatch};
-use bd_stats_common::{Counter as _, Histogram as _};
-use bd_time::{OffsetDateTimeExt as _, TimeProvider};
+use bd_runtime::runtime::field_interning::{Enabled, MinLogsPerChange, TableMaxBytes, WindowLogs};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, IntWatch};
+use bd_stats_common::Counter as _;
+use bd_time::TimeProvider;
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -64,52 +88,20 @@ const TABLE_DIRECTORY: &str = "field_sets";
 /// reserves a fresh block above this and above the table's newest version.
 static RESERVED_VERSION_END: Key<String> = Key::new("field_interning.reserved_version_end");
 
-/// When interning was turned off, in microseconds since the epoch.
-static DISABLED_AT: Key<String> = Key::new("field_interning.disabled_at_micros");
-
 const VERSION_BLOCK: u64 = 64;
-
-/// The weight of the newest gap in the moving average of logs between a key's changes.
-const CHANGE_RATE_ALPHA: f64 = 0.25;
 
 //
 // Stats
 //
 
-#[derive(Clone)]
-struct Stats {
-  versions_written: Counter,
-  full_versions_written: Counter,
-  write_failures: Counter,
-  rotations: Counter,
-  window_span_s: Histogram,
-  open_failures: Counter,
-  /// Tables discarded at open because they were unreadable or had lost entries.
-  tables_discarded: Counter,
-  logs_interned: Counter,
-}
-
-impl Stats {
-  fn new(scope: &Scope) -> Self {
-    Self {
-      versions_written: scope.counter("versions_written"),
-      full_versions_written: scope.counter("full_versions_written"),
-      write_failures: scope.counter("write_failures"),
-      rotations: scope.counter("rotations"),
-      window_span_s: scope.histogram("window_span_s"),
-      open_failures: scope.counter("open_failures"),
-      tables_discarded: scope.counter("tables_discarded"),
-      logs_interned: scope.counter("logs_interned"),
-    }
-  }
-}
+// The server counts interned logs and logs whose set is missing, so the device counts only what
+// the server cannot see: `failures` on the interner and `logs_beyond_window` on the table handle.
+// Both serve the rollout and are to be removed once the table's cap is settled.
 
 #[derive(Clone)]
 struct ResolveStats {
-  /// Uploaded logs whose version was folded out of the table.
+  /// Uploaded logs whose version was folded out of the table: the table's cap is too small.
   logs_beyond_window: Counter,
-  /// Uploaded logs whose version is not in the table, for example because the table was lost.
-  logs_missing_version: Counter,
 }
 
 //
@@ -131,7 +123,6 @@ impl FieldSetTable {
       table: Arc::default(),
       stats: Some(ResolveStats {
         logs_beyond_window: scope.counter("logs_beyond_window"),
-        logs_missing_version: scope.counter("logs_missing_version"),
       }),
     }
   }
@@ -180,27 +171,13 @@ impl FieldSetTable {
       .map_or(Resolution::Missing, |table| table.resolve_one(version))
   }
 
-  /// Counts `logs` uploaded logs whose version resolved as `resolution`, if it was not found.
+  /// Counts `logs` uploaded logs whose version resolved as `resolution`, if it was folded out of
+  /// the table.
   pub fn record_unresolved(&self, resolution: &Resolution, logs: u64) {
-    let Some(stats) = &self.stats else {
-      return;
-    };
-    match resolution {
-      Resolution::Found(_) => {},
-      Resolution::BeyondWindow => stats.logs_beyond_window.inc_by(logs),
-      Resolution::Missing => stats.logs_missing_version.inc_by(logs),
+    if let (Some(stats), Resolution::BeyondWindow) = (&self.stats, resolution) {
+      stats.logs_beyond_window.inc_by(logs);
     }
   }
-}
-
-//
-// KeyRate
-//
-
-/// Tracks how often a key changes, in logs written between changes.
-struct KeyRate {
-  last_change: u64,
-  average_gap: f64,
 }
 
 //
@@ -212,7 +189,6 @@ struct Flags {
   table_max_bytes: IntWatch<TableMaxBytes>,
   window_logs: IntWatch<WindowLogs>,
   min_logs_per_change: IntWatch<MinLogsPerChange>,
-  retention_after_disable: DurationWatch<TableRetentionAfterDisable>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,13 +216,14 @@ pub struct FieldInterner {
   store: Arc<Store>,
   time_provider: Arc<dyn TimeProvider>,
   flags: Flags,
-  stats: Stats,
+  /// Table opens, writes and reservation reads that failed, and tables discarded at open because
+  /// they were unreadable or had lost entries. Each one stops or limits interning, which the
+  /// server cannot see.
+  failures: Counter,
 
   table_state: TableState,
   /// Whether interning was enabled at the last `prepare`, or `None` before the first.
   last_enabled: Option<bool>,
-  /// When interning was turned off, in microseconds since the epoch, while it is off.
-  disabled_at_micros: Option<u64>,
 
   current: Option<Current>,
   /// Keys changed since the last version, and whether each change counts toward the change rate.
@@ -255,7 +232,8 @@ pub struct FieldInterner {
   recompute_all: bool,
   scrub_rules: Option<Arc<ScrubRules>>,
 
-  rates: HashMap<LogFieldKey, KeyRate>,
+  /// For each key, the log count at its last change that counts toward its change rate.
+  last_changes: HashMap<LogFieldKey, u64>,
   volatile: HashSet<LogFieldKey>,
   /// The earliest log count at which a volatile key can be re-admitted.
   next_readmission: u64,
@@ -283,17 +261,15 @@ impl FieldInterner {
         table_max_bytes: runtime_loader.register_int_watch(),
         window_logs: runtime_loader.register_int_watch(),
         min_logs_per_change: runtime_loader.register_int_watch(),
-        retention_after_disable: runtime_loader.register_duration_watch(),
       },
-      stats: Stats::new(scope),
+      failures: scope.counter("failures"),
       table_state: TableState::Closed,
       last_enabled: None,
-      disabled_at_micros: None,
       current: None,
       dirty: HashMap::new(),
       recompute_all: true,
       scrub_rules: None,
-      rates: HashMap::new(),
+      last_changes: HashMap::new(),
       volatile: HashSet::new(),
       next_readmission: u64::MAX,
       logs_written: 0,
@@ -322,16 +298,12 @@ impl FieldInterner {
     self.last_enabled == Some(true) && self.table_state == TableState::Open { writable: true }
   }
 
-  /// Opens the table when interning is enabled or a table from an earlier run exists, and deletes
-  /// it once interning has been off for the retention period. Called when the logger is built,
-  /// before any uploader can read a buffered log from an earlier run, and before each log is
-  /// written; it only does I/O when the runtime flag changes or the table is due for deletion.
+  /// Opens the table when interning is enabled, and deletes it when interning is off. Called when
+  /// the logger is built, before any uploader can read a buffered log from an earlier run, and
+  /// before each log is written; it only does I/O when the runtime flag changes.
   pub fn prepare(&mut self) {
     let enabled = self.enabled();
     if self.last_enabled == Some(enabled) {
-      if !enabled && self.table_open() && self.retention_elapsed() {
-        self.delete_table();
-      }
       return;
     }
     self.last_enabled = Some(enabled);
@@ -339,10 +311,6 @@ impl FieldInterner {
     if enabled {
       // Collector updates are not tracked while interning is off.
       self.recompute_all = true;
-      self.disabled_at_micros = None;
-      if let Err(error) = self.store.set_internal_string(&DISABLED_AT, "") {
-        log::debug!("failed to clear field interning disable time: {error}");
-      }
       if self.table_state == TableState::Closed {
         self.open();
       }
@@ -352,60 +320,9 @@ impl FieldInterner {
     // Changes are not tracked while interning is off; enabling it again recomputes every key.
     self.current = None;
     self.dirty.clear();
-    self.disabled_at_micros = Some(self.load_disabled_at());
-    let exists = self.table_open() || std::fs::exists(&self.directory).unwrap_or(false);
-    if !exists {
-      return;
-    }
-    if self.retention_elapsed() {
+    if self.table_open() || std::fs::exists(&self.directory).unwrap_or(false) {
       self.delete_table();
-    } else if self.table_state == TableState::Closed {
-      // Interned logs from an earlier run may still be buffered.
-      self.open();
     }
-  }
-
-  /// Returns when interning was turned off, recording now if it was not recorded before.
-  fn load_disabled_at(&self) -> u64 {
-    let now = self.now_micros();
-    if let Some(disabled_at) = self
-      .store
-      .get_internal_string(&DISABLED_AT)
-      .ok()
-      .flatten()
-      .and_then(|value| value.parse::<u64>().ok())
-    {
-      return disabled_at;
-    }
-    if let Err(error) = self
-      .store
-      .set_internal_string(&DISABLED_AT, &now.to_string())
-    {
-      log::debug!("failed to record field interning disable time: {error}");
-    }
-    now
-  }
-
-  fn now_micros(&self) -> u64 {
-    self
-      .time_provider
-      .now()
-      .unix_timestamp_micros()
-      .cast_unsigned()
-  }
-
-  fn retention_elapsed(&self) -> bool {
-    let Some(disabled_at) = self.disabled_at_micros else {
-      return false;
-    };
-    let retention = self
-      .flags
-      .retention_after_disable
-      .read()
-      .whole_microseconds()
-      .max(0)
-      .cast_unsigned();
-    u128::from(self.now_micros().saturating_sub(disabled_at)) >= retention
   }
 
   fn open(&mut self) {
@@ -425,7 +342,7 @@ impl FieldInterner {
         };
         let writable = persisted_end.is_some();
         if !writable {
-          self.stats.open_failures.inc();
+          self.failures.inc();
         }
         self.next_version = persisted_end.unwrap_or(0).max(recovered.newest_version) + 1;
         self.reserved_end = self.next_version - 1;
@@ -436,7 +353,7 @@ impl FieldInterner {
         if recovered.discarded {
           // Buffered logs that refer to its versions upload without their field sets.
           log::debug!("discarded an unreadable field-set table");
-          self.stats.tables_discarded.inc();
+          self.failures.inc();
         }
         self.recompute_all = true;
         *self.table.table.lock() = Some(table);
@@ -449,22 +366,20 @@ impl FieldInterner {
       },
       Err(error) => {
         log::debug!("failed to open field-set table, interning is off: {error}");
-        self.stats.open_failures.inc();
+        self.failures.inc();
         self.table_state = TableState::Failed;
       },
     }
   }
 
-  /// Deletes the table after interning has been off for the retention period. Interned logs
-  /// still buffered upload without their field sets.
+  /// Deletes the table when interning is turned off. Interned logs still buffered upload without
+  /// their field sets.
   fn delete_table(&mut self) {
     *self.table.table.lock() = None;
     self.table_state = TableState::Closed;
     self.current = None;
     match std::fs::remove_dir_all(&self.directory) {
-      Ok(()) => {
-        log::debug!("deleted field-set table after interning was off for the retention period");
-      },
+      Ok(()) => log::debug!("deleted field-set table because interning is off"),
       Err(error) => log::debug!("failed to delete field-set table: {error}"),
     }
   }
@@ -476,10 +391,10 @@ impl FieldInterner {
     if changed && self.interning() {
       self.dirty.insert(key.clone(), true);
     }
-    // A removed key's change rate is not kept, so dynamically named keys do not accumulate. A
+    // A removed key's last change is not kept, so dynamically named keys do not accumulate. A
     // volatile key keeps it until it is re-admitted.
     if !present && !self.volatile.contains(key) {
-      self.rates.remove(key);
+      self.last_changes.remove(key);
     }
   }
 
@@ -514,16 +429,14 @@ impl FieldInterner {
       // Interning stops for the rest of the process, for example when the table cannot hold the
       // field set; the table stays open to resolve logs already buffered. This costs savings only.
       log::debug!("failed to write field-set version, interning stops for this process: {error}");
-      self.stats.write_failures.inc();
+      self.failures.inc();
       self.table_state = TableState::Open { writable: false };
       self.current = None;
       return None;
     }
 
     let current = self.current.as_ref()?;
-    let interned = InternedFields::new(&log.fields, current.version, current.fields.clone())?;
-    self.stats.logs_interned.inc();
-    Some(interned)
+    InternedFields::new(&log.fields, current.version, current.fields.clone())
   }
 
   /// Makes volatile keys that have not changed for `W` logs eligible again.
@@ -533,46 +446,38 @@ impl FieldInterner {
     }
     let window = u64::from(*self.flags.window_logs.read());
     let logs_written = self.logs_written;
-    let rates = &mut self.rates;
+    let last_changes = &self.last_changes;
     let dirty = &mut self.dirty;
     let mut next_readmission = u64::MAX;
     self.volatile.retain(|key| {
-      let Some(rate) = rates.get_mut(key) else {
+      let Some(&last_change) = last_changes.get(key) else {
         return false;
       };
-      if logs_written.saturating_sub(rate.last_change) < window {
-        next_readmission = next_readmission.min(rate.last_change.saturating_add(window));
+      if logs_written.saturating_sub(last_change) < window {
+        next_readmission = next_readmission.min(last_change.saturating_add(window));
         return true;
       }
-      #[allow(clippy::cast_precision_loss)]
-      let window = window as f64;
-      rate.average_gap = window;
       dirty.entry(key.clone()).or_insert(false);
       false
     });
     self.next_readmission = next_readmission;
   }
 
-  /// Updates the change rate of a key that changed, returning whether it is volatile.
+  /// Records a change of a key, returning whether it is volatile: it changed again within
+  /// `min_logs_per_change` logs, or it is still in its cooldown of `window_logs` logs without a
+  /// change.
   fn record_change(&mut self, key: &LogFieldKey) -> bool {
-    #[allow(clippy::cast_precision_loss)]
-    let window = f64::from(*self.flags.window_logs.read());
-    let min_logs_per_change = f64::from(*self.flags.min_logs_per_change.read());
     let logs_written = self.logs_written;
-    let rate = self.rates.entry(key.clone()).or_insert(KeyRate {
-      last_change: 0,
-      average_gap: window,
-    });
-    #[allow(clippy::cast_precision_loss)]
-    let gap = logs_written.saturating_sub(rate.last_change) as f64;
-    rate.average_gap = CHANGE_RATE_ALPHA.mul_add(gap, (1.0 - CHANGE_RATE_ALPHA) * rate.average_gap);
-    rate.last_change = logs_written;
-    if rate.average_gap < min_logs_per_change && self.volatile.insert(key.clone()) {
+    let min_logs_per_change = u64::from(*self.flags.min_logs_per_change.read());
+    let previous = self.last_changes.insert(key.clone(), logs_written);
+    if previous.is_some_and(|previous| logs_written.saturating_sub(previous) < min_logs_per_change)
+      && self.volatile.insert(key.clone())
+    {
       log::debug!("persistent field {key:?} changes too often; keeping it inline");
     }
     let volatile = self.volatile.contains(key);
     if volatile {
-      // Each change of a volatile key restarts its quiet period.
+      // Each change of a volatile key restarts its cooldown.
       let window = u64::from(*self.flags.window_logs.read());
       self.next_readmission = self
         .next_readmission
@@ -627,7 +532,9 @@ impl FieldInterner {
         .keys()
         .chain(previous.keys())
         .map(|key| (key.clone(), false))
-        .chain(self.dirty.drain())
+        // A recompute counts no change: writes before the first log, or while interning was off,
+        // are not churn.
+        .chain(self.dirty.drain().map(|(key, _)| (key, false)))
         .collect()
     } else {
       self.dirty.drain().collect()
@@ -642,8 +549,8 @@ impl FieldInterner {
         continue;
       }
       if !persistent.contains_key(&key) && !self.volatile.contains(&key) {
-        // A removed key's change rate is not kept, so dynamically named keys do not accumulate.
-        self.rates.remove(&key);
+        // A removed key's last change is not kept, so dynamically named keys do not accumulate.
+        self.last_changes.remove(&key);
       }
       if counts && persistent.contains_key(&key) && self.record_change(&key) {
         next.remove(&key);
@@ -702,24 +609,11 @@ impl FieldInterner {
         .as_mut()
         .ok_or_else(|| anyhow::anyhow!("field-set table is closed"))?;
       table.set_max_bytes(max_bytes);
-      let rotation = table.write(version, full, &set, &removed)?;
-      Ok((version, rotation))
+      table.write(version, full, &set, &removed)?;
+      Ok(version)
     });
 
-    let (version, rotation) = result?;
-    self.stats.versions_written.inc();
-    if full {
-      self.stats.full_versions_written.inc();
-    }
-    // Only rotations that fold versions away count; growing the table loses nothing.
-    if let Some(window_span_micros) = rotation.and_then(|rotation| rotation.window_span_micros) {
-      self.stats.rotations.inc();
-      #[allow(clippy::cast_precision_loss)]
-      self
-        .stats
-        .window_span_s
-        .observe(window_span_micros as f64 / 1_000_000.0);
-    }
+    let version = result?;
     log::debug!(
       "wrote field-set version {version} ({} fields set, {} removed, full: {full})",
       set.len(),

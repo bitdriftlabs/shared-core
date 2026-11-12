@@ -658,13 +658,11 @@ pub mod debugging {
 }
 
 pub mod field_interning {
-  use time::ext::NumericalDuration as _;
-
   // Stores each persistent field set once on the device and leaves its fields out of buffered
-  // logs, which refer to the set's version instead. The server restores the fields at ingest, so it
-  // must support field sets before this is enabled. Turning it off stops interning new logs at
-  // once; logs already interned still upload with their sets.
-  bool_feature_flag!(Enabled, "field_interning.enabled", false);
+  // logs, which refer to the set's version instead. The server restores the fields at ingest. On by
+  // default. Turning it off stops interning new logs and deletes the table at once, so interned
+  // logs still buffered upload without their persistent fields.
+  bool_feature_flag!(Enabled, "field_interning.enabled", true);
 
   // The largest size of the field-set version table. The table starts at 16 KiB and grows to this
   // cap as needed; at the cap, the oldest versions are folded into the table's base, and buffered
@@ -675,20 +673,13 @@ pub mod field_interning {
     1024 * 1024
   );
 
-  // A key that has gone this many logs without changing is interned again after it was found to
-  // change too often.
+  // The cooldown of a key that changes too often: it is interned again after this many logs
+  // without a change.
   int_feature_flag!(WindowLogs, "field_interning.window_logs", 512);
 
-  // A key whose average number of logs between changes falls below this stays inline.
+  // A key that changes again within this many logs of its previous change stays inline for the
+  // cooldown.
   int_feature_flag!(MinLogsPerChange, "field_interning.min_logs_per_change", 4);
-
-  // How long the version table is kept after interning is turned off, so that interned logs still
-  // in the buffers can upload with their field sets.
-  duration_feature_flag!(
-    TableRetentionAfterDisable,
-    "field_interning.table_retention_after_disable_ms",
-    7.days()
-  );
 }
 
 pub mod crash_reporting {

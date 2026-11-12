@@ -3351,12 +3351,13 @@ async fn recovered_batch_field_sets_resolve_once_per_version() {
       &string_fields(&[("a", "1")])
     )]
   );
-  // Version 2 is not in the table; its log is counted as missing its set.
+  // Version 2 is not in the table. The server counts its log as missing its set, so the device
+  // does not count it as beyond the window.
   assert_eq!(
     collector
       .scope("field_interning")
-      .counter("logs_missing_version")
+      .counter("logs_beyond_window")
       .get(),
-    1
+    0
   );
 }

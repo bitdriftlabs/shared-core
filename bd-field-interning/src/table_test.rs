@@ -92,23 +92,17 @@ fn rotation_folds_the_oldest_changes_into_base() {
   let (mut table, _) = VersionTable::open(directory.path(), MIN_TABLE_BYTES, time()).unwrap();
 
   let value = "x".repeat(100);
-  let mut rotations = 0;
   for version in 1 ..= 200u64 {
     let key = format!("key{}", version % 7);
-    if table
+    table
       .write(
         version,
         version == 1,
         &map(&[(&key, &format!("{value}{version}"))]),
         &[],
       )
-      .unwrap()
-      .is_some()
-    {
-      rotations += 1;
-    }
+      .unwrap();
   }
-  assert!(rotations > 0);
   assert!(table.size_bytes() <= MIN_TABLE_BYTES);
   assert!(table.base_version > 1);
   assert_eq!(table.newest_version(), 200);
@@ -251,20 +245,19 @@ fn a_base_above_the_high_water_mark_is_not_rotated_on_every_write() {
     .write(1, true, &map(&[("large", &"x".repeat(3400))]), &[])
     .unwrap();
   assert!(table.rotation_ineffective);
+  let rotations_started = table.rotations_started;
 
   for version in 2 ..= 5u64 {
-    assert_eq!(
-      table
-        .write(
-          version,
-          false,
-          &map(&[("small", &version.to_string())]),
-          &[]
-        )
-        .unwrap(),
-      None
-    );
+    table
+      .write(
+        version,
+        false,
+        &map(&[("small", &version.to_string())]),
+        &[],
+      )
+      .unwrap();
   }
+  assert_eq!(table.rotations_started, rotations_started);
 }
 
 #[test]
@@ -283,26 +276,23 @@ fn the_table_grows_to_its_cap_before_folding_versions_away() {
         &map(&[("a", &format!("{value}{version}"))]),
         &[],
       )
-      .unwrap()
+      .unwrap();
   };
 
   // Below the cap, rotations grow the file and keep every version.
   let mut version = 0;
   while table.journal.buffer_len() < cap {
     version += 1;
-    if let Some(rotation) = write(&mut table, version) {
-      assert_eq!(rotation.window_span_micros, None);
-    }
+    write(&mut table, version);
+    assert_eq!(table.base_version, 0);
     assert!(matches!(table.resolve(&[1])[0].1, Resolution::Found(_)));
   }
+  assert!(table.rotations_started > 0);
 
   // At the cap, the next rotation folds the oldest versions into `base`.
-  loop {
+  while table.base_version == 0 {
     version += 1;
-    if let Some(rotation) = write(&mut table, version) {
-      assert!(rotation.window_span_micros.is_some());
-      break;
-    }
+    write(&mut table, version);
   }
   assert_eq!(table.resolve(&[1]), vec![(1, Resolution::BeyondWindow)]);
   assert_eq!(table.journal.buffer_len(), cap);
