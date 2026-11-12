@@ -76,11 +76,11 @@ arbitrary         = { version = "1.5.0", features = ["derive"] }
 arc-swap          = "1.9.2"
 assert_matches    = "1.5.0"
 assert_no_alloc   = "1.1.2"
-async-compression = { version = "0.4.51", features = ["tokio", "zlib"] }
+async-compression = { version = "0.4.52", features = ["tokio", "zlib"] }
 async-trait       = "0.1.92"
 axum              = { version = "0.8.9", features = ["http2", "macros"] }
 base64            = "0.23.1"
-base64-url        = "4.0.0"
+base64-url        = "4.0.1"
 base64ct          = { version = "1.8.3", features = ["alloc", "std"] }
 bd-workspace-hack = "0.1.1"
 num-traits        = "0.2.19"
@@ -92,12 +92,12 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.73.2"
 bytes           = "1.12.1"
 cbindgen        = "0.29.4"
-cc              = "1.10.0"
+cc              = "1.11.0"
 clap            = { version = "4.6.7", features = ["derive", "env"] }
 cmake           = "0.1.58"
 color-backtrace = "0.7.4"
 concat-string   = "1.0.1"
-crc32fast       = "1.5.3"
+crc32fast       = "1.5.4"
 ctor            = "1.0.13"
 dashmap         = "6.2.1"
 
@@ -125,7 +125,7 @@ itertools             = "0.15.0"
 jni                   = "0.22.4"
 libc                  = "0.2.191"
 libfuzzer-sys         = "0.4.13"
-log                   = "0.4.34"
+log                   = "0.4.35"
 matches               = "0.1.10"
 memmap2               = "0.9.12"
 mockall               = "0.15.0"
@@ -154,7 +154,7 @@ parking_lot        = "0.13.0"
 pretty_assertions  = "1.4.1"
 prometheus         = "0.14.0"
 proptest           = "1.12.0"
-rmcp               = { version = "3.7.0", features = ["transport-io"] }
+rmcp               = { version = "3.8.0", features = ["transport-io"] }
 thread_local       = "1.1.10"
 tracing            = "0.1.44"
 tracing-log        = "0.2.0"
