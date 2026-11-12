@@ -165,8 +165,7 @@ impl Candidates {
     let session_id = candidates
       .iter()
       .find(|candidate| candidate.report.report_id == *first)
-      .map(|candidate| candidate.session_id.clone())
-      .unwrap_or_default();
+      .map_or_default(|candidate| candidate.session_id.clone());
     Ok(Some(Upload {
       captured_at: OffsetDateTime::from_unix_timestamp_nanos(evidence.captured_at_ns()?)?,
       report_ids,

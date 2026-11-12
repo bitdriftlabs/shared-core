@@ -674,7 +674,7 @@ impl LoggerBuilder {
         self.test_hooks.clone(),
       );
 
-      let command_state = Arc::new(DeviceCommandState::new(time_provider.clone()));
+      let command_state = Arc::new(DeviceCommandState::new());
       let updater = Arc::new(client_config::Config::new_with_time_provider(
         &self.params.sdk_directory,
         LoggerUpdate::new(
