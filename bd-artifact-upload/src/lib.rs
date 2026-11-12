@@ -26,7 +26,7 @@ pub mod crash_profile_attribution;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test;
 
-pub use bd_client_common::artifact::PERFETTO_CONTENT_TYPE;
+pub use bd_metadata::artifact::PERFETTO_CONTENT_TYPE;
 pub use crash_profile_source::encode_source;
 pub use report_attribution::{ReportAttribution, restore_pending_reports};
 pub use uploader::{Client, EnqueueError, MockClient, SnappedFeatureFlag, UploadSource, Uploader};

@@ -18,6 +18,8 @@
 #[path = "./lib_test.rs"]
 mod tests;
 
+pub mod artifact;
+
 use std::collections::HashMap;
 
 // The configuration version allows the server to send different configurations to different
