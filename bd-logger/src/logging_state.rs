@@ -388,10 +388,10 @@ impl BufferProducers {
     for (buffer_id, (buffer_type, _)) in buffer_manager.buffers() {
       match buffer_type {
         bd_proto::protos::config::v1::config::buffer_config::Type::CONTINUOUS => {
-          continuous_buffer_ids.insert(buffer_id.clone().into());
+          continuous_buffer_ids.insert(buffer_id.into());
         },
         bd_proto::protos::config::v1::config::buffer_config::Type::TRIGGER => {
-          trigger_buffer_ids.insert(buffer_id.clone().into());
+          trigger_buffer_ids.insert(buffer_id.into());
         },
       }
     }

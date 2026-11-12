@@ -1045,7 +1045,7 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
       .insert(Scope::FeatureFlagExposure, key, value)
       .await?;
     let rotation = setup.store.rotate_journal().await?;
-    snapshot_paths.push(rotation.snapshot_path.clone().unwrap());
+    snapshot_paths.push(rotation.snapshot_path.unwrap());
   }
 
   // Verify all compressed archives exist

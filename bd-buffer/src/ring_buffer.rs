@@ -258,7 +258,7 @@ impl Manager {
     for buffer in &config.buffer_config {
       let buffer_type = bd_client_common::error::required_proto_enum(buffer.type_, "buffer type")?;
       if let Some((buffer_type, existing_buffer)) = current_buffers.remove(&buffer.id) {
-        updated_buffers.insert(buffer.id.clone(), (buffer_type, existing_buffer.clone()));
+        updated_buffers.insert(buffer.id.clone(), (buffer_type, existing_buffer));
       } else {
         // If the buffer is a trigger buffer, create the buffer in "allow overwrite" mode.
         // This is the only difference in the underlying buffer, and is what allows us to upload
@@ -307,7 +307,7 @@ impl Manager {
           self
             .scope
             .counter_with_labels("total_data_loss", labels! {"buffer_id" => &buffer.id}),
-          retention_handle.clone(),
+          retention_handle,
         )?;
 
         updated_buffers.insert(buffer.id.clone(), (buffer_type, ring_buffer.clone()));

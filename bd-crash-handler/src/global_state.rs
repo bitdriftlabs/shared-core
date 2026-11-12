@@ -186,22 +186,18 @@ impl Reader {
 
   #[must_use]
   pub fn global_state_fields(&self) -> LogFields {
-    self
-      .store
-      .get(&KEY)
-      .map(|state| {
-        state
-          .fields
-          .into_iter()
-          .filter_map(|field| {
-            let Some(payload::log::field::Value_type::Value(value)) = field.value_type else {
-              return None;
-            };
-            Some((field.key.into(), DataValue::from_proto(value)?))
-          })
-          .collect()
-      })
-      .unwrap_or_default()
+    self.store.get(&KEY).map_or_default(|state| {
+      state
+        .fields
+        .into_iter()
+        .filter_map(|field| {
+          let Some(payload::log::field::Value_type::Value(value)) = field.value_type else {
+            return None;
+          };
+          Some((field.key.into(), DataValue::from_proto(value)?))
+        })
+        .collect()
+    })
   }
 
   #[must_use]

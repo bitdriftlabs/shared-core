@@ -481,7 +481,7 @@ impl TailConfigurations {
         None
       };
 
-      active_streams.push((stream.stream_id.clone(), matcher));
+      active_streams.push((stream.stream_id, matcher));
     }
 
     if active_streams.is_empty() {

@@ -171,13 +171,11 @@ impl Display for Version {
         + &self
           .revision
           .as_deref()
-          .map(|s| "-".to_string() + s)
-          .unwrap_or_default()
+          .map_or_default(|s| "-".to_string() + s)
         + &self
           .build_metadata
           .as_deref()
-          .map(|s| "+".to_string() + s)
-          .unwrap_or_default()
+          .map_or_default(|s| "+".to_string() + s)
     )
   }
 }

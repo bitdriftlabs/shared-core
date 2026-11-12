@@ -1993,8 +1993,7 @@ impl Traversal {
         .inner()
         .states()
         .get(self.state_index)
-        .map(super::config::State::id)
-        .unwrap_or_default()
+        .map_or_default(super::config::State::id)
     );
 
     // Try to match explicit transitions (logs or state changes).
