@@ -19,6 +19,11 @@
 //! an atomic rename. A new table's file is small: until it reaches its cap, the rewrite only grows
 //! it, a power of two at a time, as the state store does. At the cap, the oldest changes are
 //! folded into `base` until the rest fit in half of it. The table never leaves the device.
+//!
+//! A rotation has three steps so that its file I/O never holds the table's lock: it is planned
+//! under the lock ([`VersionTable::plan_rotation`]), built and synced on a blocking thread
+//! ([`Rotation::build`]), and swapped in under the lock ([`VersionTable::install`]) before the
+//! rename.
 
 #[cfg(test)]
 #[path = "./table_test.rs"]
@@ -145,6 +150,63 @@ pub enum Resolution {
   Missing,
 }
 
+/// The outcome of [`VersionTable::write`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use]
+pub enum Written {
+  /// The version is written. `rotate` is set when the journal passed its high-water mark.
+  Done { rotate: bool },
+  /// The journal is full and nothing was written: rotate with room for `bytes`, then write again.
+  Full { bytes: usize },
+}
+
+/// A rotation planned under the table's lock, to be built without it.
+pub struct Rotation {
+  directory: PathBuf,
+  size: usize,
+  entries: Vec<(Scope, String, FieldSet, u64)>,
+  /// The new `base` version, if the rotation folds versions away.
+  base_version: Option<u64>,
+  newest_version: u64,
+  time_provider: Arc<dyn TimeProvider>,
+}
+
+impl Rotation {
+  /// Writes the new journal next to the table's file and syncs it, so it is on disk before it
+  /// replaces the old one. This blocks on file I/O: async callers run it on a blocking thread.
+  pub fn build(self) -> anyhow::Result<Rotated> {
+    let path = rotation_path(&self.directory);
+    let journal = MemMappedVersionedJournal::new(
+      &path,
+      self.size,
+      HIGH_WATER_MARK_RATIO,
+      self.time_provider,
+      self.entries,
+    )
+    .and_then(|journal| MemMappedVersionedJournal::sync(&journal).map(|()| journal))
+    .inspect_err(|_| remove_file(&path))?;
+    Ok(Rotated {
+      journal,
+      base_version: self.base_version,
+      newest_version: self.newest_version,
+    })
+  }
+}
+
+/// A rotated journal, ready for [`VersionTable::install`].
+pub struct Rotated {
+  journal: MemMappedVersionedJournal<FieldSet>,
+  base_version: Option<u64>,
+  newest_version: u64,
+}
+
+/// The rename that replaces the table's file with an installed rotation. The rename is atomic, so
+/// a crash leaves one complete journal.
+pub struct Rename {
+  pub from: PathBuf,
+  pub to: PathBuf,
+}
+
 /// Recovered state of an opened table.
 pub struct Recovered {
   /// The newest version in the table, or 0 for an empty table.
@@ -167,6 +229,8 @@ pub struct VersionTable {
   /// Set when a rotation could not bring the table below its high-water mark, so later writes do
   /// not rotate again until the table is actually full.
   rotation_ineffective: bool,
+  /// Set when an installed rotation could not be renamed into place: the table only resolves.
+  read_only: bool,
   /// Rotations started, for tests that check when the table rotates.
   #[cfg(test)]
   rotations_started: usize,
@@ -213,8 +277,17 @@ impl VersionTable {
   /// loss), it is deleted and the table starts empty. This is an accepted loss: logs still buffered
   /// that refer to the discarded versions upload without their field sets, and the server marks
   /// them as missing their persistent fields. [`Recovered::discarded`] reports it so the loss is
-  /// counted.
-  pub fn open(
+  /// counted. The file I/O runs on a blocking thread.
+  pub async fn open(
+    directory: PathBuf,
+    max_bytes: usize,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> anyhow::Result<(Self, Recovered)> {
+    tokio::task::spawn_blocking(move || Self::open_blocking(&directory, max_bytes, time_provider))
+      .await?
+  }
+
+  fn open_blocking(
     directory: &Path,
     max_bytes: usize,
     time_provider: Arc<dyn TimeProvider>,
@@ -237,6 +310,7 @@ impl VersionTable {
             base_version,
             newest_version: recovered.newest_version,
             rotation_ineffective: false,
+            read_only: false,
             #[cfg(test)]
             rotations_started: 0,
             cursors: Vec::new(),
@@ -276,6 +350,7 @@ impl VersionTable {
         base_version: 0,
         newest_version: 0,
         rotation_ineffective: false,
+        read_only: false,
         #[cfg(test)]
         rotations_started: 0,
         cursors: Vec::new(),
@@ -361,14 +436,18 @@ impl VersionTable {
   }
 
   /// Appends a version. A full version replaces the field set; a change sets `set` and removes
-  /// `removed`. On a full journal the table is rotated once before giving up.
+  /// `removed`. The caller rotates the table when the result asks for it.
   pub fn write(
     &mut self,
     version: u64,
     full: bool,
     set: &FieldMap,
     removed: &[String],
-  ) -> anyhow::Result<()> {
+  ) -> anyhow::Result<Written> {
+    anyhow::ensure!(
+      !self.read_only,
+      "field-set table is read-only after a failed rotation"
+    );
     anyhow::ensure!(
       version > self.newest_version,
       "field-set version {version} does not follow {}",
@@ -390,18 +469,12 @@ impl VersionTable {
     }
     let key = kind.key(version);
 
-    let mut rotated = false;
     match self.journal.insert_entry_ref(SCOPE, &key, &entry) {
       Ok(_) => {},
       Err(UpdateError::CapacityExceeded) => {
-        let size =
+        let bytes =
           usize::try_from(entry.compute_size()).unwrap_or(usize::MAX) + FRAME_OVERHEAD_BYTES;
-        self.rotate_with(size)?;
-        rotated = true;
-        self
-          .journal
-          .insert_entry_ref(SCOPE, &key, &entry)
-          .map_err(|error| anyhow::anyhow!("field-set table full after rotation: {error}"))?;
+        return Ok(Written::Full { bytes });
       },
       Err(UpdateError::System(error)) => return Err(error),
     }
@@ -409,26 +482,17 @@ impl VersionTable {
 
     // A rotation that could not get below the high-water mark, because `base` alone is that large,
     // is not repeated on every write; the next one happens when the table is full.
-    if !rotated && !self.rotation_ineffective && self.journal.is_high_water_mark_triggered() {
-      // The version is written. A failed rotation is retried when the table is full rather than on
-      // every write.
-      if let Err(error) = self.rotate() {
-        log::debug!("failed to rotate field-set table: {error}");
-        self.rotation_ineffective = true;
-      }
-    }
-    Ok(())
+    Ok(Written::Done {
+      rotate: !self.rotation_ineffective && self.journal.is_high_water_mark_triggered(),
+    })
   }
 
-  /// Rewrites the journal into a new file. Below its cap the table grows: the entries are kept and
-  /// the new file is the next power of two that holds them under the high-water mark. At its cap,
-  /// the oldest changes are folded into `base` until the rest fit in half of it.
-  pub fn rotate(&mut self) -> anyhow::Result<()> {
-    self.rotate_with(0)
-  }
-
-  /// Rotates with room for `additional` bytes, the size of an entry that did not fit.
-  fn rotate_with(&mut self, additional: usize) -> anyhow::Result<()> {
+  /// Plans a rotation: the entries of a new journal, built by [`Rotation::build`] without the
+  /// table's lock and swapped in by [`Self::install`]. Below its cap the table grows: the entries
+  /// are kept and the new file is the next power of two that holds them under the high-water mark.
+  /// At its cap, the oldest changes are folded into `base` until the rest fit in half of it.
+  /// `additional` is room for an entry that did not fit.
+  pub fn plan_rotation(&mut self, additional: usize) -> anyhow::Result<Rotation> {
     #[cfg(test)]
     {
       self.rotations_started += 1;
@@ -468,11 +532,11 @@ impl VersionTable {
         .next_power_of_two()
         .max(self.journal.buffer_len())
         .min(self.max_bytes);
-      let rebuilt = entries.iter().map(|(kind, entry, timestamp)| {
-        (SCOPE, kind.key(entry.version), entry.clone(), *timestamp)
-      });
-      self.replace_journal(size, rebuilt)?;
-      return Ok(());
+      let entries = entries
+        .into_iter()
+        .map(|(kind, entry, timestamp)| (SCOPE, kind.key(entry.version), entry, timestamp))
+        .collect();
+      return Ok(self.rotation(size, entries, None));
     }
 
     let target = self.max_bytes / 2;
@@ -498,48 +562,70 @@ impl VersionTable {
       folded += 1;
     }
 
-    let rebuilt =
-      std::iter::once((
-        SCOPE,
-        EntryKind::Base.key(base_version),
-        field_set(base_version, &base),
-        base_timestamp,
-      ))
-      .chain(entries[folded ..].iter().map(|(kind, entry, timestamp)| {
-        (SCOPE, kind.key(entry.version), entry.clone(), *timestamp)
-      }));
-
-    self.replace_journal(self.max_bytes, rebuilt)?;
-    self.base_version = base_version;
-    Ok(())
+    let entries = std::iter::once((
+      SCOPE,
+      EntryKind::Base.key(base_version),
+      field_set(base_version, &base),
+      base_timestamp,
+    ))
+    .chain(
+      entries
+        .into_iter()
+        .skip(folded)
+        .map(|(kind, entry, timestamp)| (SCOPE, kind.key(entry.version), entry, timestamp)),
+    )
+    .collect();
+    Ok(self.rotation(self.max_bytes, entries, Some(base_version)))
   }
 
-  /// Writes `entries` into a new journal of `size` bytes and swaps it in for the table's file.
-  fn replace_journal(
-    &mut self,
+  fn rotation(
+    &self,
     size: usize,
-    entries: impl Iterator<Item = (Scope, String, FieldSet, u64)>,
-  ) -> anyhow::Result<()> {
-    let path = rotation_path(&self.directory);
-    let journal = MemMappedVersionedJournal::new(
-      &path,
+    entries: Vec<(Scope, String, FieldSet, u64)>,
+    base_version: Option<u64>,
+  ) -> Rotation {
+    Rotation {
+      directory: self.directory.clone(),
       size,
-      HIGH_WATER_MARK_RATIO,
-      self.time_provider.clone(),
       entries,
-    )
-    .inspect_err(|_| remove_file(&path))?;
-    // The new journal must be on disk before it replaces the old one. The rename is atomic, so a
-    // crash leaves one complete journal.
-    MemMappedVersionedJournal::sync(&journal).inspect_err(|_| remove_file(&path))?;
-    std::fs::rename(&path, journal_path(&self.directory)).inspect_err(|_| remove_file(&path))?;
+      base_version,
+      newest_version: self.newest_version,
+      time_provider: self.time_provider.clone(),
+    }
+  }
 
-    self.journal = journal;
+  /// Swaps in a journal built by [`Rotation::build`]. The caller then renames the new file over
+  /// the table's file with the returned [`Rename`]; the journal stays mapped across the rename.
+  /// Fails if the table was written since the rotation was planned.
+  pub fn install(&mut self, rotated: Rotated) -> anyhow::Result<Rename> {
+    anyhow::ensure!(
+      rotated.newest_version == self.newest_version,
+      "field-set table was written during its rotation"
+    );
+    self.journal = rotated.journal;
+    if let Some(base_version) = rotated.base_version {
+      self.base_version = base_version;
+    }
     // A journal created with entries does not report its high-water mark until the next write,
     // so check the position directly.
     self.rotation_ineffective = self.above_high_water();
     self.cursors.clear();
-    Ok(())
+    Ok(Rename {
+      from: rotation_path(&self.directory),
+      to: journal_path(&self.directory),
+    })
+  }
+
+  /// Records a rotation that failed before it was installed. The table is unchanged; it is not
+  /// rotated again until it is full.
+  pub fn rotation_failed(&mut self) {
+    self.rotation_ineffective = true;
+  }
+
+  /// Records a failed rename of an installed journal. The table still resolves versions, but its
+  /// file was not replaced, so it takes no more writes: they would be lost on the next start.
+  pub fn rename_failed(&mut self) {
+    self.read_only = true;
   }
 
   /// Resolves each of `versions`.

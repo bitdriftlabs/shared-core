@@ -70,6 +70,7 @@ fn test_global_init() {
 
 pub mod table;
 
+use bd_client_common::file_system::remove_dir_if_exists_async;
 use bd_client_stats_store::{Counter, Scope};
 use bd_key_value::{Key, Store};
 use bd_log_filter::ScrubRules;
@@ -91,7 +92,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 pub use table::Resolution;
-use table::{FieldMap, VersionTable};
+use table::{FieldMap, VersionTable, Written};
 
 /// The directory, under the SDK directory, that holds the version table.
 const TABLE_DIRECTORY: &str = "field_sets";
@@ -157,10 +158,79 @@ impl FieldSetTable {
     handle
   }
 
-  /// Runs `f` on the table, for tests that write or rotate it while an uploader holds the handle.
+  /// Runs `f` on the table if it is open. Public for tests that inspect it while an uploader holds
+  /// the handle.
   #[doc(hidden)]
   pub fn with_table<R>(&self, f: impl FnOnce(&mut VersionTable) -> R) -> Option<R> {
     self.table.lock().as_mut().map(f)
+  }
+
+  /// Runs `f` on the open table.
+  fn lock_table<R>(
+    &self,
+    f: impl FnOnce(&mut VersionTable) -> anyhow::Result<R>,
+  ) -> anyhow::Result<R> {
+    let mut table = self.table.lock();
+    f(table
+      .as_mut()
+      .ok_or_else(|| anyhow::anyhow!("field-set table is closed"))?)
+  }
+
+  /// Appends a version, rotating the table when it passes its high-water mark or is full.
+  ///
+  /// A rotation's file I/O runs without the table's lock: the new journal is built and synced on a
+  /// blocking thread while uploaders keep resolving from the old one, then swapped in under the
+  /// lock and renamed over the table's file. The interner is the only writer and waits for the
+  /// rotation, so the table does not change while it is built. Public for tests that write the
+  /// table while an uploader holds the handle.
+  #[doc(hidden)]
+  pub async fn write(
+    &self,
+    version: u64,
+    full: bool,
+    set: &FieldMap,
+    removed: &[String],
+  ) -> anyhow::Result<()> {
+    let written = self.lock_table(|table| table.write(version, full, set, removed))?;
+    match written {
+      Written::Done { rotate: false } => Ok(()),
+      Written::Done { rotate: true } => {
+        // The version is written. A failed rotation is retried when the table is full rather than
+        // on every write.
+        if let Err(error) = self.rotate(0).await {
+          log::debug!("failed to rotate field-set table: {error}");
+        }
+        Ok(())
+      },
+      Written::Full { bytes } => {
+        self.rotate(bytes).await?;
+        match self.lock_table(|table| table.write(version, full, set, removed))? {
+          Written::Done { .. } => Ok(()),
+          Written::Full { .. } => anyhow::bail!("field-set table full after rotation"),
+        }
+      },
+    }
+  }
+
+  async fn rotate(&self, additional: usize) -> anyhow::Result<()> {
+    let installed = async {
+      let rotation = self.lock_table(|table| table.plan_rotation(additional))?;
+      let rotated = tokio::task::spawn_blocking(move || rotation.build()).await??;
+      self.lock_table(|table| table.install(rotated))
+    }
+    .await;
+    let rename = match installed {
+      Ok(rename) => rename,
+      Err(error) => {
+        self.with_table(VersionTable::rotation_failed);
+        return Err(error);
+      },
+    };
+    if let Err(error) = tokio::fs::rename(&rename.from, &rename.to).await {
+      self.with_table(VersionTable::rename_failed);
+      return Err(error.into());
+    }
+    Ok(())
   }
 
   /// Returns the full field set for `version`, or `None` if it cannot be resolved.
@@ -313,7 +383,7 @@ impl FieldInterner {
   /// Opens the table when interning is enabled, and deletes it when interning is off. Called when
   /// the logger is built, before any uploader can read a buffered log from an earlier run, and
   /// before each log is written; it only does I/O when the runtime flag changes.
-  pub fn prepare(&mut self) {
+  pub async fn prepare(&mut self) {
     let enabled = self.enabled();
     if self.last_enabled == Some(enabled) {
       return;
@@ -324,7 +394,7 @@ impl FieldInterner {
       // Collector updates are not tracked while interning is off.
       self.recompute_all = true;
       if self.table_state == TableState::Closed {
-        self.open();
+        self.open().await;
       }
       return;
     }
@@ -332,14 +402,24 @@ impl FieldInterner {
     // Changes are not tracked while interning is off; enabling it again recomputes every key.
     self.current = None;
     self.dirty.clear();
-    if self.table_open() || std::fs::exists(&self.directory).unwrap_or(false) {
-      self.delete_table();
+    if self.table_open()
+      || tokio::fs::try_exists(&self.directory)
+        .await
+        .unwrap_or(false)
+    {
+      self.delete_table().await;
     }
   }
 
-  fn open(&mut self) {
+  async fn open(&mut self) {
     let max_bytes = usize::try_from(*self.flags.table_max_bytes.read()).unwrap_or(usize::MAX);
-    match VersionTable::open(&self.directory, max_bytes, self.time_provider.clone()) {
+    match VersionTable::open(
+      self.directory.clone(),
+      max_bytes,
+      self.time_provider.clone(),
+    )
+    .await
+    {
       Ok((table, recovered)) => {
         // A fresh block above every number used before, even if the table lost its newest
         // entries. If the reservation cannot be read, numbers could be reused, so the table is
@@ -386,11 +466,11 @@ impl FieldInterner {
 
   /// Deletes the table when interning is turned off. Interned logs still buffered upload without
   /// their field sets.
-  fn delete_table(&mut self) {
+  async fn delete_table(&mut self) {
     *self.table.table.lock() = None;
     self.table_state = TableState::Closed;
     self.current = None;
-    match std::fs::remove_dir_all(&self.directory) {
+    match remove_dir_if_exists_async(&self.directory).await {
       Ok(()) => log::debug!("deleted field-set table because interning is off"),
       Err(error) => log::debug!("failed to delete field-set table: {error}"),
     }
@@ -413,7 +493,7 @@ impl FieldInterner {
   /// Compares `log` with the current field set, first writing a version for any changes since the
   /// last one. Returns the fields to leave out, or `None` if the log should be written fully
   /// inline.
-  pub fn intern(
+  pub async fn intern(
     &mut self,
     log: &Log,
     persistent: &AnnotatedLogFields,
@@ -437,7 +517,7 @@ impl FieldInterner {
     self.readmit_quiet_keys();
 
     self.logs_written += 1;
-    if let Err(error) = self.materialize(persistent, scrub_rules) {
+    if let Err(error) = self.materialize(persistent, scrub_rules).await {
       // Interning stops for the rest of the process, for example when the table cannot hold the
       // field set; the table stays open to resolve logs already buffered. This costs savings only.
       log::debug!("failed to write field-set version, interning stops for this process: {error}");
@@ -498,7 +578,7 @@ impl FieldInterner {
     volatile
   }
 
-  fn materialize(
+  async fn materialize(
     &mut self,
     persistent: &AnnotatedLogFields,
     scrub_rules: &ScrubRules,
@@ -588,10 +668,10 @@ impl FieldInterner {
     if self.current.is_some() && same_fields(&next, &previous) {
       return Ok(());
     }
-    self.write_version(next, &previous)
+    self.write_version(next, &previous).await
   }
 
-  fn write_version(&mut self, next: LogFields, previous: &LogFields) -> anyhow::Result<()> {
+  async fn write_version(&mut self, next: LogFields, previous: &LogFields) -> anyhow::Result<()> {
     let full = self.current.is_none();
     let set: FieldMap = next
       .iter()
@@ -614,17 +694,11 @@ impl FieldInterner {
     };
 
     let max_bytes = usize::try_from(*self.flags.table_max_bytes.read()).unwrap_or(usize::MAX);
-    let result = self.allocate_version().and_then(|version| {
-      let mut table = self.table.table.lock();
-      let table = table
-        .as_mut()
-        .ok_or_else(|| anyhow::anyhow!("field-set table is closed"))?;
-      table.set_max_bytes(max_bytes);
-      table.write(version, full, &set, &removed)?;
-      Ok(version)
-    });
-
-    let version = result?;
+    let version = self.allocate_version()?;
+    self
+      .table
+      .with_table(|table| table.set_max_bytes(max_bytes));
+    self.table.write(version, full, &set, &removed).await?;
     log::debug!(
       "wrote field-set version {version} ({} fields set, {} removed, full: {full})",
       set.len(),

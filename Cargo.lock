@@ -752,6 +752,7 @@ name = "bd-field-interning"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "bd-client-common",
  "bd-client-stats-store",
  "bd-key-value",
  "bd-log-filter",

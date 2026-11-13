@@ -77,7 +77,7 @@ impl Setup {
       .unwrap();
   }
 
-  fn interner(&self) -> FieldInterner {
+  async fn interner(&self) -> FieldInterner {
     let mut interner = FieldInterner::new(
       self.directory.path(),
       &self.runtime,
@@ -85,7 +85,7 @@ impl Setup {
       self.time.clone(),
       &self.collector.scope("field_interning"),
     );
-    interner.prepare();
+    interner.prepare().await;
     interner
   }
 
@@ -129,8 +129,10 @@ impl Setup {
     }
   }
 
-  fn intern(&self, interner: &mut FieldInterner, log: &Log) -> Option<InternedFields> {
-    interner.intern(log, &self.persistent, &self.scrub_rules)
+  async fn intern(&self, interner: &mut FieldInterner, log: &Log) -> Option<InternedFields> {
+    interner
+      .intern(log, &self.persistent, &self.scrub_rules)
+      .await
   }
 
   fn counter(&self, name: &str) -> u64 {
@@ -157,21 +159,21 @@ fn string_fields(
 #[tokio::test]
 async fn disabled_interning_writes_logs_inline() {
   let mut setup = Setup::new(false).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "user_id", "abc");
-  assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
+  assert_eq!(setup.intern(&mut interner, &setup.log(&[])).await, None);
   assert!(!setup.directory.path().join("field_sets").exists());
 }
 
 #[tokio::test]
 async fn unchanged_fields_are_left_out_and_others_stay_inline() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "user_id", "abc");
   setup.set(&mut interner, "theme", "dark");
   setup.set(&mut interner, "locale", "en");
 
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(interned.version, 1);
   assert_eq!(keys(&interned.field_set), ["locale", "theme", "user_id"]);
   assert_eq!(interned.cleared, [] as [LogFieldKey; 0]);
@@ -180,24 +182,25 @@ async fn unchanged_fields_are_left_out_and_others_stay_inline() {
   // is cleared, and `user_id` is still left out under the same version.
   let mut filtered = setup.log(&[("theme", "light")]);
   filtered.fields.remove("locale");
-  let interned = setup.intern(&mut interner, &filtered).unwrap();
+  let interned = setup.intern(&mut interner, &filtered).await.unwrap();
   assert_eq!(interned.version, 1);
   assert_eq!(interned.cleared, [LogFieldKey::from("locale")]);
 
   // A log carrying none of the set's values unchanged is not interned.
   let mut log = setup.log(&[("theme", "light"), ("user_id", "other")]);
   log.fields.remove("locale");
-  assert_eq!(setup.intern(&mut interner, &log), None);
+  assert_eq!(setup.intern(&mut interner, &log).await, None);
 }
 
 #[tokio::test]
 async fn updates_between_logs_write_one_version() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "a", "1");
   assert_eq!(
     setup
       .intern(&mut interner, &setup.log(&[]))
+      .await
       .unwrap()
       .version,
     1
@@ -207,7 +210,7 @@ async fn updates_between_logs_write_one_version() {
   setup.set(&mut interner, "b", "2");
   setup.set(&mut interner, "c", "3");
   setup.remove(&mut interner, "a");
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(interned.version, 2);
   assert_eq!(keys(&interned.field_set), ["b", "c"]);
 }
@@ -215,10 +218,10 @@ async fn updates_between_logs_write_one_version() {
 #[tokio::test]
 async fn field_sets_hold_scrubbed_values() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "email", "a@example.com");
   setup.set(&mut interner, "user_id", "abc");
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(
     interned.field_set.get("email"),
     Some(&DataValue::String("a@example.com".to_string()))
@@ -239,7 +242,7 @@ async fn field_sets_hold_scrubbed_values() {
   // field out.
   let mut log = setup.log(&[]);
   setup.scrub_rules.process(&mut log);
-  let interned = setup.intern(&mut interner, &log).unwrap();
+  let interned = setup.intern(&mut interner, &log).await.unwrap();
   assert_eq!(interned.version, 2);
   assert_eq!(
     interned.field_set.get("email").and_then(DataValue::as_str),
@@ -263,18 +266,18 @@ async fn field_sets_hold_scrubbed_values() {
 #[tokio::test]
 async fn keys_that_change_too_often_stay_inline_until_they_settle() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "stable", "1");
   // A key set twice before the first log is not volatile.
   setup.set(&mut interner, "churny", "0");
   setup.set(&mut interner, "churny", "1");
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(keys(&interned.field_set), ["churny", "stable"]);
 
   let mut volatile_after = None;
   for change in 2 .. 40 {
     setup.set(&mut interner, "churny", &change.to_string());
-    let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+    let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
     if !interned.field_set.contains_key("churny") {
       volatile_after = Some(change);
       break;
@@ -288,15 +291,15 @@ async fn keys_that_change_too_often_stay_inline_until_they_settle() {
 
   // While volatile, its changes write no versions.
   setup.set(&mut interner, "churny", "volatile");
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(interned.version, version);
   assert!(!interned.field_set.contains_key("churny"));
 
   // After `W` logs without a change it is interned again.
   for _ in 0 .. 8 {
-    setup.intern(&mut interner, &setup.log(&[])).unwrap();
+    setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   }
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(
     interned.field_set.get("churny").and_then(DataValue::as_str),
     Some("volatile")
@@ -306,11 +309,12 @@ async fn keys_that_change_too_often_stay_inline_until_they_settle() {
 #[tokio::test]
 async fn a_restart_continues_the_table_above_the_reserved_numbers() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "a", "1");
   assert_eq!(
     setup
       .intern(&mut interner, &setup.log(&[]))
+      .await
       .unwrap()
       .version,
     1
@@ -318,10 +322,11 @@ async fn a_restart_continues_the_table_above_the_reserved_numbers() {
   drop(interner);
 
   // An unchanged set after a restart reuses the stored version.
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   assert_eq!(
     setup
       .intern(&mut interner, &setup.log(&[]))
+      .await
       .unwrap()
       .version,
     1
@@ -329,21 +334,21 @@ async fn a_restart_continues_the_table_above_the_reserved_numbers() {
 
   // A change after the restart is written as a change, numbered above the first process's block.
   setup.set(&mut interner, "b", "2");
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(interned.version, 65);
   assert_eq!(keys(&interned.field_set), ["a", "b"]);
 
   // A new process can resolve the table's versions as soon as it is built, before any log, so
   // uploaders reading buffered logs from the earlier run find their sets.
   drop(interner);
-  let interner = setup.interner();
+  let interner = setup.interner().await;
   assert!(interner.table().resolve(65).is_some());
 
   // A lost table does not make numbers restart: the next process starts above the reservation.
   drop(interner);
   std::fs::remove_dir_all(setup.directory.path().join("field_sets")).unwrap();
-  let mut interner = setup.interner();
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let mut interner = setup.interner().await;
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(interned.version, 129);
   // Versions lost with the table are missing, not beyond the window.
   let table = interner.table();
@@ -359,10 +364,10 @@ async fn a_restart_continues_the_table_above_the_reserved_numbers() {
     let len = std::fs::metadata(&path).unwrap().len();
     std::fs::write(&path, vec![0xff; usize::try_from(len).unwrap()]).unwrap();
   }
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   assert_eq!(setup.counter("failures"), 1);
   assert_eq!(interner.table().resolve(129), None);
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(interned.version, 193);
 }
 
@@ -375,32 +380,33 @@ async fn a_failed_write_stops_interning_for_the_process() {
       (field_interning::TableMaxBytes::path(), ValueKind::Int(0)),
     ])
     .await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "huge", &"x".repeat(8 * 1024));
 
   // The table cannot hold the set: the log is written inline and interning stops, even once the
   // set would fit.
-  assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
+  assert_eq!(setup.intern(&mut interner, &setup.log(&[])).await, None);
   setup.remove(&mut interner, "huge");
   setup.set(&mut interner, "small", "1");
-  assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
+  assert_eq!(setup.intern(&mut interner, &setup.log(&[])).await, None);
   assert_eq!(setup.counter("failures"), 1);
 
   // The next process interns again.
   drop(interner);
-  let mut interner = setup.interner();
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let mut interner = setup.interner().await;
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(keys(&interned.field_set), ["small"]);
 }
 
 #[tokio::test]
 async fn turning_interning_off_deletes_the_table() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "a", "1");
   assert_eq!(
     setup
       .intern(&mut interner, &setup.log(&[]))
+      .await
       .unwrap()
       .version,
     1
@@ -412,9 +418,9 @@ async fn turning_interning_off_deletes_the_table() {
       ValueKind::Bool(false),
     )])
     .await;
-  interner.prepare();
+  interner.prepare().await;
   // No new versions, and the table is gone: buffered interned logs upload without their sets.
-  assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
+  assert_eq!(setup.intern(&mut interner, &setup.log(&[])).await, None);
   assert_eq!(interner.table().resolve(1), None);
   assert!(!setup.directory.path().join("field_sets").exists());
 
@@ -425,11 +431,12 @@ async fn turning_interning_off_deletes_the_table() {
       ValueKind::Bool(true),
     )])
     .await;
-  interner.prepare();
+  interner.prepare().await;
   setup.set(&mut interner, "a", "2");
   assert_eq!(
     setup
       .intern(&mut interner, &setup.log(&[]))
+      .await
       .unwrap()
       .version,
     65
@@ -439,9 +446,9 @@ async fn turning_interning_off_deletes_the_table() {
 #[tokio::test]
 async fn a_table_from_an_earlier_run_is_deleted_if_interning_is_off() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "a", "1");
-  setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   drop(interner);
 
   setup
@@ -450,7 +457,7 @@ async fn a_table_from_an_earlier_run_is_deleted_if_interning_is_off() {
       ValueKind::Bool(false),
     )])
     .await;
-  let interner = setup.interner();
+  let interner = setup.interner().await;
   assert_eq!(interner.table().resolve(1), None);
   assert!(!setup.directory.path().join("field_sets").exists());
 }
@@ -458,15 +465,14 @@ async fn a_table_from_an_earlier_run_is_deleted_if_interning_is_off() {
 #[tokio::test]
 async fn hydrating_an_upload_restores_the_logs() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "user_id", "abc");
   setup.set(&mut interner, "theme", "dark");
 
   let mut proto_logs = Vec::new();
   let mut versions = Vec::new();
   let mut expected = Vec::new();
-  let mut write = |setup: &Setup, interner: &mut FieldInterner, log: Log, compress: bool| {
-    let interned = setup.intern(interner, &log);
+  let mut write = |log: Log, interned: Option<InternedFields>, compress: bool| {
     versions.push(interned.as_ref().map(|interned| interned.version));
     expected.push(
       log
@@ -483,24 +489,19 @@ async fn hydrating_an_upload_restores_the_logs() {
     proto_logs.push(bytes);
   };
 
-  write(
-    &setup,
-    &mut interner,
-    setup.log(&[("screen", "home")]),
-    false,
-  );
+  let log = setup.log(&[("screen", "home")]);
+  let interned = setup.intern(&mut interner, &log).await;
+  write(log, interned, false);
   setup.set(&mut interner, "theme", "light");
   // An override stays inline; the log is compressed, to check that hydration expands it.
-  write(
-    &setup,
-    &mut interner,
-    setup.log(&[("theme", "override")]),
-    true,
-  );
+  let log = setup.log(&[("theme", "override")]);
+  let interned = setup.intern(&mut interner, &log).await;
+  write(log, interned, true);
   // A filter removed `user_id`.
   let mut removed = setup.log(&[]);
   removed.fields.remove("user_id");
-  write(&setup, &mut interner, removed, false);
+  let interned = setup.intern(&mut interner, &removed).await;
+  write(removed, interned, false);
   assert_eq!(versions, [Some(1), Some(2), Some(2)]);
 
   let table: FieldSetTable = interner.table();
@@ -522,25 +523,25 @@ async fn hydrating_an_upload_restores_the_logs() {
 #[tokio::test]
 async fn removed_keys_do_not_keep_change_rates() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   for index in 0 .. 20 {
     let key: &'static str = Box::leak(format!("request_{index}").into_boxed_str());
     setup.set(&mut interner, key, "1");
-    setup.intern(&mut interner, &setup.log(&[]));
+    setup.intern(&mut interner, &setup.log(&[])).await;
     setup.remove(&mut interner, key);
   }
-  setup.intern(&mut interner, &setup.log(&[]));
+  setup.intern(&mut interner, &setup.log(&[])).await;
   assert_eq!(interner.last_changes.len(), 0);
 
   // A key that became volatile and was then removed is dropped once it is re-admitted.
   for change in 0 .. 10 {
     setup.set(&mut interner, "churny", &change.to_string());
-    setup.intern(&mut interner, &setup.log(&[]));
+    setup.intern(&mut interner, &setup.log(&[])).await;
   }
   assert!(interner.volatile.contains("churny"));
   setup.remove(&mut interner, "churny");
   for _ in 0 .. 10 {
-    setup.intern(&mut interner, &setup.log(&[]));
+    setup.intern(&mut interner, &setup.log(&[])).await;
   }
   assert!(!interner.volatile.contains("churny"));
   assert_eq!(interner.last_changes.len(), 0);
@@ -549,10 +550,10 @@ async fn removed_keys_do_not_keep_change_rates() {
 #[tokio::test]
 async fn empty_keys_stay_inline() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "", "value");
   setup.set(&mut interner, "user_id", "abc");
-  let interned = setup.intern(&mut interner, &setup.log(&[])).unwrap();
+  let interned = setup.intern(&mut interner, &setup.log(&[])).await.unwrap();
   assert_eq!(keys(&interned.field_set), ["user_id"]);
 }
 
@@ -582,11 +583,12 @@ impl bd_key_value::Storage for FailingReads {
 #[tokio::test]
 async fn an_unreadable_reservation_stops_interning_but_keeps_the_table() {
   let mut setup = Setup::new(true).await;
-  let mut interner = setup.interner();
+  let mut interner = setup.interner().await;
   setup.set(&mut interner, "user_id", "abc");
   assert_eq!(
     setup
       .intern(&mut interner, &setup.log(&[]))
+      .await
       .unwrap()
       .version,
     1
@@ -596,8 +598,8 @@ async fn an_unreadable_reservation_stops_interning_but_keeps_the_table() {
   // The next process cannot read the reservation, so it might reuse a number. It writes no new
   // versions but still resolves the existing ones for buffered logs.
   setup.store = Arc::new(Store::new(Box::<FailingReads>::default()));
-  let mut interner = setup.interner();
-  assert_eq!(setup.intern(&mut interner, &setup.log(&[])), None);
+  let mut interner = setup.interner().await;
+  assert_eq!(setup.intern(&mut interner, &setup.log(&[])).await, None);
   assert!(interner.table().resolve(1).is_some());
 
   // Changes are not tracked either, so dynamically named keys do not accumulate.
@@ -607,4 +609,48 @@ async fn an_unreadable_reservation_stops_interning_but_keeps_the_table() {
     setup.remove(&mut interner, key);
   }
   assert!(interner.dirty.is_empty());
+}
+
+#[tokio::test]
+async fn rotations_fold_old_versions_and_survive_a_restart() {
+  const KEYS: [&str; 10] = ["k0", "k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "k9"];
+  let mut setup = Setup::new(true).await;
+  setup
+    .set_runtime(vec![
+      (field_interning::Enabled::path(), ValueKind::Bool(true)),
+      (field_interning::WindowLogs::path(), ValueKind::Int(8)),
+      (
+        field_interning::TableMaxBytes::path(),
+        ValueKind::Int(16 * 1024),
+      ),
+    ])
+    .await;
+  let mut interner = setup.interner().await;
+
+  // Each key changes every 10 logs, so every log writes a version and none of them is volatile.
+  let mut newest = 0;
+  for index in 0 .. 400 {
+    setup.set(
+      &mut interner,
+      KEYS[index % KEYS.len()],
+      &format!("value-{index}"),
+    );
+    newest = setup
+      .intern(&mut interner, &setup.log(&[]))
+      .await
+      .unwrap()
+      .version;
+  }
+  assert_eq!(setup.counter("failures"), 0);
+
+  // The table grew to its cap and then folded the oldest versions away.
+  let table = interner.table();
+  assert_eq!(table.resolution(1), Resolution::BeyondWindow);
+  let resolved = table.resolve(newest).unwrap();
+  assert_eq!(resolved.fields.len(), KEYS.len());
+
+  // The rotated file replaced the table's file, so the next process resolves the same set.
+  drop(interner);
+  let interner = setup.interner().await;
+  assert_eq!(interner.table().resolve(newest), Some(resolved));
 }

@@ -10,6 +10,7 @@ doctest = false
 
 [dependencies]
 anyhow.workspace            = true
+bd-client-common            = { path = "../bd-client-common" }
 bd-client-stats-store       = { path = "../bd-client-stats-store" }
 bd-key-value                = { path = "../bd-key-value" }
 bd-log-filter               = { path = "../bd-log-filter" }
@@ -23,6 +24,7 @@ bd-workspace-hack.workspace = true
 log.workspace               = true
 parking_lot.workspace       = true
 protobuf.workspace          = true
+tokio.workspace             = true
 
 [dev-dependencies]
 bd-test-helpers           = { path = "../bd-test-helpers", default-features = false }
@@ -30,4 +32,3 @@ bd-test-helpers-core.path = "../bd-test-helpers-core"
 ctor.workspace            = true
 tempfile.workspace        = true
 time.workspace            = true
-tokio.workspace           = true

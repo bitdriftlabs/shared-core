@@ -522,7 +522,7 @@ impl LoggerBuilder {
       // Open the field-set table only while holding the directory lock and with the cached runtime
       // loaded, and before any uploader can read a buffered log from an earlier run.
       let mut async_log_buffer = async_log_buffer;
-      async_log_buffer.prepare_field_interning();
+      async_log_buffer.prepare_field_interning().await;
 
       // Initialize state store using runtime configuration. This may fall back to an in-memory
       // store if persistent storage cannot be initialized or if directed by configuration.

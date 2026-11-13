@@ -443,7 +443,8 @@ impl ProcessingPipeline {
     {
       let interned = intern
         .interner
-        .intern(&log.log, intern.persistent, &self.scrub_rules);
+        .intern(&log.log, intern.persistent, &self.scrub_rules)
+        .await;
       log.set_interned(interned);
     }
 

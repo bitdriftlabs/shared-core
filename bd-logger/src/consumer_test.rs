@@ -3159,12 +3159,13 @@ fn string_fields(entries: &[(&str, &str)]) -> bd_field_interning::table::FieldMa
     .collect()
 }
 
-fn field_set_table(directory: &TempDir, collector: &Collector) -> FieldSetTable {
+async fn field_set_table(directory: &TempDir, collector: &Collector) -> FieldSetTable {
   let (table, _) = bd_field_interning::table::VersionTable::open(
-    directory.path(),
+    directory.path().to_path_buf(),
     bd_field_interning::table::MIN_TABLE_BYTES,
     Arc::new(bd_time::SystemTimeProvider),
   )
+  .await
   .unwrap();
   FieldSetTable::for_test(table, &collector.scope("field_interning"))
 }
@@ -3173,10 +3174,10 @@ fn field_set_table(directory: &TempDir, collector: &Collector) -> FieldSetTable 
 async fn batch_keeps_field_sets_resolved_before_a_rotation() {
   let directory = TempDir::with_prefix("consumertest").unwrap();
   let collector = Collector::default();
-  let table = field_set_table(&directory, &collector);
+  let table = field_set_table(&directory, &collector).await;
   table
-    .with_table(|table| table.write(1, true, &string_fields(&[("a", "1")]), &[]))
-    .unwrap()
+    .write(1, true, &string_fields(&[("a", "1")]), &[])
+    .await
     .unwrap();
 
   let runtime_loader = ConfigLoader::new(directory.path());
@@ -3187,20 +3188,17 @@ async fn batch_keeps_field_sets_resolved_before_a_rotation() {
 
   // Later versions push version 1 out of the table's window while the batch is being built.
   let value = "x".repeat(100);
-  table
-    .with_table(|table| {
-      for version in 2 ..= 100u64 {
-        table
-          .write(
-            version,
-            false,
-            &string_fields(&[("a", &format!("{value}{version}"))]),
-            &[],
-          )
-          .unwrap();
-      }
-    })
-    .unwrap();
+  for version in 2 ..= 100u64 {
+    table
+      .write(
+        version,
+        false,
+        &string_fields(&[("a", &format!("{value}{version}"))]),
+        &[],
+      )
+      .await
+      .unwrap();
+  }
   assert_eq!(table.resolve(1), None);
 
   // A second log referring to the same version reuses the set already in the batch.
@@ -3244,10 +3242,10 @@ async fn batch_keeps_field_sets_resolved_before_a_rotation() {
 async fn field_sets_count_toward_the_batch_byte_limit() {
   let directory = TempDir::with_prefix("consumertest").unwrap();
   let collector = Collector::default();
-  let table = field_set_table(&directory, &collector);
+  let table = field_set_table(&directory, &collector).await;
   table
-    .with_table(|table| table.write(1, true, &string_fields(&[("large", &"x".repeat(200))]), &[]))
-    .unwrap()
+    .write(1, true, &string_fields(&[("large", &"x".repeat(200))]), &[])
+    .await
     .unwrap();
 
   let runtime_loader = ConfigLoader::new(directory.path());
@@ -3331,10 +3329,10 @@ async fn recovered_trigger_batch_without_its_table_uploads_without_field_sets() 
 async fn recovered_batch_field_sets_resolve_once_per_version() {
   let directory = TempDir::with_prefix("consumertest").unwrap();
   let collector = Collector::default();
-  let table = field_set_table(&directory, &collector);
+  let table = field_set_table(&directory, &collector).await;
   table
-    .with_table(|table| table.write(1, true, &string_fields(&[("a", "1")]), &[]))
-    .unwrap()
+    .write(1, true, &string_fields(&[("a", "1")]), &[])
+    .await
     .unwrap();
 
   let logs = [

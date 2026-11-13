@@ -780,8 +780,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
   /// Opens a field-set table from an earlier run, or deletes one that is due. Called once the SDK
   /// directory lock is held and the cached runtime is loaded, before the uploaders start.
-  pub(crate) fn prepare_field_interning(&mut self) {
-    self.field_interner.prepare();
+  pub(crate) async fn prepare_field_interning(&mut self) {
+    self.field_interner.prepare().await;
   }
 
   /// The handle uploaders use to resolve the field sets interned logs refer to.
@@ -1502,7 +1502,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     current_process: bool,
   ) -> anyhow::Result<LogReplayResult> {
     let intern = if current_process {
-      self.field_interner.prepare();
+      self.field_interner.prepare().await;
       Some(InternContext {
         interner: &mut self.field_interner,
         persistent: self.metadata_collector.persistent_fields(),
