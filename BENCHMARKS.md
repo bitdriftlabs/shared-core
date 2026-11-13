@@ -72,6 +72,32 @@ For wall-clock measurements of the same cases, run:
 cargo bench -p bd-event-buffer --bench criterion
 ```
 
+The field-interning benchmark measures the per-log cost of interning and encoding a log with 100
+persistent fields: `intern`, `set_interned`, then `compute_size` and `serialize_to_bytes` for each
+buffer, with interning off, on with every persistent field unchanged, and on with a few cleared
+keys. It also measures `intern` alone and the leave-out decision, `InternedFields::new`, which
+interning makes once and encoding reuses. The Callgrind bench also measures `intern` with volatile
+keys that are not yet due for re-admission, and an uploader resolving one version repeatedly or
+consecutive versions. Gungraun needs `setarch` to disable ASLR, so a Docker container needs
+`--security-opt seccomp=unconfined`:
+
+```sh
+cargo bench -p bd-field-interning --bench main
+cargo bench -p bd-field-interning --bench criterion
+```
+
+The logger pipeline benchmark replays the anonymized `large` workflow-bench corpus, 7,794 logs,
+through a real `AsyncLogBuffer` configured with the corpus's buffers, filters and workflows. It
+measures caller-thread admission, with platform fields from the field provider or as persistent
+fields, and event-loop processing: normalization, scrub rules and filters, buffer selection,
+workflows, interning and ring-buffer writes. Processing runs with interning off and on, and once
+without the few logs with messages over 10 KiB, which hold most of the corpus's bytes. All five
+cases take about five minutes under Callgrind. The harness is behind the `benchmark` feature:
+
+```sh
+cargo bench -p bd-logger --features benchmark --bench pipeline
+```
+
 `bd-workflow-bench` provides the same two modes for end-to-end workflow replay. Its default
 checked-in fixture is appropriate for repeatable Criterion wall-time benchmarks and Callgrind
 instruction profiles; both wrappers also accept local config and log paths for a live corpus. See

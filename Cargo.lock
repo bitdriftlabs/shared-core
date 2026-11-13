@@ -765,7 +765,9 @@ dependencies = [
  "bd-time",
  "bd-versioned-kv",
  "bd-workspace-hack",
+ "criterion",
  "ctor",
+ "gungraun",
  "log",
  "parking_lot 0.13.0",
  "protobuf 4.0.0-alpha.0",
@@ -1060,6 +1062,7 @@ dependencies = [
  "flate2",
  "fs2",
  "futures-util",
+ "gungraun",
  "itertools 0.15.0",
  "libc",
  "log",
@@ -1067,6 +1070,8 @@ dependencies = [
  "parking_lot 0.13.0",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
+ "protobuf-json-mapping",
+ "serde_json",
  "sha2 0.11.1",
  "tempfile",
  "thiserror 2.0.21",
@@ -1076,6 +1081,7 @@ dependencies = [
  "tower",
  "tracing",
  "uuid",
+ "zstd",
 ]
 
 [[package]]
