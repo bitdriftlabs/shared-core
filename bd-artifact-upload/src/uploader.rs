@@ -1283,13 +1283,15 @@ impl Uploader {
         )
       },
       UploadSource::Path(source_path) => {
-        let result = if let Err(e) = self
+        if let Err(e) = self
           .file_system
           .rename_file(&source_path, &target_path)
           .await
         {
           log::debug!("failed to move artifact source, falling back to copy: {e}");
-          match tokio::fs::File::open(&source_path).await {
+          // The copy appends a CRC trailer, so the entry must be read back as checksummed data;
+          // recording it as raw would upload the trailer as part of the payload.
+          let result = match tokio::fs::File::open(&source_path).await {
             Ok(source_file) => match self.file_system.create_file(&target_path).await {
               Ok(target_file) => {
                 let result = async_write_checksummed_data(source_file, target_file).await;
@@ -1303,13 +1305,12 @@ impl Uploader {
               source_path.display(),
               e
             )),
-          }
+          };
+          (result, StorageFormat::CHECKSUMMED)
         } else {
           path_source = Some((source_path, true));
-          Ok(())
-        };
-
-        (result, StorageFormat::RAW)
+          (Ok(()), StorageFormat::RAW)
+        }
       },
       UploadSource::Retained(source_path) => (
         self.file_system.sync_file_and_parent(&source_path).await,

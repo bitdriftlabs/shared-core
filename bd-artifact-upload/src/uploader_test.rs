@@ -2569,3 +2569,54 @@ async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
       .is_err()
   );
 }
+
+// Reproduction: a path source the upload filesystem cannot rename (here, a path relative to the
+// process directory rather than the SDK directory) falls back to a copy. The uploaded payload must
+// be the original bytes.
+#[tokio::test]
+async fn path_source_copy_fallback_uploads_original_bytes() {
+  let mut setup = Setup::new(2).await;
+  let process_dir = tempfile::tempdir().unwrap();
+  std::env::set_current_dir(process_dir.path()).unwrap();
+  let source_path = std::path::PathBuf::from("snapshot-outside-sdk-dir.zz");
+  std::fs::write(&source_path, b"zlib snapshot").unwrap();
+
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::Path(source_path.clone()),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      String::new(),
+      vec![],
+      None,
+      Some(persisted_tx),
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  persisted_rx.await.unwrap().unwrap();
+
+  loop {
+    match setup.data_upload_rx.recv().await.unwrap() {
+      DataUpload::ArtifactUploadIntent(intent) => {
+        intent
+          .response_tx
+          .send(IntentResponse {
+            uuid: intent.uuid,
+            decision: IntentDecision::UploadImmediately,
+          })
+          .unwrap();
+      },
+      DataUpload::ArtifactUpload(upload) => {
+        assert_eq!(upload.payload.contents, b"zlib snapshot");
+        break;
+      },
+      _ => {},
+    }
+  }
+}
