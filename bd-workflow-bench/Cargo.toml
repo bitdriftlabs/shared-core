@@ -42,3 +42,11 @@ name    = "workflow_replay"
 [[bench]]
 harness = false
 name    = "json_path"
+
+[[bench]]
+harness = false
+name    = "regex_matchers"
+
+[[bench]]
+harness = false
+name    = "regex_matchers_criterion"
