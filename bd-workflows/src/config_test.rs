@@ -5,8 +5,6 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
-
 use super::{ActionEmitMetric, JsonFieldExtraction, SankeyExtraction, TagValue, ValueIncrement};
 use bd_log_matcher::matcher::JsonPathToken;
 use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{

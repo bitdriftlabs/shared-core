@@ -5,8 +5,6 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::unwrap_used)]
-
 use crate::versioned_kv_journal::retention::RetentionRegistry;
 use crate::versioned_kv_journal::{PersistentStoreConfig, make_string_value};
 use crate::{PersistenceMode, Scope, UpdateError, VersionedKVStore};

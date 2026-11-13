@@ -5,8 +5,6 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::unwrap_used)]
-
 use super::setup::{Setup, SetupOptions};
 use crate::log_level;
 use bd_log_matcher::builder::message_equals;
