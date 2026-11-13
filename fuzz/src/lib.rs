@@ -34,6 +34,7 @@ use tempfile::TempDir;
 pub mod buffer_corruption_fuzz_test;
 pub mod json_path;
 pub mod mpsc_buffer_fuzz_test;
+pub mod regex_prefilter;
 pub mod spsc_buffer_fuzz_test;
 pub mod versioned_kv_journal;
 pub mod workflow_state;

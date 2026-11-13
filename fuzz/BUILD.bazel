@@ -116,3 +116,15 @@ fuzz_binary(
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
+
+fuzz_binary(
+    name = "regex_prefilter",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
+    srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/regex_prefilter.rs"],
+    crate_features = ["default"],
+    crate_name = "regex_prefilter",
+    crate_root = "fuzz_targets/regex_prefilter.rs",
+    edition = "2024",
+    tags = ["manual"],
+    deps = FUZZ_DEPS + [":fuzz"],
+)
