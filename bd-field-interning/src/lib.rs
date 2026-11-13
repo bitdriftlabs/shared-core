@@ -36,6 +36,18 @@
 //! * **Keys that change often.** A key that changes again within `min_logs_per_change` logs of its
 //!   previous change stays inline, because a version per change would cost more than carrying it in
 //!   each log. After `window_logs` logs without a change it is interned again.
+//! * **Dropping old versions.** The table does not track which versions buffered logs still refer
+//!   to, because ring buffers drop logs without telling anyone. Instead its size is capped by
+//!   `field_interning.table_max_bytes`. It grows as needed, and at the cap the oldest versions are
+//!   folded into its base. A version therefore outlives its logs as long as the buffers turn over
+//!   faster than the table. A log whose version was folded away uploads without its field set, the
+//!   server marks it as missing its persistent fields, and `logs_beyond_window` counts it so the
+//!   cap can be sized during the rollout.
+//! * **Restarts.** The table and its version numbers survive a restart, so logs buffered by an
+//!   earlier process still resolve. If the table is unreadable or lost entries, it starts empty and
+//!   those logs upload without their field sets. A trigger upload staged before a restart resolves
+//!   its versions again when it resumes, so the same loss applies if the table was lost or folded
+//!   past them in between.
 //! * **Turning it off.** When `field_interning.enabled` is off, nothing new is interned and the
 //!   table is deleted as soon as the interner sees the flag off. Interned logs still in the buffers
 //!   then upload without their field sets, and the server marks them as missing their persistent

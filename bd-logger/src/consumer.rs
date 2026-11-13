@@ -1958,9 +1958,7 @@ impl CompleteBufferUpload {
     field_sets: Option<Vec<FieldSet>>,
     discard_recovered_prefix: bool,
   ) -> anyhow::Result<()> {
-    // Accepted loss: if the table has rotated past or lost a recovered batch's versions, its logs
-    // upload without their field sets and the server marks them as missing their persistent
-    // fields. This needs a restart during a trigger upload and the table turning over in between.
+    // A recovered batch can lose its field sets: see "Restarts" in the `bd_field_interning` docs.
     let field_sets = field_sets
       .unwrap_or_else(|| resolve_field_sets(&self.batch_builder.flags.field_sets, &batch.logs));
     let logs_len = u64::try_from(batch.logs.len()).unwrap_or(u64::MAX);

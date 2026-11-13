@@ -10,6 +10,7 @@
 mod interned_test;
 
 use crate::{DataValue, LogFieldKey, LogFieldValue, LogFields};
+use bd_proto_util::serialization::runtime::Tag;
 use bd_proto_util::serialization::{
   CanonicalType,
   ProtoFieldSerialize,
@@ -247,24 +248,19 @@ impl ProtoFieldSerialize for LogFieldsRef<'_> {
 /// wins, as in the generated parser.
 #[must_use]
 pub fn encoded_field_set_version(log: &[u8]) -> u64 {
+  read_field_set_version(log).unwrap_or(0)
+}
+
+fn read_field_set_version(log: &[u8]) -> anyhow::Result<u64> {
   let mut input = CodedInputStream::from_bytes(log);
   let mut version = 0;
-  loop {
-    let tag = match input.read_raw_tag_or_eof() {
-      Ok(Some(tag)) => tag,
-      Ok(None) => return version,
-      Err(_) => return 0,
-    };
-    let (number, wire_type) = (tag >> 3, tag & 7);
-    let result = if number == FIELD_SET_VERSION_FIELD_NUMBER && wire_type == 0 {
-      input.read_uint64().map(|value| version = value)
-    } else if let Some(wire_type) = WireType::new(wire_type) {
-      input.skip_field(wire_type)
+  while let Some(raw_tag) = input.read_raw_tag_or_eof()? {
+    let tag = Tag::new(raw_tag)?;
+    if tag.field_number == FIELD_SET_VERSION_FIELD_NUMBER && tag.wire_type == WireType::Varint {
+      version = input.read_uint64()?;
     } else {
-      return 0;
-    };
-    if result.is_err() {
-      return 0;
+      input.skip_field(tag.wire_type)?;
     }
   }
+  Ok(version)
 }
