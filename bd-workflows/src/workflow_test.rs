@@ -145,6 +145,7 @@ fn command_details_encode_selectors_and_escape_strings() {
       WellKnownCommandType::STACK_SAMPLING_TRACE,
       "stack_sampling_trace",
     ),
+    (WellKnownCommandType::MEMORY_DUMP, "memory_dump"),
     (WellKnownCommandType::TYPE_UNSPECIFIED, "unknown_builtin_0"),
   ] {
     let selector = WorkflowCommandSelector {
