@@ -18,6 +18,7 @@ pub use bd_log_primitives::TypedLogLevel;
 
 pub mod builder;
 pub mod matcher;
+pub mod regex_prefilter;
 pub mod state_value_matcher;
 mod value_matcher;
 pub mod version;
