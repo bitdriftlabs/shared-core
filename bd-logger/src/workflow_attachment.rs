@@ -714,8 +714,29 @@ impl AttachmentStore {
     source: UploadSource,
     content_type: Option<String>,
   ) -> io::Result<AdmittedAttachment> {
-    if matches!(source, UploadSource::Path(_)) && self.chunked_admission.workflow_enabled() {
-      return self.admit_chunked_async(source, content_type).await;
+    let filesystem = RealFileSystem::new(self.sdk_directory.clone());
+    let mut max_attachment_bytes = u64::from(*self.max_attachment_bytes.read());
+    if let UploadSource::Path(path) = &source {
+      let size = filesystem
+        .open_regular_file(path)
+        .await
+        .map_err(io::Error::other)?
+        .metadata()
+        .await?
+        .len();
+      if size == 0 {
+        return Err(io::Error::other("empty workflow artifact"));
+      }
+      if self
+        .chunked_admission
+        .should_chunk(size)
+        .map_err(io::Error::other)?
+      {
+        return self.admit_chunked_async(source, content_type).await;
+      }
+      max_attachment_bytes = self
+        .chunked_admission
+        .whole_file_limit(max_attachment_bytes);
     }
     let metadata = WorkflowAttachmentState {
       admitted_at_micros: u64::try_from(OffsetDateTime::now_utc().unix_timestamp_micros())
@@ -734,7 +755,6 @@ impl AttachmentStore {
       let capacity = self.capacity.lock();
       (capacity.bytes, capacity.files)
     };
-    let max_attachment_bytes = u64::from(*self.max_attachment_bytes.read());
     let max_owned_bytes = u64::from(*self.max_owned_bytes.read());
     let max_owned_files = usize::try_from(*self.max_owned_files.read()).unwrap_or(usize::MAX);
     if current_files >= max_owned_files {
@@ -743,7 +763,6 @@ impl AttachmentStore {
 
     // Both producers enforce the same regular-file/size rules and streamed growth bound. Only
     // publication differs: workflow bytes acquire a sidecar lease instead of a queue entry here.
-    let filesystem = RealFileSystem::new(self.sdk_directory.clone());
     let reader = source
       .into_reader(&filesystem, max_attachment_bytes)
       .await

@@ -29,11 +29,10 @@ use bd_proto::protos::client::runtime::runtime::value::Type;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::attachment::MaxBytes;
 use bd_runtime::runtime::workflow_attachment::{MaxOwnedBytes, MaxOwnedFiles};
-use bd_runtime::runtime::{ConfigLoader, FeatureFlag, IntWatch, chunked_artifact_upload};
+use bd_runtime::runtime::{ConfigLoader, FeatureFlag, IntWatch};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::{RetentionHandle, RetentionRegistry};
-use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_time::TestTimeProvider;
 use flate2::read::ZlibDecoder;
 use parking_lot::Mutex;
@@ -85,22 +84,6 @@ async fn cancelled_admission_never_leaks_files_or_capacity() {
   {
     let directory = tempfile::tempdir().unwrap();
     let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
-    runtime
-      .update_snapshot(make_update(
-        vec![
-          (
-            chunked_artifact_upload::Enabled::path(),
-            ValueKind::Bool(chunked),
-          ),
-          (
-            chunked_artifact_upload::WorkflowEnabled::path(),
-            ValueKind::Bool(chunked),
-          ),
-        ],
-        Uuid::new_v4().to_string(),
-      ))
-      .await
-      .unwrap();
     let mut store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
       .get()
       .await
@@ -118,7 +101,12 @@ async fn cancelled_admission_never_leaks_files_or_capacity() {
     };
     let source = if chunked {
       let path = directory.path().join("capture");
-      fs::write(&path, b"cancelled").await.unwrap();
+      fs::File::create(&path)
+        .await
+        .unwrap()
+        .set_len(1024 * 1024 + 1)
+        .await
+        .unwrap();
       UploadSource::Path(path)
     } else {
       UploadSource::Bytes(b"cancelled".to_vec())
@@ -1397,23 +1385,13 @@ async fn admits_compressible_attachment_that_fits_owned_byte_limit() {
 }
 
 #[tokio::test]
-async fn rejects_oversized_and_nonregular_sources_without_publishing() {
+async fn rejects_oversized_memory_and_nonregular_sources_without_publishing() {
   let directory = tempfile::tempdir().unwrap();
   let store = Arc::new(new_store(&directory).await);
   let max_bytes = usize::try_from(*store.max_attachment_bytes.read()).unwrap();
-  let oversized_file = directory.path().join("oversized-file");
-  fs::write(&oversized_file, vec![0; max_bytes + 1])
-    .await
-    .unwrap();
   assert!(
     store
       .admit(UploadSource::Bytes(vec![0; max_bytes + 1]), None)
-      .await
-      .is_err()
-  );
-  assert!(
-    store
-      .admit(UploadSource::Path(oversized_file), None)
       .await
       .is_err()
   );

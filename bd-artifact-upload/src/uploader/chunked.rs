@@ -71,7 +71,7 @@ const MAX_CAPTURE_METADATA_BYTES: u64 = 8 * 1024;
 
 pub(super) struct Spool {
   pub(super) entries: Vec<ChunkedArtifact>,
-  admission: ChunkedFileAdmission,
+  pub(super) admission: ChunkedFileAdmission,
 }
 
 impl Spool {
@@ -461,11 +461,7 @@ impl Uploader {
     self
       .chunked
       .admission
-      .admit_capture(
-        self.file_system.as_ref(),
-        &metadata,
-        request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID,
-      )
+      .admit_capture(self.file_system.as_ref(), &metadata)
       .await?;
     // Move first: interrupted preparations have only SDK-local, safely named orphan files.
     // Cross-filesystem rename errors reject admission rather than creating an untracked copy.

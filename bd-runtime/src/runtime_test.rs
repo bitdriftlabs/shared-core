@@ -19,23 +19,6 @@ fn workflow_attachment_max_bytes_defaults_to_five_mebibytes() {
   assert_eq!(MaxBytes::default(), 5 * 1024 * 1024);
 }
 
-#[test]
-fn chunked_upload_policy_defaults_off_with_separate_budgets() {
-  use crate::runtime::chunked_artifact_upload::{
-    Enabled,
-    MaxAdmittedFiles,
-    MaxLogicalBytes,
-    MaxOwnedPayloadBytes,
-    WorkflowEnabled,
-  };
-  assert!(!Enabled::default());
-  assert!(!WorkflowEnabled::default());
-  assert_eq!(MaxLogicalBytes::default(), 256 * 1024 * 1024);
-  assert_eq!(MaxOwnedPayloadBytes::default(), 640 * 1024 * 1024);
-  assert_eq!(MaxAdmittedFiles::default(), 2);
-  assert_eq!(MaxBytes::default(), 5 * 1024 * 1024);
-}
-
 #[tokio::test]
 async fn feature_flag_registration() {
   int_feature_flag!(TestFlag, "test.path", 1);

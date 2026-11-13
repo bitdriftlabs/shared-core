@@ -65,12 +65,6 @@ impl Uploader {
       source_lease,
       mut source_cleanup,
     } = upload;
-    let mut request = request;
-    if mode == PreparationMode::Chunked {
-      // The scrubbed Begin is immutable after admission, including across restart/config changes.
-      request.state_metadata =
-        super::scrub_metadata(&self.scrub_rules.borrow(), &request.state_metadata);
-    }
     let id = request.artifact_id.clone();
     let retained = matches!(source, UploadSource::Retained(_));
     let mut files = StagedFiles::default();
@@ -127,7 +121,7 @@ impl Uploader {
   async fn stage_upload(
     &mut self,
     source: UploadSource,
-    request: UploadArtifactRequest,
+    mut request: UploadArtifactRequest,
     mode: PreparationMode,
     source_cleanup: &mut Option<OwnedFile>,
     files: &mut StagedFiles,
@@ -140,6 +134,31 @@ impl Uploader {
         .await
         .map_err(|error| EnqueueError::RetryablePersistence(error.into()))?;
     }
+    let chunked = match mode {
+      PreparationMode::WholeFile => false,
+      PreparationMode::Chunked => true,
+      PreparationMode::File => {
+        let UploadSource::Path(path) = &source else {
+          return Err(anyhow::anyhow!("file routing requires an owned capture path").into());
+        };
+        let file = self.file_system.open_regular_file(path).await?;
+        let size = file.metadata().await.map_err(anyhow::Error::from)?.len();
+        if size == 0 && request.command_id.is_none() {
+          return Err(anyhow::anyhow!("empty workflow artifact").into());
+        }
+        let chunked = self.chunked.admission.should_chunk(size)?;
+        log::debug!(
+          "routing file artifact {}: logical_bytes={size}, chunked={chunked}",
+          request.artifact_id
+        );
+        chunked
+      },
+    };
+    if chunked {
+      // The scrubbed Begin is immutable after admission, including across restart/config changes.
+      request.state_metadata =
+        super::scrub_metadata(&self.scrub_rules.borrow(), &request.state_metadata);
+    }
     let id = &request.artifact_id;
     if let Some(existing) = self.chunked.entries.iter().find(|entry| {
       entry
@@ -147,7 +166,7 @@ impl Uploader {
         .as_ref()
         .is_some_and(|entry| entry.artifact_id == *id)
     }) {
-      if mode == PreparationMode::Chunked
+      if chunked
         && request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
         && let Some(existing) = existing.request.as_ref()
         && existing.type_id == request.type_id
@@ -160,7 +179,7 @@ impl Uploader {
       )));
     }
     if let Some(existing) = self.index.iter().find(|entry| entry.name == *id) {
-      if mode == PreparationMode::WholeFile
+      if !chunked
         && existing.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
         && request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
         && existing.session_id == request.session_id
@@ -172,7 +191,7 @@ impl Uploader {
       )));
     }
     let retained = matches!(source, UploadSource::Retained(_));
-    let _preparation = if mode == PreparationMode::Chunked {
+    let _preparation = if chunked {
       Some(
         ChunkedFileAdmission::lock()
           .await
@@ -181,45 +200,42 @@ impl Uploader {
     } else {
       None
     };
-    let size = match mode {
-      PreparationMode::Chunked => {
-        let entry = self
-          .prepare_chunked(source, request, source_cleanup, files)
-          .await
-          .map_err(|error| {
-            if retained {
-              retained_persistence_error(error)
-            } else {
-              EnqueueError::Other(error)
-            }
-          })?;
-        let size = entry
-          .request
-          .as_ref()
-          .and_then(|request| request.logical_bytes);
-        self.chunked.entries.push(entry);
-        self.index_sync_required = true;
-        size
-      },
-      PreparationMode::WholeFile => {
-        self.admit_whole_file().await?;
-        if let Some(hooks) = &self.test_hooks {
-          hooks.whole_file_preparation_started(&source, &request);
-        }
-        let (entry, size) = self
-          .prepare_whole_file(source, request, files)
-          .await
-          .map_err(|error| {
-            if retained {
-              retained_persistence_error(error)
-            } else {
-              EnqueueError::Other(error)
-            }
-          })?;
-        self.index.push_back(entry);
-        self.index_sync_required |= retained;
-        size
-      },
+    let size = if chunked {
+      let entry = self
+        .prepare_chunked(source, request, source_cleanup, files)
+        .await
+        .map_err(|error| {
+          if retained {
+            retained_persistence_error(error)
+          } else {
+            EnqueueError::Other(error)
+          }
+        })?;
+      let size = entry
+        .request
+        .as_ref()
+        .and_then(|request| request.logical_bytes);
+      self.chunked.entries.push(entry);
+      self.index_sync_required = true;
+      size
+    } else {
+      self.admit_whole_file().await?;
+      if let Some(hooks) = &self.test_hooks {
+        hooks.whole_file_preparation_started(&source, &request);
+      }
+      let (entry, size) = self
+        .prepare_whole_file(source, request, files)
+        .await
+        .map_err(|error| {
+          if retained {
+            retained_persistence_error(error)
+          } else {
+            EnqueueError::Other(error)
+          }
+        })?;
+      self.index.push_back(entry);
+      self.index_sync_required |= retained;
+      size
     };
     if let Some(hooks) = &self.test_hooks {
       hooks.payload_prepared();
@@ -237,13 +253,10 @@ impl Uploader {
         Err(EnqueueError::RetryablePersistence(error.into()))
       },
       Err(error) => {
-        match mode {
-          PreparationMode::WholeFile => {
-            self.index.pop_back();
-          },
-          PreparationMode::Chunked => {
-            self.chunked.entries.pop();
-          },
+        if chunked {
+          self.chunked.entries.pop();
+        } else {
+          self.index.pop_back();
         }
         Err(
           if retained {
@@ -311,7 +324,12 @@ impl Uploader {
         if let UploadSource::Path(path) = &source {
           files.original = Some((path.clone(), false));
         }
-        let limit = u64::from(*self.max_attachment_bytes.read());
+        let ordinary_limit = u64::from(*self.max_attachment_bytes.read());
+        let limit = if matches!(source, UploadSource::Path(_)) {
+          self.chunked.admission.whole_file_limit(ordinary_limit)
+        } else {
+          ordinary_limit
+        };
         let reader = source.into_reader(self.file_system.as_ref(), limit).await?;
         let (encoded, size) = read_and_compress_limited_with_size(reader, limit).await?;
         let mut output = self.file_system.create_file(&target).await?;

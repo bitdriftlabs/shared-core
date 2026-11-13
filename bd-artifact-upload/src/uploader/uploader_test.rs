@@ -1303,6 +1303,7 @@ async fn disk_persistence() {
 #[tokio::test]
 async fn command_upload_persistence_reports_original_size() {
   let mut setup = Setup::new(1).await;
+  let command_id = Uuid::new_v4().to_string();
   let contents = vec![42; 1000];
   let mut file = setup.make_file(&[b"prefix:".as_slice(), contents.as_slice()].concat());
   file.seek(SeekFrom::Start(7)).unwrap();
@@ -1329,7 +1330,7 @@ async fn command_upload_persistence_reports_original_size() {
         None,
         "session_id".to_string(),
         vec![],
-        "command_id".to_string(),
+        command_id.clone(),
         None,
         Some(persisted_tx),
         Some(completion_tx),
@@ -1827,6 +1828,7 @@ async fn command_upload_intent_drop_completes_with_failure() {
 #[tokio::test]
 async fn command_upload_rejects_oversized_file_and_path_sources_before_persisting() {
   let mut setup = Setup::new(1).await;
+  let command_id = Uuid::new_v4().to_string();
   setup
     .runtime
     .update_snapshot(bd_test_helpers::runtime::make_update(
@@ -1845,7 +1847,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      command_id.clone(),
       None,
       Some(file_persisted_tx),
       None,
@@ -1876,7 +1878,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      command_id.clone(),
       None,
       Some(bytes_persisted_tx),
       None,
@@ -1909,7 +1911,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      command_id,
       None,
       Some(path_persisted_tx),
       None,

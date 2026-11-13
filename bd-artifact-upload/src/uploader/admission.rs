@@ -5,11 +5,11 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::chunked::{MAX_INDEX_BYTES, file_identity, read_index, safe_id};
+use super::chunked::{CHUNK_BYTES, MAX_INDEX_BYTES, file_identity, read_index, safe_id};
 use super::{ARTIFACT_UPLOAD_DIRECTORY, REPORT_INDEX_FILE};
 use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file_system::FileSystem;
-use bd_runtime::runtime::{BoolWatch, ConfigLoader, IntWatch, chunked_artifact_upload};
+use bd_runtime::runtime::{ConfigLoader, IntWatch, chunked_artifact_upload};
 use std::collections::{HashMap, HashSet};
 use std::fs::Metadata;
 use std::io;
@@ -17,7 +17,7 @@ use std::path::Path;
 use tokio::sync::{Semaphore, SemaphorePermit};
 use uuid::Uuid;
 
-const MAX_FILES: usize = 2;
+const MAX_FILES: usize = 64;
 const MAX_OWNED_BYTES: u64 = 640 * 1024 * 1024;
 const FREE_SPACE_HEADROOM: u64 = MAX_INDEX_BYTES + 1024 * 1024;
 
@@ -30,28 +30,37 @@ static PREPARATION: Semaphore = Semaphore::const_new(1);
 //
 
 pub struct ChunkedFileAdmission {
-  enabled: BoolWatch<chunked_artifact_upload::Enabled>,
-  workflow_enabled: BoolWatch<chunked_artifact_upload::WorkflowEnabled>,
   max_logical_bytes: IntWatch<chunked_artifact_upload::MaxLogicalBytes>,
-  max_owned_bytes: IntWatch<chunked_artifact_upload::MaxOwnedPayloadBytes>,
-  max_files: IntWatch<chunked_artifact_upload::MaxAdmittedFiles>,
 }
 
 impl ChunkedFileAdmission {
   #[must_use]
   pub fn new(runtime: &ConfigLoader) -> Self {
     Self {
-      enabled: runtime.register_bool_watch(),
-      workflow_enabled: runtime.register_bool_watch(),
       max_logical_bytes: runtime.register_int_watch(),
-      max_owned_bytes: runtime.register_int_watch(),
-      max_files: runtime.register_int_watch(),
     }
   }
 
   #[must_use]
-  pub fn workflow_enabled(&self) -> bool {
-    *self.enabled.read() && *self.workflow_enabled.read()
+  pub fn whole_file_limit(&self, ordinary_limit: u64) -> u64 {
+    ordinary_limit.min(CHUNK_BYTES).min(self.logical_limit())
+  }
+
+  /// New captures use the whole-file representation when one bounded upload can carry them.
+  pub fn should_chunk(&self, logical_bytes: u64) -> anyhow::Result<bool> {
+    self.check_logical_bytes(logical_bytes)?;
+    Ok(logical_bytes > CHUNK_BYTES)
+  }
+
+  fn logical_limit(&self) -> u64 {
+    u64::from((*self.max_logical_bytes.read()).min(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES))
+  }
+
+  fn check_logical_bytes(&self, logical_bytes: u64) -> anyhow::Result<()> {
+    if logical_bytes > self.logical_limit() {
+      anyhow::bail!("artifact logical byte admission exhausted");
+    }
+    Ok(())
   }
 
   pub(super) async fn lock() -> anyhow::Result<SemaphorePermit<'static>> {
@@ -65,8 +74,8 @@ impl ChunkedFileAdmission {
     logical_bytes: u64,
   ) -> anyhow::Result<SemaphorePermit<'static>> {
     let permit = Self::lock().await?;
-    if !self.workflow_enabled() || logical_bytes == 0 {
-      anyhow::bail!("chunked workflow admission disabled or empty");
+    if logical_bytes == 0 {
+      anyhow::bail!("empty workflow artifact");
     }
     self
       .check_capacity(filesystem, logical_bytes, logical_bytes + 4, None)
@@ -78,11 +87,7 @@ impl ChunkedFileAdmission {
     &self,
     filesystem: &dyn FileSystem,
     metadata: &Metadata,
-    workflow: bool,
   ) -> anyhow::Result<()> {
-    if !*self.enabled.read() || (workflow && !*self.workflow_enabled.read()) {
-      anyhow::bail!("chunked artifact admission disabled");
-    }
     self
       .check_capacity(
         filesystem,
@@ -100,13 +105,7 @@ impl ChunkedFileAdmission {
     source_bytes: u64,
     source_identity: Option<(u64, u64)>,
   ) -> anyhow::Result<()> {
-    let logical_limit =
-      u64::from((*self.max_logical_bytes.read()).min(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES));
-    let owned_limit = u64::from(*self.max_owned_bytes.read()).min(MAX_OWNED_BYTES);
-    let files_limit = (*self.max_files.read() as usize).min(MAX_FILES);
-    if logical_bytes > logical_limit {
-      anyhow::bail!("chunked artifact logical byte admission exhausted");
-    }
+    self.check_logical_bytes(logical_bytes)?;
     let mut ids = HashSet::new();
     let index_path = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
     match filesystem.open_regular_file(&index_path).await {
@@ -180,11 +179,11 @@ impl ChunkedFileAdmission {
     } else {
       source_bytes
     };
-    if ids.len() >= files_limit
+    if ids.len() >= MAX_FILES
       || used
         .saturating_add(source_charge)
         .saturating_add(logical_bytes)
-        > owned_limit
+        > MAX_OWNED_BYTES
     {
       anyhow::bail!("chunked artifact slots or physical byte admission exhausted");
     }

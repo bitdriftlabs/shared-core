@@ -9,7 +9,7 @@ use super::*;
 use crate::workflow_attachment::{AdmittedAttachment, AttachmentStore, AttachmentStoreHandle};
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse};
-use bd_artifact_upload::{EnqueueError, UploadSource, Uploader};
+use bd_artifact_upload::{ChunkedFileAdmission, EnqueueError, UploadSource, Uploader};
 use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::test::TestFileSystem;
@@ -28,20 +28,9 @@ use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
 
-async fn configure_chunks(runtime: &ConfigLoader, extra: Vec<(&str, ValueKind)>) {
-  let mut flags = vec![
-    (
-      chunked_artifact_upload::Enabled::path(),
-      ValueKind::Bool(true),
-    ),
-    (
-      chunked_artifact_upload::WorkflowEnabled::path(),
-      ValueKind::Bool(true),
-    ),
-  ];
-  flags.extend(extra);
+async fn configure_admission(runtime: &ConfigLoader, extra: Vec<(&str, ValueKind)>) {
   runtime
-    .update_snapshot(make_update(flags, Uuid::new_v4().to_string()))
+    .update_snapshot(make_update(extra, Uuid::new_v4().to_string()))
     .await
     .unwrap();
 }
@@ -61,45 +50,49 @@ async fn admit_file(
 }
 
 #[tokio::test]
-async fn workflow_chunk_admission_is_gated_without_raising_ordinary_limits() {
-  for (enabled, workflow_enabled) in [(false, false), (true, false), (false, true), (true, true)] {
+async fn workflow_file_routing_uses_logical_size_before_retention() {
+  for (size, extension) in [
+    (1024 * 1024 - 1, "payload"),
+    (1024 * 1024, "payload"),
+    (1024 * 1024 + 1, "raw"),
+  ] {
     let directory = tempfile::tempdir().unwrap();
     let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
-    configure_chunks(
-      &runtime,
-      vec![
-        (attachment::MaxBytes::path(), ValueKind::Int(1)),
-        (
-          chunked_artifact_upload::Enabled::path(),
-          ValueKind::Bool(enabled),
-        ),
-        (
-          chunked_artifact_upload::WorkflowEnabled::path(),
-          ValueKind::Bool(workflow_enabled),
-        ),
-      ],
-    )
-    .await;
     let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
       .get()
       .await
       .unwrap();
-    let result = admit_file(&store, directory.path(), 1025).await;
-    if enabled && workflow_enabled {
-      let attachment = result.unwrap();
-      let source = store.upload_source(attachment.id).await.unwrap();
-      assert_eq!(source.extension().unwrap(), "raw");
+    let attachment = admit_file(&store, directory.path(), size).await.unwrap();
+    let source = store.upload_source(attachment.id).await.unwrap();
+    assert_eq!(source.extension().unwrap(), extension);
+    if extension == "raw" {
       assert_eq!(
         tokio::fs::metadata(directory.path().join(source))
           .await
           .unwrap()
           .len(),
-        1029
+        size + 4
       );
-      store.release(attachment.id).await.unwrap();
     } else {
-      assert!(result.is_err());
+      let compressed = tokio::fs::read(directory.path().join(source))
+        .await
+        .unwrap();
+      let mut decoded = Vec::new();
+      ZlibDecoder::new(compressed.as_slice())
+        .read_to_end(&mut decoded)
+        .unwrap();
+      assert_eq!(decoded, vec![0; usize::try_from(size).unwrap()]);
     }
+    store.release(attachment.id).await.unwrap();
+    configure_admission(
+      &runtime,
+      vec![(attachment::MaxBytes::path(), ValueKind::Int(1))],
+    )
+    .await;
+    let large = admit_file(&store, directory.path(), 1024 * 1024 + 1)
+      .await
+      .unwrap();
+    store.release(large.id).await.unwrap();
     assert!(
       store
         .admit(UploadSource::Bytes(vec![0; 2]), None)
@@ -120,46 +113,23 @@ async fn workflow_chunk_admission_is_gated_without_raising_ordinary_limits() {
 
 #[tokio::test]
 async fn workflow_retained_files_reserve_shared_chunk_slots_and_staging_bytes() {
-  for budget in [4103, 4104] {
+  for (size, accepted) in [(64 * 1024 * 1024 - 4, true), (64 * 1024 * 1024 - 3, false)] {
     let directory = tempfile::tempdir().unwrap();
     let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
-    configure_chunks(
-      &runtime,
-      vec![
-        (
-          chunked_artifact_upload::MaxOwnedPayloadBytes::path(),
-          ValueKind::Int(budget),
-        ),
-        (
-          chunked_artifact_upload::MaxAdmittedFiles::path(),
-          ValueKind::Int(u32::MAX),
-        ),
-      ],
-    )
-    .await;
-    let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
-      .get()
+    let retained = directory.path().join("workflow-attachments");
+    tokio::fs::create_dir(&retained).await.unwrap();
+    tokio::fs::File::create(retained.join(format!("{}.raw", Uuid::new_v4())))
+      .await
+      .unwrap()
+      .set_len(u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES) + 4)
       .await
       .unwrap();
-    let first = admit_file(&store, directory.path(), 1024).await.unwrap();
-    let second = admit_file(&store, directory.path(), 1024).await;
-    if budget == 4104 {
-      let second = second.unwrap();
-      assert!(admit_file(&store, directory.path(), 1).await.is_err());
-      store.release(second.id).await.unwrap();
-    } else {
-      assert!(second.is_err());
-    }
-    // Both source ownership and its future RAW chunk reservation survive store reconstruction.
-    drop(store);
-    let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
-      .get()
-      .await
-      .unwrap();
-    assert!(admit_file(&store, directory.path(), 1025).await.is_err());
-    store.release(first.id).await.unwrap();
-    let next = admit_file(&store, directory.path(), 1025).await.unwrap();
-    store.release(next.id).await.unwrap();
+    let filesystem = RealFileSystem::new(directory.path().to_owned());
+    let admission = ChunkedFileAdmission::new(&runtime);
+    assert_eq!(
+      admission.admit_workflow(&filesystem, size).await.is_ok(),
+      accepted
+    );
   }
 }
 
@@ -167,23 +137,11 @@ async fn workflow_retained_files_reserve_shared_chunk_slots_and_staging_bytes() 
 async fn workflow_chunk_logical_limit_is_inclusive_and_hard_bounded() {
   let directory = tempfile::tempdir().unwrap();
   let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
-  configure_chunks(
-    &runtime,
-    vec![(
-      chunked_artifact_upload::MaxLogicalBytes::path(),
-      ValueKind::Int(1024),
-    )],
-  )
-  .await;
   let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
     .get()
     .await
     .unwrap();
-  assert!(admit_file(&store, directory.path(), 0).await.is_err());
-  assert!(admit_file(&store, directory.path(), 1025).await.is_err());
-  let attachment = admit_file(&store, directory.path(), 1024).await.unwrap();
-  store.release(attachment.id).await.unwrap();
-  configure_chunks(
+  configure_admission(
     &runtime,
     vec![(
       chunked_artifact_upload::MaxLogicalBytes::path(),
@@ -191,6 +149,9 @@ async fn workflow_chunk_logical_limit_is_inclusive_and_hard_bounded() {
     )],
   )
   .await;
+  assert!(admit_file(&store, directory.path(), 0).await.is_err());
+  let attachment = admit_file(&store, directory.path(), 1024).await.unwrap();
+  store.release(attachment.id).await.unwrap();
   let maximum = u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES);
   assert!(
     admit_file(&store, directory.path(), maximum + 1)
@@ -216,13 +177,19 @@ async fn workflow_chunk_logical_limit_is_inclusive_and_hard_bounded() {
 async fn retained_workflows_and_direct_commands_share_chunk_admission() {
   let directory = tempfile::tempdir().unwrap();
   let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
-  configure_chunks(&runtime, Vec::new()).await;
+  configure_admission(&runtime, Vec::new()).await;
   let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
     .get()
     .await
     .unwrap();
-  let first = admit_file(&store, directory.path(), 1024).await.unwrap();
-  let second = admit_file(&store, directory.path(), 1024).await.unwrap();
+  let mut retained = Vec::new();
+  for _ in 0 .. 64 {
+    retained.push(
+      admit_file(&store, directory.path(), 1024 * 1024 + 1)
+        .await
+        .unwrap(),
+    );
+  }
   let (tx, _rx) = tokio::sync::mpsc::channel(1);
   let shutdown = ComponentShutdownTrigger::default();
   let (uploader, client) = Uploader::new(
@@ -261,12 +228,18 @@ async fn retained_workflows_and_direct_commands_share_chunk_admission() {
     assert!(!path.exists());
     if admitted {
       assert_eq!(result.unwrap(), 0);
-      assert!(admit_file(&store, directory.path(), 1).await.is_err());
+      assert!(
+        admit_file(&store, directory.path(), 1024 * 1024 + 1)
+          .await
+          .is_err()
+      );
     } else {
-      store.release(second.id).await.unwrap();
+      store.release(retained.pop().unwrap().id).await.unwrap();
     }
   }
-  store.release(first.id).await.unwrap();
+  for attachment in retained {
+    store.release(attachment.id).await.unwrap();
+  }
   shutdown.shutdown().await;
   uploader.await.unwrap();
 }
@@ -277,7 +250,7 @@ async fn workflow_chunk_failed_persistence_and_restart_keep_retained_ownership()
     let filesystem = Arc::new(TestFileSystem::new());
     let directory = filesystem.directory();
     let runtime = TestConfigLoader::new_in_directory(directory).await;
-    configure_chunks(&runtime, Vec::new()).await;
+    configure_admission(&runtime, Vec::new()).await;
     let store = AttachmentStoreHandle::new(directory.to_owned(), runtime.clone())
       .get()
       .await
@@ -347,30 +320,12 @@ async fn workflow_chunk_failed_persistence_and_restart_keep_retained_ownership()
       continue;
     }
     drop(store);
-    configure_chunks(
+    configure_admission(
       &runtime,
-      vec![
-        (
-          chunked_artifact_upload::Enabled::path(),
-          ValueKind::Bool(false),
-        ),
-        (
-          chunked_artifact_upload::WorkflowEnabled::path(),
-          ValueKind::Bool(false),
-        ),
-        (
-          chunked_artifact_upload::MaxLogicalBytes::path(),
-          ValueKind::Int(0),
-        ),
-        (
-          chunked_artifact_upload::MaxOwnedPayloadBytes::path(),
-          ValueKind::Int(0),
-        ),
-        (
-          chunked_artifact_upload::MaxAdmittedFiles::path(),
-          ValueKind::Int(0),
-        ),
-      ],
+      vec![(
+        chunked_artifact_upload::MaxLogicalBytes::path(),
+        ValueKind::Int(1),
+      )],
     )
     .await;
     let store = AttachmentStoreHandle::new(directory.to_owned(), runtime.clone())
@@ -435,7 +390,7 @@ async fn workflow_chunk_handoff_is_durable_idempotent_and_protected_until_finali
   let filesystem = Arc::new(TestFileSystem::new());
   let directory = filesystem.directory();
   let runtime = TestConfigLoader::new_in_directory(directory).await;
-  configure_chunks(&runtime, Vec::new()).await;
+  configure_admission(&runtime, Vec::new()).await;
   let attachment_store = AttachmentStoreHandle::new(directory.to_owned(), runtime.clone());
   let store = attachment_store.get().await.unwrap();
   let attachment = admit_file(&store, directory, 1024 * 1024 + 1)
@@ -447,31 +402,13 @@ async fn workflow_chunk_handoff_is_durable_idempotent_and_protected_until_finali
     .await
     .unwrap();
   let payload = directory.join(store.upload_source(id).await.unwrap());
-  // Admission, not the later flush, fixes policy. Disabling new work cannot strand this source.
-  configure_chunks(
+  // Admission, not the later flush, fixes policy. A lower limit cannot strand this source.
+  configure_admission(
     &runtime,
-    vec![
-      (
-        chunked_artifact_upload::Enabled::path(),
-        ValueKind::Bool(false),
-      ),
-      (
-        chunked_artifact_upload::WorkflowEnabled::path(),
-        ValueKind::Bool(false),
-      ),
-      (
-        chunked_artifact_upload::MaxLogicalBytes::path(),
-        ValueKind::Int(0),
-      ),
-      (
-        chunked_artifact_upload::MaxOwnedPayloadBytes::path(),
-        ValueKind::Int(0),
-      ),
-      (
-        chunked_artifact_upload::MaxAdmittedFiles::path(),
-        ValueKind::Int(0),
-      ),
-    ],
+    vec![(
+      chunked_artifact_upload::MaxLogicalBytes::path(),
+      ValueKind::Int(1),
+    )],
   )
   .await;
   let chunk_sync = filesystem.gate_next_sync(format!("report_uploads/chunk-{id}-0").into());

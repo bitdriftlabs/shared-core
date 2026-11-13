@@ -68,14 +68,7 @@ use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, StorageFormat};
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
-use bd_runtime::runtime::{
-  BoolWatch,
-  ConfigLoader,
-  IntWatch,
-  artifact_upload,
-  attachment,
-  chunked_artifact_upload,
-};
+use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload, attachment};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
@@ -203,13 +196,14 @@ fn is_compressed_attachment(request: &UploadArtifactRequest) -> bool {
 enum PreparationMode {
   WholeFile,
   Chunked,
+  File,
 }
 
 impl NewUpload {
   fn new(source: UploadSource, request: UploadArtifactRequest, mode: PreparationMode) -> Self {
     // Command/crash-profile/chunk capture paths transfer even when enqueue is rejected. Snapshot
     // paths remain retryable inputs until publication; retained workflow paths stay borrowed.
-    let source_cleanup = (mode == PreparationMode::Chunked || is_compressed_attachment(&request))
+    let source_cleanup = (mode != PreparationMode::WholeFile || is_compressed_attachment(&request))
       .then(|| source.owned_file())
       .flatten();
     Self {
@@ -426,7 +420,8 @@ pub trait Client: Send + Sync {
 
   /// Takes ownership of absolute path sources even on rejection. Persistence acknowledgements
   /// report the uncompressed payload size; dropping the caller's waits does not cancel the upload.
-  /// Runtime-enabled path sources use chunks; offline uploads have no overall timeout.
+  /// Path sources select whole-file or chunked upload by size; chunked uploads have no overall
+  /// timeout.
   fn enqueue_command_upload(
     &self,
     source: UploadSource,
@@ -458,7 +453,6 @@ pub struct UploadClient {
   queue_revision: watch::Receiver<u64>,
   counter_stats: SendCounters,
   command_artifact_metadata: LogFields,
-  chunked_enabled: BoolWatch<chunked_artifact_upload::Enabled>,
   time_provider: Arc<dyn TimeProvider>,
 }
 
@@ -493,14 +487,20 @@ impl UploadClient {
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<Uuid, EnqueueError> {
-    let chunked = ((command_id.is_some() || type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID)
+    let mode = if matches!(&source, UploadSource::Retained(path) if path.extension().is_some_and(|extension| extension == "raw"))
+    {
+      PreparationMode::Chunked
+    } else if (command_id.is_some() || type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID)
       && matches!(source, UploadSource::Path(_))
-      && *self.chunked_enabled.read())
-      || matches!(&source, UploadSource::Retained(path) if path.extension().is_some_and(|extension| extension == "raw"));
-    let timestamp = if chunked {
-      Some(timestamp.unwrap_or_else(|| self.time_provider.now()))
+    {
+      PreparationMode::File
     } else {
+      PreparationMode::WholeFile
+    };
+    let timestamp = if mode == PreparationMode::WholeFile {
       timestamp
+    } else {
+      Some(timestamp.unwrap_or_else(|| self.time_provider.now()))
     };
     let request = UploadArtifactRequest {
       artifact_id: uuid.to_string(),
@@ -525,19 +525,11 @@ impl UploadClient {
       crash_profile: crash_profile.into(),
       ..Default::default()
     };
-    let mut upload = NewUpload::new(
-      source,
-      request,
-      if chunked {
-        PreparationMode::Chunked
-      } else {
-        PreparationMode::WholeFile
-      },
-    );
+    let mut upload = NewUpload::new(source, request, mode);
     upload.persisted_tx = persisted_tx;
     upload.completion_tx = completion_tx;
     upload.source_lease = source_lease;
-    if chunked {
+    if mode != PreparationMode::WholeFile {
       chunked::validate_capture_request(&upload.request).map_err(|error| {
         log::warn!("invalid artifact chunk capture metadata: {error}");
         EnqueueError::Other(error)
@@ -920,7 +912,6 @@ impl Uploader {
       upload_tx,
       queue_revision: queue_revision_rx,
       counter_stats: SendCounters::new(&scope, "enqueue"),
-      chunked_enabled: runtime.register_bool_watch(),
       time_provider,
       command_artifact_metadata: command_artifact_metadata
         .into_iter()
