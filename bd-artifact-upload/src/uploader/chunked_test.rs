@@ -22,8 +22,7 @@ use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, TrackedArtifactUpload};
 use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
-use bd_client_common::file_system::FileSystem;
-use bd_client_common::test::TestFileSystem;
+use bd_client_common::file_system::{FileSystem, RealFileSystem};
 use bd_log_primitives::LogFields;
 use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{
@@ -1041,10 +1040,63 @@ async fn chunked_count_bound_preserves_accepted_entries_and_rejects_overflow() {
 }
 
 #[tokio::test]
+async fn relative_sdk_directory_counts_retained_slots() {
+  tokio::fs::create_dir_all(".tmp").await.unwrap();
+  let directory = tempfile::TempDir::with_prefix_in("artifact-slots", ".tmp").unwrap();
+  let filesystem = RealFileSystem::new(
+    directory
+      .path()
+      .strip_prefix(std::env::current_dir().unwrap())
+      .unwrap()
+      .to_path_buf(),
+  );
+  let runtime = TestConfigLoader::new().await;
+  let store = ArtifactStore::new(&runtime);
+  filesystem
+    .create_dir(Path::new("workflow-attachments"))
+    .await
+    .unwrap();
+  let first = Uuid::new_v4();
+  for index in 0 .. 64 {
+    store
+      .retain(
+        &filesystem,
+        UploadSource::Bytes(b"retained".to_vec()),
+        if index == 0 { first } else { Uuid::new_v4() },
+        &WorkflowAttachmentState::default(),
+      )
+      .await
+      .unwrap();
+  }
+  assert!(
+    store
+      .check_capacity(&filesystem, 4, 4, None, 4)
+      .await
+      .is_err()
+  );
+  store
+    .remove_retained_payload(&filesystem, first, false)
+    .await
+    .unwrap();
+  store
+    .check_capacity(&filesystem, 4, 4, None, 4)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
 async fn common_byte_capacity_includes_whole_chunked_and_retained_payloads() {
+  tokio::fs::create_dir_all(".tmp").await.unwrap();
   for layout in ["whole", "chunked", "retained"] {
     for (spare_bytes, accepted) in [(7, false), (8, true)] {
-      let filesystem = TestFileSystem::new();
+      let directory = tempfile::TempDir::with_prefix_in("artifact-bytes", ".tmp").unwrap();
+      let filesystem = RealFileSystem::new(
+        directory
+          .path()
+          .strip_prefix(std::env::current_dir().unwrap())
+          .unwrap()
+          .to_path_buf(),
+      );
       let runtime = TestConfigLoader::new().await;
       filesystem
         .create_dir(&ARTIFACT_UPLOAD_DIRECTORY)

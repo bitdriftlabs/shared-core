@@ -13,7 +13,7 @@ use bd_runtime::runtime::{ConfigLoader, IntWatch, chunked_artifact_upload};
 use std::collections::{HashMap, HashSet};
 use std::fs::Metadata;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::sync::{Semaphore, SemaphorePermit};
 use uuid::Uuid;
 
@@ -175,12 +175,15 @@ impl ArtifactStore {
     } else {
       source_bytes
     };
-    if ids.len() >= MAX_FILES
-      || used
-        .saturating_add(source_charge)
-        .saturating_add(output_bytes)
-        > MAX_OWNED_BYTES
-    {
+    let requested_bytes = used
+      .saturating_add(source_charge)
+      .saturating_add(output_bytes);
+    if ids.len() >= MAX_FILES || requested_bytes > MAX_OWNED_BYTES {
+      log::debug!(
+        "artifact admission rejected: ids={}, owned_bytes={used}, source_bytes={source_charge}, \
+         output_bytes={output_bytes}",
+        ids.len()
+      );
       anyhow::bail!("artifact slots or physical byte admission exhausted");
     }
     if filesystem.available_space(Path::new(".")).await?
@@ -192,9 +195,19 @@ impl ArtifactStore {
   }
 }
 
-async fn list_files(filesystem: &dyn FileSystem, directory: &Path) -> anyhow::Result<Vec<String>> {
+async fn list_files(filesystem: &dyn FileSystem, directory: &Path) -> anyhow::Result<Vec<PathBuf>> {
   match filesystem.list_files(directory).await {
-    Ok(files) => Ok(files),
+    // Listings include the SDK root, which may itself be relative. Filesystem operations need
+    // SDK-relative paths so that root is joined exactly once.
+    Ok(files) => files
+      .into_iter()
+      .map(|file| {
+        let name = Path::new(&file)
+          .file_name()
+          .ok_or_else(|| anyhow::anyhow!("artifact store file has no filename"))?;
+        Ok(directory.join(name))
+      })
+      .collect(),
     Err(error) if is_not_found(&error) => Ok(Vec::new()),
     Err(error) => Err(error),
   }

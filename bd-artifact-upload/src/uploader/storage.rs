@@ -139,12 +139,12 @@ impl Uploader {
       .list_files(&ARTIFACT_UPLOAD_DIRECTORY)
       .await?
     {
-      let path = Path::new(&file);
-      let name = path
+      let name = Path::new(&file)
         .file_name()
         .ok_or_else(|| anyhow::anyhow!("spool file has no filename"))?;
-      if !retained.contains(&ARTIFACT_UPLOAD_DIRECTORY.join(name)) {
-        orphaned.push(path.to_owned());
+      let path = ARTIFACT_UPLOAD_DIRECTORY.join(name);
+      if !retained.contains(&path) {
+        orphaned.push(path);
       }
     }
     self.delete_paths(&orphaned).await

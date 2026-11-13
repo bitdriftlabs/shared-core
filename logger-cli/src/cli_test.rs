@@ -21,6 +21,43 @@ fn parses_set_entity_id_command() {
 }
 
 #[test]
+fn synthetic_controls_preserve_explicit_sizes_sources_and_parents() {
+  let options = Options::try_parse_from([
+    "logger-cli",
+    "generate-attachment",
+    "--output",
+    "fixture",
+    "--size-bytes",
+    "268435457",
+    "--kind",
+    "heap-graph",
+  ])
+  .unwrap();
+  assert!(
+    matches!(options.command, Command::GenerateAttachment(cmd) if cmd.size_bytes == 268_435_457)
+  );
+  let options = Options::try_parse_from([
+    "logger-cli",
+    "enqueue-synthetic-profile",
+    "--file",
+    "fixture",
+    "--source",
+    "file",
+    "--offset-bytes",
+    "7",
+    "--parent",
+    "first",
+    "--parent",
+    "second",
+  ])
+  .unwrap();
+  assert!(
+    matches!(options.command, Command::EnqueueSyntheticProfile(cmd)
+    if cmd.offset_bytes == 7 && cmd.parent == ["first", "second"])
+  );
+}
+
+#[test]
 fn parses_start_entity_id_flag() {
   let options = Options::parse_from([
     "logger-cli",

@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::logger::{LoggerArgs, LoggerHolder};
+use crate::synthetic_artifact::{ArtifactInput, ProfileParent, ProfileSubmission};
 use crate::types::{LogLevel, LogType, RuntimeValueType};
 use bd_shutdown::real_graceful_shutdown;
 use futures::future;
@@ -32,6 +33,11 @@ pub trait Remote {
     block: bool,
   );
   async fn process_crash_reports();
+  async fn synthetic_reports() -> Result<Vec<ProfileParent>, String>;
+  async fn enqueue_synthetic_profile(
+    input: ArtifactInput,
+    report_ids: Vec<String>,
+  ) -> Result<ProfileSubmission, String>;
   async fn get_runtime_value(name: String, value_type: RuntimeValueType) -> String;
   async fn get_api_url() -> String;
   async fn get_current_session_id() -> Option<String>;
@@ -162,6 +168,40 @@ pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow
 }
 
 impl Remote for Server {
+  fn synthetic_reports(
+    self,
+    _: tarpc::context::Context,
+  ) -> impl Future<Output = Result<Vec<ProfileParent>, String>> {
+    let result = current_logger()
+      .ok_or_else(|| "logger is not running".to_string())
+      .and_then(|logger| {
+        logger
+          .synthetic_profiles
+          .as_ref()
+          .map(|profiles| profiles.reports())
+          .ok_or_else(|| {
+            "start with --attachment-fixture-directory to enable synthetic artifacts".to_string()
+          })
+      });
+    future::ready(result)
+  }
+
+  async fn enqueue_synthetic_profile(
+    self,
+    _: tarpc::context::Context,
+    input: ArtifactInput,
+    report_ids: Vec<String>,
+  ) -> Result<ProfileSubmission, String> {
+    let logger = current_logger().ok_or_else(|| "logger is not running".to_string())?;
+    let profiles = logger.synthetic_profiles.as_ref().ok_or_else(|| {
+      "start with --attachment-fixture-directory to enable synthetic artifacts".to_string()
+    })?;
+    profiles
+      .submit(input, report_ids)
+      .await
+      .map_err(|error| error.to_string())
+  }
+
   fn breakpoint(self, _: tarpc::context::Context) -> impl Future<Output = ()> {
     #[allow(unused)]
     if current_logger().is_some() {

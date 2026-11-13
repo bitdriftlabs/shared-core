@@ -98,6 +98,29 @@ Use exclusive execution for a single-run command test. Parallel execution with `
 can evict the in-flight run when the SDK creates its next initial waiting run; its eventual command
 completion is then discarded. For parallel tests, allow capacity for that initial run as well.
 
+## Synthetic attachment controls
+
+`generate-attachment` streams an exact-size deterministic `perfetto`, `heap-graph`, or `opaque`
+fixture to a new file and prints its size, SHA-256 and expected semantic counts as JSON. Choose
+`--pattern zeros` or `--pattern random` and a reproducible `--seed`.
+
+Start with `--attachment-fixture-directory <directory>` to opt into `synthetic_attachment`, the
+same registered handler for direct and workflow commands. Its string arguments are `file`
+(a basename in that directory), `source` (`path`, `file`, `bytes`), `offset_bytes` (file handles
+only), and `content_type`. Path inputs use a separate SDK-owned copy; reference files are preserved.
+Bytes inputs are limited to 1 MiB. Normal SDK admission and whole/chunk routing still apply.
+
+For post-attribution profiles, enqueue an eligible Android parent with
+`enqueue-fake-crash --kind app-not-responding --upload --current-session`, using the running
+logger's SDK directory. Observe its canonical ID with `synthetic-reports`, then pass it to
+`enqueue-synthetic-profile --file <basename> --parent <report-id>` (repeat `--parent` for two).
+Submission JSON confirms durable local staging, not upload, processing or issue linkage.
+Default fake-crash behavior remains previous-run native crashes; these are not eligible profile
+parents in the issue API.
+
+See the monorepo's [canonical three-owner E2E procedure](../../.agents/skills/local-universe-e2e/references/workflow-command-perfetto.md)
+for registration, exact-size cases, public downloads, report links, recovery and cleanup.
+
 ## MCP Server
 
 An alternative way to interact with the logger CLI is via a small MCP server that allows an LLM agent to understand how to interact with the CLI.
