@@ -792,7 +792,6 @@ dependencies = [
  "tokio-stream",
  "tower",
  "tower-http 0.7.1",
- "unwrap-infallible",
  "urlencoding",
 ]
 
@@ -1048,7 +1047,6 @@ dependencies = [
  "tokio-test",
  "tower",
  "tracing",
- "unwrap-infallible",
  "uuid",
 ]
 
@@ -6672,12 +6670,6 @@ name = "unty-next"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16062d030850f35054e37746427b9febb74a2f24c9c6dd6fa2d0c13c5f53221e"
-
-[[package]]
-name = "unwrap-infallible"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e497bb1f828cc9fb236722c2eaa100dcf201563f38f4da6252357a59037adf31"
 
 [[package]]
 name = "url"

@@ -12,7 +12,6 @@ mod ratelimit_test;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
 use futures_util::future::BoxFuture;
 use parking_lot::Mutex;
-use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::time::Instant;
@@ -97,7 +96,6 @@ impl<T> RateLimit<T> {
 impl<S, Request: 'static + RequestSized + Send> Service<Request> for RateLimit<S>
 where
   S: Service<Request> + 'static + Send,
-  <S as Service<Request>>::Error: From<Infallible>,
   <S as Service<Request>>::Future: Send,
 {
   type Response = S::Response;

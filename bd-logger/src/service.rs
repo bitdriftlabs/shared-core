@@ -20,7 +20,6 @@ use bd_shutdown::ComponentShutdown;
 use bd_stats_common::{Counter as _, labels};
 use bd_time::TimeDurationExt;
 use futures_util::future::BoxFuture;
-use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::Poll;
 use tokio::sync::mpsc::Sender;
@@ -30,7 +29,7 @@ use tower::util::BoxCloneService;
 #[path = "./ratelimit.rs"]
 mod ratelimit;
 
-pub type Upload = BoxCloneService<UploadRequest, UploadResult, Infallible>;
+pub type Upload = BoxCloneService<UploadRequest, UploadResult, !>;
 
 // Creates a new UploadService with retries enabled.
 pub fn new(
@@ -153,7 +152,7 @@ struct Uploader {
 
 impl tower::Service<UploadRequest> for Uploader {
   type Response = UploadResult;
-  type Error = Infallible;
+  type Error = !;
   type Future = BoxFuture<'static, std::result::Result<Self::Response, Self::Error>>;
 
   fn poll_ready(
@@ -265,13 +264,13 @@ impl RetryPolicy {
   }
 }
 
-impl tower::retry::Policy<UploadRequest, UploadResult, Infallible> for RetryPolicy {
+impl tower::retry::Policy<UploadRequest, UploadResult, !> for RetryPolicy {
   type Future = futures_util::future::BoxFuture<'static, ()>;
 
   fn retry(
     &mut self,
     req: &mut UploadRequest,
-    result: &mut std::result::Result<UploadResult, Infallible>,
+    result: &mut std::result::Result<UploadResult, !>,
   ) -> Option<Self::Future> {
     log::debug!(
       "considering request with {} logs, {} attempts left",

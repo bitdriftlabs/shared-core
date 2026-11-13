@@ -18,7 +18,6 @@ use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tower::Service;
 use tower::util::ServiceExt;
-use unwrap_infallible::UnwrapInfallible;
 
 pub async fn serve_with_connect_info(
   router: Router,
@@ -63,7 +62,7 @@ pub async fn serve_with_connect_info_ex(
 
     // We don't need to call `poll_ready` because `IntoMakeServiceWithConnectInfo` is always
     // ready.
-    let tower_service = make_service.call(remote_addr).await.unwrap_infallible();
+    let Ok(tower_service) = make_service.call(remote_addr).await;
 
     let mut cx_shutdown = cx_shutdown_trigger.make_shutdown();
     cx_total.inc();
