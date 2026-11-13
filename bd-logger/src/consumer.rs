@@ -60,7 +60,6 @@ use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::time::{Instant, Sleep, sleep};
 use tower::{Service, ServiceExt};
 use tracing::Instrument as _;
-use unwrap_infallible::UnwrapInfallible;
 
 const DEVICE_COMMAND_ADMISSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -1421,11 +1420,8 @@ impl ContinuousBufferUploader {
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
     // details about retry policies etc.
     let upload_future = async {
-      self
-        .log_upload_service
-        .ready()
-        .await
-        .unwrap_infallible()
+      let Ok(service) = self.log_upload_service.ready().await;
+      let Ok(result) = service
         .call(UploadRequest::new(
           LogBatch {
             logs,
@@ -1433,8 +1429,8 @@ impl ContinuousBufferUploader {
           },
           false,
         ))
-        .await
-        .unwrap_infallible()
+        .await;
+      result
     };
 
     // Bail on the upload if we are shutting down this task to avoid deadlocking the API task.
@@ -1538,11 +1534,8 @@ impl StreamedBufferUpload {
       // TODO(snowp): Handle streaming state updates.
 
       let upload_future = async {
-        self
-          .log_upload_service
-          .ready()
-          .await
-          .unwrap_infallible()
+        let Ok(service) = self.log_upload_service.ready().await;
+        let Ok(result) = service
           .call(UploadRequest::new(
             LogBatch {
               logs: self.batch_builder.take(),
@@ -1550,8 +1543,8 @@ impl StreamedBufferUpload {
             },
             true,
           ))
-          .await
-          .unwrap_infallible()
+          .await;
+        result
       };
 
       // Bail on the upload if we are shutting down this task to avoid deadlocking the API task.
@@ -1934,11 +1927,8 @@ impl CompleteBufferUpload {
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
     // details about retry policies etc.
-    let result = self
-      .log_upload_service
-      .ready()
-      .await
-      .unwrap_infallible()
+    let Ok(service) = self.log_upload_service.ready().await;
+    let Ok(result) = service
       .call(
         UploadRequest::new_with_uuid(
           batch.upload_uuid,
@@ -1951,8 +1941,7 @@ impl CompleteBufferUpload {
         .with_request_trigger_uuid(self.trigger_upload_identity.request_trigger_uuid.clone())
         .with_device_command_upload(self.device_command_upload.clone()),
       )
-      .await
-      .unwrap_infallible();
+      .await;
 
     match result {
       UploadResult::Success => {

@@ -64,7 +64,6 @@ time.workspace               = true
 tokio.workspace              = true
 tower.workspace              = true
 tracing.workspace            = true
-unwrap-infallible.workspace  = true
 uuid.workspace               = true
 
 [dev-dependencies]

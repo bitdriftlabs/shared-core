@@ -22,12 +22,11 @@ use hyper_util::client::legacy::Client;
 use hyper_util::client::legacy::connect::{Connect, HttpConnector};
 use hyper_util::rt::TokioExecutor;
 use std::collections::HashMap;
-use std::convert::Infallible;
 use tokio::sync::mpsc::{self, Sender, channel};
 use tokio_stream::wrappers::ReceiverStream;
 
-type BoxBody = http_body_util::combinators::BoxBody<Bytes, Infallible>;
-type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, Infallible>>;
+type BoxBody = http_body_util::combinators::BoxBody<Bytes, !>;
+type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, !>>;
 
 /// An implementation of `bd_api::PlatformNetworkManager` using hyper, for use in native contexts.
 #[derive(Debug)]
