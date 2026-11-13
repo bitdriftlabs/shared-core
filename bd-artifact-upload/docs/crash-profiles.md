@@ -25,19 +25,19 @@ upload and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/arti
   optional trace process-start metadata is absent. A live Java OOM timestamp is not a known process
   death and does not impose that bound. Distinct overlapping runs compatible with the trace's
   process-start tolerance are rejected as ambiguous; multiple reports from one run remain eligible.
-  Known limitation: OOM traces may omit process-start
-  metadata, so unbounded OOM candidates cannot exclude later PID reuse unless another candidate
-  exposes it. Recovered OOMs need trustworthy process-exit evidence; using exception time as death
-  would reject valid heap capture that continues afterward.
+  Known limitation: OOM traces may omit process-start metadata, so unbounded OOM candidates cannot
+  exclude later PID reuse unless another candidate exposes it. Recovered OOMs need trustworthy
+  process-exit evidence; using exception time as death would reject valid heap capture that
+  continues afterward.
 - The selective wire reader streams zlib `compressed_packets` into the parser without retaining
   either the encoded field or expanded heap/event bodies. It verifies the complete zlib stream,
   checksum, declared protobuf message lengths and absence of trailing bytes; nested compressed
-  packets remain unsupported. Repeated singular defaults and ftrace/compact-scheduler messages
-  merge within a packet before clocks and timestamp deltas are applied. Unrelated
-  unusable incremental packets are skipped, but loss still invalidates sequence defaults and any
-  selected clock, heap or process evidence requiring that state fails closed. Conflicting
-  process/thread ownership is rejected regardless of metadata order, including process IDs known
-  only through thread ownership records.
+  packets remain unsupported. Repeated singular defaults and ftrace/compact-scheduler messages merge
+  within a packet before clocks and timestamp deltas are applied. Unrelated unusable incremental
+  packets are skipped, but loss still invalidates sequence defaults and any selected clock, heap or
+  process evidence requiring that state fails closed. Conflicting process/thread ownership is
+  rejected regardless of metadata order, including process IDs known only through thread ownership
+  records.
 - Reuse existing artifact fields for capture time, MIME type, encoding and captured metadata,
   including the receiving process's build at first adoption. Keep IDs, bytes and lookup build stable
   across retries. Scope and authorization checks remain server responsibilities.
@@ -45,11 +45,21 @@ upload and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/arti
 ## Persistence and delivery
 
 `bd-artifact-upload::Client::enqueue_crash_profile` queues a profile exactly like a command
-attachment (ZLIB storage, `attachment.max_bytes`, ownership of an absolute source path) with the
-receiving build's static metadata and the `crash_profile` report IDs, and returns its artifact ID.
-Attribution resolves relative source paths once before queueing, so matching, persistence and source
-cleanup refer to the same file. That metadata is retained in the index and forwarded unchanged to
-intent and upload. Existing persistence notifications, retries and ACKs are unchanged.
+attachment (whole-file through 1 MiB logical size, streamed chunks above it, ownership of an
+absolute source path) with the receiving build's static metadata and the `crash_profile` report IDs,
+and returns its artifact ID. Attribution resolves relative source paths once before queueing, so
+matching, persistence and source cleanup refer to the same file. That metadata is retained in the
+index and forwarded unchanged to intent and upload. Existing persistence notifications, retries and
+ACKs are unchanged.
+
+The common native `ArtifactStore` owns and accounts for upload-ready whole/chunked payloads and
+retained workflow payloads together: at most 64 artifact IDs and 640 MiB physical storage including
+RAW staging reservations. New work rejects under pressure rather than evicting accepted uploads.
+`artifact_upload.chunked.max_logical_bytes` is the shared new-file policy, defaulting to and clamped
+at 256 MiB. Android's private pre-attribution store uses that same setting for its separate
+per-file/aggregate budget; it enters native capacity only at handoff. Runtime reductions do not
+evict durably accepted uploads.
+
 `ReportAttribution` is the platform hook: the logger seeds it from the pending index before the
 uploader starts, and the crash monitor adds each enqueued report that carries source facts.
 Readiness and successful report/profile ACKs do not remove candidates: several later profiles may
@@ -70,28 +80,28 @@ compression/checksum handling.
 ## Diagnosing trace clock failures
 
 The reader orders paired REALTIME/BOOTTIME snapshots by BOOTTIME and selects the mapping preceding
-the first typed process observation (or the earliest snapshot if observations precede all snapshots).
-It validates that mapping and every subsequent mapping through the last observation: their
-`REALTIME - BOOTTIME` offsets must agree within one second. Historical corrections before that
-window and corrections after it do not invalidate the profile. A correction inside the window
-still fails closed; this reader does not implement piecewise attribution across clock jumps.
-The latest applicable mapping supplies both report alignment and captured wall time.
+the first typed process observation (or the earliest snapshot if observations precede all
+snapshots). It validates that mapping and every subsequent mapping through the last observation:
+their `REALTIME - BOOTTIME` offsets must agree within one second. Historical corrections before that
+window and corrections after it do not invalidate the profile. A correction inside the window still
+fails closed; this reader does not implement piecewise attribution across clock jumps. The latest
+applicable mapping supplies both report alignment and captured wall time.
 
 An `unstable trace clocks` error happens before report matching and includes total/applicable
 snapshot counts, the activity window, selected mapping, minimum/maximum offsets, spread, tolerance,
 and both extrema's raw clock readings and one-based snapshot indexes. Debug logging emits the same
-bounded summary for stable traces. The reader retains scalar clock pairs, not snapshot payloads;
-it never logs the full history or profile contents.
+bounded summary for stable traces. The reader retains scalar clock pairs, not snapshot payloads; it
+never logs the full history or profile contents.
 
 In debug builds (`cfg(debug_assertions)`), with `RUST_LOG=bd=debug` (or logging enabled for
 `bd_artifact_upload::crash_profile_attribution`), attribution errors retain the raw profile beside
 the rejected source as `bitdrift-attribution-failed-anr.perfetto-trace` or
 `bitdrift-attribution-failed-oom.perfetto-trace`. Each new failure atomically replaces the previous
 file of that kind. Retention code is compiled out of release builds. Without debug logging the
-rejected source is deleted as before. These names
-are not pending-profile names: the SDK does not resubmit or upload them. On Android they remain
-inside the private `files/bitdrift_capture/crash_profiles/` directory, count toward its existing
-storage budget, and are subject to its age cleanup. Remove diagnostic files after collecting them.
+rejected source is deleted as before. These names are not pending-profile names: the SDK does not
+resubmit or upload them. On Android they remain inside the private
+`files/bitdrift_capture/crash_profiles/` directory, count toward its existing storage budget, and
+are subject to its age cleanup. Remove diagnostic files after collecting them.
 
 Copy the failing trace locally and independently decode its clock snapshots with Perfetto tooling.
 Compare the raw clock pairs and their offsets with the error before changing the tolerance or

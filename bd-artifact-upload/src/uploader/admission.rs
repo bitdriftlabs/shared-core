@@ -26,14 +26,14 @@ const FREE_SPACE_HEADROOM: u64 = MAX_INDEX_BYTES + 1024 * 1024;
 static PREPARATION: Semaphore = Semaphore::const_new(1);
 
 //
-// ChunkedFileAdmission
+// ArtifactStore
 //
 
-pub struct ChunkedFileAdmission {
+pub struct ArtifactStore {
   max_logical_bytes: IntWatch<chunked_artifact_upload::MaxLogicalBytes>,
 }
 
-impl ChunkedFileAdmission {
+impl ArtifactStore {
   #[must_use]
   pub fn new(runtime: &ConfigLoader) -> Self {
     Self {
@@ -42,8 +42,8 @@ impl ChunkedFileAdmission {
   }
 
   #[must_use]
-  pub fn whole_file_limit(&self, ordinary_limit: u64) -> u64 {
-    ordinary_limit.min(CHUNK_BYTES).min(self.logical_limit())
+  pub fn whole_file_limit(&self) -> u64 {
+    CHUNK_BYTES.min(self.logical_limit())
   }
 
   /// New captures use the whole-file representation when one bounded upload can carry them.
@@ -52,7 +52,7 @@ impl ChunkedFileAdmission {
     Ok(logical_bytes > CHUNK_BYTES)
   }
 
-  fn logical_limit(&self) -> u64 {
+  pub(crate) fn logical_limit(&self) -> u64 {
     u64::from((*self.max_logical_bytes.read()).min(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES))
   }
 
@@ -63,24 +63,8 @@ impl ChunkedFileAdmission {
     Ok(())
   }
 
-  pub(super) async fn lock() -> anyhow::Result<SemaphorePermit<'static>> {
+  pub(crate) async fn lock() -> anyhow::Result<SemaphorePermit<'static>> {
     Ok(PREPARATION.acquire().await?)
-  }
-
-  /// Holds shared admission until a checksummed retained file has been durably published.
-  pub async fn admit_workflow(
-    &self,
-    filesystem: &dyn FileSystem,
-    logical_bytes: u64,
-  ) -> anyhow::Result<SemaphorePermit<'static>> {
-    let permit = Self::lock().await?;
-    if logical_bytes == 0 {
-      anyhow::bail!("empty workflow artifact");
-    }
-    self
-      .check_capacity(filesystem, logical_bytes, logical_bytes + 4, None)
-      .await?;
-    Ok(permit)
   }
 
   pub(super) async fn admit_capture(
@@ -94,28 +78,32 @@ impl ChunkedFileAdmission {
         metadata.len(),
         metadata.len(),
         file_identity(metadata),
+        metadata.len(),
       )
       .await
   }
 
-  async fn check_capacity(
+  pub(crate) async fn check_capacity(
     &self,
     filesystem: &dyn FileSystem,
     logical_bytes: u64,
     source_bytes: u64,
     source_identity: Option<(u64, u64)>,
+    output_bytes: u64,
   ) -> anyhow::Result<()> {
     self.check_logical_bytes(logical_bytes)?;
     let mut ids = HashSet::new();
     let index_path = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
     match filesystem.open_regular_file(&index_path).await {
       Ok(mut file) => {
-        for entry in read_index(&mut file).await?.chunked_artifact {
+        let index = read_index(&mut file).await?;
+        ids.extend(index.artifact.into_iter().map(|entry| entry.name));
+        for entry in index.chunked_artifact {
           let request = entry
             .request
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("missing chunk request"))?;
-          ids.insert(safe_id(&request.artifact_id)?);
+          ids.insert(safe_id(&request.artifact_id)?.to_string());
         }
       },
       Err(error) if is_not_found(&error) => {},
@@ -126,26 +114,38 @@ impl ChunkedFileAdmission {
     let mut staged = HashMap::<Uuid, u64>::new();
     for path in list_files(filesystem, &ARTIFACT_UPLOAD_DIRECTORY).await? {
       let path = Path::new(&path);
-      let Some(name) = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .and_then(|name| name.strip_prefix("chunk-"))
-      else {
+      let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         continue;
       };
+      if name == REPORT_INDEX_FILE.to_string_lossy().as_ref() {
+        continue;
+      }
       let Some(metadata) = file_metadata(filesystem, path).await? else {
         continue;
       };
       if file_identity(&metadata).is_none_or(|key| identities.insert(key)) {
         used = used.saturating_add(metadata.len());
-        if let Some(id) = name.get(.. 36).and_then(|id| safe_id(id).ok()) {
+        if let Some(id) = name
+          .strip_prefix("chunk-")
+          .and_then(|name| name.get(.. 36))
+          .and_then(|id| safe_id(id).ok())
+        {
           *staged.entry(id).or_default() += metadata.len();
         }
       }
     }
     for path in list_files(filesystem, Path::new("workflow-attachments")).await? {
       let path = Path::new(&path);
-      if path.extension().is_none_or(|extension| extension != "raw") {
+      let Some(metadata) = file_metadata(filesystem, path).await? else {
+        continue;
+      };
+      if file_identity(&metadata).is_none_or(|key| identities.insert(key)) {
+        used = used.saturating_add(metadata.len());
+      }
+      if path
+        .extension()
+        .is_none_or(|extension| extension != "raw" && extension != "payload")
+      {
         continue;
       }
       let Some(id) = path
@@ -155,22 +155,18 @@ impl ChunkedFileAdmission {
       else {
         continue;
       };
-      let Some(metadata) = file_metadata(filesystem, path).await? else {
-        continue;
-      };
-      let logical = metadata
-        .len()
-        .checked_sub(4)
-        .ok_or_else(|| anyhow::anyhow!("invalid retained workflow file"))?;
-      if file_identity(&metadata).is_none_or(|key| identities.insert(key)) {
-        used = used.saturating_add(metadata.len());
-      }
-      if !ids.contains(&id) {
+      if path.extension().is_some_and(|extension| extension == "raw")
+        && !ids.contains(&id.to_string())
+      {
+        let logical = metadata
+          .len()
+          .checked_sub(4)
+          .ok_or_else(|| anyhow::anyhow!("invalid retained workflow file"))?;
         // Before handoff, reserve RAW output as well as the retained source. Partial chunks from
         // failed preparation consume that reservation, not a second copy of the same headroom.
         used = used.saturating_add(logical.saturating_sub(*staged.get(&id).unwrap_or(&0)));
       }
-      ids.insert(id);
+      ids.insert(id.to_string());
     }
     // TODO: Account for pre-attribution private profile storage in the shared byte budget.
     // It is separately bounded today and only enters this inventory at uploader handoff.
@@ -182,13 +178,13 @@ impl ChunkedFileAdmission {
     if ids.len() >= MAX_FILES
       || used
         .saturating_add(source_charge)
-        .saturating_add(logical_bytes)
+        .saturating_add(output_bytes)
         > MAX_OWNED_BYTES
     {
-      anyhow::bail!("chunked artifact slots or physical byte admission exhausted");
+      anyhow::bail!("artifact slots or physical byte admission exhausted");
     }
     if filesystem.available_space(Path::new(".")).await?
-      < logical_bytes.saturating_add(FREE_SPACE_HEADROOM)
+      < output_bytes.saturating_add(FREE_SPACE_HEADROOM)
     {
       anyhow::bail!("insufficient free space for staged payloads and metadata");
     }

@@ -1135,8 +1135,6 @@ pub mod session {
 }
 
 pub mod artifact_upload {
-  int_feature_flag!(MaxPendingEntries, "artifact_upload.max_pending_entries", 10);
-
   static ONE_MEGABYTE: u32 = 1024 * 1024; // 1 MiB in bytes
 
   int_feature_flag!(
@@ -1144,10 +1142,6 @@ pub mod artifact_upload {
     "artifact_upload.buffer_byte_limit",
     ONE_MEGABYTE
   );
-}
-
-pub mod attachment {
-  int_feature_flag!(MaxBytes, "attachment.max_bytes", 5 * 1024 * 1024);
 }
 
 pub mod chunked_artifact_upload {
@@ -1166,15 +1160,6 @@ pub mod device_command {
     "device_command.execution_timeout_ms",
     time::Duration::seconds(5)
   );
-}
-
-pub mod workflow_attachment {
-  int_feature_flag!(
-    MaxOwnedBytes,
-    "workflow_attachment.max_owned_bytes",
-    32 * 1024 * 1024
-  );
-  int_feature_flag!(MaxOwnedFiles, "workflow_attachment.max_owned_files", 64);
 }
 
 pub mod session_capture {

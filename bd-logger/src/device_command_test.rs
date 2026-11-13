@@ -72,9 +72,8 @@ use bd_proto::protos::workflow::workflow_command::{
   WorkflowCommandSelector,
   workflow_command_selector,
 };
-use bd_runtime::runtime::attachment::MaxBytes;
+use bd_runtime::runtime::chunked_artifact_upload::MaxLogicalBytes;
 use bd_runtime::runtime::device_command::ExecutionTimeoutFlag;
-use bd_runtime::runtime::workflow_attachment::MaxOwnedFiles;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::test::no_timeout;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
@@ -1971,10 +1970,10 @@ async fn workflow_stack_sampling_without_a_platform_handler_fails_as_unsupported
 async fn workflow_owned_file_admission_failure_deletes_source() {
   let (directory, runtime, policy) = command_runtime();
   runtime
-    .update_snapshot(make_simple_update(vec![
-      (MaxBytes::path(), ValueKind::Int(1)),
-      (MaxOwnedFiles::path(), ValueKind::Int(1)),
-    ]))
+    .update_snapshot(make_simple_update(vec![(
+      MaxLogicalBytes::path(),
+      ValueKind::Int(1),
+    )]))
     .await
     .unwrap();
   let trace = write_trace(directory.path());
@@ -2000,7 +1999,7 @@ async fn workflow_owned_file_admission_failure_deletes_source() {
   let WorkflowCommandOutcome::Failed { message, fields } = outcome else {
     panic!("expected workflow attachment admission failure");
   };
-  assert!(message.unwrap().contains("within size limit"));
+  assert!(message.unwrap().contains("logical byte admission"));
   assert_eq!(fields.get("handler_field"), Some(&"handler_value".into()));
   assert!(!trace.exists());
 
@@ -2021,13 +2020,6 @@ async fn workflow_owned_file_admission_failure_deletes_source() {
 #[tokio::test]
 async fn workflow_owned_file_admission_cancellation_deletes_source() {
   let (directory, runtime, policy) = command_runtime();
-  runtime
-    .update_snapshot(make_simple_update(vec![(
-      MaxOwnedFiles::path(),
-      ValueKind::Int(1),
-    )]))
-    .await
-    .unwrap();
   let trace = write_trace(directory.path());
   let registry = RegisteredCommandDispatcher::default();
   register_stack_sampling(
@@ -2668,7 +2660,7 @@ async fn workflow_attachment_admission_failure_reports_command_failure() {
   let runtime = ConfigLoader::new(directory.path());
   runtime
     .update_snapshot(make_simple_update(vec![(
-      (MaxBytes::path()),
+      (MaxLogicalBytes::path()),
       ValueKind::Int(1),
     )]))
     .await

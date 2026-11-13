@@ -23,7 +23,7 @@ async fn configure_admission(setup: &Setup) {
   setup
     .runtime
     .update_snapshot(bd_test_helpers::runtime::make_update(
-      vec![(attachment::MaxBytes::path(), ValueKind::Int(4))],
+      vec![],
       "profiles".into(),
     ))
     .await
@@ -46,7 +46,7 @@ async fn chunk_request(setup: &mut Setup) -> TrackedArtifactUpload {
 
 #[tokio::test]
 async fn profile_chunks_survive_restart_and_policy_reduction_with_original_parents() {
-  let mut setup = Setup::new(4).await;
+  let mut setup = Setup::new().await;
   configure_admission(&setup).await;
   let relative = PathBuf::from("crash_profiles/profile.data");
   fs::create_dir_all(setup.filesystem.directory().join("crash_profiles")).unwrap();
@@ -156,7 +156,7 @@ async fn profile_chunks_survive_restart_and_policy_reduction_with_original_paren
 
 #[tokio::test]
 async fn chunked_profile_parent_validation_and_owned_failure_cleanup() {
-  let setup = Setup::new(4).await;
+  let setup = Setup::new().await;
   configure_admission(&setup).await;
   let parent = Uuid::new_v4().to_string();
   for parents in [
@@ -197,7 +197,7 @@ async fn chunked_profile_parent_validation_and_owned_failure_cleanup() {
 
 #[tokio::test]
 async fn profile_handoff_applies_current_admission_regardless_of_filename() {
-  let setup = Setup::new(4).await;
+  let setup = Setup::new().await;
   configure_admission(&setup).await;
   fs::create_dir_all(setup.filesystem.directory().join("crash_profiles")).unwrap();
   for name in [
@@ -252,7 +252,7 @@ async fn profile_links_survive_restart_and_use_standard_intent_and_ack() {
     ..Default::default()
   };
   for links in [None, Some(linked)] {
-    let mut setup = Setup::new(4).await;
+    let mut setup = Setup::new().await;
     let type_id = if links.is_some() {
       CRASH_PROFILE_ARTIFACT_TYPE_ID
     } else {
@@ -381,11 +381,14 @@ fn linked_report_storage_counts_toward_queue_size() {
 
 #[tokio::test]
 async fn profile_path_sources_follow_command_attachment_ownership_and_size_limit() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   setup
     .runtime
     .update_snapshot(bd_test_helpers::runtime::make_update(
-      vec![(attachment::MaxBytes::path(), ValueKind::Int(4))],
+      vec![(
+        chunked_artifact_upload::MaxLogicalBytes::path(),
+        ValueKind::Int(4),
+      )],
       "attachment limit".to_string(),
     ))
     .await
@@ -417,10 +420,12 @@ async fn profile_path_sources_follow_command_attachment_ownership_and_size_limit
       )
       .unwrap();
     assert_eq!(rx.await.unwrap().is_ok(), accepted);
-    assert_eq!(
-      setup.entry_received_rx.recv().await.unwrap(),
-      id.to_string()
-    );
+    if accepted {
+      assert_eq!(
+        setup.entry_received_rx.recv().await.unwrap(),
+        id.to_string()
+      );
+    }
     // The platform result is retired whether or not the attachment limit admits it.
     assert!(!source.exists());
     let stored = setup

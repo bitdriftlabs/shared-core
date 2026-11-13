@@ -14,9 +14,10 @@
 //! entries share the index, but their spool files stay separate and workflow payloads remain
 //! borrowed.
 //!
-//! Whole-file uploads retain their intent/order policy. Runtime-enabled remote file attachments
-//! use durable chunks and share fair network capacity between attempts. Workflow chunk producers
-//! remain disabled; persistence never implies upload success or restored invocation authority.
+//! Attachment preparation selects whole-file or chunked storage by logical size for every source
+//! type. All payloads share capacity admission without evicting accepted work. Whole-file uploads
+//! retain their intent/order policy; chunks share fair network capacity between attempts.
+//! Persistence never implies upload success or restored invocation authority.
 //!
 //! Optional lifecycle hooks let tests observe recovery and gate staging/upload completion without
 //! changing the ownership algorithm. Notification bookkeeping belongs to the hook implementation,
@@ -44,11 +45,7 @@ use bd_api::{DataUpload, RuntimeBackoffPolicy};
 use bd_backoff::future::retry_notify;
 use bd_backoff::{ExponentialBackoff, InfiniteBackoff};
 use bd_bounded_buffer::SendCounters;
-use bd_client_common::artifact::{
-  CLIENT_REPORT_ARTIFACT_TYPE_ID,
-  CRASH_PROFILE_ARTIFACT_TYPE_ID,
-  STATE_SNAPSHOT_ARTIFACT_TYPE_ID,
-};
+use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, CRASH_PROFILE_ARTIFACT_TYPE_ID};
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{read_checksummed_data, write_compressed_protobuf};
 use bd_client_common::file_system::{FileSystem, OwnedFile};
@@ -68,7 +65,7 @@ use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, StorageFormat};
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
-use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload, attachment};
+use bd_runtime::runtime::{ConfigLoader, artifact_upload};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
@@ -80,7 +77,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use time::OffsetDateTime;
-use tokio::io::AsyncRead;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::time::{MissedTickBehavior, interval};
 use uuid::Uuid;
@@ -92,23 +88,8 @@ pub static ARTIFACT_UPLOAD_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "repo
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
 
 pub const WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID: &str = "workflow_attachment";
-pub use admission::ChunkedFileAdmission;
+pub use admission::ArtifactStore;
 const INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(1);
-
-#[derive(Default, Clone, Copy)]
-pub enum ArtifactType {
-  #[default]
-  Report,
-  StateSnapshot,
-}
-impl ArtifactType {
-  fn to_type_id(self) -> &'static str {
-    match self {
-      Self::Report => CLIENT_REPORT_ARTIFACT_TYPE_ID,
-      Self::StateSnapshot => STATE_SNAPSHOT_ARTIFACT_TYPE_ID,
-    }
-  }
-}
 
 //
 // FeatureFlag
@@ -243,34 +224,6 @@ impl UploadSource {
       Self::Path(path) => OwnedFile::new(path),
       _ => None,
     }
-  }
-
-  /// Opens a bounded attachment input for both direct and workflow preparation.
-  ///
-  /// Root resolution belongs to the supplied filesystem. Regular-file and size checks happen here
-  /// once; the bounded reader still enforces the limit while reading, so growth cannot yield a
-  /// truncated success. Retained payloads have their own envelope and preparation path.
-  pub async fn into_reader(
-    self,
-    filesystem: &dyn FileSystem,
-    max_bytes: u64,
-  ) -> anyhow::Result<Box<dyn AsyncRead + Unpin + Send>> {
-    let file = match self {
-      Self::Bytes(bytes) => {
-        if bytes.len() as u64 > max_bytes {
-          anyhow::bail!("attachment exceeds size limit");
-        }
-        return Ok(Box::new(io::Cursor::new(bytes)));
-      },
-      Self::File(file) => tokio::fs::File::from_std(file),
-      Self::Path(path) => filesystem.open_regular_file(&path).await?,
-      Self::Retained(_) => anyhow::bail!("cannot prepare an already retained attachment"),
-    };
-    let metadata = file.metadata().await?;
-    if !metadata.is_file() || metadata.len() > max_bytes {
-      anyhow::bail!("attachment must be a regular file within size limit");
-    }
-    Ok(Box::new(file))
   }
 }
 
@@ -490,9 +443,7 @@ impl UploadClient {
     let mode = if matches!(&source, UploadSource::Retained(path) if path.extension().is_some_and(|extension| extension == "raw"))
     {
       PreparationMode::Chunked
-    } else if (command_id.is_some() || type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID)
-      && matches!(source, UploadSource::Path(_))
-    {
+    } else if command_id.is_some() || type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID {
       PreparationMode::File
     } else {
       PreparationMode::WholeFile
@@ -529,7 +480,9 @@ impl UploadClient {
     upload.persisted_tx = persisted_tx;
     upload.completion_tx = completion_tx;
     upload.source_lease = source_lease;
-    if mode != PreparationMode::WholeFile {
+    if mode == PreparationMode::Chunked
+      || (mode == PreparationMode::File && matches!(upload.source, UploadSource::Path(_)))
+    {
       chunked::validate_capture_request(&upload.request).map_err(|error| {
         log::warn!("invalid artifact chunk capture metadata: {error}");
         EnqueueError::Other(error)
@@ -759,8 +712,6 @@ pub struct Uploader {
   index_sync_required: bool,
   upload_completions: HashMap<String, oneshot::Sender<std::result::Result<(), String>>>,
 
-  max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
-  max_attachment_bytes: IntWatch<attachment::MaxBytes>,
   backoff_policy: RuntimeBackoffPolicy<
     bd_runtime::runtime::retry_backoff::InitialBackoffInterval,
     bd_runtime::runtime::retry_backoff::MaxBackoffInterval,
@@ -894,8 +845,6 @@ impl Uploader {
       index_dirty: false,
       index_sync_required: false,
       upload_completions: HashMap::default(),
-      max_entries: runtime.register_int_watch(),
-      max_attachment_bytes: runtime.register_int_watch(),
       backoff_policy: RuntimeBackoffPolicy::new(runtime),
       scrub_rules,
       upload_task_handle: None,

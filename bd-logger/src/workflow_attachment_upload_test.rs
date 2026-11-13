@@ -9,14 +9,14 @@ use super::*;
 use crate::workflow_attachment::{AdmittedAttachment, AttachmentStore, AttachmentStoreHandle};
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse};
-use bd_artifact_upload::{ChunkedFileAdmission, EnqueueError, UploadSource, Uploader};
+use bd_artifact_upload::{EnqueueError, UploadSource, Uploader};
 use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{UploadArtifactRequest, UploadArtifactResponse};
-use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _, attachment, chunked_artifact_upload};
+use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{ValueKind, make_update};
@@ -62,74 +62,54 @@ async fn workflow_file_routing_uses_logical_size_before_retention() {
       .get()
       .await
       .unwrap();
-    let attachment = admit_file(&store, directory.path(), size).await.unwrap();
-    let source = store.upload_source(attachment.id).await.unwrap();
-    assert_eq!(source.extension().unwrap(), extension);
-    if extension == "raw" {
-      assert_eq!(
-        tokio::fs::metadata(directory.path().join(source))
-          .await
-          .unwrap()
-          .len(),
-        size + 4
-      );
-    } else {
-      let compressed = tokio::fs::read(directory.path().join(source))
-        .await
-        .unwrap();
-      let mut decoded = Vec::new();
-      ZlibDecoder::new(compressed.as_slice())
-        .read_to_end(&mut decoded)
-        .unwrap();
-      assert_eq!(decoded, vec![0; usize::try_from(size).unwrap()]);
-    }
-    store.release(attachment.id).await.unwrap();
-    configure_admission(
-      &runtime,
-      vec![(attachment::MaxBytes::path(), ValueKind::Int(1))],
-    )
-    .await;
-    let large = admit_file(&store, directory.path(), 1024 * 1024 + 1)
-      .await
-      .unwrap();
-    store.release(large.id).await.unwrap();
-    assert!(
-      store
-        .admit(UploadSource::Bytes(vec![0; 2]), None)
-        .await
-        .is_err()
-    );
-    assert!(
-      tokio::fs::read_dir(directory.path().join("workflow-attachments"))
-        .await
-        .unwrap()
-        .next_entry()
-        .await
-        .unwrap()
-        .is_none()
-    );
-  }
-}
-
-#[tokio::test]
-async fn workflow_retained_files_reserve_shared_chunk_slots_and_staging_bytes() {
-  for (size, accepted) in [(64 * 1024 * 1024 - 4, true), (64 * 1024 * 1024 - 3, false)] {
-    let directory = tempfile::tempdir().unwrap();
-    let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
-    let retained = directory.path().join("workflow-attachments");
-    tokio::fs::create_dir(&retained).await.unwrap();
-    tokio::fs::File::create(retained.join(format!("{}.raw", Uuid::new_v4())))
+    let path = directory.path().join("capture");
+    tokio::fs::File::create(&path)
       .await
       .unwrap()
-      .set_len(u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES) + 4)
+      .set_len(size)
       .await
       .unwrap();
-    let filesystem = RealFileSystem::new(directory.path().to_owned());
-    let admission = ChunkedFileAdmission::new(&runtime);
-    assert_eq!(
-      admission.admit_workflow(&filesystem, size).await.is_ok(),
-      accepted
-    );
+    for input in [
+      UploadSource::Bytes(vec![0; usize::try_from(size).unwrap()]),
+      UploadSource::File(std::fs::File::open(&path).unwrap()),
+      UploadSource::Path(path),
+    ] {
+      let _owned = input.owned_file();
+      let attachment = store
+        .admit(input, Some("application/octet-stream".into()))
+        .await
+        .unwrap();
+      let source = store.upload_source(attachment.id).await.unwrap();
+      assert_eq!(source.extension().unwrap(), extension);
+      if extension == "raw" {
+        assert_eq!(
+          tokio::fs::metadata(directory.path().join(source))
+            .await
+            .unwrap()
+            .len(),
+          size + 4
+        );
+      } else {
+        let compressed = tokio::fs::read(directory.path().join(source))
+          .await
+          .unwrap();
+        let mut decoded = Vec::new();
+        ZlibDecoder::new(compressed.as_slice())
+          .read_to_end(&mut decoded)
+          .unwrap();
+        assert_eq!(decoded, vec![0; usize::try_from(size).unwrap()]);
+      }
+      store.release(attachment.id).await.unwrap();
+      assert!(
+        tokio::fs::read_dir(directory.path().join("workflow-attachments"))
+          .await
+          .unwrap()
+          .next_entry()
+          .await
+          .unwrap()
+          .is_none()
+      );
+    }
   }
 }
 

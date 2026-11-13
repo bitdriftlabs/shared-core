@@ -26,11 +26,12 @@
 use super::staging::StagedFiles;
 use super::{
   ARTIFACT_UPLOAD_DIRECTORY,
-  ChunkedFileAdmission,
+  ArtifactStore,
   UploadSource,
   Uploader,
   WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID,
 };
+use crate::input::Input;
 use bd_client_common::artifact::{
   CRASH_PROFILE_ARTIFACT_TYPE_ID,
   CRASH_PROFILE_MAX_REPORT_IDS,
@@ -71,14 +72,14 @@ const MAX_CAPTURE_METADATA_BYTES: u64 = 8 * 1024;
 
 pub(super) struct Spool {
   pub(super) entries: Vec<ChunkedArtifact>,
-  pub(super) admission: ChunkedFileAdmission,
+  pub(super) admission: ArtifactStore,
 }
 
 impl Spool {
   pub(super) fn new(runtime: &ConfigLoader) -> Self {
     Self {
       entries: Vec::new(),
-      admission: ChunkedFileAdmission::new(runtime),
+      admission: ArtifactStore::new(runtime),
     }
   }
 }
@@ -427,6 +428,37 @@ impl Uploader {
     if self.index_proto().compute_size() + RESERVED_INDEX_ENTRY_BYTES > MAX_INDEX_BYTES {
       anyhow::bail!("insufficient bounded index space for chunked artifact metadata");
     }
+    let source = if matches!(source, UploadSource::Bytes(_) | UploadSource::File(_)) {
+      let mut input = Input::open(source, self.file_system.as_ref()).await?;
+      let size = input.size();
+      self
+        .chunked
+        .admission
+        .check_capacity(self.file_system.as_ref(), size, size, None, size)
+        .await?;
+      let path = source_path(&request.artifact_id);
+      files.created.push(path.clone());
+      let mut output = self.file_system.create_file(&path).await?;
+      if tokio::io::copy(&mut input.reader().take(size + 1), &mut output).await? != size {
+        anyhow::bail!("attachment changed during staging");
+      }
+      input.validate().await?;
+      output.flush().await?;
+      self.file_system.sync_file_and_parent(&path).await?;
+      let file = self.file_system.open_regular_file(&path).await?;
+      let metadata = file.metadata().await?;
+      return stage(
+        self.file_system.as_ref(),
+        file,
+        &metadata,
+        request,
+        files,
+        false,
+      )
+      .await;
+    } else {
+      source
+    };
     let (path, retained) = match source {
       UploadSource::Path(path) => (path, false),
       UploadSource::Retained(path)

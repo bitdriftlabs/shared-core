@@ -15,7 +15,9 @@
 )]
 
 mod crash_profile_source;
+mod input;
 mod report_attribution;
+mod retained;
 mod uploader;
 
 #[cfg(any(target_os = "android", test, feature = "test-support"))]
@@ -30,7 +32,7 @@ pub use bd_metadata::artifact::PERFETTO_CONTENT_TYPE;
 pub use crash_profile_source::encode_source;
 pub use report_attribution::{ReportAttribution, restore_pending_reports};
 pub use uploader::{
-  ChunkedFileAdmission,
+  ArtifactStore,
   Client,
   EnqueueError,
   MockClient,

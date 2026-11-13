@@ -7,11 +7,11 @@
 
 //! The submission-to-index transaction shared by whole-file and chunked artifacts.
 //!
-//! Admission policy remains format-specific: whole-file reports may evict other reports, while
-//! snapshots and workflow leases cannot be evicted; chunk admission accounts for physical bytes and
-//! slots. Payload preparation also stays concrete rather than hiding encoding behind a strategy
-//! framework. What is shared is the ownership algorithm: reject collisions, prepare bytes, register
-//! one entry, publish the common index, release sources, and acknowledge persistence.
+//! All representations share physical-byte and artifact-count admission. Accepted entries are
+//! never evicted to make room for a different format. Payload preparation stays concrete rather
+//! than hiding encoding behind a strategy framework. What is shared is the ownership algorithm:
+//! reject collisions, prepare bytes, register one entry, publish the common index, release sources,
+//! and acknowledge persistence.
 //!
 //! A preparation ledger records only paths actually touched by this attempt. Before publication it
 //! supports rollback (including restoring a moved snapshot); after publication it must not unlink
@@ -23,8 +23,7 @@ use super::{
   ARTIFACT_UPLOAD_DIRECTORY,
   Artifact,
   ArtifactPayloadEncoding,
-  ArtifactType,
-  ChunkedFileAdmission,
+  ArtifactStore,
   EnqueueError,
   NewUpload,
   PreparationMode,
@@ -35,6 +34,7 @@ use super::{
   WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID,
   retained_persistence_error,
 };
+use crate::input::Input;
 use bd_client_common::file::{
   async_write_checksummed_data,
   read_and_compress_limited_with_size,
@@ -43,8 +43,9 @@ use bd_client_common::file::{
 use bd_client_common::file_system::OwnedFile;
 use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
+use protobuf::Message as _;
 use std::path::PathBuf;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 
 #[derive(Default)]
@@ -73,6 +74,14 @@ impl Uploader {
       .stage_upload(source, request, mode, &mut source_cleanup, &mut files)
       .await;
     let success = result.is_ok();
+    if !retained
+      && matches!(
+        &result,
+        Err(EnqueueError::Other(_) | EnqueueError::QueueFull)
+      )
+    {
+      self.stats.dropped.inc();
+    }
     if !success && !files.published {
       self.rollback_files(&mut files).await;
     }
@@ -138,11 +147,28 @@ impl Uploader {
       PreparationMode::WholeFile => false,
       PreparationMode::Chunked => true,
       PreparationMode::File => {
-        let UploadSource::Path(path) = &source else {
-          return Err(anyhow::anyhow!("file routing requires an owned capture path").into());
+        let size = match &source {
+          UploadSource::Path(path) => self
+            .file_system
+            .open_regular_file(path)
+            .await?
+            .metadata()
+            .await
+            .map_err(anyhow::Error::from)?
+            .len(),
+          UploadSource::Bytes(bytes) => bytes.len() as u64,
+          UploadSource::File(file) => Input::open(
+            UploadSource::File(file.try_clone().map_err(anyhow::Error::from)?),
+            self.file_system.as_ref(),
+          )
+          .await?
+          .size(),
+          UploadSource::Retained(_) => {
+            return Err(
+              anyhow::anyhow!("retained payload already has a stored representation").into(),
+            );
+          },
         };
-        let file = self.file_system.open_regular_file(path).await?;
-        let size = file.metadata().await.map_err(anyhow::Error::from)?.len();
         if size == 0 && request.command_id.is_none() {
           return Err(anyhow::anyhow!("empty workflow artifact").into());
         }
@@ -155,6 +181,7 @@ impl Uploader {
       },
     };
     if chunked {
+      super::chunked::validate_capture_request(&request)?;
       // The scrubbed Begin is immutable after admission, including across restart/config changes.
       request.state_metadata =
         super::scrub_metadata(&self.scrub_rules.borrow(), &request.state_metadata);
@@ -191,15 +218,16 @@ impl Uploader {
       )));
     }
     let retained = matches!(source, UploadSource::Retained(_));
-    let _preparation = if chunked {
-      Some(
-        ChunkedFileAdmission::lock()
-          .await
-          .map_err(EnqueueError::Other)?,
-      )
-    } else {
-      None
-    };
+    if self
+      .index_proto()
+      .compute_size()
+      .saturating_add(request.compute_size())
+      .saturating_add(64)
+      > super::chunked::MAX_INDEX_BYTES
+    {
+      return Err(anyhow::anyhow!("insufficient bounded index space for artifact metadata").into());
+    }
+    let _preparation = ArtifactStore::lock().await.map_err(EnqueueError::Other)?;
     let size = if chunked {
       let entry = self
         .prepare_chunked(source, request, source_cleanup, files)
@@ -219,7 +247,6 @@ impl Uploader {
       self.index_sync_required = true;
       size
     } else {
-      self.admit_whole_file().await?;
       if let Some(hooks) = &self.test_hooks {
         hooks.whole_file_preparation_started(&source, &request);
       }
@@ -234,7 +261,7 @@ impl Uploader {
           }
         })?;
       self.index.push_back(entry);
-      self.index_sync_required |= retained;
+      self.index_sync_required = true;
       size
     };
     if let Some(hooks) = &self.test_hooks {
@@ -269,41 +296,6 @@ impl Uploader {
     }
   }
 
-  async fn admit_whole_file(&mut self) -> Result<(), EnqueueError> {
-    // Preserve whole-file eviction semantics without teaching chunk admission about report policy.
-    // Snapshots hydrate scheduled logs and workflow payloads have independent retention owners.
-    if self.index.len() < *self.max_entries.read() as usize {
-      return Ok(());
-    }
-    self.stats.dropped.inc();
-    let Some(index) = self.index.iter().position(|entry| {
-      entry.type_id.as_deref() != Some(ArtifactType::StateSnapshot.to_type_id())
-        && entry.type_id.as_deref() != Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
-    }) else {
-      return Err(EnqueueError::QueueFull);
-    };
-    if index == 0 {
-      self.stop_current_upload();
-    }
-    if let Some(entry) = self.index.remove(index) {
-      self
-        .discard_upload(
-          entry,
-          "artifact upload was evicted from the upload queue".into(),
-        )
-        .await;
-    }
-    // Retirement may have failed to publish. Do not prepare a new payload until the same owner has
-    // reconciled that failure; the byte inventory must never run ahead of durable ownership.
-    if self.index_dirty {
-      self
-        .write_index()
-        .await
-        .map_err(|error| EnqueueError::RetryablePersistence(error.into()))?;
-    }
-    Ok(())
-  }
-
   async fn prepare_whole_file(
     &self,
     source: UploadSource,
@@ -314,9 +306,48 @@ impl Uploader {
     let compressed_attachment = super::is_compressed_attachment(&request);
     let target = ARTIFACT_UPLOAD_DIRECTORY.join(&request.artifact_id);
     let mut size_bytes = None;
+    let mut reserved_size = 0;
     // Register the target before its first write: a short write is still an owned file requiring
     // rollback. Borrowed workflow data is never written, copied, restored or unlinked here.
     if !retained {
+      let (size, identity) = match &source {
+        UploadSource::Path(path) => {
+          let metadata = self
+            .file_system
+            .open_regular_file(path)
+            .await?
+            .metadata()
+            .await?;
+          (metadata.len(), super::chunked::file_identity(&metadata))
+        },
+        UploadSource::File(file) => (
+          Input::open(
+            UploadSource::File(file.try_clone()?),
+            self.file_system.as_ref(),
+          )
+          .await?
+          .size(),
+          None,
+        ),
+        UploadSource::Bytes(bytes) => (bytes.len() as u64, None),
+        UploadSource::Retained(_) => anyhow::bail!("unexpected retained artifact"),
+      };
+      self
+        .chunked
+        .admission
+        .check_capacity(
+          self.file_system.as_ref(),
+          size,
+          if matches!(source, UploadSource::Path(_)) {
+            size
+          } else {
+            0
+          },
+          identity,
+          size.saturating_add(4096),
+        )
+        .await?;
+      reserved_size = size;
       files.created.push(target.clone());
     }
     let format = match source {
@@ -324,14 +355,13 @@ impl Uploader {
         if let UploadSource::Path(path) = &source {
           files.original = Some((path.clone(), false));
         }
-        let ordinary_limit = u64::from(*self.max_attachment_bytes.read());
-        let limit = if matches!(source, UploadSource::Path(_)) {
-          self.chunked.admission.whole_file_limit(ordinary_limit)
-        } else {
-          ordinary_limit
-        };
-        let reader = source.into_reader(self.file_system.as_ref(), limit).await?;
-        let (encoded, size) = read_and_compress_limited_with_size(reader, limit).await?;
+        let limit = self.chunked.admission.whole_file_limit();
+        let mut input = Input::open(source, self.file_system.as_ref()).await?;
+        if input.size() != reserved_size {
+          anyhow::bail!("attachment changed before preparation");
+        }
+        let (encoded, size) = read_and_compress_limited_with_size(input.reader(), limit).await?;
+        input.validate().await?;
         let mut output = self.file_system.create_file(&target).await?;
         output.write_all(&encoded).await?;
         output.flush().await?;
@@ -345,8 +375,16 @@ impl Uploader {
         StorageFormat::CHECKSUMMED
       },
       UploadSource::File(file) => {
-        let output = self.file_system.create_file(&target).await?;
-        async_write_checksummed_data(tokio::fs::File::from_std(file), output).await?;
+        let mut input = Input::open(UploadSource::File(file), self.file_system.as_ref()).await?;
+        if input.size() != reserved_size {
+          anyhow::bail!("artifact changed before preparation");
+        }
+        let mut output = self.file_system.create_file(&target).await?;
+        async_write_checksummed_data(input.reader().take(reserved_size + 1), &mut output).await?;
+        input.validate().await?;
+        if output.metadata().await?.len() != reserved_size + 4 {
+          anyhow::bail!("artifact changed during preparation");
+        }
         StorageFormat::CHECKSUMMED
       },
       UploadSource::Path(path) => {
@@ -376,12 +414,32 @@ impl Uploader {
     } else {
       ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
     };
+    if !retained {
+      if !compressed_attachment
+        && self
+          .file_system
+          .open_regular_file(&target)
+          .await?
+          .metadata()
+          .await?
+          .len()
+          != reserved_size
+            + if format == StorageFormat::CHECKSUMMED {
+              4
+            } else {
+              0
+            }
+      {
+        anyhow::bail!("artifact changed during preparation");
+      }
+      self.file_system.sync_file_and_parent(&target).await?;
+    }
     Ok((
       Artifact {
         name: request.artifact_id,
         type_id: Some(
           if request.type_id.is_empty() {
-            ArtifactType::default().to_type_id().into()
+            super::CLIENT_REPORT_ARTIFACT_TYPE_ID.into()
           } else {
             request.type_id
           },

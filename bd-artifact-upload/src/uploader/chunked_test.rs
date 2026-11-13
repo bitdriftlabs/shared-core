@@ -11,7 +11,7 @@ use super::chunked::{CHUNK_BYTES, MAX_INDEX_BYTES, chunk_path, source_path};
 use super::tests::{Setup, wait_for_queue_revision};
 use super::{
   ARTIFACT_UPLOAD_DIRECTORY,
-  ChunkedFileAdmission,
+  ArtifactStore,
   Client,
   EnqueueError,
   REPORT_INDEX_FILE,
@@ -23,6 +23,7 @@ use bd_api::upload::{IntentDecision, IntentResponse, TrackedArtifactUpload};
 use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::FileSystem;
+use bd_client_common::test::TestFileSystem;
 use bd_log_primitives::LogFields;
 use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{
@@ -32,17 +33,18 @@ use bd_proto::protos::client::api::{
   UploadArtifactRequest,
   UploadArtifactResponse,
 };
-use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
+use bd_proto::protos::client::artifact::{ArtifactUploadIndex, WorkflowAttachmentState};
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::{FeatureFlag as _, chunked_artifact_upload};
+use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_time::{OffsetDateTimeExt as _, TimeProvider as _};
 use flate2::read::ZlibDecoder;
 use protobuf::Message;
 use sha2::{Digest, Sha256};
-use std::io::Read;
+use std::io::{Read, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use tokio::sync::oneshot;
@@ -157,17 +159,33 @@ fn thin(template: &UploadArtifactRequest, operation: &TrackedArtifactUpload, chu
 
 #[tokio::test]
 async fn file_routing_uses_logical_size_for_commands_and_profiles() {
-  for profile in [false, true] {
+  for (profile, source_kind) in [false, true]
+    .into_iter()
+    .flat_map(|profile| ["path", "file", "bytes"].map(|kind| (profile, kind)))
+  {
     for size in [CHUNK_BYTES - 1, CHUNK_BYTES, CHUNK_BYTES + 1] {
-      let mut setup = Setup::new(1).await;
+      let mut setup = Setup::with_buffer(2 * 1024 * 1024).await;
       let bytes = vec![42; usize::try_from(size).unwrap()];
       let path = setup.capture(Uuid::new_v4(), &bytes).await;
+      let source = match source_kind {
+        "path" => UploadSource::Path(path.clone()),
+        "file" => {
+          tokio::fs::write(&path, [b"prefix".as_slice(), &bytes].concat())
+            .await
+            .unwrap();
+          let mut file = std::fs::File::open(&path).unwrap();
+          file.seek(SeekFrom::Start(6)).unwrap();
+          UploadSource::File(file)
+        },
+        "bytes" => UploadSource::Bytes(bytes.clone()),
+        _ => panic!("unknown test source"),
+      };
       let id = if profile {
         let (tx, rx) = oneshot::channel();
         let id = setup
           .client
           .enqueue_crash_profile(
-            UploadSource::Path(path.clone()),
+            source,
             setup.time_provider.now(),
             "session".into(),
             "application/octet-stream".into(),
@@ -185,7 +203,7 @@ async fn file_routing_uses_logical_size_for_commands_and_profiles() {
         let id = setup
           .client
           .enqueue_command_upload(
-            UploadSource::Path(path.clone()),
+            source,
             "device_command_attachment".into(),
             None,
             "session".into(),
@@ -199,7 +217,7 @@ async fn file_routing_uses_logical_size_for_commands_and_profiles() {
         assert_eq!(rx.await.unwrap().unwrap(), size);
         id
       };
-      assert!(!path.exists());
+      assert_eq!(path.exists(), source_kind != "path");
       let index = setup.chunk_index().await;
       if size <= CHUNK_BYTES {
         assert_eq!(index.chunked_artifact, []);
@@ -277,7 +295,7 @@ async fn file_routing_uses_logical_size_for_commands_and_profiles() {
 
 #[tokio::test(start_paused = true)]
 async fn chunk_transfer_replays_each_lost_ack_and_waits_for_durable_finalization() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
   let path = setup
@@ -357,7 +375,7 @@ async fn chunk_transfer_replays_each_lost_ack_and_waits_for_durable_finalization
 
 #[tokio::test(start_paused = true)]
 async fn chunk_transfer_is_fair_resumes_after_restart_and_does_not_expire() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let ids = [Uuid::new_v4(), Uuid::new_v4()];
   for id in ids {
@@ -402,7 +420,7 @@ async fn chunk_transfer_is_fair_resumes_after_restart_and_does_not_expire() {
 
 #[tokio::test(start_paused = true)]
 async fn invalid_chunk_acknowledgements_and_retryable_errors_resume_without_releasing_bytes() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
   let path = setup.capture(id, b"file").await;
@@ -476,7 +494,7 @@ async fn invalid_chunk_acknowledgements_and_retryable_errors_resume_without_rele
 
 #[tokio::test(start_paused = true)]
 async fn chunk_transfers_interleave_whole_file_traffic_without_eviction_or_fallback() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let mut completions = Vec::new();
   for _ in 0 .. 2 {
@@ -584,7 +602,7 @@ async fn recovered(setup: Setup) -> Setup {
 
 #[tokio::test]
 async fn chunked_shared_index_preserves_published_snapshot_on_sync_failure() {
-  let setup = Setup::new(2).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let chunk_id = Uuid::new_v4();
   let capture = setup.capture(chunk_id, b"chunked").await;
@@ -646,7 +664,7 @@ async fn chunked_shared_index_preserves_published_snapshot_on_sync_failure() {
 
 #[tokio::test]
 async fn chunked_unpublished_index_failure_rolls_back_only_created_paths() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let mut revision = setup.client.upload_queue_revision();
   wait_for_queue_revision(&mut revision, 0).await;
@@ -683,7 +701,7 @@ async fn chunked_unpublished_index_failure_rolls_back_only_created_paths() {
 
 #[tokio::test]
 async fn chunked_mixed_encoding_hashes_geometry_and_restart() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
   let chunk_bytes = usize::try_from(CHUNK_BYTES).unwrap();
@@ -767,7 +785,7 @@ async fn chunked_mixed_encoding_hashes_geometry_and_restart() {
 #[tokio::test]
 async fn chunked_persistence_requires_payload_and_index_fsync() {
   for fail_index in [false, true] {
-    let setup = Setup::new(1).await;
+    let setup = Setup::new().await;
     setup.configure_admission(Vec::new()).await;
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
@@ -836,7 +854,7 @@ async fn chunked_persistence_requires_payload_and_index_fsync() {
 
 #[tokio::test]
 async fn chunked_cancelled_waiter_keeps_durable_ownership() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
   let path = setup.capture(id, b"file").await;
@@ -858,7 +876,7 @@ async fn chunked_cancelled_waiter_keeps_durable_ownership() {
 #[tokio::test]
 async fn chunked_source_change_and_disk_full_reclaim_preparation() {
   for change in 0 .. 4 {
-    let setup = Setup::new(1).await;
+    let setup = Setup::new().await;
     setup.configure_admission(Vec::new()).await;
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
@@ -916,9 +934,9 @@ async fn chunked_source_change_and_disk_full_reclaim_preparation() {
 
 #[tokio::test]
 async fn chunked_count_bound_preserves_accepted_entries_and_rejects_overflow() {
-  let setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
-  for _ in 0 .. 64 {
+  for _ in 0 .. 32 {
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
     setup
@@ -927,6 +945,38 @@ async fn chunked_count_bound_preserves_accepted_entries_and_rejects_overflow() {
       .unwrap()
       .unwrap();
   }
+  for _ in 0 .. 31 {
+    let (tx, rx) = oneshot::channel();
+    setup
+      .client
+      .enqueue_upload(
+        UploadSource::Bytes(b"whole".to_vec()),
+        "client_report".into(),
+        [].into(),
+        None,
+        "session".into(),
+        Vec::new(),
+        None,
+        Some(tx),
+      )
+      .unwrap();
+    rx.await.unwrap().unwrap();
+    setup.entry_received_rx.recv().await.unwrap();
+  }
+  setup
+    .filesystem
+    .create_dir(Path::new("workflow-attachments"))
+    .await
+    .unwrap();
+  ArtifactStore::new(&setup.runtime)
+    .retain(
+      setup.filesystem.as_ref(),
+      UploadSource::Bytes(b"retained".to_vec()),
+      Uuid::new_v4(),
+      &WorkflowAttachmentState::default(),
+    )
+    .await
+    .unwrap();
   let source = setup.capture(Uuid::new_v4(), b"small").await;
   let (tx, rx) = oneshot::channel();
   setup
@@ -943,11 +993,22 @@ async fn chunked_count_bound_preserves_accepted_entries_and_rejects_overflow() {
       None,
     )
     .unwrap();
-  assert_eq!(rx.await.unwrap().unwrap(), 5);
+  assert!(rx.await.unwrap().is_err());
   assert!(!source.exists());
   let index = setup.chunk_index().await;
-  assert_eq!(index.artifact.len(), 1);
-  assert_eq!(index.chunked_artifact.len(), 64);
+  assert_eq!(index.artifact.len(), 31);
+  assert_eq!(index.chunked_artifact.len(), 32);
+  assert!(
+    ArtifactStore::new(&setup.runtime)
+      .retain(
+        setup.filesystem.as_ref(),
+        UploadSource::Bytes(b"overflow".to_vec()),
+        Uuid::new_v4(),
+        &WorkflowAttachmentState::default(),
+      )
+      .await
+      .is_err()
+  );
   let id = Uuid::new_v4();
   let path = setup.capture(id, b"overflow").await;
   assert!(
@@ -980,12 +1041,51 @@ async fn chunked_count_bound_preserves_accepted_entries_and_rejects_overflow() {
 }
 
 #[tokio::test]
+async fn common_byte_capacity_includes_whole_chunked_and_retained_payloads() {
+  for layout in ["whole", "chunked", "retained"] {
+    for (spare_bytes, accepted) in [(7, false), (8, true)] {
+      let filesystem = TestFileSystem::new();
+      let runtime = TestConfigLoader::new().await;
+      filesystem
+        .create_dir(&ARTIFACT_UPLOAD_DIRECTORY)
+        .await
+        .unwrap();
+      filesystem
+        .create_dir(Path::new("workflow-attachments"))
+        .await
+        .unwrap();
+      let id = Uuid::new_v4().to_string();
+      let path = match layout {
+        "whole" => ARTIFACT_UPLOAD_DIRECTORY.join(&id),
+        "chunked" => source_path(&id),
+        _ => PathBuf::from(format!("workflow-attachments/{id}.payload")),
+      };
+      filesystem
+        .create_file(&path)
+        .await
+        .unwrap()
+        .set_len(640 * 1024 * 1024 - spare_bytes)
+        .await
+        .unwrap();
+      assert_eq!(
+        ArtifactStore::new(&runtime)
+          .check_capacity(&filesystem, 4, 4, None, 4,)
+          .await
+          .is_ok(),
+        accepted,
+        "{layout}: {spare_bytes}"
+      );
+    }
+  }
+}
+
+#[tokio::test]
 async fn chunked_logical_and_source_plus_staging_byte_admission() {
   for (used_bytes, accepted) in [
     (640 * 1024 * 1024 - 7, false),
     (640 * 1024 * 1024 - 8, true),
   ] {
-    let setup = Setup::new(1).await;
+    let setup = Setup::new().await;
     setup.configure_admission(Vec::new()).await;
     let mut revision = setup.client.upload_queue_revision();
     wait_for_queue_revision(&mut revision, 0).await;
@@ -1014,8 +1114,8 @@ async fn chunked_logical_and_source_plus_staging_byte_admission() {
 
 #[tokio::test]
 async fn chunked_logical_limit_updates_command_and_workflow_admission() {
-  let setup = Setup::new(1).await;
-  let admission = ChunkedFileAdmission::new(&setup.runtime);
+  let setup = Setup::new().await;
+  let admission = ArtifactStore::new(&setup.runtime);
   for (limit, accepted) in [(4, true), (3, false), (4, true)] {
     setup
       .configure_admission(vec![(
@@ -1023,13 +1123,7 @@ async fn chunked_logical_limit_updates_command_and_workflow_admission() {
         ValueKind::Int(limit),
       )])
       .await;
-    assert_eq!(
-      admission
-        .admit_workflow(setup.filesystem.as_ref(), 4)
-        .await
-        .is_ok(),
-      accepted
-    );
+    assert_eq!(admission.should_chunk(4).is_ok(), accepted);
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
     assert_eq!(
@@ -1047,7 +1141,7 @@ async fn chunked_logical_limit_updates_command_and_workflow_admission() {
 
 #[tokio::test]
 async fn chunked_hard_logical_ceiling_rejects_oversized_files() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup
     .configure_admission(vec![(
       chunked_artifact_upload::MaxLogicalBytes::path(),
@@ -1082,7 +1176,7 @@ async fn chunked_hard_logical_ceiling_rejects_oversized_files() {
 
 #[tokio::test]
 async fn chunked_admission_reserves_bounded_shared_index_metadata() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let mut revision = setup.client.upload_queue_revision();
   wait_for_queue_revision(&mut revision, 0).await;
@@ -1133,7 +1227,7 @@ async fn chunked_admission_reserves_bounded_shared_index_metadata() {
 #[tokio::test]
 async fn chunked_recovery_rejects_invalid_templates_and_inconsistent_chunks() {
   for corruption in 0 .. 8 {
-    let setup = Setup::new(1).await;
+    let setup = Setup::new().await;
     setup.configure_admission(Vec::new()).await;
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
@@ -1185,7 +1279,7 @@ async fn chunked_recovery_rejects_invalid_templates_and_inconsistent_chunks() {
 #[tokio::test]
 async fn chunked_recovery_bounds_compressed_and_decoded_index() {
   for compressed in [false, true] {
-    let setup = Setup::new(1).await;
+    let setup = Setup::new().await;
     let mut revision = setup.client.upload_queue_revision();
     wait_for_queue_revision(&mut revision, 0).await;
     let bytes = vec![0; usize::try_from(MAX_INDEX_BYTES).unwrap() + 1];
@@ -1226,7 +1320,7 @@ async fn chunked_recovery_bounds_compressed_and_decoded_index() {
 #[tokio::test]
 async fn chunked_crash_reclaims_uncommitted_files_and_preserves_published_index() {
   for phase in 0 .. 3 {
-    let setup = Setup::new(1).await;
+    let setup = Setup::new().await;
     setup.configure_admission(Vec::new()).await;
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
@@ -1284,7 +1378,7 @@ async fn chunked_crash_reclaims_uncommitted_files_and_preserves_published_index(
 
 #[tokio::test]
 async fn chunked_recovery_retains_old_bytes_and_keeps_admission_charged() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
   let metadata = setup.request(id);
@@ -1333,7 +1427,7 @@ async fn chunked_remote_files_may_be_empty_but_workflow_files_must_be_nonempty()
     (true, true, false),
     (true, false, true),
   ] {
-    let setup = Setup::new(1).await;
+    let setup = Setup::new().await;
     let id = Uuid::new_v4();
     let mut metadata = setup.request(id);
     if workflow {
@@ -1362,7 +1456,7 @@ async fn chunked_remote_files_may_be_empty_but_workflow_files_must_be_nonempty()
 #[tokio::test]
 async fn chunked_disk_headroom_rejects_but_slow_preparation_does_not_expire() {
   for slow_preparation in [false, true] {
-    let setup = Setup::new(1).await;
+    let setup = Setup::new().await;
     setup.configure_admission(Vec::new()).await;
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
@@ -1406,7 +1500,7 @@ async fn chunked_disk_headroom_rejects_but_slow_preparation_does_not_expire() {
 #[cfg(unix)]
 #[tokio::test]
 async fn chunked_hard_linked_sources_are_charged_once_without_requiring_links() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let first = Uuid::new_v4();
   let path = setup.capture(first, b"file").await;
@@ -1452,7 +1546,7 @@ async fn chunked_hard_linked_sources_are_charged_once_without_requiring_links() 
 
 #[tokio::test]
 async fn chunked_invalid_capture_metadata_consumes_owned_source_without_index_commit() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   for case in 0 .. 6 {
     let id = Uuid::new_v4();
@@ -1490,7 +1584,7 @@ async fn chunked_invalid_capture_metadata_consumes_owned_source_without_index_co
 
 #[tokio::test]
 async fn chunked_whole_file_index_writes_preserve_workflow_chunk_ownership() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
   let mut metadata = setup.request(id);
@@ -1539,7 +1633,7 @@ async fn chunked_whole_file_index_writes_preserve_workflow_chunk_ownership() {
 
 #[tokio::test]
 async fn chunked_failed_source_cleanup_stays_charged_until_recovery_retries_it() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
   let path = setup.capture(id, b"file").await;
@@ -1599,7 +1693,7 @@ async fn chunked_failed_source_cleanup_stays_charged_until_recovery_retries_it()
 
 #[tokio::test]
 async fn chunked_cross_mode_collision_does_not_delete_accepted_chunks() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
   let path = setup.capture(id, b"file").await;
@@ -1649,7 +1743,7 @@ async fn chunked_cross_mode_collision_does_not_delete_accepted_chunks() {
 #[cfg(unix)]
 #[tokio::test]
 async fn chunked_rejects_symlinks_and_non_files_without_touching_targets() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let target = setup.capture(Uuid::new_v4(), b"keep").await;
   let symlink = setup.filesystem.directory().join("symlink");

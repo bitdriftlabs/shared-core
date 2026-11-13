@@ -21,7 +21,7 @@ use bd_client_stats_store::Collector;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::ReportType;
 use bd_proto::protos::client::api::UploadArtifactResponse;
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
-use bd_runtime::runtime::{FeatureFlag as _, attachment};
+use bd_runtime::runtime::{FeatureFlag as _, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{ValueKind, make_update};
@@ -273,7 +273,7 @@ async fn actual_persistence_rejection_retires_source_but_not_report_candidate() 
       .runtime
       .update_snapshot(make_update(
         vec![(
-          attachment::MaxBytes::path(),
+          chunked_artifact_upload::MaxLogicalBytes::path(),
           ValueKind::Int(if disk_full { 1024 } else { 1 }),
         )],
         "reject profile".to_string(),
@@ -305,7 +305,10 @@ async fn actual_persistence_rejection_retires_source_but_not_report_candidate() 
     pipeline
       .runtime
       .update_snapshot(make_update(
-        vec![(attachment::MaxBytes::path(), ValueKind::Int(1024))],
+        vec![(
+          chunked_artifact_upload::MaxLogicalBytes::path(),
+          ValueKind::Int(1024),
+        )],
         "accept later profile".to_string(),
       ))
       .await

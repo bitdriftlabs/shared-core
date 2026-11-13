@@ -20,7 +20,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp,
   root_as_report,
 };
-use bd_runtime::runtime::{FeatureFlag as _, attachment};
+use bd_runtime::runtime::{FeatureFlag as _, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{ValueKind, make_update};
@@ -366,7 +366,10 @@ async fn relative_sources_persist_the_matched_bytes_and_are_retired_on_rejection
       .update_snapshot(make_update(
         vec![
           (AnrEnabled::path(), ValueKind::Bool(true)),
-          (attachment::MaxBytes::path(), ValueKind::Int(limit)),
+          (
+            chunked_artifact_upload::MaxLogicalBytes::path(),
+            ValueKind::Int(limit),
+          ),
         ],
         "relative profile".to_string(),
       ))
