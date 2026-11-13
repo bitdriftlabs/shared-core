@@ -5,6 +5,11 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./value_matcher_test.rs"]
+mod tests;
+
+use crate::regex_prefilter::PrefilteredRegex;
 use anyhow::{Result, anyhow};
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_proto::protos::value_matcher::value_matcher::double_value_match::Double_value_match_type;
@@ -16,7 +21,6 @@ use bd_proto::protos::value_matcher::value_matcher::{
   StringValueMatch as StringValueMatch_type,
 };
 use protobuf::EnumOrUnknown;
-use regex_lite::Regex;
 use std::ops::Deref;
 
 //
@@ -163,7 +167,7 @@ impl<'a> MakeValueOrRef<'a, Self> for String {
 pub struct StringMatch {
   operator: Operator,
   value: ValueOrSavedFieldId<String>,
-  regex: Option<Regex>,
+  regex: Option<PrefilteredRegex>,
 }
 
 // `Regex` doesn't implement `PartialEq`.
@@ -206,7 +210,7 @@ impl StringMatch {
           return Err(anyhow!("regex operator requires a value"));
         };
 
-        Some(match Regex::new(value) {
+        Some(match PrefilteredRegex::new(value) {
           Ok(regex) => regex,
           Err(e) => return Err(anyhow::Error::new(e).context("invalid regex")),
         })
