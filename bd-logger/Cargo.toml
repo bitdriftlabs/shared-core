@@ -8,6 +8,10 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
+[features]
+# Exposes `bd_logger::benchmark`, which drives the per-log path one stage at a time.
+benchmark = []
+
 [dependencies]
 anyhow.workspace             = true
 async-trait.workspace        = true
@@ -68,15 +72,27 @@ tracing.workspace            = true
 uuid.workspace               = true
 
 [dev-dependencies]
-assert_matches.workspace    = true
-bd-grpc-codec.path          = "../bd-grpc-codec"
-bd-hyper-network            = { path = "../bd-hyper-network" }
-bd-noop-network             = { path = "../bd-noop-network" }
-bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
-bd-test-helpers-core.path   = "../bd-test-helpers-core"
-bd-workflows                = { path = "../bd-workflows", features = ["test"] }
-ctor.workspace              = true
-pretty_assertions.workspace = true
-tempfile.workspace          = true
-tokio-test.workspace        = true
-uuid.workspace              = true
+assert_matches.workspace        = true
+bd-grpc-codec.path              = "../bd-grpc-codec"
+bd-hyper-network                = { path = "../bd-hyper-network" }
+bd-noop-network                 = { path = "../bd-noop-network" }
+bd-test-helpers                 = { path = "../bd-test-helpers", default-features = false }
+bd-test-helpers-core.path       = "../bd-test-helpers-core"
+bd-workflows                    = { path = "../bd-workflows", features = ["test"] }
+ctor.workspace                  = true
+pretty_assertions.workspace     = true
+protobuf-json-mapping.workspace = true
+serde_json.workspace            = true
+tempfile.workspace              = true
+tokio-test.workspace            = true
+uuid.workspace                  = true
+zstd.workspace                  = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gungraun = { version = "0.20.0", features = ["act"] }
+
+[[bench]]
+harness           = false
+name              = "pipeline"
+path              = "benches/pipeline/main.rs"
+required-features = ["benchmark"]

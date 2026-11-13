@@ -9,6 +9,10 @@
 #[path = "./async_log_buffer_test.rs"]
 mod async_log_buffer_test;
 
+#[cfg(feature = "benchmark")]
+#[path = "./async_log_buffer_benchmark.rs"]
+pub mod benchmark;
+
 use crate::device_command::{
   CommandExecutionPolicy,
   DeviceCommandRegistry,
