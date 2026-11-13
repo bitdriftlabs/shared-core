@@ -748,6 +748,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-field-interning"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "bd-client-common",
+ "bd-client-stats-store",
+ "bd-key-value",
+ "bd-log-filter",
+ "bd-log-primitives",
+ "bd-proto",
+ "bd-runtime",
+ "bd-stats-common",
+ "bd-test-helpers",
+ "bd-test-helpers-core",
+ "bd-time",
+ "bd-versioned-kv",
+ "bd-workspace-hack",
+ "ctor",
+ "log",
+ "parking_lot 0.13.0",
+ "protobuf 4.0.0-alpha.0",
+ "tempfile",
+ "time",
+ "tokio",
+]
+
+[[package]]
 name = "bd-grpc"
 version = "1.0.0"
 dependencies = [
@@ -999,6 +1026,7 @@ dependencies = [
  "bd-error-reporter",
  "bd-event-buffer",
  "bd-events",
+ "bd-field-interning",
  "bd-grpc-codec",
  "bd-hyper-network",
  "bd-internal-logging",
@@ -1482,6 +1510,7 @@ dependencies = [
  "bd-stats-common",
  "bd-time",
  "bd-workspace-hack",
+ "flate2",
  "futures",
  "futures-core",
  "http-body-util",

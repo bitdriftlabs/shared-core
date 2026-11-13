@@ -168,6 +168,16 @@ impl LoggerHolder {
     handle.set_feature_flag_exposure(name, variant);
   }
 
+  pub fn add_field(&self, key: String, value: String) {
+    let handle = { self.logger.lock().new_logger_handle() };
+    handle.add_log_field(key, value.into());
+  }
+
+  pub fn remove_field(&self, key: &str) {
+    let handle = { self.logger.lock().new_logger_handle() };
+    handle.remove_log_field(key);
+  }
+
   pub fn set_entity_id(&self, entity_id: &str) {
     let handle = { self.logger.lock().new_logger_handle() };
     handle.register_opaque_entity_id(Some(entity_id));
@@ -333,6 +343,7 @@ pub struct LoggerArgs {
   pub app_version: String,
   pub app_version_code: String,
   pub model: String,
+  pub os_version: Option<String>,
   pub entity_id: Option<String>,
   pub session_strategy: SessionStrategyConfig,
 }
@@ -366,7 +377,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     app_version_code: args.app_version_code.clone(),
     platform: args.platform.into(),
     device: device.clone(),
-    os_version: None,
+    os_version: args.os_version.clone(),
     manufacturer: None,
     model: args.model.clone(),
   });

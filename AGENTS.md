@@ -3,6 +3,9 @@
 - Do not review files under `bd-proto/`; they are generated protobuf code.
 - After changing a protobuf or FlatBuffer schema, regenerate bindings with `make protos`.
 - Any new files need the license header. Run `ci/check_license.sh`.
+- Do not block an async task on file I/O. Use `tokio::fs` or the async helpers in
+  `bd-client-common::file_system`, and run blocking work such as building or syncing a
+  memory-mapped file with `tokio::task::spawn_blocking`. Never hold a lock across that work.
 
 ## Deterministic Tests
 

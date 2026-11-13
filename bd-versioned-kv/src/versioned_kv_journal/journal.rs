@@ -383,6 +383,44 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     Ok(timestamp)
   }
 
+  /// Calls `f` with (scope, key, payload, timestamp) for each entry in write order, stopping at the
+  /// first entry that cannot be decoded.
+  pub fn for_each_entry(&self, f: impl FnMut(Scope, &str, &M, u64)) -> PartialDataLoss {
+    Self::iterate_buffer(self.buffer, self.position, f).partial_data_loss
+  }
+
+  /// Calls `f` with (offset after the entry, scope, key, payload, timestamp) for each entry from
+  /// `offset`, which must be `HEADER_SIZE` or an offset `f` was given, until `f` returns false or
+  /// an entry cannot be decoded.
+  pub fn for_each_entry_from(
+    &self,
+    offset: usize,
+    mut f: impl FnMut(usize, Scope, &str, &M, u64) -> bool,
+  ) {
+    let mut cursor = offset.max(HEADER_SIZE);
+    while cursor < self.position {
+      let Ok((frame, consumed)) = Frame::<M>::decode(&self.buffer[cursor .. self.position]) else {
+        return;
+      };
+      cursor += consumed;
+      if !f(
+        cursor,
+        frame.scope,
+        frame.key,
+        &frame.payload,
+        frame.timestamp_micros,
+      ) {
+        return;
+      }
+    }
+  }
+
+  /// The number of bytes written, including the header.
+  #[must_use]
+  pub const fn position(&self) -> usize {
+    self.position
+  }
+
   /// Check if the high water mark has been triggered.
   #[must_use]
   pub fn is_high_water_mark_triggered(&self) -> bool {

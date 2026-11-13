@@ -8,11 +8,11 @@
 use bd_proto::protos::state;
 
 pub mod cleanup;
-mod file_manager;
+pub mod file_manager;
 pub mod filename;
 pub mod framing;
-mod journal;
-mod memmapped_journal;
+pub mod journal;
+pub mod memmapped_journal;
 pub mod recovery;
 pub mod retention;
 pub mod store;

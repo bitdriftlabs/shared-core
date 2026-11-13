@@ -176,6 +176,24 @@ async fn main() -> anyhow::Result<()> {
       })
       .await?;
     },
+    Command::AddField(ref cmd) => {
+      with_logger(&args, async |logger| {
+        logger
+          .add_field(context::current(), cmd.key.clone(), cmd.value.clone())
+          .await?;
+        Ok(())
+      })
+      .await?;
+    },
+    Command::RemoveField(ref cmd) => {
+      with_logger(&args, async |logger| {
+        logger
+          .remove_field(context::current(), cmd.key.clone())
+          .await?;
+        Ok(())
+      })
+      .await?;
+    },
     Command::Stop => {
       let addr = format!("{}:{}", args.host, args.port);
       let mut transport = tarpc::serde_transport::tcp::connect(addr, Json::default);

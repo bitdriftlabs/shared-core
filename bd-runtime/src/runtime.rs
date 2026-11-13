@@ -657,6 +657,31 @@ pub mod debugging {
   );
 }
 
+pub mod field_interning {
+  // Stores each persistent field set once on the device and leaves its fields out of buffered
+  // logs, which refer to the set's version instead. The server restores the fields at ingest. On by
+  // default. Turning it off stops interning new logs and deletes the table at once, so interned
+  // logs still buffered upload without their persistent fields.
+  bool_feature_flag!(Enabled, "field_interning.enabled", true);
+
+  // The largest size of the field-set version table. The table starts at 16 KiB and grows to this
+  // cap as needed; at the cap, the oldest versions are folded into the table's base, and buffered
+  // logs that still refer to them upload without their persistent fields. Clamped to 4 MiB.
+  int_feature_flag!(
+    TableMaxBytes,
+    "field_interning.table_max_bytes",
+    1024 * 1024
+  );
+
+  // The cooldown of a key that changes too often: it is interned again after this many logs
+  // without a change.
+  int_feature_flag!(WindowLogs, "field_interning.window_logs", 512);
+
+  // A key that changes again within this many logs of its previous change stays inline for the
+  // cooldown.
+  int_feature_flag!(MinLogsPerChange, "field_interning.min_logs_per_change", 4);
+}
+
 pub mod crash_reporting {
   // Enables or disables the detection and reporting of application crashes and
   // other fatal events. This defaults to enabled so fresh installs still monitor

@@ -40,8 +40,10 @@ use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
-use bd_log_primitives::EncodableLog;
+use bd_field_interning::{FieldSetTable, Resolution};
 use bd_log_primitives::command_attachment::{AttachmentSource, extract_command_attachment};
+use bd_log_primitives::{EncodableLog, encoded_field_set_version};
+use bd_proto::protos::client::api::FieldSet;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::Counter as _;
@@ -49,6 +51,7 @@ use bd_time::OffsetDateTimeExt;
 use bd_versioned_kv::RetentionHandle;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::future::try_join_all;
+use protobuf::Message as _;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::mem::take;
@@ -122,6 +125,9 @@ async fn stage_workflow_attachments(
 // Feature flags used to control the upload parameters.
 #[derive(Clone)]
 struct Flags {
+  // Resolves the field sets that interned logs refer to.
+  field_sets: FieldSetTable,
+
   // The maximum number of logs allowed per batch size.
   max_batch_size_logs: IntWatch<bd_runtime::runtime::log_upload::BatchSizeFlag>,
 
@@ -280,12 +286,14 @@ impl BufferUploadManager {
     pending_trigger_uploads: PendingTriggerUploadsStore,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
     test_hooks: Option<Arc<dyn TestHooks>>,
+    field_sets: FieldSetTable,
   ) -> Self {
     let logger_state_directory = Arc::new(sdk_directory.join("state").join("logger"));
 
     Self {
       log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
       feature_flags: Flags {
+        field_sets,
         max_batch_size_logs: runtime_loader.register_int_watch(),
         max_match_size_bytes: runtime_loader.register_int_watch(),
         batch_deadline: runtime_loader.register_duration_watch(),
@@ -1245,16 +1253,45 @@ struct BatchBuilder {
   flags: Flags,
   total_bytes: usize,
   logs: Vec<Vec<u8>>,
+  // The full field set of each version the batch's logs refer to, resolved as the logs are read so
+  // that a later rotation of the version table cannot affect the batch.
+  field_sets: Vec<FieldSet>,
+  // How each version referred to by the batch resolved.
+  field_set_versions: HashMap<u64, Resolution>,
   oldest_micros: Option<u64>,
   newest_micros: Option<u64>,
 }
 
+/// Resolves the field sets that `logs` refer to, one per version, counting the logs whose set is
+/// not found.
+fn resolve_field_sets(table: &FieldSetTable, logs: &[Vec<u8>]) -> Vec<FieldSet> {
+  let mut resolutions: HashMap<u64, Resolution> = HashMap::new();
+  let mut field_sets = Vec::new();
+  for log in logs {
+    let version = encoded_field_set_version(log);
+    if version == 0 {
+      continue;
+    }
+    let resolution = resolutions.entry(version).or_insert_with(|| {
+      let resolution = table.resolution(version);
+      if let Resolution::Found(set) = &resolution {
+        field_sets.push((**set).clone());
+      }
+      resolution
+    });
+    table.record_unresolved(resolution, 1);
+  }
+  field_sets
+}
+
 impl BatchBuilder {
-  const fn new(flags: Flags) -> Self {
+  fn new(flags: Flags) -> Self {
     Self {
       flags,
       total_bytes: 0,
       logs: Vec::new(),
+      field_sets: Vec::new(),
+      field_set_versions: HashMap::new(),
       oldest_micros: None,
       newest_micros: None,
     }
@@ -1266,8 +1303,27 @@ impl BatchBuilder {
       self.oldest_micros = Some(self.oldest_micros.map_or(ts_micros, |o| o.min(ts_micros)));
       self.newest_micros = Some(self.newest_micros.map_or(ts_micros, |n| n.max(ts_micros)));
     }
+    self.add_field_set(encoded_field_set_version(&data));
     self.total_bytes += data.len();
     self.logs.push(data);
+  }
+
+  fn add_field_set(&mut self, version: u64) {
+    if version == 0 {
+      return;
+    }
+    let resolution = self.field_set_versions.entry(version).or_insert_with(|| {
+      let resolution = self.flags.field_sets.resolution(version);
+      if let Resolution::Found(set) = &resolution {
+        // Field sets count toward the batch size limit like the logs that refer to them.
+        self.total_bytes += usize::try_from(set.compute_size()).unwrap_or(usize::MAX);
+        self.field_sets.push((**set).clone());
+      }
+      resolution
+    });
+    // A log whose set is missing uploads without it; the server marks it as missing its persistent
+    // fields.
+    self.flags.field_sets.record_unresolved(resolution, 1);
   }
 
   fn limit_reached(&self) -> bool {
@@ -1287,12 +1343,13 @@ impl BatchBuilder {
     self.oldest_micros.zip(self.newest_micros)
   }
 
-  /// Consumes the current batch, resetting all accounting.
-  fn take(&mut self) -> Vec<Vec<u8>> {
+  /// Consumes the current batch and the field sets its logs refer to, resetting all accounting.
+  fn take(&mut self) -> (Vec<Vec<u8>>, Vec<FieldSet>) {
     self.total_bytes = 0;
     self.oldest_micros = None;
     self.newest_micros = None;
-    take(&mut self.logs)
+    self.field_set_versions.clear();
+    (take(&mut self.logs), take(&mut self.field_sets))
   }
 }
 
@@ -1409,7 +1466,7 @@ impl ContinuousBufferUploader {
       return Ok(());
     }
     let timestamp_range = self.batch_builder.timestamp_range();
-    let logs = self.batch_builder.take();
+    let (logs, field_sets) = self.batch_builder.take();
     let logs_len = logs.len();
     log::debug!("flushing {logs_len} logs");
 
@@ -1426,6 +1483,7 @@ impl ContinuousBufferUploader {
           LogBatch {
             logs,
             buffer_id: self.buffer_id.clone(),
+            field_sets,
           },
           false,
         ))
@@ -1533,13 +1591,15 @@ impl StreamedBufferUpload {
 
       // TODO(snowp): Handle streaming state updates.
 
+      let (logs, field_sets) = self.batch_builder.take();
       let upload_future = async {
         let Ok(service) = self.log_upload_service.ready().await;
         let Ok(result) = service
           .call(UploadRequest::new(
             LogBatch {
-              logs: self.batch_builder.take(),
+              logs,
               buffer_id: "streamed".to_string(),
+              field_sets,
             },
             true,
           ))
@@ -1830,10 +1890,13 @@ impl CompleteBufferUpload {
       log::debug!("trigger upload canceled during workflow attachment staging");
       return Err(TriggerBatchUploadCanceled.into());
     }
+    // The staged batch does not keep its field sets: they are used from memory below. A batch
+    // recovered after a restart resolves them from the table instead.
+    let (logs, field_sets) = self.batch_builder.take();
     self
       .artifact_store
       .stage_batch_with_attachments(
-        self.batch_builder.take(),
+        logs,
         workflow_attachment_ids
           .into_iter()
           .map(|(artifact_id, session_id)| WorkflowAttachmentReference {
@@ -1858,7 +1921,7 @@ impl CompleteBufferUpload {
       self.buffer_id
     );
 
-    self.flush_batch(batch, false).await
+    self.flush_batch(batch, Some(field_sets), false).await
   }
 
   async fn flush_persisted_batches(&mut self) -> anyhow::Result<()> {
@@ -1866,7 +1929,7 @@ impl CompleteBufferUpload {
     // always flush the inflight batch first, then keep promoting queued batches until the durable
     // backlog is empty before returning to live buffer reads.
     if let Some(batch) = self.artifact_store.inflight_batch().await? {
-      self.flush_batch(batch, true).await?;
+      self.flush_batch(batch, None, true).await?;
     }
 
     while let Some(batch) = self
@@ -1874,17 +1937,23 @@ impl CompleteBufferUpload {
       .promote_queued_batch_to_inflight()
       .await?
     {
-      self.flush_batch(batch, true).await?;
+      self.flush_batch(batch, None, true).await?;
     }
 
     Ok(())
   }
 
+  /// Uploads a staged batch. `field_sets` are the sets resolved when the batch was read; a batch
+  /// recovered after a restart passes `None` and resolves them from the table now.
   async fn flush_batch(
     &mut self,
     batch: PersistedTriggerUploadArtifactBatch,
+    field_sets: Option<Vec<FieldSet>>,
     discard_recovered_prefix: bool,
   ) -> anyhow::Result<()> {
+    // A recovered batch can lose its field sets: see "Restarts" in the `bd_field_interning` docs.
+    let field_sets = field_sets
+      .unwrap_or_else(|| resolve_field_sets(&self.batch_builder.flags.field_sets, &batch.logs));
     let logs_len = u64::try_from(batch.logs.len()).unwrap_or(u64::MAX);
     if !stage_workflow_attachments(
       self.workflow_upload_handle.as_ref(),
@@ -1935,6 +2004,7 @@ impl CompleteBufferUpload {
           LogBatch {
             logs: batch.logs,
             buffer_id: self.buffer_id.clone(),
+            field_sets,
           },
           false,
         )

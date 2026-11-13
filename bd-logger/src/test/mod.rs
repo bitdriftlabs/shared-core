@@ -8,6 +8,7 @@
 mod crash_handler_integration;
 mod directory_lock_integration;
 mod embedded_logger_integration;
+mod field_interning_integration;
 mod logger_integration;
 pub mod setup;
 mod state_upload_integration;

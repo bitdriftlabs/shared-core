@@ -19,10 +19,12 @@
 mod lib_test;
 
 pub mod command_attachment;
+pub mod interned;
 pub mod tiny_set;
 pub mod zlib;
 
 use crate::command_attachment::LogAttachment;
+pub use crate::interned::{InternedFields, LogFieldsRef, encoded_field_set_version, same_value};
 use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
 use bd_macros::{ApproximateSize, proto_serializable};
@@ -661,7 +663,7 @@ pub struct LogContentsRef<'a> {
   #[field(id = 1)]
   pub message: &'a DataValue,
   #[field(id = 2, repeated)]
-  pub fields: &'a LogFields,
+  pub fields: LogFieldsRef<'a>,
 }
 
 impl LogContentsRef<'_> {
@@ -706,7 +708,7 @@ pub struct RawLogRef<'a> {
   #[field(id = 3)]
   pub message: &'a DataValue,
   #[field(id = 4, repeated)]
-  pub fields: &'a LogFields,
+  pub fields: LogFieldsRef<'a>,
   #[field(id = 5)]
   pub session_id: &'a str,
   #[field(id = 6, repeated)]
@@ -717,6 +719,8 @@ pub struct RawLogRef<'a> {
   pub stream_ids: &'a [&'a str],
   #[field(id = 10)]
   pub command_attachment: Option<&'a LogAttachment>,
+  #[field(id = 11)]
+  pub field_set_version: u64,
 }
 
 /// A reference wrapper for serializing a compressed log entry.
@@ -746,6 +750,9 @@ pub struct CompressedLogRef<'a> {
   pub compressed_contents: &'a [u8],
   #[field(id = 10)]
   pub command_attachment: Option<&'a LogAttachment>,
+  // Kept outside the compressed contents so it can be read without decompressing.
+  #[field(id = 11)]
+  pub field_set_version: u64,
 }
 
 //
@@ -785,7 +792,7 @@ impl Log {
   pub fn contents_ref(&self) -> LogContentsRef<'_> {
     LogContentsRef {
       message: &self.message,
-      fields: &self.fields,
+      fields: LogFieldsRef::inline(&self.fields),
     }
   }
 
@@ -801,11 +808,12 @@ impl Log {
       occurred_at: self.occurred_at.unix_timestamp_micros(),
       log_level: self.log_level,
       message: &self.message,
-      fields: &self.fields,
+      fields: LogFieldsRef::inline(&self.fields),
       session_id: &self.session_id,
       action_ids,
       log_type: self.log_type,
       stream_ids,
+      field_set_version: 0,
     }
   }
 
@@ -826,6 +834,7 @@ impl Log {
       log_type: self.log_type,
       stream_ids,
       compressed_contents,
+      field_set_version: 0,
     }
   }
 }
@@ -844,6 +853,8 @@ impl Log {
 pub struct EncodableLog {
   pub log: Log,
   compression_min_size: u64,
+  /// The persistent field set this log was interned against, if any.
+  interned: Option<InternedFields>,
   /// Cached state from size computation
   cached: Option<EncodableLogCached>,
 }
@@ -861,8 +872,32 @@ impl EncodableLog {
     Self {
       log,
       compression_min_size,
+      interned: None,
       cached: None,
     }
+  }
+
+  /// Leaves out the fields of `interned`'s field set that this log carries unchanged. Must be
+  /// called before the size is computed, since the encoding depends on it.
+  pub fn set_interned(&mut self, interned: Option<InternedFields>) {
+    self.interned = interned;
+    self.cached = None;
+  }
+
+  #[must_use]
+  pub const fn interned(&self) -> Option<&InternedFields> {
+    self.interned.as_ref()
+  }
+
+  fn fields_ref(&self) -> LogFieldsRef<'_> {
+    LogFieldsRef::new(&self.log.fields, self.interned.as_ref())
+  }
+
+  fn field_set_version(&self) -> u64 {
+    self
+      .interned
+      .as_ref()
+      .map_or(0, |interned| interned.version)
   }
 
   /// Computes the serialized size of this log with the given action and stream IDs.
@@ -870,11 +905,10 @@ impl EncodableLog {
   /// This caches any compression results for use in subsequent `serialize_to_stream` or
   /// `serialize_to_bytes` calls.
   pub fn compute_size(&mut self, action_ids: &[&str], stream_ids: &[&str]) -> anyhow::Result<u64> {
-    // Compute core size if not cached
-    let cached = self.cached.get_or_insert_with(|| {
+    if self.cached.is_none() {
       let contents = LogContentsRef {
         message: &self.log.message,
-        fields: &self.log.fields,
+        fields: self.fields_ref(),
       };
       let uncompressed_size = contents.compute_message_size();
 
@@ -886,40 +920,59 @@ impl EncodableLog {
           None
         };
 
-      EncodableLogCached {
+      self.cached = Some(EncodableLogCached {
         compressed_contents,
-      }
-    });
+      });
+    }
+
+    let cached = self
+      .cached
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("encoding cache missing after population"))?;
 
     // Use proc-macro-generated size computation
-    Ok(
-      if let Some(compressed) = &cached.compressed_contents {
-        CompressedLogRef {
-          command_attachment: self.log.command_attachment.as_deref(),
-          occurred_at: self.log.occurred_at.unix_timestamp_micros(),
-          log_level: self.log.log_level,
-          session_id: &self.log.session_id,
-          action_ids,
-          log_type: self.log.log_type,
-          stream_ids,
-          compressed_contents: compressed,
-        }
-        .compute_message_size()
-      } else {
-        RawLogRef {
-          command_attachment: self.log.command_attachment.as_deref(),
-          occurred_at: self.log.occurred_at.unix_timestamp_micros(),
-          log_level: self.log.log_level,
-          message: &self.log.message,
-          fields: &self.log.fields,
-          session_id: &self.log.session_id,
-          action_ids,
-          log_type: self.log.log_type,
-          stream_ids,
-        }
-        .compute_message_size()
+    Ok(cached.compressed_contents.as_ref().map_or_else(
+      || self.raw_ref(action_ids, stream_ids).compute_message_size(),
+      |compressed| {
+        self
+          .compressed_ref(action_ids, stream_ids, compressed)
+          .compute_message_size()
       },
-    )
+    ))
+  }
+
+  fn compressed_ref<'a>(
+    &'a self,
+    action_ids: &'a [&'a str],
+    stream_ids: &'a [&'a str],
+    compressed_contents: &'a [u8],
+  ) -> CompressedLogRef<'a> {
+    CompressedLogRef {
+      command_attachment: self.log.command_attachment.as_deref(),
+      occurred_at: self.log.occurred_at.unix_timestamp_micros(),
+      log_level: self.log.log_level,
+      session_id: &self.log.session_id,
+      action_ids,
+      log_type: self.log.log_type,
+      stream_ids,
+      compressed_contents,
+      field_set_version: self.field_set_version(),
+    }
+  }
+
+  fn raw_ref<'a>(&'a self, action_ids: &'a [&'a str], stream_ids: &'a [&'a str]) -> RawLogRef<'a> {
+    RawLogRef {
+      command_attachment: self.log.command_attachment.as_deref(),
+      occurred_at: self.log.occurred_at.unix_timestamp_micros(),
+      log_level: self.log.log_level,
+      message: &self.log.message,
+      fields: self.fields_ref(),
+      session_id: &self.log.session_id,
+      action_ids,
+      log_type: self.log.log_type,
+      stream_ids,
+      field_set_version: self.field_set_version(),
+    }
   }
 
   /// Serializes this log to the given output stream.
@@ -938,30 +991,11 @@ impl EncodableLog {
 
     // Use proc-macro-generated serialization
     if let Some(compressed) = &cached.compressed_contents {
-      CompressedLogRef {
-        command_attachment: self.log.command_attachment.as_deref(),
-        occurred_at: self.log.occurred_at.unix_timestamp_micros(),
-        log_level: self.log.log_level,
-        session_id: &self.log.session_id,
-        action_ids,
-        log_type: self.log.log_type,
-        stream_ids,
-        compressed_contents: compressed,
-      }
-      .serialize_message(os)
+      self
+        .compressed_ref(action_ids, stream_ids, compressed)
+        .serialize_message(os)
     } else {
-      RawLogRef {
-        command_attachment: self.log.command_attachment.as_deref(),
-        occurred_at: self.log.occurred_at.unix_timestamp_micros(),
-        log_level: self.log.log_level,
-        message: &self.log.message,
-        fields: &self.log.fields,
-        session_id: &self.log.session_id,
-        action_ids,
-        log_type: self.log.log_type,
-        stream_ids,
-      }
-      .serialize_message(os)
+      self.raw_ref(action_ids, stream_ids).serialize_message(os)
     }
   }
 

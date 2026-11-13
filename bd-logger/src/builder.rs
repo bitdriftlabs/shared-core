@@ -454,6 +454,7 @@ impl LoggerBuilder {
       data_upload_tx.clone(),
       self.startup_replay_eligibility,
     );
+    let field_set_table = async_log_buffer.field_set_table();
     let workflow_attachment_cleanup_ready = async_log_buffer.workflow_attachment_cleanup_ready();
 
     let data_upload_tx_clone = data_upload_tx.clone();
@@ -517,6 +518,11 @@ impl LoggerBuilder {
 
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
+
+      // Open the field-set table only while holding the directory lock and with the cached runtime
+      // loaded, and before any uploader can read a buffered log from an earlier run.
+      let mut async_log_buffer = async_log_buffer;
+      async_log_buffer.prepare_field_interning().await;
 
       // Initialize state store using runtime configuration. This may fall back to an in-memory
       // store if persistent storage cannot be initialized or if directed by configuration.
@@ -672,6 +678,7 @@ impl LoggerBuilder {
         pending_trigger_uploads,
         process_local_pending_flush_state,
         self.test_hooks.clone(),
+        field_set_table,
       );
 
       let command_state = Arc::new(DeviceCommandState::new());

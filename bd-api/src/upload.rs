@@ -476,6 +476,9 @@ pub struct LogBatch {
 
   /// The id of the buffer the logs are being uploaded from.
   pub buffer_id: String,
+
+  /// The field sets referred to by interned logs in the batch, one per version.
+  pub field_sets: Vec<bd_proto::protos::client::api::FieldSet>,
 }
 
 /// A batch of logs sent to be uploaded. The upload is wrapped in an Arc to allow for cheap retries.
