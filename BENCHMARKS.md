@@ -72,6 +72,20 @@ For wall-clock measurements of the same cases, run:
 cargo bench -p bd-event-buffer --bench criterion
 ```
 
+The field-interning benchmark measures the per-log cost of interning and encoding a log with 100
+persistent fields: `intern`, `set_interned`, then `compute_size` and `serialize_to_bytes` for each
+buffer, with interning off, on with every persistent field unchanged, and on with a few cleared
+keys. It also measures `intern` alone and the leave-out decision, `InternedFields::new`, which
+interning makes once and encoding reuses. The Callgrind bench also measures `intern` with volatile
+keys that are not yet due for re-admission, and an uploader resolving one version repeatedly or
+consecutive versions. Gungraun needs `setarch` to disable ASLR, so a Docker container needs
+`--security-opt seccomp=unconfined`:
+
+```sh
+cargo bench -p bd-field-interning --bench main
+cargo bench -p bd-field-interning --bench criterion
+```
+
 `bd-workflow-bench` provides the same two modes for end-to-end workflow replay. Its default
 checked-in fixture is appropriate for repeatable Criterion wall-time benchmarks and Callgrind
 instruction profiles; both wrappers also accept local config and log paths for a live corpus. See

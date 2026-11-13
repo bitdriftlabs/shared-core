@@ -1,6 +1,7 @@
 [package]
 edition      = "2024"
 license-file = "../LICENSE.polyform"
+autobenches  = false
 name         = "bd-field-interning"
 publish      = false
 version      = "1.0.0"
@@ -29,6 +30,18 @@ tokio.workspace             = true
 [dev-dependencies]
 bd-test-helpers           = { path = "../bd-test-helpers", default-features = false }
 bd-test-helpers-core.path = "../bd-test-helpers-core"
+criterion                 = "0.8.2"
 ctor.workspace            = true
 tempfile.workspace        = true
 time.workspace            = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gungraun = { version = "0.20.0", features = ["act"] }
+
+[[bench]]
+harness = false
+name    = "main"
+
+[[bench]]
+harness = false
+name    = "criterion"
