@@ -240,12 +240,12 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
                 let decision = hooks.lock().awaiting_logs_upload_intent_decisions.remove(0);
                 log::debug!("responding \"{:?}\" to logs upload intent \"{}\" intent", decision, logs_upload_intent.uuid);
 
-                hooks.lock().received_logs_upload_intents.push(upload.clone());
+                hooks.lock().received_logs_upload_intents.push(upload);
 
                 if let Err(e) = logs_upload_intent
                   .response_tx
                   .send(IntentResponse {
-                    uuid: logs_upload_intent.uuid.clone(),
+                    uuid: logs_upload_intent.uuid,
                     decision,
                   })
                   {
@@ -267,12 +267,12 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
                   log::debug!("responding \"{:?}\" to sankey upload intent \"{}\" intent", decision, sankey_upload_intent.uuid);
 
                   hooks.lock().received_sankey_upload_intents
-                    .push(sankey_upload_intent_payload.clone());
+                    .push(sankey_upload_intent_payload);
 
                   if let Err(e) = sankey_upload_intent
                     .response_tx
                     .send(IntentResponse {
-                      uuid: sankey_upload_intent.uuid.clone(),
+                      uuid: sankey_upload_intent.uuid,
                       decision,
                     })
                     {

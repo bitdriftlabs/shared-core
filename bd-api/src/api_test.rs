@@ -12,6 +12,7 @@ use super::{Api, PlatformNetworkManager, PlatformNetworkStream, TestHooks};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::reconnect::ReconnectState;
 use crate::upload::{
+  DEVICE_COMMAND_RETENTION,
   DeviceCommandState,
   DeviceCommandUpdateTracker,
   MAX_KNOWN_COMMANDS,
@@ -80,13 +81,7 @@ use bd_state::StateReader;
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
-use bd_time::{
-  OffsetDateTimeExt,
-  TestTimeProvider,
-  TimeDurationExt,
-  TimeProvider,
-  ToProtoDuration,
-};
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
 use protobuf::{EnumOrUnknown, Message, MessageField};
 use std::collections::{BTreeMap, HashMap};
@@ -2276,7 +2271,7 @@ async fn device_command_update_waiter_retires_without_a_stream() {
     ..Default::default()
   };
   let (tracked, mut receiver) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
-  let tracked = tracked.with_remaining_time(std::time::Duration::from_secs(2));
+  let tracked = tracked.with_deadline(Instant::now() + std::time::Duration::from_secs(2));
   let mut tracker = DeviceCommandUpdateTracker::default();
   tracker.track_device_command_update(tracked).unwrap();
   tokio::time::advance(std::time::Duration::from_secs(1)).await;
@@ -2290,10 +2285,9 @@ async fn device_command_update_waiter_retires_without_a_stream() {
   assert_eq!(tracker.retained_update_count(), 0);
 }
 
-#[test]
-fn device_command_registry_backpressures_until_original_expiry_and_fences_new_sdk() {
-  let clock = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
-  let state = DeviceCommandState::new(clock.clone());
+#[tokio::test(start_paused = true)]
+async fn device_command_registry_backpressures_until_local_deadline_and_fences_new_sdk() {
+  let state = DeviceCommandState::new();
   let command = DeviceCommandRequest {
     command_id: Uuid::new_v4().to_string().into(),
     sdk_instance_id: state.sdk_instance_id.clone().into(),
@@ -2307,28 +2301,46 @@ fn device_command_registry_backpressures_until_original_expiry_and_fences_new_sd
   for _ in 0 .. MAX_KNOWN_COMMANDS {
     let mut occupied = command.clone();
     occupied.command_id = Uuid::new_v4().to_string().into();
-    occupied.expires_at.as_mut().unwrap().seconds = 2;
     assert!(state.admit(&occupied));
   }
   assert!(!state.admit(&command));
   assert_eq!(state.known_command_ids().len(), MAX_KNOWN_COMMANDS);
   assert_eq!(
     state.admission_retry_delay(&command),
-    Some(2.seconds().unsigned_abs())
+    Some(DEVICE_COMMAND_RETENTION)
   );
-  clock.advance(2.seconds());
-  assert!(state.admit(&command));
+  tokio::time::advance(
+    DEVICE_COMMAND_RETENTION
+      .checked_sub(std::time::Duration::from_secs(2))
+      .unwrap(),
+  )
+  .await;
   assert!(!state.admit(&command));
+  assert_eq!(
+    state.admission_retry_delay(&command),
+    Some(std::time::Duration::from_secs(2))
+  );
+  tokio::time::advance(std::time::Duration::from_secs(2)).await;
+  assert!(state.admit(&command));
+  let deadline = state.deadline(&command.command_id).unwrap();
+  assert_eq!(deadline, Instant::now() + DEVICE_COMMAND_RETENTION);
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  assert!(!state.admit(&command));
+  assert_eq!(state.deadline(&command.command_id), Some(deadline));
   assert_eq!(
     state.known_command_ids(),
     vec![command.command_id.to_string()]
   );
-  let recreated = DeviceCommandState::new(clock.clone());
+  let recreated = DeviceCommandState::new();
   assert_ne!(recreated.sdk_instance_id, state.sdk_instance_id);
   assert!(!recreated.admit(&command));
   assert_eq!(recreated.known_command_ids(), Vec::<String>::new());
-  clock.advance(8.seconds());
-  assert!(!state.admit(&command));
+  tokio::time::advance(
+    DEVICE_COMMAND_RETENTION
+      .checked_sub(std::time::Duration::from_secs(1))
+      .unwrap(),
+  )
+  .await;
   assert_eq!(state.known_command_ids(), Vec::<String>::new());
 }
 
@@ -2400,7 +2412,7 @@ fn command_update_with_result_bytes(bytes: usize) -> DeviceCommandUpdate {
 
 #[tokio::test(start_paused = true)]
 async fn device_command_update_byte_budget_survives_reconnect_and_backpressures_until_ack() {
-  let state = DeviceCommandState::new(Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)));
+  let state = DeviceCommandState::new();
   let mut setup = Setup::new().await;
   setup.next_stream(1.seconds()).await.unwrap();
   setup.handshake_response(0, None, None).await;
@@ -2522,20 +2534,18 @@ async fn device_command_oversized_result_becomes_bounded_failure() {
 #[tokio::test(start_paused = true)]
 async fn device_command_update_byte_budget_is_released_on_retirement_expiry_and_teardown() {
   for release in ["retirement", "expiry", "teardown"] {
-    let state =
-      DeviceCommandState::new(Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)));
+    let state = DeviceCommandState::new();
     let update = command_update_with_result_bytes(3 * 1024 * 1024);
     let (tracked, response) =
       TrackedDeviceCommandUpdate::new(update.command_id.clone(), update.clone());
     let tracked = tracked
-      .with_remaining_time(std::time::Duration::from_secs(2))
+      .with_deadline(Instant::now() + std::time::Duration::from_secs(2))
       .with_byte_budget(&state)
       .await
       .unwrap();
     let mut tracker = DeviceCommandUpdateTracker::default();
     tracker.track_device_command_update(tracked).unwrap();
-    let fresh_state =
-      DeviceCommandState::new(Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)));
+    let fresh_state = DeviceCommandState::new();
     let fresh = command_update_with_result_bytes(3 * 1024 * 1024);
     let (fresh, fresh_response) = TrackedDeviceCommandUpdate::new(fresh.command_id.clone(), fresh);
     let mut fresh_waiting = Box::pin(fresh.with_byte_budget(&fresh_state));

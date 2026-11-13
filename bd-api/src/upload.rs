@@ -30,13 +30,14 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
-use bd_time::TimeProvider;
 use parking_lot::Mutex;
 use protobuf::Message;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use upload_artifact_intent_response::Decision as ArtifactIntentDecision;
 use uuid::Uuid;
 
@@ -183,24 +184,26 @@ impl StateTracker {
 
 pub const MAX_KNOWN_COMMANDS: usize = 64;
 const MAX_PENDING_COMMAND_UPDATE_BYTES: usize = 4 * 1024 * 1024;
+/// Local bookkeeping must cover the server's maximum invocation lifetime to prevent reexecution.
+pub const DEVICE_COMMAND_RETENTION: Duration = Duration::from_hours(24);
 
 /// Admission and deduplication state for one live SDK, shared with every replacement API stream.
 /// Nothing here is persisted: a recreated SDK must not inherit execution authority.
 pub struct DeviceCommandState {
   /// Fresh per SDK, not per connection. Dispatches must name this owner before being admitted.
   pub sdk_instance_id: String,
-  time_provider: Arc<dyn TimeProvider>,
   pending_update_bytes: Arc<Semaphore>,
-  // Keep IDs through their original expiry, including after completion, so configuration
-  // omission/reappearance cannot execute a command twice. Values contain no result payloads.
-  commands: Mutex<BTreeMap<String, protobuf::well_known_types::timestamp::Timestamp>>,
+  // Keep IDs for a fixed monotonic lifetime, including after completion. The server owns
+  // invocation expiry; device wall clocks must not affect admission, deduplication, or delivery
+  // budgets.
+  commands: Mutex<BTreeMap<String, Instant>>,
 }
 
 impl DeviceCommandState {
-  pub fn new(time_provider: Arc<dyn TimeProvider>) -> Self {
+  #[must_use]
+  pub fn new() -> Self {
     Self {
       sdk_instance_id: Uuid::new_v4().to_string(),
-      time_provider,
       pending_update_bytes: Arc::new(Semaphore::new(MAX_PENDING_COMMAND_UPDATE_BYTES)),
       commands: Mutex::default(),
     }
@@ -208,41 +211,39 @@ impl DeviceCommandState {
 
   #[cfg(test)]
   pub fn known_command_ids(&self) -> Vec<String> {
-    let now = self.time_provider.now();
+    let now = Instant::now();
     let mut commands = self.commands.lock();
-    commands.retain(|_, deadline| {
-      (deadline.seconds, deadline.nanos) > (now.unix_timestamp(), now.nanosecond().cast_signed())
-    });
+    commands.retain(|_, deadline| *deadline > now);
     commands.keys().cloned().collect()
   }
 
   /// Atomically claims a new invocation before execution can be spawned. Capacity is released by
-  /// original expiry, never by an ACK or by removing a command from a configuration.
+  /// the local retention deadline, never by an ACK or removing a command from a configuration.
   pub fn admit(&self, command: &DeviceCommandRequest) -> bool {
-    let Some(deadline) = command.expires_at.as_ref() else {
-      return false;
-    };
-    let now = self.time_provider.now();
     if command.sdk_instance_id.as_str() != self.sdk_instance_id
       || Uuid::parse_str(&command.command_id).is_err()
-      || (deadline.seconds, deadline.nanos)
-        <= (now.unix_timestamp(), now.nanosecond().cast_signed())
     {
       return false;
     }
+    let now = Instant::now();
     let mut commands = self.commands.lock();
-    commands.retain(|_, expiry| {
-      (expiry.seconds, expiry.nanos) > (now.unix_timestamp(), now.nanosecond().cast_signed())
-    });
+    commands.retain(|_, deadline| *deadline > now);
     if commands.len() >= MAX_KNOWN_COMMANDS || commands.contains_key(command.command_id.as_str()) {
       return false;
     }
-    commands.insert(command.command_id.to_string(), deadline.clone());
+    commands.insert(
+      command.command_id.to_string(),
+      now + DEVICE_COMMAND_RETENTION,
+    );
+    log::debug!(
+      "admitted device command {} with local retention {DEVICE_COMMAND_RETENTION:?}",
+      command.command_id
+    );
     true
   }
 
-  /// Returns the earliest deadline worth retrying after capacity rejection. Invalid, expired,
-  /// wrong-owner, and already-admitted commands must not enter the deferred admission queue.
+  /// Returns the earliest local capacity release. Invalid, wrong-owner, and already-admitted
+  /// commands must not enter the deferred admission queue.
   pub fn admission_retry_delay(
     &self,
     command: &DeviceCommandRequest,
@@ -252,40 +253,27 @@ impl DeviceCommandState {
     {
       return None;
     }
-    let deadline = command.expires_at.as_ref()?;
-    let now = self.time_provider.now();
     let commands = self.commands.lock();
-    if commands.contains_key(command.command_id.as_str())
-      || (deadline.seconds, deadline.nanos)
-        <= (now.unix_timestamp(), now.nanosecond().cast_signed())
-    {
+    if commands.contains_key(command.command_id.as_str()) {
       return None;
     }
-    let deadline = commands
-      .values()
-      .chain(std::iter::once(deadline))
-      .min_by_key(|expiry| (expiry.seconds, expiry.nanos))?;
-    let deadline = time::OffsetDateTime::from_unix_timestamp(deadline.seconds)
-      .ok()?
-      .replace_nanosecond(u32::try_from(deadline.nanos).ok()?)
-      .ok()?;
-    Some((deadline - now).try_into().unwrap_or_default())
+    Some(
+      commands
+        .values()
+        .min()?
+        .saturating_duration_since(Instant::now()),
+    )
   }
 
-  /// Converts the immutable server deadline into a relative budget for an update waiter. A mux
-  /// reconnect must reuse this budget's deadline rather than grant another full lifetime.
-  pub fn remaining_time(&self, command_id: &str) -> Option<std::time::Duration> {
-    let commands = self.commands.lock();
-    let deadline = commands.get(command_id)?;
-    let deadline = time::OffsetDateTime::from_unix_timestamp(deadline.seconds)
-      .ok()?
-      .replace_nanosecond(u32::try_from(deadline.nanos).ok()?)
-      .ok()?;
-    Some(
-      (deadline - self.time_provider.now())
-        .try_into()
-        .unwrap_or_default(),
-    )
+  /// Reuses the admission deadline for every update and replacement API stream.
+  pub fn deadline(&self, command_id: &str) -> Option<Instant> {
+    self.commands.lock().get(command_id).copied()
+  }
+}
+
+impl Default for DeviceCommandState {
+  fn default() -> Self {
+    Self::new()
   }
 }
 
@@ -510,7 +498,7 @@ pub type TrackedArtifactIntent = Tracked<UploadArtifactIntentRequest, IntentResp
 #[derive(Debug)]
 pub struct CommandUpdateSender {
   channel: Option<tokio::sync::oneshot::Sender<()>>,
-  expires_at: Option<tokio::time::Instant>,
+  expires_at: Option<Instant>,
   expiry_task: Option<JoinHandle<()>>,
   byte_permit: Option<OwnedSemaphorePermit>,
 }
@@ -531,7 +519,7 @@ impl CommandUpdateSender {
       .is_some_and(|channel| !channel.is_closed())
       && self
         .expires_at
-        .is_none_or(|deadline| deadline > tokio::time::Instant::now())
+        .is_none_or(|deadline| deadline > Instant::now())
   }
 
   pub fn send(mut self, response: ()) -> anyhow::Result<()> {
@@ -603,7 +591,7 @@ impl TrackedDeviceCommandUpdate {
   }
 
   /// Reserves bytes across queued and tracked updates. The caller bounds this wait by command
-  /// expiry.
+  /// local retention.
   pub async fn with_byte_budget(mut self, state: &DeviceCommandState) -> anyhow::Result<Self> {
     let bytes = self.payload.compute_size();
     if bytes > MAX_PENDING_COMMAND_UPDATE_BYTES as u64 {
@@ -621,9 +609,8 @@ impl TrackedDeviceCommandUpdate {
   }
 
   #[must_use]
-  pub fn with_remaining_time(mut self, remaining: std::time::Duration) -> Self {
-    let expires_at = tokio::time::Instant::now() + remaining;
-    self.response_tx.expires_at = Some(expires_at);
+  pub fn with_deadline(mut self, deadline: Instant) -> Self {
+    self.response_tx.expires_at = Some(deadline);
     // The caller bounds enqueueing and ACK waiting by this same budget. Only tracked payloads
     // need a separate expiry task, because API reconnect/backoff can stop polling them.
     self

@@ -7,9 +7,6 @@
 
 //! Shared conventions for client artifact uploads.
 
-/// Content type for raw Perfetto traces uploaded by commands, workflows and crash profiling.
-pub const PERFETTO_CONTENT_TYPE: &str = "application/vnd.bitdrift.perfetto-trace";
-
 /// Artifact type ID used for crash reports uploaded by the client.
 pub const CLIENT_REPORT_ARTIFACT_TYPE_ID: &str = "client_report";
 

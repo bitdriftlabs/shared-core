@@ -238,21 +238,17 @@ impl Monitor {
     report: Report<'_>,
     global_state_fields: &LogFields,
   ) -> (Option<OffsetDateTime>, LogFields) {
-    let (crash_time, os_version, platform) = report
-      .device_metrics()
-      .map(|dev| {
-        (
-          dev.time(),
-          dev.os_build().and_then(|b| b.version()),
-          dev.platform(),
-        )
-      })
-      .unwrap_or_default();
+    let (crash_time, os_version, platform) = report.device_metrics().map_or_default(|dev| {
+      (
+        dev.time(),
+        dev.os_build().and_then(|b| b.version()),
+        dev.platform(),
+      )
+    });
 
     let (app_id, app_version, build_number) = report
       .app_metrics()
-      .map(|app| (app.app_id(), app.version(), app.build_number()))
-      .unwrap_or_default();
+      .map_or_default(|app| (app.app_id(), app.version(), app.build_number()));
 
     let timestamp = crash_time.and_then(|t| {
       OffsetDateTime::from_unix_timestamp_nanos(i128::from(

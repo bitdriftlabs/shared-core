@@ -343,10 +343,7 @@ fn build_native_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
         symbol_name: symbol_name
           .as_ref()
           .map(|name| builder.create_shared_string(name)),
-        symbol_address: symbol_offset
-          .flatten()
-          .map(|off| address - off)
-          .unwrap_or_default(),
+        symbol_address: symbol_offset.flatten().map_or_default(|off| address - off),
         frame_address: address,
         image_id: Some(builder.create_shared_string(&build_id.unwrap_or(path))),
         ..Default::default()

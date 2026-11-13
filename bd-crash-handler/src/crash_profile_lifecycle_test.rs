@@ -170,8 +170,7 @@ impl Pipeline {
         .payload
         .crash_profile
         .as_ref()
-        .map(|links| links.report_ids.as_slice())
-        .unwrap_or_default(),
+        .map_or_default(|links| links.report_ids.as_slice()),
       parents
     );
     intent

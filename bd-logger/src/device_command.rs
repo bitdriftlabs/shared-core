@@ -108,6 +108,7 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{oneshot, watch};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use uuid::Uuid;
 
 const REGISTERED_COMMAND_ARTIFACT_TYPE_ID: &str = "device_command_attachment";
@@ -1588,24 +1589,25 @@ async fn send_device_command_update_with_artifact(
 }
 
 // Transport only: an ACK failure does not reopen terminal arbitration or retry the handler.
-// The original command expiry bounds submission/ACK waits; execution has its separate policy.
+// The fixed local retention deadline bounds submission/ACK waits; execution has its separate
+// policy.
 async fn submit_device_command_update(
   execution: &DeviceCommandExecution,
   update: DeviceCommandUpdate,
 ) -> anyhow::Result<()> {
   let senders = &execution.senders;
   let (update, response_rx) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
-  let remaining = senders
+  let deadline = senders
     .command_state
-    .remaining_time(&update.payload.command_id)
-    .ok_or_else(|| anyhow::anyhow!("command expired before update submission"))?;
-  if remaining.is_zero() {
-    anyhow::bail!("command expired before update submission");
+    .deadline(&update.payload.command_id)
+    .ok_or_else(|| anyhow!("command delivery deadline elapsed before update submission"))?;
+  if deadline <= Instant::now() {
+    anyhow::bail!("command delivery deadline elapsed before update submission");
   }
-  let update = update.with_remaining_time(remaining);
-  // Include channel backpressure in the original expiry budget, not just the ACK wait. Otherwise
-  // a full API queue can retain the execution forever even after its waiter has expired.
-  tokio::time::timeout(remaining, async {
+  let update = update.with_deadline(deadline);
+  // Include channel backpressure in the same budget as the ACK wait. Reconstructing a deadline
+  // here would extend retention across updates or after a reconnect.
+  tokio::time::timeout_at(deadline, async {
     let permit = senders
       .data_upload_tx
       .reserve()
@@ -1621,5 +1623,5 @@ async fn submit_device_command_update(
       .map_err(|_| anyhow!("device command update was not acknowledged"))
   })
   .await
-  .map_err(|_| anyhow!("command expired while submitting update"))?
+  .map_err(|_| anyhow!("command delivery deadline elapsed while submitting update"))?
 }
