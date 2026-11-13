@@ -99,13 +99,13 @@ logs are added via `add_log`. This avoids a second scan of the batch at flush ti
 are reset to `None` by `take()` when the batch is consumed. Callers must read `timestamp_range()`
 *before* calling `take()` — `take()` resets the fields.
 
-The three flush paths that interact with state uploads are:
+Two flush paths interact with state uploads:
 - `ContinuousBufferUploader::flush_current_batch`
-- `StreamedBufferUpload::start`
 - `CompleteBufferUpload::flush_batch`
 
-All three follow the same pattern: read `timestamp_range()`, call `notify_upload_needed` if a
-range is available, then call `take()` to produce the log batch.
+Both follow the same pattern: read `timestamp_range()`, call `notify_upload_needed` if a range is
+available, then call `take()` to produce the log batch. `StreamedBufferUpload::start` does not
+notify state uploads yet (see its `TODO`).
 
 ### Wake Channel Backpressure
 
