@@ -7,6 +7,7 @@
 
 use crate::UploadSource;
 use bd_client_common::file_system::FileSystem;
+use std::fs::Metadata;
 use std::io::Cursor;
 use std::time::SystemTime;
 use tokio::io::{AsyncRead, AsyncSeekExt};
@@ -26,6 +27,15 @@ pub enum Input {
 }
 
 impl Input {
+  pub(crate) fn from_file(file: tokio::fs::File, original: &Metadata) -> anyhow::Result<Self> {
+    Ok(Self::File {
+      file,
+      original_len: original.len(),
+      modified: original.modified()?,
+      size: original.len(),
+    })
+  }
+
   pub(crate) async fn open(
     source: UploadSource,
     filesystem: &dyn FileSystem,

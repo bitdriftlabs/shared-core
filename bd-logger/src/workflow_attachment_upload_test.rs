@@ -14,13 +14,13 @@ use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
+use bd_proto::protos::client::api::UploadArtifactResponse;
 use bd_proto::protos::client::api::upload_artifact_response::State;
-use bd_proto::protos::client::api::{UploadArtifactRequest, UploadArtifactResponse};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{ValueKind, make_update};
-use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
+use bd_time::TestTimeProvider;
 use flate2::read::ZlibDecoder;
 use std::io::{self, Read as _};
 use std::path::Path;
@@ -186,20 +186,20 @@ async fn retained_workflows_and_direct_commands_share_chunk_admission() {
   for admitted in [false, true] {
     let id = Uuid::new_v4();
     let path = directory.path().join(format!("command-{id}"));
-    tokio::fs::write(&path, b"").await.unwrap();
+    tokio::fs::write(&path, vec![42; 1024 * 1024 + 1])
+      .await
+      .unwrap();
     let (tx, rx) = oneshot::channel();
     client
-      .enqueue_chunked_file(
-        path.clone(),
-        UploadArtifactRequest {
-          artifact_id: id.to_string(),
-          command_id: Some(Uuid::new_v4().to_string()),
-          type_id: "device_command_attachment".into(),
-          session_id: "session".into(),
-          time: OffsetDateTime::now_utc().into_proto(),
-          ..Default::default()
-        },
-        tx,
+      .enqueue_command_upload(
+        UploadSource::Path(path.clone()),
+        "device_command_attachment".into(),
+        None,
+        "session".into(),
+        Vec::new(),
+        Uuid::new_v4().to_string(),
+        None,
+        Some(tx),
         None,
       )
       .unwrap();
@@ -207,7 +207,7 @@ async fn retained_workflows_and_direct_commands_share_chunk_admission() {
     assert_eq!(result.is_ok(), admitted);
     assert!(!path.exists());
     if admitted {
-      assert_eq!(result.unwrap(), 0);
+      assert_eq!(result.unwrap(), 1024 * 1024 + 1);
       assert!(
         admit_file(&store, directory.path(), 1024 * 1024 + 1)
           .await

@@ -110,11 +110,6 @@ async fn opaque_is_exact_streamed_and_seeded_including_empty_files() {
       if matches!(pattern, Pattern::Zeros) {
         assert!(first.iter().all(|&byte| byte == 0));
       } else if size >= 8 {
-        // SplitMix64's first word at seed zero, in the specified little-endian wire order.
-        assert_eq!(
-          &first[.. 8],
-          &[0xaf, 0xcd, 0x1d, 0x7b, 0x39, 0xa8, 0x20, 0xe2]
-        );
         let changed = FixtureOptions { seed: 1, ..options };
         let (_, other) = fixture(&directory.path().join("other"), &changed).await;
         assert_ne!(first, other);

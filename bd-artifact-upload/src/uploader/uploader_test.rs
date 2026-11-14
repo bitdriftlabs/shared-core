@@ -336,6 +336,98 @@ async fn initialization_publishes_queue_revision_even_without_queue_files() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn healthy_spool_does_not_poll_and_failed_cleanup_remains_retryable() {
+  let setup = Setup::new().await;
+  let mut revision = setup.client.upload_queue_revision();
+  wait_for_queue_revision(&mut revision, 0).await;
+  setup.task_handle.abort();
+  assert!(setup.task_handle.await.unwrap_err().is_cancelled());
+
+  let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
+  let (mut uploader, _client) = Uploader::new(
+    setup.filesystem.clone(),
+    setup.data_upload_tx.clone(),
+    setup.time_provider.clone(),
+    &setup.runtime,
+    &Collector::default(),
+    command_metadata(),
+    setup.scrub_rules_tx.subscribe(),
+    shutdown.make_shutdown(),
+  );
+  uploader.initialize().await.unwrap();
+  for backlog in [false, true] {
+    if backlog {
+      uploader
+        .track_upload(NewUpload::new(
+          UploadSource::Bytes(b"offline".to_vec()),
+          UploadArtifactRequest {
+            artifact_id: Uuid::new_v4().to_string(),
+            command_id: Some(Uuid::new_v4().to_string()),
+            type_id: "device_command_attachment".into(),
+            session_id: "session".into(),
+            time: OffsetDateTime::now_utc().into_proto(),
+            ..Default::default()
+          },
+          PreparationMode::Chunked,
+        ))
+        .await;
+      assert_eq!(uploader.chunked.entries.len(), 1);
+    }
+    let before = (
+      setup.filesystem.list_calls.load(Ordering::Relaxed),
+      setup.filesystem.delete_calls.load(Ordering::Relaxed),
+    );
+    // Poll directly so a due timer cannot escape the assertion through shutdown or scheduling.
+    let mut run = Box::pin(uploader.run_loop());
+    assert!(futures_util::poll!(run.as_mut()).is_pending());
+    tokio::time::advance(std::time::Duration::from_secs(60)).await;
+    assert!(futures_util::poll!(run.as_mut()).is_pending());
+    assert_eq!(
+      (
+        setup.filesystem.list_calls.load(Ordering::Relaxed),
+        setup.filesystem.delete_calls.load(Ordering::Relaxed),
+      ),
+      before
+    );
+    drop(run);
+  }
+
+  let orphan = ARTIFACT_UPLOAD_DIRECTORY.join("unpublished");
+  setup
+    .filesystem
+    .write_file(&orphan, b"orphan")
+    .await
+    .unwrap();
+  setup.filesystem.fail_deletes.store(true, Ordering::Relaxed);
+  uploader.reconcile_files().await;
+  assert!(uploader.cleanup_pending);
+  assert!(setup.filesystem.exists(&orphan).await.unwrap());
+  let mut run = Box::pin(uploader.run_loop());
+  assert!(futures_util::poll!(run.as_mut()).is_pending());
+  let attempts = setup.filesystem.list_calls.load(Ordering::Relaxed);
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  assert!(futures_util::poll!(run.as_mut()).is_pending());
+  assert_eq!(
+    setup.filesystem.list_calls.load(Ordering::Relaxed),
+    attempts
+  );
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  assert!(futures_util::poll!(run.as_mut()).is_pending());
+  assert_eq!(
+    setup.filesystem.list_calls.load(Ordering::Relaxed),
+    attempts + 1
+  );
+  drop(run);
+  setup
+    .filesystem
+    .fail_deletes
+    .store(false, Ordering::Relaxed);
+  uploader.reconcile_files().await;
+  assert!(!uploader.cleanup_pending);
+  assert!(!setup.filesystem.exists(&orphan).await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
 async fn index_sync_failure_is_reconciled_without_reenqueue() {
   let setup = Setup::new().await;
   let id = Uuid::new_v4();

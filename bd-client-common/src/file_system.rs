@@ -10,8 +10,8 @@
 //! Atomic visibility and durability are separate operations: a rename publishes a file, while
 //! syncing the file and parent directory makes that publication crash-safe. Callers must retain
 //! published payloads when the final sync fails, because another reader may already own them.
-//! `OwnedFile` is the complementary producer-side guard: it synchronously unlinks a handed-over
-//! absolute path before an acknowledgement/cancellation boundary, or relinquishes it after a move.
+//! `OwnedFile` is the complementary producer-side guard: it removes a handed-over absolute path,
+//! with synchronous cleanup as a fallback, or relinquishes it after a move.
 
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 // OwnedFile
 //
 
-/// Deletes a handed-over absolute file without introducing an async cancellation point.
+/// Owns cleanup of a handed-over absolute file, including synchronous cleanup on drop.
 ///
 /// Relative paths remain the consumer's responsibility because only that consumer knows its root.
 /// A moved file must be disarmed immediately: retaining the old path could delete a replacement
@@ -36,6 +36,26 @@ impl OwnedFile {
 
   pub fn disarm(mut self) {
     self.0 = None;
+  }
+
+  /// Removes the file off the async executor, retaining cleanup ownership if awaiting is cancelled.
+  ///
+  /// The worker disarms the fallback before attempting removal, even when removal fails, so a
+  /// later drop cannot unlink a replacement at the same path.
+  pub async fn remove(self) -> anyhow::Result<()> {
+    tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+      let mut owned = self;
+      if let Some(path) = owned.0.take() {
+        match std::fs::remove_file(path) {
+          Ok(()) => {},
+          Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+          Err(error) => return Err(error),
+        }
+      }
+      Ok(())
+    })
+    .await??;
+    Ok(())
   }
 }
 
@@ -85,6 +105,16 @@ pub trait FileSystem: Send + Sync {
 
   /// Ensures a file and its directory entry survive a crash before acknowledging a lease.
   async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()>;
+
+  /// Syncs file contents without syncing its parent; callers must sync the directory before commit.
+  async fn sync_file(&self, path: &Path) -> anyhow::Result<()> {
+    Ok(self.open_file(path).await?.sync_all().await?)
+  }
+
+  /// Syncs directory entries after all files in a staged artifact have been synced.
+  async fn sync_directory(&self, path: &Path) -> anyhow::Result<()> {
+    Ok(self.open_file(path).await?.sync_all().await?)
+  }
 
   /// Deletes the directory if it exists.
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()>;
@@ -176,10 +206,12 @@ impl FileSystem for RealFileSystem {
     let mut entries = tokio::fs::read_dir(self.directory.join(directory)).await?;
 
     while let Some(entry) = entries.next_entry().await? {
-      let path = entry.path();
+      let file_type = entry.file_type().await?;
 
-      if path.is_file() {
-        files.push(path.to_string_lossy().to_string());
+      if file_type.is_file()
+        || (file_type.is_symlink() && tokio::fs::metadata(entry.path()).await?.is_file())
+      {
+        files.push(entry.path().to_string_lossy().to_string());
       }
     }
 
@@ -207,7 +239,8 @@ impl FileSystem for RealFileSystem {
   }
 
   async fn available_space(&self, directory: &Path) -> anyhow::Result<u64> {
-    Ok(fs2::available_space(self.directory.join(directory))?)
+    let directory = self.directory.join(directory);
+    Ok(tokio::task::spawn_blocking(move || fs2::available_space(directory)).await??)
   }
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {

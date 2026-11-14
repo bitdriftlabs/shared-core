@@ -102,7 +102,9 @@ completion is then discarded. For parallel tests, allow capacity for that initia
 
 `generate-attachment` streams an exact-size deterministic `perfetto`, `heap-graph`, or `opaque`
 fixture to a new file and prints its size, SHA-256 and expected semantic counts as JSON. Choose
-`--pattern zeros` or `--pattern random` and a reproducible `--seed`.
+`--pattern zeros` or `--pattern random` and a reproducible `--seed`. Random fixtures use seeded
+`rand::rngs::StdRng`; identical options reproduce bytes within a build, not across dependency
+upgrades.
 
 Start with `--attachment-fixture-directory <directory>` to opt into `synthetic_attachment`, the same
 registered handler for direct and workflow commands. Its string arguments are `file` (a basename in

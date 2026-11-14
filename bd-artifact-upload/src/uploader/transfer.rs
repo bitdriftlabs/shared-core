@@ -128,6 +128,17 @@ fn validate_ack(
 }
 
 impl Uploader {
+  pub(super) fn next_chunk_retry(&self) -> Option<Instant> {
+    if self.chunk_task_handle.is_some() || self.index_dirty {
+      return None;
+    }
+    self
+      .chunk_progress
+      .values()
+      .map(|progress| progress.ready)
+      .min()
+  }
+
   pub(super) fn start_chunk_attempt(&mut self) {
     if self.chunk_task_handle.is_some() || self.index_dirty {
       return;
@@ -162,19 +173,23 @@ impl Uploader {
           if let Some(hooks) = hooks {
             hooks.before_chunk_transfer().await;
           }
-          // Whole-file attempts use the same fair semaphore, releasing it during retry backoff.
-          // No admission/staging work or ACK processing waits for this network capacity.
-          let _permit = capacity.acquire_owned().await?;
           if let Some(descriptor) = descriptor {
             let path = chunk_path(&id, request.chunk_index.unwrap_or_default() as usize);
             let mut file = filesystem.open_regular_file(&path).await?;
-            request.contents = read_limited(&mut file, CHUNK_BYTES).await?;
-            anyhow::ensure!(
-              request.contents.len() == descriptor.encoded_bytes as usize
-                && Sha256::digest(&request.contents).as_slice() == descriptor.encoded_sha256,
-              "staged chunk changed before transfer"
-            );
+            let contents = read_limited(&mut file, CHUNK_BYTES).await?;
+            request.contents = tokio::task::spawn_blocking(move || {
+              anyhow::ensure!(
+                contents.len() == descriptor.encoded_bytes as usize
+                  && Sha256::digest(&contents).as_slice() == descriptor.encoded_sha256,
+                "staged chunk changed before transfer"
+              );
+              Ok::<_, anyhow::Error>(contents)
+            })
+            .await??;
           }
+          // Local reads/verification do not occupy the fair network permit. Whole-file attempts
+          // share this capacity and release it during retry backoff.
+          let _permit = capacity.acquire_owned().await?;
           log::debug!(
             "sending chunked artifact operation: artifact_id={id}, begin={}, chunk={:?}",
             request.time.is_some(),

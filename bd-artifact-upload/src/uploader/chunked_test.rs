@@ -14,6 +14,9 @@ use super::{
   ArtifactStore,
   Client,
   EnqueueError,
+  NewUpload,
+  PersistenceAck,
+  PreparationMode,
   REPORT_INDEX_FILE,
   UploadSource,
   Uploader,
@@ -42,6 +45,8 @@ use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_time::{OffsetDateTimeExt as _, TimeProvider as _};
 use flate2::read::ZlibDecoder;
 use protobuf::Message;
+use rand::rngs::StdRng;
+use rand::{RngExt as _, SeedableRng as _};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -50,6 +55,21 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 impl Setup {
+  // Keep tiny protocol fixtures independent of routing thresholds. Validation and persistence still
+  // run through the production staging transaction.
+  fn enqueue_capture(
+    &self,
+    path: PathBuf,
+    request: UploadArtifactRequest,
+    persisted_tx: oneshot::Sender<Result<u64, EnqueueError>>,
+    completion_tx: Option<oneshot::Sender<Result<(), String>>>,
+  ) -> Result<(), EnqueueError> {
+    let mut upload = NewUpload::new(UploadSource::Path(path), request, PreparationMode::Chunked);
+    upload.persisted_tx = Some(PersistenceAck::Command(persisted_tx));
+    upload.completion_tx = completion_tx;
+    self.client.submit(upload)
+  }
+
   async fn next_chunk_operation(&mut self) -> TrackedArtifactUpload {
     loop {
       let DataUpload::ArtifactUpload(operation) = self.data_upload_rx.recv().await.unwrap() else {
@@ -81,10 +101,7 @@ impl Setup {
     request: UploadArtifactRequest,
   ) -> oneshot::Receiver<Result<u64, EnqueueError>> {
     let (tx, rx) = oneshot::channel();
-    self
-      .client
-      .enqueue_chunked_file(path, request, tx, None)
-      .unwrap();
+    self.enqueue_capture(path, request, tx, None).unwrap();
     rx
   }
 
@@ -303,8 +320,7 @@ async fn chunk_transfer_replays_each_lost_ack_and_waits_for_durable_finalization
   let (persisted_tx, persisted_rx) = oneshot::channel();
   let (completion_tx, mut completion_rx) = oneshot::channel();
   setup
-    .client
-    .enqueue_chunked_file(path, setup.request(id), persisted_tx, Some(completion_tx))
+    .enqueue_capture(path, setup.request(id), persisted_tx, Some(completion_tx))
     .unwrap();
   assert_eq!(persisted_rx.await.unwrap().unwrap(), CHUNK_BYTES + 1);
   let template = setup
@@ -426,8 +442,7 @@ async fn invalid_chunk_acknowledgements_and_retryable_errors_resume_without_rele
   let (persisted_tx, persisted_rx) = oneshot::channel();
   let (completion_tx, mut completion_rx) = oneshot::channel();
   setup
-    .client
-    .enqueue_chunked_file(path, setup.request(id), persisted_tx, Some(completion_tx))
+    .enqueue_capture(path, setup.request(id), persisted_tx, Some(completion_tx))
     .unwrap();
   persisted_rx.await.unwrap().unwrap();
   setup.chunk_transfer_enabled.send(true).unwrap();
@@ -501,8 +516,7 @@ async fn chunk_transfers_interleave_whole_file_traffic_without_eviction_or_fallb
     let (persisted_tx, persisted_rx) = oneshot::channel();
     let (completion_tx, completion_rx) = oneshot::channel();
     setup
-      .client
-      .enqueue_chunked_file(
+      .enqueue_capture(
         path,
         setup.request(Uuid::new_v4()),
         persisted_tx,
@@ -705,13 +719,8 @@ async fn chunked_mixed_encoding_hashes_geometry_and_restart() {
   let id = Uuid::new_v4();
   let chunk_bytes = usize::try_from(CHUNK_BYTES).unwrap();
   let mut bytes = vec![0; chunk_bytes];
-  let mut random = 0x1234_5678_u32;
-  for _ in 0 .. CHUNK_BYTES {
-    random ^= random << 13;
-    random ^= random >> 17;
-    random ^= random << 5;
-    bytes.push(random.to_le_bytes()[0]);
-  }
+  bytes.resize(chunk_bytes * 2, 0);
+  StdRng::seed_from_u64(0x1234_5678).fill(&mut bytes[chunk_bytes ..]);
   bytes.extend_from_slice(b"short last chunk");
   let path = setup.capture(id, &bytes).await;
   let metadata = setup.request(id);
@@ -782,16 +791,88 @@ async fn chunked_mixed_encoding_hashes_geometry_and_restart() {
 }
 
 #[tokio::test]
+async fn descriptor_and_byte_sources_stage_without_a_source_copy_or_per_chunk_directory_sync() {
+  for bytes_source in [false, true] {
+    let setup = Setup::with_buffer(4 * 1024 * 1024).await;
+    let size = CHUNK_BYTES * 2 + 1;
+    let bytes = vec![42; usize::try_from(size).unwrap()];
+    let id = Uuid::new_v4();
+    let path = setup.capture(id, &bytes).await;
+    let source = if bytes_source {
+      UploadSource::Bytes(bytes)
+    } else {
+      UploadSource::File(std::fs::File::open(&path).unwrap())
+    };
+    let mut revision = setup.client.upload_queue_revision();
+    wait_for_queue_revision(&mut revision, 0).await;
+    let file_syncs = setup.filesystem.file_sync_calls.load(Ordering::Relaxed);
+    let directory_syncs = setup
+      .filesystem
+      .directory_sync_calls
+      .load(Ordering::Relaxed);
+    let (tx, rx) = oneshot::channel();
+    let uploaded = setup
+      .client
+      .enqueue_command_upload(
+        source,
+        "device_command_attachment".into(),
+        None,
+        "session".into(),
+        Vec::new(),
+        Uuid::new_v4().to_string(),
+        None,
+        Some(tx),
+        None,
+      )
+      .unwrap();
+    let gate = setup
+      .filesystem
+      .gate_next_sync(chunk_path(&uploaded.to_string(), 0));
+    let resume = gate.await.unwrap();
+    assert!(
+      !setup
+        .filesystem
+        .exists(&source_path(&uploaded.to_string()))
+        .await
+        .unwrap()
+    );
+    resume.send(()).unwrap();
+    assert_eq!(rx.await.unwrap().unwrap(), size);
+    assert_eq!(
+      setup.chunk_index().await.chunked_artifact[0]
+        .request
+        .chunks
+        .len(),
+      3
+    );
+    assert_eq!(
+      setup.filesystem.file_sync_calls.load(Ordering::Relaxed) - file_syncs,
+      4
+    );
+    assert_eq!(
+      setup
+        .filesystem
+        .directory_sync_calls
+        .load(Ordering::Relaxed)
+        - directory_syncs,
+      2
+    );
+    setup.shutdown().await;
+  }
+}
+
+#[tokio::test]
 async fn chunked_persistence_requires_payload_and_index_fsync() {
-  for fail_index in [false, true] {
+  for phase in 0 .. 3 {
+    let fail_index = phase == 2;
     let setup = Setup::new().await;
     setup.configure_admission(Vec::new()).await;
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
-    let target = if fail_index {
-      ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE)
-    } else {
-      chunk_path(&id.to_string(), 0)
+    let target = match phase {
+      0 => chunk_path(&id.to_string(), 0),
+      1 => ARTIFACT_UPLOAD_DIRECTORY.to_path_buf(),
+      _ => ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE),
     };
     setup.filesystem.fail_next_sync_at(target.clone());
     let gate = setup.filesystem.gate_next_sync(target);
@@ -1622,13 +1703,11 @@ async fn chunked_invalid_capture_metadata_consumes_owned_source_without_index_co
       5 => metadata.session_id = "x".repeat(256),
       _ => panic!("unknown invalid metadata"),
     }
-    let (tx, _) = oneshot::channel();
-    assert!(
-      setup
-        .client
-        .enqueue_chunked_file(path.clone(), metadata, tx, None)
-        .is_err()
-    );
+    let (tx, rx) = oneshot::channel();
+    setup
+      .enqueue_capture(path.clone(), metadata, tx, None)
+      .unwrap();
+    assert!(rx.await.unwrap().is_err());
     assert!(!path.exists());
   }
   setup.shutdown().await;
@@ -1818,17 +1897,5 @@ async fn chunked_rejects_symlinks_and_non_files_without_touching_targets() {
       .is_err()
   );
   assert!(directory.is_dir());
-  let (tx, _) = oneshot::channel();
-  assert!(
-    setup
-      .client
-      .enqueue_chunked_file(
-        Path::new("relative").into(),
-        setup.request(Uuid::new_v4()),
-        tx,
-        None
-      )
-      .is_err()
-  );
   setup.shutdown().await;
 }

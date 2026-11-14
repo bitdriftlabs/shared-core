@@ -13,7 +13,7 @@
 //! created-file ledger; `storage` supplies the filesystem inventory used by recovery and terminal
 //! cleanup.
 //!
-//! Preparation holds at most one logical chunk and one awaited compression job at a time. Files
+//! Preparation overlaps one bounded compression job with the preceding encoded chunk's write. Files
 //! become durable before their descriptors are published in the common index. Recovery ignores
 //! current admission flags/limits: accepted bytes survive runtime reductions and offline periods,
 //! and only malformed or missing data—not an unexpected I/O error—may invalidate them.
@@ -254,9 +254,13 @@ pub(super) async fn read_index(
   // Bound compressed I/O and decompression, then use normal generated protobuf decoding. Recovery
   // validates the resulting metadata and payloads; there is no separate wire-format parser here.
   let compressed = read_limited(file, MAX_INDEX_BYTES).await?;
-  let decoded = read_compressed_limited(&compressed, MAX_INDEX_BYTES)?;
-  ArtifactUploadIndex::parse_from_bytes(&decoded)
-    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+  tokio::task::spawn_blocking(move || {
+    let decoded = read_compressed_limited(&compressed, MAX_INDEX_BYTES)?;
+    ArtifactUploadIndex::parse_from_bytes(&decoded)
+      .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+  })
+  .await
+  .map_err(io::Error::other)?
 }
 
 // Capture identity and per-chunk encoding/integrity.
@@ -306,60 +310,67 @@ fn encode_chunk(raw: Vec<u8>) -> anyhow::Result<(Vec<u8>, ArtifactChunkDescripto
 
 async fn stage(
   fs: &dyn FileSystem,
-  mut file: tokio::fs::File,
-  original: &Metadata,
+  mut input: Input,
   mut request: UploadArtifactRequest,
   files: &mut StagedFiles,
   checksummed: bool,
 ) -> anyhow::Result<ChunkedArtifact> {
-  let size = original
-    .len()
+  let size = input
+    .size()
     .checked_sub(if checksummed { 4 } else { 0 })
     .ok_or_else(|| anyhow::anyhow!("invalid checksummed workflow input"))?;
   let mut whole = Sha256::new();
   let mut crc = checksummed.then(crc32fast::Hasher::new);
   let mut remaining = size;
   let mut chunks = Vec::new();
+  let mut previous = None;
 
-  // Read and encode one logical segment at a time. Await each CPU job before reading the next
-  // segment, bounding both live buffers and compression concurrency independently of file size.
+  // Only the next bounded compression job overlaps the preceding write. Join both even on error,
+  // so rollback cannot race an unfinished payload write or a detached compression job.
   while remaining != 0 {
     let logical_bytes = remaining.min(CHUNK_BYTES);
     let mut raw = vec![0; usize::try_from(logical_bytes)?];
-    file.read_exact(&mut raw).await?;
-    whole.update(&raw);
-    if let Some(crc) = &mut crc {
-      crc.update(&raw);
-    }
-    let (encoded, descriptor) = tokio::task::spawn_blocking(move || encode_chunk(raw)).await??;
-
-    // Make each payload durable before its descriptor can reach the index. Include a partially
-    // written current chunk in rollback, not only completed descriptors.
-    let path = chunk_path(&request.artifact_id, chunks.len());
-    files.created.push(path.clone());
-    let mut target = fs.create_file(&path).await?;
-    target.write_all(&encoded).await?;
-    target.flush().await?;
-    fs.sync_file_and_parent(&path).await?;
+    input.reader().read_exact(&mut raw).await?;
+    let encode = tokio::task::spawn_blocking(move || {
+      whole.update(&raw);
+      if let Some(crc) = &mut crc {
+        crc.update(&raw);
+      }
+      let (encoded, descriptor) = encode_chunk(raw)?;
+      Ok::<_, anyhow::Error>((encoded, descriptor, whole, crc))
+    });
+    let write = async {
+      if let Some((path, encoded)) = previous.take() {
+        write_chunk(fs, path, encoded, files).await?;
+      }
+      Ok::<_, anyhow::Error>(())
+    };
+    let (encoded, written) = tokio::join!(encode, write);
+    written?;
+    let (encoded, descriptor, next_whole, next_crc) = encoded??;
+    whole = next_whole;
+    crc = next_crc;
+    previous = Some((chunk_path(&request.artifact_id, chunks.len()), encoded));
     remaining -= logical_bytes;
     chunks.push(descriptor);
+  }
+  if let Some((path, encoded)) = previous {
+    write_chunk(fs, path, encoded, files).await?;
   }
 
   // Detect observed growth, truncation or modification of the pinned input. This is not a snapshot:
   // the capture owner must stop writing when it hands over the file.
   if let Some(crc) = crc
-    && file.read_u32_le().await? != crc.finalize()
+    && input.reader().read_u32_le().await? != crc.finalize()
   {
     anyhow::bail!("retained workflow checksum mismatch");
   }
   let mut trailing = [0; 1];
-  let current = file.metadata().await?;
-  if file.read(&mut trailing).await? != 0
-    || current.len() != original.len()
-    || current.modified()? != original.modified()?
-  {
+  if input.reader().read(&mut trailing).await? != 0 {
     anyhow::bail!("capture file changed during staging");
   }
+  input.validate().await?;
+  fs.sync_directory(&ARTIFACT_UPLOAD_DIRECTORY).await?;
 
   // Publish only a complete, self-consistent manifest to the shared staging transaction. The
   // transaction, not this encoder, commits index ownership and releases the moved capture source.
@@ -372,6 +383,19 @@ async fn stage(
   };
   validate_entry(&entry)?;
   Ok(entry)
+}
+
+async fn write_chunk(
+  fs: &dyn FileSystem,
+  path: PathBuf,
+  encoded: Vec<u8>,
+  files: &mut StagedFiles,
+) -> anyhow::Result<()> {
+  files.created.push(path.clone());
+  let mut target = fs.create_file(&path).await?;
+  target.write_all(&encoded).await?;
+  target.flush().await?;
+  fs.sync_file(&path).await
 }
 
 async fn validate_files(
@@ -390,26 +414,30 @@ async fn validate_files(
       .open_regular_file(&chunk_path(&request.artifact_id, index))
       .await?;
     let encoded = read_limited(&mut file, u64::from(descriptor.encoded_bytes)).await?;
-    if encoded.len() != descriptor.encoded_bytes as usize
-      || Sha256::digest(&encoded).as_slice() != descriptor.encoded_sha256
-    {
-      anyhow::bail!("staged chunk does not match encoded descriptor");
-    }
-    // Bound the decoded segment to its exact logical length and verify its independent digest.
     let expected = (size - index as u64 * CHUNK_BYTES).min(CHUNK_BYTES);
-    let raw = if descriptor.encoding.enum_value_or_default()
-      == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-    {
-      read_compressed_limited(&encoded, expected)?
-    } else {
-      encoded
-    };
-    if raw.len() as u64 != expected || Sha256::digest(&raw).as_slice() != descriptor.logical_sha256
-    {
-      anyhow::bail!("staged chunk does not match logical descriptor");
-    }
-    // Chunk hashes alone do not prove the manifest's whole-file digest or ordering.
-    whole.update(&raw);
+    let descriptor = descriptor.clone();
+    whole = tokio::task::spawn_blocking(move || {
+      if encoded.len() != descriptor.encoded_bytes as usize
+        || Sha256::digest(&encoded).as_slice() != descriptor.encoded_sha256
+      {
+        anyhow::bail!("staged chunk does not match encoded descriptor");
+      }
+      let raw = if descriptor.encoding.enum_value_or_default()
+        == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+      {
+        read_compressed_limited(&encoded, expected)?
+      } else {
+        encoded
+      };
+      if raw.len() as u64 != expected
+        || Sha256::digest(&raw).as_slice() != descriptor.logical_sha256
+      {
+        anyhow::bail!("staged chunk does not match logical descriptor");
+      }
+      whole.update(&raw);
+      Ok::<_, anyhow::Error>(whole)
+    })
+    .await??;
   }
   if whole.finalize().as_slice() != request.logical_sha256 {
     anyhow::bail!("staged artifact does not match whole logical digest");
@@ -429,33 +457,14 @@ impl Uploader {
       anyhow::bail!("insufficient bounded index space for chunked artifact metadata");
     }
     let source = if matches!(source, UploadSource::Bytes(_) | UploadSource::File(_)) {
-      let mut input = Input::open(source, self.file_system.as_ref()).await?;
+      let input = Input::open(source, self.file_system.as_ref()).await?;
       let size = input.size();
       self
         .chunked
         .admission
-        .check_capacity(self.file_system.as_ref(), size, size, None, size)
+        .check_capacity(self.file_system.as_ref(), size, 0, None, size)
         .await?;
-      let path = source_path(&request.artifact_id);
-      files.created.push(path.clone());
-      let mut output = self.file_system.create_file(&path).await?;
-      if tokio::io::copy(&mut input.reader().take(size + 1), &mut output).await? != size {
-        anyhow::bail!("attachment changed during staging");
-      }
-      input.validate().await?;
-      output.flush().await?;
-      self.file_system.sync_file_and_parent(&path).await?;
-      let file = self.file_system.open_regular_file(&path).await?;
-      let metadata = file.metadata().await?;
-      return stage(
-        self.file_system.as_ref(),
-        file,
-        &metadata,
-        request,
-        files,
-        false,
-      )
-      .await;
+      return stage(self.file_system.as_ref(), input, request, files, false).await;
     } else {
       source
     };
@@ -479,8 +488,7 @@ impl Uploader {
       }
       return stage(
         self.file_system.as_ref(),
-        file,
-        &metadata,
+        Input::from_file(file, &metadata)?,
         request,
         files,
         true,
@@ -523,8 +531,7 @@ impl Uploader {
       .await?;
     stage(
       self.file_system.as_ref(),
-      file,
-      &metadata,
+      Input::from_file(file, &metadata)?,
       request,
       files,
       false,
@@ -533,6 +540,9 @@ impl Uploader {
   }
 
   pub(super) async fn recover_chunks(&mut self, modified: &mut bool) -> anyhow::Result<()> {
+    // TODO: Recover entries incrementally through the index owner so the first valid artifact can
+    // transfer before the entire logical backlog is checked. Preserve collision/corruption fencing
+    // and gate preparation/admission until recovery has established every durable ownership lease.
     // Rebuild ownership from committed entries, not current runtime admission limits. Whole-file
     // IDs participate in collision detection so no two modes can claim the same artifact.
     let mut ids: HashSet<String> = self.index.iter().map(|entry| entry.name.clone()).collect();

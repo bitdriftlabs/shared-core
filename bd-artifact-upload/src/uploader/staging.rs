@@ -86,11 +86,14 @@ impl Uploader {
       self.rollback_files(&mut files).await;
     }
 
-    // Both synchronous rejection and async failure consume owned command files before notifying
-    // the caller. A guard for a moved source has already been disarmed, so it cannot unlink a
-    // replacement created at the producer's old pathname.
+    // Keep the synchronous guard only for cancellation/rejection. Normal cleanup runs off the
+    // executor, and still completes before the persistence acknowledgement.
     let guarded_source = source_cleanup.is_some();
-    drop(source_cleanup);
+    if let Some(source) = source_cleanup
+      && let Err(error) = source.remove().await
+    {
+      log::warn!("failed to remove owned artifact source: {error}");
+    }
     if success {
       if !guarded_source
         && let Some((path, false)) = files.original.take()
@@ -464,7 +467,7 @@ impl Uploader {
     ))
   }
 
-  async fn rollback_files(&self, files: &mut StagedFiles) {
+  async fn rollback_files(&mut self, files: &mut StagedFiles) {
     if let Some((original, true)) = files.original.take()
       && let Some(target) = files.created.first()
       && let Err(error) = self.file_system.rename_file(target, &original).await

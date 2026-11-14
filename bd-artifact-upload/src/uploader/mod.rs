@@ -78,7 +78,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot, watch};
-use tokio::time::{MissedTickBehavior, interval};
+use tokio::time::{Instant, MissedTickBehavior, interval, sleep_until};
 use uuid::Uuid;
 
 /// Root directory for all files used for storage and uploading.
@@ -90,6 +90,7 @@ pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index
 pub const WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID: &str = "workflow_attachment";
 pub use admission::ArtifactStore;
 const INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+const MAX_INDEX_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 
 //
 // FeatureFlag
@@ -332,19 +333,6 @@ pub trait Client: Send + Sync {
   /// Revisions of the atomically published queue index, including commits awaiting durability.
   fn upload_queue_revision(&self) -> watch::Receiver<u64>;
 
-  /// Stages an owned, absolute regular-file path. Metadata is a payload-free capture request
-  /// whose size, descriptors and hashes are filled by the spool.
-  /// Takes ownership even on rejection. Sources must share the SDK spool's filesystem so ownership
-  /// can move atomically before preparation; cross-filesystem moves fail explicitly.
-  /// Completion requires Finalized; a restored upload has no predecessor command waiter.
-  fn enqueue_chunked_file(
-    &self,
-    source_path: PathBuf,
-    request: UploadArtifactRequest,
-    persisted_tx: oneshot::Sender<std::result::Result<u64, EnqueueError>>,
-    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
-  ) -> std::result::Result<(), EnqueueError>;
-
   /// Borrows the canonical payload. A workflow store must supply its cleanup-exclusion permit;
   /// the queue holds that permit until its durable index lease replaces it.
   /// Checksummed `.raw` sources retain their admitted chunk mode across runtime reductions.
@@ -496,35 +484,6 @@ impl UploadClient {
 impl Client for UploadClient {
   fn upload_queue_revision(&self) -> watch::Receiver<u64> {
     self.queue_revision.clone()
-  }
-
-  fn enqueue_chunked_file(
-    &self,
-    source_path: PathBuf,
-    request: UploadArtifactRequest,
-    persisted_tx: oneshot::Sender<std::result::Result<u64, EnqueueError>>,
-    completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
-  ) -> std::result::Result<(), EnqueueError> {
-    let mut upload = NewUpload::new(
-      UploadSource::Path(source_path),
-      request,
-      PreparationMode::Chunked,
-    );
-    // Validate immutable capture shape before it can occupy queue memory. The owner performs
-    // runtime/disk admission later, but need not repeat this unchanged metadata validation.
-    chunked::validate_capture_request(&upload.request).map_err(|error| {
-      log::warn!("invalid chunked capture metadata: {error}");
-      EnqueueError::Other(error)
-    })?;
-    if upload.source_cleanup.is_none() {
-      log::warn!("chunked capture requires an absolute owned path");
-      return Err(EnqueueError::Other(anyhow::anyhow!(
-        "chunked capture requires an absolute owned path"
-      )));
-    }
-    upload.persisted_tx = Some(PersistenceAck::Command(persisted_tx));
-    upload.completion_tx = completion_tx;
-    self.submit(upload)
   }
 
   fn enqueue_workflow_attachment(
@@ -710,6 +669,7 @@ pub struct Uploader {
   queue_revision: watch::Sender<u64>,
   index_dirty: bool,
   index_sync_required: bool,
+  cleanup_pending: bool,
   upload_completions: HashMap<String, oneshot::Sender<std::result::Result<(), String>>>,
 
   backoff_policy: RuntimeBackoffPolicy<
@@ -844,6 +804,7 @@ impl Uploader {
       queue_revision: queue_revision_tx,
       index_dirty: false,
       index_sync_required: false,
+      cleanup_pending: false,
       upload_completions: HashMap::default(),
       backoff_policy: RuntimeBackoffPolicy::new(runtime),
       scrub_rules,
@@ -894,8 +855,13 @@ impl Uploader {
     self
       .queue_revision
       .send_modify(|revision| *revision = revision.wrapping_add(1));
+    self.run_loop().await
+  }
+
+  async fn run_loop(&mut self) -> Result<()> {
     let mut index_retry = interval(INDEX_RETRY_INTERVAL);
     index_retry.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut retry_delay = INDEX_RETRY_INTERVAL;
 
     // The state machinery below relies on careful handling of the contents of the index list, as
     // we want to make sure that we don't lose entries due to process shutdown. The pending upload
@@ -993,18 +959,26 @@ impl Uploader {
 
       // At this point either wait for progress to be made to the current entry or wait for a new
       // entry to be submitted.
+      // Transport backoff must not depend on unrelated index/orphan reconciliation waking us.
+      let chunk_retry_at = self.next_chunk_retry();
+      let chunk_retry = sleep_until(chunk_retry_at.unwrap_or_else(Instant::now));
+      tokio::pin!(chunk_retry);
       tokio::select! {
+        () = &mut chunk_retry, if chunk_retry_at.is_some() => {}
         // Failed commits must be reconciled even if no further uploads arrive.
-        _ = index_retry.tick() => {
+        _ = index_retry.tick(), if self.index_dirty || self.cleanup_pending => {
           if self.index_dirty && let Err(error) = self.write_index().await {
             log::warn!("failed to reconcile artifact index; will retry: {error}");
           }
           if !self.index_dirty {
-            self.clean_sources().await;
-            if let Err(error) = self.clean_orphan_files().await {
-              log::warn!("failed to remove orphaned artifact payloads; will retry: {error}");
-            }
+            self.reconcile_files().await;
           }
+          retry_delay = if self.index_dirty || self.cleanup_pending {
+            retry_delay.saturating_mul(2).min(MAX_INDEX_RETRY_INTERVAL)
+          } else {
+            INDEX_RETRY_INTERVAL
+          };
+          index_retry.reset_after(retry_delay);
         }
         () = self.shutdown.cancelled() => {
           log::debug!("shutting down uploader");
@@ -1016,6 +990,9 @@ impl Uploader {
           return Err(Error::Shutdown);
         }
         Some(upload) = self.upload_queued_rx.recv() => {
+          // TODO: Split bounded payload preparation from this index owner. The preparation worker
+          // must return uncommitted files so ACK retirement, shutdown and admission never become
+          // concurrent index writers. Add a gated-preparation/active-transfer regression with it.
           self.track_upload(upload).await;
         }
         intent_decision = maybe_await(&mut self.intent_task_handle) => {
@@ -1130,10 +1107,7 @@ impl Uploader {
       self.write_index().await?;
     }
 
-    if let Err(error) = self.clean_orphan_files().await {
-      log::warn!("failed to remove orphaned artifact files; will retry: {error}");
-    }
-    self.clean_sources().await;
+    self.reconcile_files().await;
     Ok(())
   }
 
@@ -1234,7 +1208,8 @@ impl Uploader {
       if index.compute_size() > chunked::MAX_INDEX_BYTES {
         anyhow::bail!("artifact index exceeds bounded recovery size");
       }
-      let compressed = write_compressed_protobuf(&index)?;
+      let compressed =
+        tokio::task::spawn_blocking(move || write_compressed_protobuf(&index)).await??;
       if compressed.len() as u64 > chunked::MAX_INDEX_BYTES {
         anyhow::bail!("compressed artifact index exceeds bounded recovery size");
       }

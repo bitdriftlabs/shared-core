@@ -14,7 +14,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::oneshot;
 
@@ -29,6 +29,10 @@ pub struct TestFileSystem {
   pub fail_deletes: AtomicBool,
   pub fail_next_sync: AtomicBool,
   pub fail_next_rename: AtomicBool,
+  pub list_calls: AtomicUsize,
+  pub delete_calls: AtomicUsize,
+  pub file_sync_calls: AtomicUsize,
+  pub directory_sync_calls: AtomicUsize,
   fail_sync_path: Mutex<Option<PathBuf>>,
   sync_gate: Mutex<Option<(PathBuf, oneshot::Sender<oneshot::Sender<()>>)>>,
 }
@@ -36,6 +40,7 @@ pub struct TestFileSystem {
 #[async_trait]
 impl FileSystem for TestFileSystem {
   async fn list_files(&self, directory: &Path) -> anyhow::Result<Vec<String>> {
+    self.list_calls.fetch_add(1, Ordering::Relaxed);
     let mut files = Vec::new();
 
     walkdir::WalkDir::new(self.directory.path().join(directory))
@@ -98,6 +103,7 @@ impl FileSystem for TestFileSystem {
   }
 
   async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
+    self.delete_calls.fetch_add(1, Ordering::Relaxed);
     let file_path = self.directory.path().join(path);
     if !file_path.exists() {
       return Ok(());
@@ -133,34 +139,23 @@ impl FileSystem for TestFileSystem {
   }
 
   async fn sync_file_and_parent(&self, path: &Path) -> anyhow::Result<()> {
-    let gate = {
-      let mut gate = self.sync_gate.lock();
-      if gate.as_ref().is_some_and(|(target, _)| target == path) {
-        gate.take().map(|(_, gate)| gate)
-      } else {
-        None
-      }
-    };
-    if let Some(gate) = gate {
-      let (resume_tx, resume_rx) = oneshot::channel();
-      gate
-        .send(resume_tx)
-        .map_err(|_| anyhow::anyhow!("sync gate observer was dropped"))?;
-      resume_rx.await?;
+    self.sync_file(path).await?;
+    if let Some(parent) = path.parent() {
+      self.sync_directory(parent).await?;
     }
-    let fail_at_path = {
-      let mut target = self.fail_sync_path.lock();
-      if target.as_deref() == Some(path) {
-        target.take();
-        true
-      } else {
-        false
-      }
-    };
-    if self.fail_next_sync.swap(false, Ordering::Relaxed) || fail_at_path {
-      anyhow::bail!("injected sync failure");
-    }
-    crate::file_system::sync_file_and_parent(&self.directory.path().join(path)).await
+    Ok(())
+  }
+
+  async fn sync_file(&self, path: &Path) -> anyhow::Result<()> {
+    self.file_sync_calls.fetch_add(1, Ordering::Relaxed);
+    self.before_sync(path).await?;
+    Ok(self.open_file(path).await?.sync_all().await?)
+  }
+
+  async fn sync_directory(&self, path: &Path) -> anyhow::Result<()> {
+    self.directory_sync_calls.fetch_add(1, Ordering::Relaxed);
+    self.before_sync(path).await?;
+    Ok(self.open_file(path).await?.sync_all().await?)
   }
 
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
@@ -246,6 +241,14 @@ impl FileSystem for Arc<TestFileSystem> {
     self.as_ref().sync_file_and_parent(path).await
   }
 
+  async fn sync_file(&self, path: &Path) -> anyhow::Result<()> {
+    self.as_ref().sync_file(path).await
+  }
+
+  async fn sync_directory(&self, path: &Path) -> anyhow::Result<()> {
+    self.as_ref().sync_directory(path).await
+  }
+
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
     self.as_ref().remove_dir(path).await
   }
@@ -270,6 +273,10 @@ impl TestFileSystem {
       fail_deletes: AtomicBool::new(false),
       fail_next_sync: AtomicBool::new(false),
       fail_next_rename: AtomicBool::new(false),
+      list_calls: AtomicUsize::new(0),
+      delete_calls: AtomicUsize::new(0),
+      file_sync_calls: AtomicUsize::new(0),
+      directory_sync_calls: AtomicUsize::new(0),
       fail_sync_path: Mutex::new(None),
       sync_gate: Mutex::new(None),
     }
@@ -287,6 +294,37 @@ impl TestFileSystem {
     let (gate_tx, gate_rx) = oneshot::channel();
     assert!(self.sync_gate.lock().replace((path, gate_tx)).is_none());
     gate_rx
+  }
+
+  async fn before_sync(&self, path: &Path) -> anyhow::Result<()> {
+    let gate = {
+      let mut gate = self.sync_gate.lock();
+      if gate.as_ref().is_some_and(|(target, _)| target == path) {
+        gate.take().map(|(_, gate)| gate)
+      } else {
+        None
+      }
+    };
+    if let Some(gate) = gate {
+      let (resume_tx, resume_rx) = oneshot::channel();
+      gate
+        .send(resume_tx)
+        .map_err(|_| anyhow::anyhow!("sync gate observer was dropped"))?;
+      resume_rx.await?;
+    }
+    let fail_at_path = {
+      let mut target = self.fail_sync_path.lock();
+      if target.as_deref() == Some(path) {
+        target.take();
+        true
+      } else {
+        false
+      }
+    };
+    if self.fail_next_sync.swap(false, Ordering::Relaxed) || fail_at_path {
+      anyhow::bail!("injected sync failure");
+    }
+    Ok(())
   }
 
   pub fn files(&self) -> HashMap<String, Vec<u8>> {

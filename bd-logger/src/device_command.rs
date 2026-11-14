@@ -987,6 +987,8 @@ impl WorkflowCommandExecutor {
     // The guard deletes the handler's file when it drops: after the store has taken its copy,
     // or at once if this future is cancelled during admission. The unlink is synchronous, so no
     // cancellable await sits between an admitted attachment and the outcome that references it.
+    // TODO: Move normal unlink off-thread together with a cancellation-safe admitted-outcome
+    // handoff. Adding an await here alone could abandon an admitted attachment without its outcome.
     let _handed_over = handed_over_file(&result);
     workflow_command_outcome(result, &self.attachment_store).await
   }

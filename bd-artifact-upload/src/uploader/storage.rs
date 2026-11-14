@@ -10,7 +10,7 @@
 //! This is deliberately not another index or uploader. A whole-file entry owns one spool file,
 //! except for workflow entries, which only borrow their canonical payload. A chunked entry owns its
 //! descriptor-addressed files and, temporarily, a moved capture source. Defining those paths here
-//! lets startup, periodic orphan reconciliation and retirement use the same ownership rules.
+//! lets startup, failed-cleanup reconciliation and retirement use the same ownership rules.
 //!
 //! Deletion is always downstream of index publication. If publishing/removing a lease fails, the
 //! uploader stays dirty and suppresses orphan deletion until the shared index retry succeeds.
@@ -99,7 +99,7 @@ impl Uploader {
       .chain(self.chunked.entries.iter().map(StoredArtifact::Chunked))
   }
 
-  pub(super) async fn delete_paths(&self, paths: &[PathBuf]) -> anyhow::Result<()> {
+  pub(super) async fn delete_paths(&mut self, paths: &[PathBuf]) -> anyhow::Result<()> {
     // Try every known path rather than stopping at the first unlink failure. A failed unlink is
     // still visible to usage accounting and the next orphan scan; no synthetic credit is released.
     let mut first_error = None;
@@ -109,13 +109,14 @@ impl Uploader {
           "failed to remove artifact spool file {}: {error}",
           path.display()
         );
+        self.cleanup_pending = true;
         first_error.get_or_insert(error);
       }
     }
     first_error.map_or(Ok(()), Err)
   }
 
-  pub(super) async fn clean_sources(&self) {
+  pub(super) async fn clean_sources(&mut self) {
     // Only callers that know the index is durable may release moved capture sources. Payload
     // chunks remain owned until whole-artifact retirement, independently of per-chunk progress.
     let sources: Vec<_> = self
@@ -127,7 +128,16 @@ impl Uploader {
     }
   }
 
-  pub(super) async fn clean_orphan_files(&self) -> anyhow::Result<()> {
+  pub(super) async fn reconcile_files(&mut self) {
+    self.cleanup_pending = false;
+    self.clean_sources().await;
+    if let Err(error) = self.clean_orphan_files().await {
+      self.cleanup_pending = true;
+      log::warn!("failed to remove orphaned artifact payloads; will retry: {error}");
+    }
+  }
+
+  async fn clean_orphan_files(&mut self) -> anyhow::Result<()> {
     let mut retained = HashSet::new();
     for entry in self.stored_artifacts() {
       retained.extend(entry.owned_paths()?);
@@ -154,7 +164,10 @@ impl Uploader {
     // The caller has removed the entry from its in-memory collection. Persist that removal first;
     // on failure keep every byte, and let index_retry + orphan reconciliation finish retirement.
     // This same ordering covers success, intent rejection, eviction and explicit chunk rejection.
-    self.write_index().await?;
+    if let Err(error) = self.write_index().await {
+      self.cleanup_pending = true;
+      return Err(error.into());
+    }
     self.delete_paths(paths).await
   }
 }

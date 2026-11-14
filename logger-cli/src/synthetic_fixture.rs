@@ -11,6 +11,8 @@ mod tests;
 
 use anyhow::{Result, anyhow, bail, ensure};
 use clap::ValueEnum;
+use rand::rngs::StdRng;
+use rand::{RngExt as _, SeedableRng as _};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
@@ -195,7 +197,7 @@ async fn write_fixture(
         .payload(
           options.size_bytes,
           options.pattern,
-          &mut Random(options.seed),
+          &mut StdRng::seed_from_u64(options.seed),
         )
         .await?;
     },
@@ -298,7 +300,7 @@ impl Output<'_> {
     Ok(())
   }
 
-  async fn payload(&mut self, mut size: u64, pattern: Pattern, random: &mut Random) -> Result<()> {
+  async fn payload(&mut self, mut size: u64, pattern: Pattern, random: &mut StdRng) -> Result<()> {
     let mut buffer = vec![0; BUFFER_BYTES];
     while size > 0 {
       let count = usize::try_from(size.min(BUFFER_BYTES as u64))?;
@@ -312,7 +314,7 @@ impl Output<'_> {
   }
 
   async fn padding(&mut self, target: u64, options: &FixtureOptions) -> Result<()> {
-    let mut random = Random(options.seed);
+    let mut random = StdRng::seed_from_u64(options.seed);
     while self.written < target {
       let remaining = target - self.written;
       match remaining {
@@ -457,30 +459,10 @@ fn heap_packet(
       // Unknown per-object bytes carry entropy without inventing bogus IDs, sizes, or references.
       // Objects and their four live edges remain semantic records, rather than a padding-only heap.
       let mut entropy = [0; 128];
-      Random(options.seed.wrapping_add(start + offset)).fill(&mut entropy);
+      StdRng::seed_from_u64(options.seed.wrapping_add(start + offset)).fill(&mut entropy);
       bytes(&mut object, 1000, &entropy);
     }
     bytes(&mut graph, 2, &object);
   }
   heap_envelope(&graph)
-}
-
-//
-// Random
-//
-
-// SplitMix64 specifies portable fixture bytes, including seed zero. Not for cryptographic use. fixfix
-struct Random(u64);
-
-impl Random {
-  fn fill(&mut self, bytes: &mut [u8]) {
-    for chunk in bytes.chunks_mut(8) {
-      self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
-      let mut word = self.0;
-      word = (word ^ (word >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-      word = (word ^ (word >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-      word ^= word >> 31;
-      chunk.copy_from_slice(&word.to_le_bytes()[.. chunk.len()]);
-    }
-  }
 }

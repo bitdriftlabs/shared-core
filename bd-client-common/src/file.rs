@@ -234,7 +234,7 @@ pub async fn async_write_checksummed_data(
   mut writer: impl AsyncWriteExt + Unpin,
 ) -> anyhow::Result<()> {
   let mut crc = crc32fast::Hasher::new();
-  let mut buffer = vec![0; 1024];
+  let mut buffer = vec![0; 64 * 1024];
   // An input error must not be sealed into an apparently valid, truncated CRC envelope.
   loop {
     let bytes_read = reader.read(&mut buffer).await?;
