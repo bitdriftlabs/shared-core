@@ -8,9 +8,12 @@
 use crate::cli::{ColorMode, Command, EnableFlag, FieldPairs, Options};
 use clap::Parser;
 use logger_cli::service::RemoteClient;
+use logger_cli::synthetic_artifact::ArtifactInput;
+use logger_cli::synthetic_fixture::{FixtureOptions, generate};
 use std::env;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use tarpc::tokio_serde::formats::Json;
 use tarpc::{client, context};
 use tracing_subscriber::layer::SubscriberExt;
@@ -48,11 +51,55 @@ async fn main() -> anyhow::Result<()> {
   let args = crate::cli::Options::parse();
   init_tracing(args.log_color);
 
-  let sdk_directory = resolve_sdk_directory(&args)?;
-  std::fs::create_dir_all(&sdk_directory)?;
-
   match args.command {
-    Command::EnqueueArtifacts(cmd) => {
+    Command::GenerateAttachment(ref cmd) => {
+      let manifest = generate(
+        &cmd.output,
+        &FixtureOptions {
+          size_bytes: cmd.size_bytes,
+          kind: cmd.kind,
+          pattern: cmd.pattern,
+          seed: cmd.seed,
+        },
+      )
+      .await?;
+      println!("{}", serde_json::to_string(&manifest)?);
+    },
+    Command::SyntheticReports => {
+      with_logger(&args, async |logger| {
+        let reports = logger
+          .synthetic_reports(context::current())
+          .await?
+          .map_err(|error| anyhow::anyhow!(error))?;
+        println!("{}", serde_json::to_string(&reports)?);
+        Ok(())
+      })
+      .await?;
+    },
+    Command::EnqueueSyntheticProfile(ref cmd) => {
+      with_logger(&args, async |logger| {
+        let mut ctx = context::current();
+        ctx.deadline = Instant::now() + Duration::from_secs(300);
+        let submitted = logger
+          .enqueue_synthetic_profile(
+            ctx,
+            ArtifactInput {
+              file: cmd.file.clone(),
+              source: cmd.source,
+              offset_bytes: cmd.offset_bytes,
+              content_type: cmd.content_type.clone(),
+            },
+            cmd.parent.clone(),
+          )
+          .await?
+          .map_err(|error| anyhow::anyhow!(error))?;
+        println!("{}", serde_json::to_string(&submitted)?);
+        Ok(())
+      })
+      .await?;
+    },
+    Command::EnqueueArtifacts(ref cmd) => {
+      let sdk_directory = resolve_sdk_directory(&args)?;
       let report_dir = &sdk_directory.join("reports/new");
       std::fs::create_dir_all(report_dir)?;
       for path in &cmd.path {
@@ -64,10 +111,11 @@ async fn main() -> anyhow::Result<()> {
       }
     },
     Command::EnqueueFakeCrash(ref cmd) => {
+      let sdk_directory = resolve_sdk_directory(&args)?;
       let path = fake_crash::write_pending_report(&sdk_directory, cmd)?;
       eprintln!("queued fake crash report: {}", path.display());
 
-      if cmd.upload {
+      if cmd.upload && !cmd.current_session {
         with_logger(&args, async |logger| {
           logger.process_crash_reports(context::current()).await?;
           Ok(())
@@ -76,8 +124,11 @@ async fn main() -> anyhow::Result<()> {
       }
     },
     Command::Start(ref cmd) => {
+      let sdk_directory = resolve_sdk_directory(&args)?;
       if cmd.clean_data_dir {
         reset_sdk_directory(&sdk_directory)?;
+      } else {
+        std::fs::create_dir_all(&sdk_directory)?;
       }
 
       stats_observation::configure(&args, &sdk_directory)?;

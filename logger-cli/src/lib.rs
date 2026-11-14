@@ -14,4 +14,6 @@ pub mod logger;
 pub mod metadata;
 pub mod service;
 pub mod storage;
+pub mod synthetic_artifact;
+pub mod synthetic_fixture;
 pub mod types;

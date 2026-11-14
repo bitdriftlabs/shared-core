@@ -7,6 +7,8 @@
 
 //! Shared conventions for client artifact uploads.
 
+pub use bd_metadata::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
+
 /// Artifact type ID used for crash reports uploaded by the client.
 pub const CLIENT_REPORT_ARTIFACT_TYPE_ID: &str = "client_report";
 

@@ -5,13 +5,14 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{UploadClient, Uploader};
+use super::{TestHooks, UploadClient, Uploader};
 use crate::uploader::{
   ARTIFACT_UPLOAD_DIRECTORY,
   Client,
-  CommandFile,
   EnqueueError,
+  NewUpload,
   PersistenceAck,
+  PreparationMode,
   REPORT_INDEX_FILE,
   SnappedFeatureFlag,
   UploadSource,
@@ -19,20 +20,24 @@ use crate::uploader::{
 };
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
+use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_log_filter::ScrubRules;
-use bd_proto::protos::client::api::ArtifactPayloadEncoding;
+use bd_proto::protos::client::api::{
+  ArtifactPayloadEncoding,
+  UploadArtifactRequest,
+  UploadArtifactResponse,
+};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::filter::scrub::ScrubConfiguration;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data};
-use bd_runtime::runtime::{FeatureFlag as _, artifact_upload, attachment};
+use bd_runtime::runtime::{FeatureFlag as _, artifact_upload, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
 use bd_test_helpers::filter::scrub_rule;
@@ -47,7 +52,7 @@ use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use time::OffsetDateTime;
 use time::ext::NumericalStdDuration;
 use time::macros::datetime;
@@ -56,66 +61,127 @@ use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use uuid::Uuid;
 
-#[path = "./profile_upload_test.rs"]
+#[path = "../profile_upload_test.rs"]
 mod profile_tests;
 
 fn no_scrub_rules() -> watch::Receiver<Arc<ScrubRules>> {
   watch::channel(Arc::new(ScrubRules::default())).1
 }
 
-pub struct TestHooks {
-  pub upload_complete_tx: tokio::sync::mpsc::Sender<String>,
-  pub entry_received_tx: tokio::sync::mpsc::Sender<String>,
-  pub persistence_ack_tx: Option<mpsc::Sender<oneshot::Sender<()>>>,
+// The uploader is serial, so lifecycle callbacks describe one staging attempt at a time. Keep
+// fixture notification policy here rather than adding test-only phases to the ownership ledger.
+struct UploadTestHooks {
+  chunk_transfer_gate: Option<watch::Receiver<bool>>,
+  initialized_tx: Option<mpsc::Sender<()>>,
+  upload_complete_tx: mpsc::Sender<String>,
+  entry_received_tx: mpsc::Sender<String>,
+  persistence_ack_tx: Option<mpsc::Sender<oneshot::Sender<()>>>,
+  preparing_whole_file: AtomicBool,
+  notify_preparation_error: AtomicBool,
 }
 
-impl Uploader {
-  pub(super) async fn pause_after_persistence_ack_for_test(&self) {
-    if let Some(sender) = self
-      .test_hooks
-      .as_ref()
-      .and_then(|hooks| hooks.persistence_ack_tx.as_ref())
-    {
+#[async_trait::async_trait]
+impl TestHooks for UploadTestHooks {
+  async fn before_chunk_transfer(&self) {
+    if let Some(mut gate) = self.chunk_transfer_gate.clone() {
+      gate.wait_for(|enabled| *enabled).await.unwrap();
+    }
+  }
+  async fn initialized(&self) {
+    if let Some(sender) = &self.initialized_tx {
+      sender.send(()).await.unwrap();
+    }
+  }
+
+  fn whole_file_preparation_started(&self, source: &UploadSource, request: &UploadArtifactRequest) {
+    self.preparing_whole_file.store(true, Ordering::Relaxed);
+    self.notify_preparation_error.store(
+      !matches!(source, UploadSource::Bytes(_)) || super::is_compressed_attachment(request),
+      Ordering::Relaxed,
+    );
+  }
+
+  fn payload_prepared(&self) {
+    // File/command preparation errors notify the fixture, but index failures must not look like
+    // accepted entries. Successful whole-file commits always notify, including byte reports.
+    self
+      .notify_preparation_error
+      .store(false, Ordering::Relaxed);
+  }
+
+  async fn staging_completed(&self, id: &str, success: bool) {
+    let preparing_whole_file = self.preparing_whole_file.swap(false, Ordering::Relaxed);
+    let notify_preparation_error = self.notify_preparation_error.swap(false, Ordering::Relaxed);
+    if preparing_whole_file && (success || notify_preparation_error) {
+      self.entry_received_tx.send(id.to_owned()).await.unwrap();
+    }
+    if !success && let Some(sender) = &self.persistence_ack_tx {
       let (resume_tx, resume_rx) = oneshot::channel();
       sender.send(resume_tx).await.unwrap();
       resume_rx.await.unwrap();
     }
   }
+
+  async fn upload_complete(&self, id: &str) {
+    self.upload_complete_tx.send(id.to_owned()).await.unwrap();
+  }
 }
 
-struct Setup {
-  upload_complete_rx: tokio::sync::mpsc::Receiver<String>,
-  entry_received_rx: tokio::sync::mpsc::Receiver<String>,
-  client: UploadClient,
-  filesystem: Arc<TestFileSystem>,
-  data_upload_rx: tokio::sync::mpsc::Receiver<DataUpload>,
+pub(super) struct Setup {
+  pub(super) chunk_transfer_enabled: watch::Sender<bool>,
+  pub(super) upload_complete_rx: tokio::sync::mpsc::Receiver<String>,
+  pub(super) entry_received_rx: tokio::sync::mpsc::Receiver<String>,
+  pub(super) client: UploadClient,
+  pub(super) filesystem: Arc<TestFileSystem>,
+  pub(super) data_upload_rx: tokio::sync::mpsc::Receiver<DataUpload>,
   data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
   shutdown: bd_shutdown::ComponentShutdownTrigger,
   task_handle: JoinHandle<()>,
-  runtime: TestConfigLoader,
+  pub(super) runtime: TestConfigLoader,
+  pub(super) time_provider: Arc<TestTimeProvider>,
   scrub_rules_tx: watch::Sender<Arc<ScrubRules>>,
 
   tmpdir: tempfile::TempDir,
 }
 
 impl Setup {
-  async fn shutdown(self) {
+  // Tests that rewrite persisted state must stop its owner first: periodic reconciliation now
+  // shares startup's inventory and can correctly remove any unindexed whole-file or chunk payload.
+  pub(super) fn abort_for_recovery(&self) {
+    self.task_handle.abort();
+  }
+
+  pub(super) async fn shutdown(self) {
     self.shutdown.shutdown().await;
     self.task_handle.await.unwrap();
   }
 
-  async fn reinitialize(self) -> Self {
-    self.shutdown.shutdown().await;
-    self.task_handle.await.unwrap();
+  pub(super) async fn reinitialize(self) -> Self {
+    self.restart(false).await
+  }
+
+  pub(super) async fn crash_and_reinitialize(self) -> Self {
+    self.restart(true).await
+  }
+
+  async fn restart(self, crash: bool) -> Self {
+    if crash {
+      self.task_handle.abort();
+      assert!(self.task_handle.await.unwrap_err().is_cancelled());
+    } else {
+      self.shutdown.shutdown().await;
+      self.task_handle.await.unwrap();
+    }
 
     let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
 
     let runtime = self.runtime;
+    let time_provider = self.time_provider;
 
     let (mut uploader, client) = super::Uploader::new(
       self.filesystem.clone(),
       self.data_upload_tx.clone(),
-      Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+      time_provider.clone(),
       &runtime,
       &Collector::default(),
       [("app_version".to_string(), "upgraded".to_string())].into(),
@@ -125,16 +191,23 @@ impl Setup {
 
     let (upload_complete_tx, upload_complete_rx) = tokio::sync::mpsc::channel(1);
     let (entry_received_tx, entry_received_rx) = tokio::sync::mpsc::channel(1);
-    uploader.test_hooks = Some(TestHooks {
+    let (initialized_tx, mut initialized_rx) = mpsc::channel(1);
+    uploader.test_hooks = Some(Arc::new(UploadTestHooks {
+      chunk_transfer_gate: Some(self.chunk_transfer_enabled.subscribe()),
+      initialized_tx: Some(initialized_tx),
       upload_complete_tx,
       entry_received_tx,
       persistence_ack_tx: None,
-    });
+      preparing_whole_file: AtomicBool::new(false),
+      notify_preparation_error: AtomicBool::new(false),
+    }));
 
     let task_handle = tokio::spawn(uploader.run());
+    initialized_rx.recv().await.unwrap();
 
     Self {
       upload_complete_rx,
+      chunk_transfer_enabled: self.chunk_transfer_enabled,
       entry_received_rx,
       client,
       filesystem: self.filesystem,
@@ -143,34 +216,37 @@ impl Setup {
       shutdown,
       task_handle,
       runtime,
+      time_provider,
       scrub_rules_tx: self.scrub_rules_tx,
       tmpdir: self.tmpdir,
     }
   }
 
-  async fn new(max_entries: u32) -> Self {
+  pub(super) async fn new() -> Self {
+    Self::with_buffer(1024 * 1024).await
+  }
+
+  pub(super) async fn with_buffer(buffer_bytes: u32) -> Self {
+    let (chunk_transfer_enabled, chunk_transfer_gate) = watch::channel(false);
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
     let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
 
     let filesystem = Arc::new(TestFileSystem::new());
     let config_loader = TestConfigLoader::new().await;
-    let (scrub_rules_tx, _) = watch::channel(Arc::new(ScrubRules::default()));
-
     config_loader
-      .update_snapshot(bd_test_helpers::runtime::make_update(
-        vec![(
-          artifact_upload::MaxPendingEntries::path(),
-          ValueKind::Int(max_entries),
-        )],
-        "1".to_string(),
-      ))
+      .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+        artifact_upload::BufferByteLimit::path(),
+        ValueKind::Int(buffer_bytes),
+      )]))
       .await
       .unwrap();
+    let (scrub_rules_tx, _) = watch::channel(Arc::new(ScrubRules::default()));
 
+    let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
     let (mut uploader, client) = super::Uploader::new(
       filesystem.clone(),
       data_upload_tx.clone(),
-      Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+      time_provider.clone(),
       &config_loader,
       &Collector::default(),
       command_metadata(),
@@ -181,16 +257,21 @@ impl Setup {
     let (upload_complete_tx, upload_complete_rx) = tokio::sync::mpsc::channel(1);
     let (entry_received_tx, entry_received_rx) = tokio::sync::mpsc::channel(1);
 
-    uploader.test_hooks = Some(TestHooks {
+    uploader.test_hooks = Some(Arc::new(UploadTestHooks {
+      initialized_tx: None,
+      chunk_transfer_gate: Some(chunk_transfer_gate),
       upload_complete_tx,
       entry_received_tx,
       persistence_ack_tx: None,
-    });
+      preparing_whole_file: AtomicBool::new(false),
+      notify_preparation_error: AtomicBool::new(false),
+    }));
 
     let task_handle = tokio::spawn(uploader.run());
 
     Self {
       upload_complete_rx,
+      chunk_transfer_enabled,
       entry_received_rx,
       client,
       filesystem,
@@ -199,6 +280,7 @@ impl Setup {
       shutdown,
       task_handle,
       runtime: config_loader,
+      time_provider,
       scrub_rules_tx,
       tmpdir: tempfile::tempdir().unwrap(),
     }
@@ -229,7 +311,7 @@ async fn write_workflow_payload(setup: &Setup, id: Uuid) -> PathBuf {
   source
 }
 
-async fn wait_for_queue_revision(revision: &mut watch::Receiver<u64>, previous: u64) {
+pub(super) async fn wait_for_queue_revision(revision: &mut watch::Receiver<u64>, previous: u64) {
   let _ = timeout(
     5.std_seconds(),
     revision.wait_for(|revision| *revision > previous),
@@ -241,7 +323,7 @@ async fn wait_for_queue_revision(revision: &mut watch::Receiver<u64>, previous: 
 
 #[tokio::test(start_paused = true)]
 async fn initialization_publishes_queue_revision_even_without_queue_files() {
-  let setup = Setup::new(0).await;
+  let setup = Setup::new().await;
   let mut revision = setup.client.upload_queue_revision();
   wait_for_queue_revision(&mut revision, 0).await;
   assert!(
@@ -254,8 +336,100 @@ async fn initialization_publishes_queue_revision_even_without_queue_files() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn healthy_spool_does_not_poll_and_failed_cleanup_remains_retryable() {
+  let setup = Setup::new().await;
+  let mut revision = setup.client.upload_queue_revision();
+  wait_for_queue_revision(&mut revision, 0).await;
+  setup.task_handle.abort();
+  assert!(setup.task_handle.await.unwrap_err().is_cancelled());
+
+  let shutdown = bd_shutdown::ComponentShutdownTrigger::default();
+  let (mut uploader, _client) = Uploader::new(
+    setup.filesystem.clone(),
+    setup.data_upload_tx.clone(),
+    setup.time_provider.clone(),
+    &setup.runtime,
+    &Collector::default(),
+    command_metadata(),
+    setup.scrub_rules_tx.subscribe(),
+    shutdown.make_shutdown(),
+  );
+  uploader.initialize().await.unwrap();
+  for backlog in [false, true] {
+    if backlog {
+      uploader
+        .track_upload(NewUpload::new(
+          UploadSource::Bytes(b"offline".to_vec()),
+          UploadArtifactRequest {
+            artifact_id: Uuid::new_v4().to_string(),
+            command_id: Some(Uuid::new_v4().to_string()),
+            type_id: "device_command_attachment".into(),
+            session_id: "session".into(),
+            time: OffsetDateTime::now_utc().into_proto(),
+            ..Default::default()
+          },
+          PreparationMode::Chunked,
+        ))
+        .await;
+      assert_eq!(uploader.chunked.entries.len(), 1);
+    }
+    let before = (
+      setup.filesystem.list_calls.load(Ordering::Relaxed),
+      setup.filesystem.delete_calls.load(Ordering::Relaxed),
+    );
+    // Poll directly so a due timer cannot escape the assertion through shutdown or scheduling.
+    let mut run = Box::pin(uploader.run_loop());
+    assert!(futures_util::poll!(run.as_mut()).is_pending());
+    tokio::time::advance(std::time::Duration::from_secs(60)).await;
+    assert!(futures_util::poll!(run.as_mut()).is_pending());
+    assert_eq!(
+      (
+        setup.filesystem.list_calls.load(Ordering::Relaxed),
+        setup.filesystem.delete_calls.load(Ordering::Relaxed),
+      ),
+      before
+    );
+    drop(run);
+  }
+
+  let orphan = ARTIFACT_UPLOAD_DIRECTORY.join("unpublished");
+  setup
+    .filesystem
+    .write_file(&orphan, b"orphan")
+    .await
+    .unwrap();
+  setup.filesystem.fail_deletes.store(true, Ordering::Relaxed);
+  uploader.reconcile_files().await;
+  assert!(uploader.cleanup_pending);
+  assert!(setup.filesystem.exists(&orphan).await.unwrap());
+  let mut run = Box::pin(uploader.run_loop());
+  assert!(futures_util::poll!(run.as_mut()).is_pending());
+  let attempts = setup.filesystem.list_calls.load(Ordering::Relaxed);
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  assert!(futures_util::poll!(run.as_mut()).is_pending());
+  assert_eq!(
+    setup.filesystem.list_calls.load(Ordering::Relaxed),
+    attempts
+  );
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  assert!(futures_util::poll!(run.as_mut()).is_pending());
+  assert_eq!(
+    setup.filesystem.list_calls.load(Ordering::Relaxed),
+    attempts + 1
+  );
+  drop(run);
+  setup
+    .filesystem
+    .fail_deletes
+    .store(false, Ordering::Relaxed);
+  uploader.reconcile_files().await;
+  assert!(!uploader.cleanup_pending);
+  assert!(!setup.filesystem.exists(&orphan).await.unwrap());
+}
+
+#[tokio::test(start_paused = true)]
 async fn index_sync_failure_is_reconciled_without_reenqueue() {
-  let setup = Setup::new(1).await;
+  let setup = Setup::new().await;
   let id = Uuid::new_v4();
   let source = write_workflow_payload(&setup, id).await;
   let index_path = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
@@ -291,11 +465,11 @@ async fn index_sync_failure_is_reconciled_without_reenqueue() {
   let previous = *revision.borrow();
   setup.filesystem.disk_full.store(false, Ordering::Relaxed);
   wait_for_queue_revision(&mut revision, previous).await;
-  assert!(
+  assert_eq!(
     Uploader::pending_workflow_attachments(setup.filesystem.directory())
       .await
-      .unwrap()
-      .is_empty()
+      .unwrap(),
+    [id].into()
   );
   assert_eq!(
     setup.filesystem.read_file(&source).await.unwrap(),
@@ -308,7 +482,7 @@ async fn index_sync_failure_is_reconciled_without_reenqueue() {
 async fn failed_workflow_unpin_is_retried_after_success_or_rejection() {
   for (upload_success, sync_failure) in [(true, false), (false, false), (true, true), (false, true)]
   {
-    let mut setup = Setup::new(1).await;
+    let mut setup = Setup::new().await;
     let id = Uuid::new_v4();
     let source = write_workflow_payload(&setup, id).await;
     let mut revision = setup.client.upload_queue_revision();
@@ -354,9 +528,9 @@ async fn failed_workflow_unpin_is_retried_after_success_or_rejection() {
       fail_index();
       upload
         .response_tx
-        .send(UploadResponse {
-          uuid: upload.uuid,
-          success: true,
+        .send(UploadArtifactResponse {
+          upload_uuid: upload.uuid,
+          ..Default::default()
         })
         .unwrap();
     } else {
@@ -434,7 +608,7 @@ fn command_state_metadata() -> HashMap<String, Data> {
 
 #[tokio::test]
 async fn basic_flow() {
-  let mut setup = Setup::new(10).await;
+  let mut setup = Setup::new().await;
 
   let timestamp = datetime!(2023-10-01 12:00:00 UTC);
   let id = setup
@@ -479,7 +653,10 @@ async fn basic_flow() {
           ..Default::default()
       })].into());
 
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
+      }).unwrap();
   });
 
   setup.upload_complete_rx.recv().await.unwrap();
@@ -496,7 +673,7 @@ async fn basic_flow() {
 
 #[tokio::test]
 async fn metadata_is_scrubbed_with_the_rules_current_when_each_request_is_built() {
-  let mut setup = Setup::new(10).await;
+  let mut setup = Setup::new().await;
 
   // With no rules applied yet, the intent is sent at once with the raw metadata.
   let id = setup
@@ -558,7 +735,10 @@ async fn metadata_is_scrubbed_with_the_rules_current_when_each_request_is_built(
       ("email", "a@<redacted>"),
       ("keep", "value"),
     ]));
-    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true }).unwrap();
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
+    }).unwrap();
   });
 
   setup.upload_complete_rx.recv().await.unwrap();
@@ -652,7 +832,7 @@ async fn queued_admission_owns_the_source_lease_until_processed() {
 
 #[tokio::test]
 async fn retained_source_uses_one_payload_and_the_existing_upload_index() {
-  let setup = Setup::new(10).await;
+  let setup = Setup::new().await;
   let artifact_id = Uuid::new_v4();
   let source_path = format!("workflow-attachments/{artifact_id}.payload");
   setup
@@ -699,7 +879,7 @@ async fn retained_source_uses_one_payload_and_the_existing_upload_index() {
 
 #[tokio::test]
 async fn retained_source_can_retry_after_index_persistence_failure() {
-  let setup = Setup::new(2).await;
+  let setup = Setup::new().await;
   let id = Uuid::new_v4();
   let source = PathBuf::from(format!("workflow-attachments/{id}.payload"));
   setup
@@ -764,7 +944,7 @@ async fn retained_source_can_retry_after_index_persistence_failure() {
 
 #[tokio::test]
 async fn retained_source_can_retry_after_sync_failure() {
-  let mut setup = Setup::new(10).await;
+  let mut setup = Setup::new().await;
   let artifact_id = Uuid::new_v4();
   let source_path = format!("workflow-attachments/{artifact_id}.payload");
   setup
@@ -834,7 +1014,7 @@ fn missing_retained_source_is_not_retryable() {
 
 #[tokio::test]
 async fn feature_flags() {
-  let mut setup = Setup::new(10).await;
+  let mut setup = Setup::new().await;
 
   let timestamp = datetime!(2023-10-01 12:00:00 UTC);
   let id = setup
@@ -895,7 +1075,10 @@ async fn feature_flags() {
           },
       ]);
 
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
+      }).unwrap();
   });
 
   setup.upload_complete_rx.recv().await.unwrap();
@@ -911,114 +1094,8 @@ async fn feature_flags() {
 }
 
 #[tokio::test]
-async fn pending_upload_limit() {
-  let mut setup = Setup::new(2).await;
-
-  let id1 = setup
-    .client
-    .enqueue_upload(
-      UploadSource::File(setup.make_file(b"1")),
-      "client_report".to_string(),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
-      None,
-      None,
-    )
-    .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id1.to_string()
-  );
-
-  let id2 = setup
-    .client
-    .enqueue_upload(
-      UploadSource::File(setup.make_file(b"2")),
-      "client_report".to_string(),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
-      None,
-      None,
-    )
-    .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id2.to_string()
-  );
-  let id3 = setup
-    .client
-    .enqueue_upload(
-      UploadSource::File(setup.make_file(b"3")),
-      "client_report".to_string(),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
-      None,
-      None,
-    )
-    .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id3.to_string()
-  );
-
-  // We still ended up sending one intent upload but since we gave up on the upload the response_tx
-  // will have been closed.
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-      assert_eq!(intent.payload.artifact_id, id1.to_string());
-      assert_eq!(intent.payload.type_id, "client_report");
-
-      assert!(intent.response_tx.is_closed());
-  });
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-      assert_eq!(intent.payload.artifact_id, id2.to_string());
-      assert_eq!(intent.payload.type_id, "client_report");
-
-      intent.response_tx.send(IntentResponse {
-          uuid: intent.uuid,
-          decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
-  });
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-      assert_eq!(upload.payload.artifact_id, id2.to_string());
-      assert_eq!(upload.payload.contents, b"2");
-      assert_eq!(upload.payload.type_id, "client_report");
-
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
-  });
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-      assert_eq!(intent.payload.artifact_id, id3.to_string());
-      assert_eq!(intent.payload.type_id, "client_report");
-
-      intent.response_tx.send(IntentResponse {
-          uuid: intent.uuid,
-          decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
-  });
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-      assert_eq!(upload.payload.artifact_id, id3.to_string());
-      assert_eq!(upload.payload.contents, b"3");
-      assert_eq!(upload.payload.type_id, "client_report");
-
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
-  });
-}
-
-#[tokio::test]
 async fn inconsistent_state_missing_file() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   let id1 = setup
     .client
     .enqueue_upload(
@@ -1080,7 +1157,7 @@ async fn inconsistent_state_missing_file() {
 
 #[tokio::test]
 async fn inconsistent_state_extra_file() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   let id1 = setup
     .client
     .enqueue_upload(
@@ -1131,7 +1208,10 @@ async fn inconsistent_state_extra_file() {
       assert_eq!(upload.payload.artifact_id, id1.to_string());
       assert_eq!(upload.payload.type_id, "client_report");
 
-      upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true}).unwrap();
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
+      }).unwrap();
   });
   setup.upload_complete_rx.recv().await.unwrap();
 
@@ -1153,7 +1233,7 @@ async fn inconsistent_state_extra_file() {
 
 #[tokio::test]
 async fn disk_persistence() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   let id1 = setup
     .client
     .enqueue_upload(
@@ -1202,7 +1282,8 @@ async fn disk_persistence() {
 
 #[tokio::test]
 async fn command_upload_persistence_reports_original_size() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
+  let command_id = Uuid::new_v4().to_string();
   let contents = vec![42; 1000];
   let mut file = setup.make_file(&[b"prefix:".as_slice(), contents.as_slice()].concat());
   file.seek(SeekFrom::Start(7)).unwrap();
@@ -1229,7 +1310,7 @@ async fn command_upload_persistence_reports_original_size() {
         None,
         "session_id".to_string(),
         vec![],
-        "command_id".to_string(),
+        command_id.clone(),
         None,
         Some(persisted_tx),
         Some(completion_tx),
@@ -1260,9 +1341,9 @@ async fn command_upload_persistence_reports_original_size() {
       let mut decoded = Vec::new();
       ZlibDecoder::new(upload.payload.contents.as_slice()).read_to_end(&mut decoded).unwrap();
       assert_eq!(decoded, contents[..usize::try_from(expected_size_bytes).unwrap()]);
-      upload.response_tx.send(UploadResponse {
-        uuid: upload.uuid,
-        success: true,
+      upload.response_tx.send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
       }).unwrap();
     });
     completion_rx.await.unwrap().unwrap();
@@ -1276,7 +1357,7 @@ async fn command_upload_persistence_reports_original_size() {
 
 #[tokio::test]
 async fn command_upload_preserves_identity_and_content_type_after_restart() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   let artifact_id = setup
     .client
     .enqueue_command_upload(
@@ -1321,7 +1402,7 @@ async fn command_upload_preserves_identity_and_content_type_after_restart() {
 
 #[tokio::test]
 async fn workflow_upload_preserves_content_type_after_restart() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   let artifact_id = Uuid::new_v4();
   let source = PathBuf::from(format!("workflow-attachments/{artifact_id}.payload"));
   let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
@@ -1382,7 +1463,10 @@ async fn workflow_upload_preserves_content_type_after_restart() {
     let mut decoded = Vec::new();
     ZlibDecoder::new(upload.payload.contents.as_slice()).read_to_end(&mut decoded).unwrap();
     assert_eq!(decoded, b"attachment");
-    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: true }).unwrap();
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
+    }).unwrap();
   });
   assert_eq!(
     setup.upload_complete_rx.recv().await.unwrap(),
@@ -1401,7 +1485,7 @@ async fn workflow_upload_preserves_content_type_after_restart() {
 
 #[tokio::test]
 async fn inconsistent_state_missing_index() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   let id1 = setup
     .client
     .enqueue_upload(
@@ -1473,7 +1557,7 @@ async fn inconsistent_state_missing_index() {
 
 #[tokio::test]
 async fn new_entry_disk_full() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   setup.filesystem.disk_full.store(true, Ordering::SeqCst);
 
   let id1 = setup
@@ -1505,7 +1589,7 @@ async fn new_entry_disk_full() {
 
 #[tokio::test]
 async fn new_entry_disk_full_after_received() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
 
   let id1 = setup
     .client
@@ -1548,7 +1632,7 @@ async fn new_entry_disk_full_after_received() {
 
 #[tokio::test]
 async fn intent_retries() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
 
   let id1 = setup
     .client
@@ -1585,7 +1669,7 @@ async fn intent_retries() {
 
 #[tokio::test]
 async fn retries_scrub_metadata_with_the_rules_current_at_each_attempt() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   let make_rules = |rules| {
     let (rules, failures) = ScrubRules::new(ScrubConfiguration {
       rules,
@@ -1639,7 +1723,7 @@ async fn retries_scrub_metadata_with_the_rules_current_at_each_attempt() {
       scrub_rule(remove_field!("secret")),
       scrub_rule(remove_field!("keep")),
     ]));
-    upload.response_tx.send(UploadResponse { uuid: upload.uuid, success: false }).unwrap();
+    upload.response_tx.send(UploadArtifactResponse { upload_uuid: upload.uuid, error: "temporary failure".into(), ..Default::default() }).unwrap();
   });
 
   let upload = setup.data_upload_rx.recv().await.unwrap();
@@ -1650,7 +1734,7 @@ async fn retries_scrub_metadata_with_the_rules_current_at_each_attempt() {
 
 #[tokio::test]
 async fn intent_drop() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
 
   let id1 = setup
     .client
@@ -1689,7 +1773,7 @@ async fn intent_drop() {
 
 #[tokio::test]
 async fn command_upload_intent_drop_completes_with_failure() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
   let id = setup
     .client
@@ -1723,11 +1807,15 @@ async fn command_upload_intent_drop_completes_with_failure() {
 
 #[tokio::test]
 async fn command_upload_rejects_oversized_file_and_path_sources_before_persisting() {
-  let mut setup = Setup::new(1).await;
+  let setup = Setup::new().await;
+  let command_id = Uuid::new_v4().to_string();
   setup
     .runtime
     .update_snapshot(bd_test_helpers::runtime::make_update(
-      vec![(attachment::MaxBytes::path(), ValueKind::Int(3))],
+      vec![(
+        chunked_artifact_upload::MaxLogicalBytes::path(),
+        ValueKind::Int(3),
+      )],
       "attachment limit".to_string(),
     ))
     .await
@@ -1742,7 +1830,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      command_id.clone(),
       None,
       Some(file_persisted_tx),
       None,
@@ -1751,10 +1839,6 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
   assert_matches!(
     file_persisted_rx.await.unwrap(),
     Err(EnqueueError::Other(_))
-  );
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    file_id.to_string()
   );
   assert!(
     !setup
@@ -1773,7 +1857,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      command_id.clone(),
       None,
       Some(bytes_persisted_tx),
       None,
@@ -1782,10 +1866,6 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
   assert_matches!(
     bytes_persisted_rx.await.unwrap(),
     Err(EnqueueError::Other(_))
-  );
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    bytes_id.to_string()
   );
   assert!(
     !setup
@@ -1806,7 +1886,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      command_id,
       None,
       Some(path_persisted_tx),
       None,
@@ -1815,10 +1895,6 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
   assert_matches!(
     path_persisted_rx.await.unwrap(),
     Err(EnqueueError::Other(_))
-  );
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    path_id.to_string()
   );
   assert!(setup.filesystem.exists(path).await.unwrap());
   assert!(
@@ -1832,7 +1908,7 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
 
 #[tokio::test]
 async fn command_upload_negative_ack_retries_without_stopping_uploader() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
   let id = setup
     .client
@@ -1862,18 +1938,19 @@ async fn command_upload_negative_ack_retries_without_stopping_uploader() {
   });
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: false,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      error: "temporary failure".into(),
+      ..Default::default()
     }).unwrap();
   });
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
     assert_eq!(upload.payload.artifact_id, id.to_string());
     assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     }).unwrap();
   });
   completion_rx.await.unwrap().unwrap();
@@ -1898,56 +1975,8 @@ async fn command_upload_negative_ack_retries_without_stopping_uploader() {
 }
 
 #[tokio::test]
-async fn evicted_command_upload_completes_with_failure() {
-  let mut setup = Setup::new(1).await;
-  let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
-  let id = setup
-    .client
-    .enqueue_command_upload(
-      UploadSource::File(setup.make_file(b"screenshot")),
-      "screenshot".to_string(),
-      None,
-      "session_id".to_string(),
-      vec![],
-      "command_id".to_string(),
-      None,
-      None,
-      Some(completion_tx),
-    )
-    .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id.to_string()
-  );
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    assert_eq!(intent.payload.artifact_id, id.to_string());
-  });
-
-  let follow_up_id = setup
-    .client
-    .enqueue_upload(
-      UploadSource::File(setup.make_file(b"report")),
-      "client_report".to_string(),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
-      None,
-      None,
-    )
-    .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    follow_up_id.to_string()
-  );
-
-  assert_matches!(completion_rx.await.unwrap(), Err(error) if error.contains("evicted"));
-}
-
-#[tokio::test]
 async fn corrupt_command_upload_discard_completes_without_retry() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
   let id = setup
     .client
@@ -1987,9 +2016,9 @@ async fn corrupt_command_upload_discard_completes_without_retry() {
       upload.payload.payload_encoding.enum_value_or_default(),
       ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
     );
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     }).unwrap();
   });
   completion_rx.await.unwrap().unwrap();
@@ -1997,7 +2026,7 @@ async fn corrupt_command_upload_discard_completes_without_retry() {
 
 #[tokio::test]
 async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
   let id = setup
     .client
@@ -2054,9 +2083,9 @@ async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
       .read_to_end(&mut contents)
       .unwrap();
     assert_eq!(contents, b"screenshot");
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     }).unwrap();
   });
   completion_rx.await.unwrap().unwrap();
@@ -2064,7 +2093,7 @@ async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
 
 #[tokio::test]
 async fn upload_retries() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
 
   let id1 = setup
     .client
@@ -2111,7 +2140,7 @@ async fn upload_retries() {
 
 #[tokio::test]
 async fn enqueue_upload_acknowledges_after_disk_persist() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
 
   let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
   let id = setup
@@ -2137,7 +2166,7 @@ async fn enqueue_upload_acknowledges_after_disk_persist() {
 
 #[tokio::test]
 async fn rejected_command_upload_deletes_owned_source() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   setup.task_handle.abort();
   assert!((&mut setup.task_handle).await.unwrap_err().is_cancelled());
   std::fs::create_dir_all(".tmp").unwrap();
@@ -2163,7 +2192,7 @@ async fn rejected_command_upload_deletes_owned_source() {
 
 #[tokio::test]
 async fn command_source_is_consumed_before_persistence_ack() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   std::fs::create_dir_all(".tmp").unwrap();
   let directory = tempfile::TempDir::with_prefix_in("command-source", ".tmp").unwrap();
   let source = directory.path().canonicalize().unwrap().join("payload");
@@ -2219,14 +2248,14 @@ async fn assert_command_source_consumed_before_error_ack(failure: PersistenceFai
     no_scrub_rules(),
     shutdown.make_shutdown(),
   );
-  uploader.initialize().await;
+  uploader.initialize().await.unwrap();
   let id = Uuid::new_v4();
   match failure {
     PersistenceFailure::Capacity => {
       runtime
         .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
-          artifact_upload::MaxPendingEntries::path(),
-          ValueKind::Int(0),
+          chunked_artifact_upload::MaxLogicalBytes::path(),
+          ValueKind::Int(1),
         )]))
         .await
         .unwrap();
@@ -2250,50 +2279,48 @@ async fn assert_command_source_consumed_before_error_ack(failure: PersistenceFai
   let (upload_complete_tx, _upload_complete_rx) = mpsc::channel(1);
   let (entry_received_tx, _entry_received_rx) = mpsc::channel(1);
   let (persistence_ack_tx, mut persistence_ack_rx) = mpsc::channel(1);
-  uploader.test_hooks = Some(TestHooks {
+  uploader.test_hooks = Some(Arc::new(UploadTestHooks {
+    chunk_transfer_gate: None,
+    initialized_tx: None,
     upload_complete_tx,
     entry_received_tx,
     persistence_ack_tx: Some(persistence_ack_tx),
-  });
+    preparing_whole_file: AtomicBool::new(false),
+    notify_preparation_error: AtomicBool::new(false),
+  }));
   let (persisted_tx, persisted_rx) = oneshot::channel();
   let source = UploadSource::Path(source_path.clone());
-  let source_cleanup = CommandFile::from_source(&source);
-  tokio::join!(
-    uploader.track_new_upload(
-      id,
-      source,
-      "device_command_attachment".into(),
-      [].into(),
-      "session".into(),
-      None,
-      vec![],
-      Some(Uuid::new_v4().to_string()),
-      None,
-      None,
-      Some(PersistenceAck::Command(persisted_tx)),
-      None,
-      source_cleanup,
-    ),
-    async {
-      let error = persisted_rx.await.unwrap().unwrap_err();
-      match failure {
-        PersistenceFailure::Capacity => assert_matches!(error, EnqueueError::QueueFull),
-        PersistenceFailure::Payload => assert!(error.to_string().contains("disk full")),
-        PersistenceFailure::Index => assert!(error.to_string().contains("failed to create file")),
-        PersistenceFailure::DuplicateId => {
-          assert!(
-            error
-              .to_string()
-              .contains("belongs to another session or artifact type")
-          );
-        },
-      }
-      let resume = persistence_ack_rx.recv().await.unwrap();
-      assert!(!source_path.exists());
-      fs::write(&source_path, b"replacement").unwrap();
-      resume.send(()).unwrap();
-    }
+  let mut upload = NewUpload::new(
+    source,
+    bd_proto::protos::client::api::UploadArtifactRequest {
+      artifact_id: id.to_string(),
+      type_id: "device_command_attachment".into(),
+      session_id: "session".into(),
+      command_id: Some(Uuid::new_v4().to_string()),
+      ..Default::default()
+    },
+    PreparationMode::WholeFile,
   );
+  upload.persisted_tx = Some(PersistenceAck::Command(persisted_tx));
+  tokio::join!(uploader.track_upload(upload), async {
+    let error = persisted_rx.await.unwrap().unwrap_err();
+    match failure {
+      PersistenceFailure::Capacity => assert!(error.to_string().contains("logical byte admission")),
+      PersistenceFailure::Payload => assert!(error.to_string().contains("insufficient free space")),
+      PersistenceFailure::Index => assert!(error.to_string().contains("failed to create file")),
+      PersistenceFailure::DuplicateId => {
+        assert!(
+          error
+            .to_string()
+            .contains("belongs to another session or artifact type")
+        );
+      },
+    }
+    let resume = persistence_ack_rx.recv().await.unwrap();
+    assert!(!source_path.exists());
+    fs::write(&source_path, b"replacement").unwrap();
+    resume.send(()).unwrap();
+  });
   assert_eq!(fs::read(source_path).unwrap(), b"replacement");
 }
 
@@ -2319,7 +2346,7 @@ async fn command_source_is_consumed_before_duplicate_id_error_ack() {
 
 #[tokio::test]
 async fn enqueue_upload_from_path_acknowledges_after_disk_persist_and_removes_source() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
 
   let source_path = std::path::PathBuf::from("source_snapshot.zz");
   setup
@@ -2353,7 +2380,7 @@ async fn enqueue_upload_from_path_acknowledges_after_disk_persist_and_removes_so
 
 #[tokio::test]
 async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   let id = Uuid::new_v4();
   let source = std::path::PathBuf::from(format!("workflow-attachments/{id}.payload"));
   setup
@@ -2365,6 +2392,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
   setup.filesystem.write_file(&source, &stored).await.unwrap();
 
   let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  let (abandoned_tx, abandoned_rx) = oneshot::channel();
   setup
     .client
     .enqueue_workflow_attachment(
@@ -2373,7 +2401,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       "session_id".into(),
       Some("application/vnd.example.capture".to_string()),
       Some(persisted_tx),
-      None,
+      Some(abandoned_tx),
       None,
     )
     .unwrap();
@@ -2382,6 +2410,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
     id.to_string()
   );
   persisted_rx.await.unwrap().unwrap();
+  drop(abandoned_rx);
   assert!(setup.filesystem.exists(&source).await.unwrap());
   let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
   let (duplicate_persisted_tx, duplicate_persisted_rx) = tokio::sync::oneshot::channel();
@@ -2438,9 +2467,9 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
       upload.payload.payload_encoding.enum_value_or_default(),
       ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
     );
-    upload.response_tx.send(UploadResponse {
-      uuid: upload.uuid,
-      success: true,
+    upload.response_tx.send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
     }).unwrap();
   });
   completion_rx.await.unwrap().unwrap();
@@ -2448,7 +2477,7 @@ async fn workflow_upload_preserves_id_source_and_sends_zlib_payload() {
 
 #[tokio::test]
 async fn workflow_upload_rejects_id_owned_by_another_artifact_type() {
-  let mut setup = Setup::new(2).await;
+  let mut setup = Setup::new().await;
   let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
   let id = setup
     .client
@@ -2488,7 +2517,7 @@ async fn workflow_upload_rejects_id_owned_by_another_artifact_type() {
 
 #[tokio::test]
 async fn path_upload_restores_source_if_index_persistence_fails() {
-  let setup = Setup::new(2).await;
+  let setup = Setup::new().await;
   let source_path = std::path::PathBuf::from("retryable_snapshot.zz");
   setup
     .filesystem
@@ -2524,48 +2553,60 @@ async fn path_upload_restores_source_if_index_persistence_fails() {
 }
 
 #[tokio::test]
-async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
-  let mut setup = Setup::new(1).await;
-
-  let (persisted_tx1, persisted_rx1) = tokio::sync::oneshot::channel();
-  let id1 = setup
+async fn snapshot_copy_fallback_preserves_raw_wire_bytes() {
+  let mut setup = Setup::new().await;
+  let mut revision = setup.client.upload_queue_revision();
+  wait_for_queue_revision(&mut revision, 0).await;
+  let source = PathBuf::from("snapshot.zz");
+  let bytes = b"self-validating snapshot bytes";
+  setup.filesystem.write_file(&source, bytes).await.unwrap();
+  setup
+    .filesystem
+    .fail_next_rename
+    .store(true, Ordering::Relaxed);
+  let (tx, rx) = oneshot::channel();
+  let id = setup
     .client
     .enqueue_upload(
-      UploadSource::File(setup.make_file(b"state-1")),
-      "state_snapshot".to_string(),
+      UploadSource::Path(source.clone()),
+      "state_snapshot".into(),
       [].into(),
       None,
-      "session_id".to_string(),
+      String::new(),
       vec![],
       None,
-      Some(persisted_tx1),
+      Some(tx),
     )
     .unwrap();
+  rx.await.unwrap().unwrap();
+  setup.entry_received_rx.recv().await.unwrap();
+  assert!(!setup.filesystem.exists(&source).await.unwrap());
+  let Some(DataUpload::ArtifactUploadIntent(intent)) = setup.data_upload_rx.recv().await else {
+    panic!("expected snapshot intent");
+  };
+  intent
+    .response_tx
+    .send(IntentResponse {
+      uuid: intent.uuid,
+      decision: IntentDecision::UploadImmediately,
+    })
+    .unwrap();
+  let Some(DataUpload::ArtifactUpload(upload)) = setup.data_upload_rx.recv().await else {
+    panic!("expected snapshot upload");
+  };
+  assert_eq!(upload.payload.artifact_id, id.to_string());
+  assert_eq!(upload.payload.contents, bytes);
   assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id1.to_string()
+    upload.payload.payload_encoding.enum_value_or_default(),
+    ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
   );
-  persisted_rx1.await.unwrap().unwrap();
-
-  let (persisted_tx2, persisted_rx2) = tokio::sync::oneshot::channel();
-  let _id2 = setup
-    .client
-    .enqueue_upload(
-      UploadSource::File(setup.make_file(b"state-2")),
-      "state_snapshot".to_string(),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
-      None,
-      Some(persisted_tx2),
-    )
+  upload
+    .response_tx
+    .send(UploadArtifactResponse {
+      upload_uuid: upload.uuid,
+      ..Default::default()
+    })
     .unwrap();
-
-  assert_matches!(persisted_rx2.await.unwrap(), Err(EnqueueError::QueueFull));
-  assert!(
-    timeout(100.std_milliseconds(), setup.entry_received_rx.recv())
-      .await
-      .is_err()
-  );
+  setup.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await;
 }
