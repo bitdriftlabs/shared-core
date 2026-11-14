@@ -55,10 +55,11 @@ ACKs are unchanged.
 The common native `ArtifactStore` owns and accounts for upload-ready whole/chunked payloads and
 retained workflow payloads together: at most 64 artifact IDs and 640 MiB physical storage including
 RAW staging reservations. New work rejects under pressure rather than evicting accepted uploads.
-`artifact_upload.chunked.max_logical_bytes` is the shared new-file policy, defaulting to and clamped
-at 256 MiB. Android's private pre-attribution store uses that same setting for its separate
-per-file/aggregate budget; it enters native capacity only at handoff. Runtime reductions do not
-evict durably accepted uploads.
+Filesystem headroom also protects still-unwritten RAW reservations, subtracting chunks already
+staged rather than charging their physical bytes twice. `artifact_upload.chunked.max_logical_bytes`
+is the shared new-file policy, defaulting to and clamped at 256 MiB. Android's private
+pre-attribution store uses that same setting for its separate per-file/aggregate budget; it enters
+native capacity only at handoff. Runtime reductions do not evict durably accepted uploads.
 
 `ReportAttribution` is the platform hook: the logger seeds it from the pending index before the
 uploader starts, and the crash monitor adds each enqueued report that carries source facts.

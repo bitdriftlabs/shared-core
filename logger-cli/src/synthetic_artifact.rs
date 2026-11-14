@@ -9,8 +9,9 @@
 #[path = "./synthetic_artifact_test.rs"]
 mod tests;
 
+use crate::synthetic_fixture::{PreparedFile, create_owned};
 use bd_artifact_upload::{Client, PERFETTO_CONTENT_TYPE, ReportAttribution, UploadSource};
-use bd_client_common::file_system::{OwnedFile, open_regular_file_async};
+use bd_client_common::file_system::open_regular_file_async;
 use bd_logger::{
   CommandAttachment,
   CommandError,
@@ -31,7 +32,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use time::OffsetDateTime;
-use tokio::fs::OpenOptions;
+use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -153,25 +154,33 @@ impl FixtureSource {
       },
       SourceKind::Path => {
         let path = self.owned.join(Uuid::new_v4().to_string());
-        let owned = OwnedFile::new(&path)
-          .ok_or_else(|| anyhow::anyhow!("owned fixture path must be absolute"))?;
-        let mut output = OpenOptions::new()
-          .write(true)
-          .create_new(true)
-          .open(&path)
-          .await?;
-        let copied = tokio::io::copy(&mut file.take(size + 1), &mut output).await?;
-        if copied != size {
-          anyhow::bail!("fixture changed while copying");
-        }
-        output.flush().await?;
-        output.sync_all().await?;
-        owned.disarm();
+        let (sender, receiver) = oneshot::channel();
+        tokio::spawn(copy_owned(path.clone(), file, size, sender));
+        receiver
+          .await
+          .map_err(|_| anyhow::anyhow!("fixture copy task stopped unexpectedly"))??
+          .claim()?;
         UploadSource::Path(path)
       },
     };
     Ok((source, remaining))
   }
+}
+
+async fn copy_owned(
+  path: PathBuf,
+  file: File,
+  size: u64,
+  sender: oneshot::Sender<anyhow::Result<PreparedFile<()>>>,
+) {
+  create_owned(path, sender, async move |mut output| {
+    let copied = tokio::io::copy(&mut file.take(size.saturating_add(1)), &mut output).await?;
+    anyhow::ensure!(copied == size, "fixture changed while copying");
+    output.flush().await?;
+    output.sync_all().await?;
+    Ok(())
+  })
+  .await;
 }
 
 //

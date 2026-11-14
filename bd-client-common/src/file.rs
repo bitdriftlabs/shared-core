@@ -140,7 +140,9 @@ pub fn read_compressed_limited(bytes: &[u8], max_bytes: u64) -> io::Result<Vec<u
   // The decoder validates zlib integrity. The extra output byte bounds even a highly compressible
   // corrupt index/chunk before protobuf parsing or logical-digest verification can allocate more.
   let mut output = Vec::new();
-  ZlibDecoder::new(bytes)
+  let mut decoder = ZlibDecoder::new(bytes);
+  decoder
+    .by_ref()
     .take(max_bytes.saturating_add(1))
     .read_to_end(&mut output)
     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
@@ -148,6 +150,12 @@ pub fn read_compressed_limited(bytes: &[u8], max_bytes: u64) -> io::Result<Vec<u
     return Err(io::Error::new(
       io::ErrorKind::InvalidData,
       "decoded payload exceeds size limit",
+    ));
+  }
+  if decoder.total_in() != bytes.len() as u64 {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      "trailing compressed payload bytes",
     ));
   }
   Ok(output)

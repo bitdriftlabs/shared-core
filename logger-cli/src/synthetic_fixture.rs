@@ -16,6 +16,7 @@ use rand::{RngExt as _, SeedableRng as _};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use tokio::fs::{self, File, OpenOptions};
 use tokio::io::AsyncWriteExt;
@@ -74,12 +75,23 @@ pub struct FixtureManifest {
 }
 
 //
-// PreparedFixture
+// PreparedFile
 //
 
-struct PreparedFixture {
-  manifest: FixtureManifest,
+pub(super) struct PreparedFile<T> {
+  value: T,
   commit: oneshot::Sender<()>,
+}
+
+impl<T> PreparedFile<T> {
+  pub(super) fn claim(self) -> Result<T> {
+    // No await may separate this ownership transfer from returning the result to the caller.
+    self
+      .commit
+      .send(())
+      .map_err(|()| anyhow!("file creation task stopped before commit"))?;
+    Ok(self.value)
+  }
 }
 
 /// Creates a new durable fixture without replacing an existing path.
@@ -108,23 +120,38 @@ pub async fn generate(path: &Path, options: &FixtureOptions) -> Result<FixtureMa
   let prepared = receiver
     .await
     .map_err(|_| anyhow!("fixture generation task stopped unexpectedly"))??;
-  // There is no await between accepting ownership and returning the manifest. A cancelled caller
-  // cannot leave an unclaimed successful file behind at the completion boundary.
-  prepared
-    .commit
-    .send(())
-    .map_err(|()| anyhow!("fixture generation task stopped before commit"))?;
-  Ok(prepared.manifest)
+  prepared.claim()
 }
 
 async fn generate_owned(
   path: PathBuf,
   options: FixtureOptions,
-  mut sender: oneshot::Sender<Result<PreparedFixture>>,
+  sender: oneshot::Sender<Result<PreparedFile<FixtureManifest>>>,
 ) {
+  create_owned(path.clone(), sender, async move |mut file| {
+    log::debug!(
+      "generating fixture: kind={:?} bytes={}",
+      options.kind,
+      options.size_bytes
+    );
+    write_fixture(&mut file, &path, &options).await
+  })
+  .await;
+}
+
+/// Own creation through cleanup or a synchronous claim, even when the caller abandons an open.
+/// Cancellation cleanup requires the Tokio runtime to remain alive.
+pub(super) async fn create_owned<T, F, Fut>(
+  path: PathBuf,
+  mut sender: oneshot::Sender<Result<PreparedFile<T>>>,
+  write: F,
+) where
+  F: FnOnce(File) -> Fut,
+  Fut: Future<Output = Result<T>>,
+{
   // Do not cancel open: Tokio can finish creating the file on its blocking pool after an abandoned
   // open future. Owning the entire lifecycle lets us always observe and clean up that creation.
-  let mut file = match OpenOptions::new()
+  let file = match OpenOptions::new()
     .write(true)
     .create_new(true)
     .open(&path)
@@ -136,33 +163,24 @@ async fn generate_owned(
       return;
     },
   };
-  log::debug!(
-    "generating fixture: kind={:?} bytes={}",
-    options.kind,
-    options.size_bytes
-  );
+  log::debug!("created unclaimed synthetic file: {}", path.display());
   let result = tokio::select! {
     biased;
-    () = sender.closed() => Err(anyhow!("fixture generation cancelled")),
-    result = write_fixture(&mut file, &path, &options) => result,
+    () = sender.closed() => Err(anyhow!("synthetic file creation cancelled")),
+    result = write(file) => result,
   };
-  drop(file);
   let error = match result {
-    Ok(manifest) => {
+    Ok(value) => {
       let (commit, accepted) = oneshot::channel();
-      if sender
-        .send(Ok(PreparedFixture { manifest, commit }))
-        .is_ok()
-        && accepted.await.is_ok()
-      {
-        log::debug!("fixture generation committed: bytes={}", options.size_bytes);
+      if sender.send(Ok(PreparedFile { value, commit })).is_ok() && accepted.await.is_ok() {
+        log::debug!("synthetic file committed: {}", path.display());
         return;
       }
       None
     },
     Err(error) => Some((sender, error)),
   };
-  log::debug!("removing uncommitted fixture: bytes={}", options.size_bytes);
+  log::debug!("removing uncommitted synthetic file: {}", path.display());
   let cleanup = fs::remove_file(&path).await;
   if let Some((sender, error)) = error {
     let error = match cleanup {

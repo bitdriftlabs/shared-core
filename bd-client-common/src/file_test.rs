@@ -161,6 +161,29 @@ fn bounded_decode_checks_expansion_limit_and_integrity() {
   );
 }
 
+#[test]
+fn bounded_decode_rejects_trailing_data_but_accepts_empty_stream() {
+  let compressed = super::write_compressed(b"payload").unwrap();
+  for tail in [
+    b"garbage".to_vec(),
+    super::write_compressed(b"second stream").unwrap(),
+  ] {
+    let mut bytes = compressed.clone();
+    bytes.extend(tail);
+    assert_eq!(
+      super::read_compressed_limited(&bytes, 7)
+        .unwrap_err()
+        .kind(),
+      std::io::ErrorKind::InvalidData
+    );
+  }
+  let empty = super::write_compressed(b"").unwrap();
+  assert_eq!(super::read_compressed_limited(&empty, 0).unwrap(), b"");
+  for end in 0 .. compressed.len() {
+    assert!(super::read_compressed_limited(&compressed[.. end], 7).is_err());
+  }
+}
+
 // Supplies one readable prefix then an actual I/O failure, rather than a short but valid EOF.
 struct FailingReader(bool);
 

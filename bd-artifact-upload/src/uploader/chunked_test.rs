@@ -7,6 +7,7 @@
 
 #![allow(clippy::unwrap_used, clippy::panic)]
 
+use super::admission::FREE_SPACE_HEADROOM;
 use super::chunked::{CHUNK_BYTES, MAX_INDEX_BYTES, chunk_path, source_path};
 use super::tests::{Setup, wait_for_queue_revision};
 use super::{
@@ -26,6 +27,7 @@ use bd_api::upload::{IntentDecision, IntentResponse, TrackedArtifactUpload};
 use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::{FileSystem, RealFileSystem};
+use bd_client_common::test::TestFileSystem;
 use bd_log_primitives::LogFields;
 use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{
@@ -1163,6 +1165,51 @@ async fn relative_sdk_directory_counts_retained_slots() {
     .check_capacity(&filesystem, 4, 4, None, 4)
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn disk_admission_protects_unmaterialized_raw_reservations() {
+  let filesystem = TestFileSystem::new();
+  let runtime = TestConfigLoader::new().await;
+  let store = ArtifactStore::new(&runtime);
+  filesystem
+    .create_dir(&ARTIFACT_UPLOAD_DIRECTORY)
+    .await
+    .unwrap();
+  filesystem
+    .create_dir(Path::new("workflow-attachments"))
+    .await
+    .unwrap();
+  let id = Uuid::new_v4().to_string();
+  filesystem
+    .create_file(Path::new(&format!("workflow-attachments/{id}.raw")))
+    .await
+    .unwrap()
+    .set_len(104)
+    .await
+    .unwrap();
+  // Physical bytes are already reflected in available space; only unwritten output is added.
+  for staged in [0, 40, 100, 120] {
+    filesystem
+      .create_file(&chunk_path(&id, 0))
+      .await
+      .unwrap()
+      .set_len(staged)
+      .await
+      .unwrap();
+    let required = FREE_SPACE_HEADROOM + 4 + 100_u64.saturating_sub(staged);
+    for (available, accepted) in [(required - 1, false), (required, true)] {
+      *filesystem.available_bytes.lock() = Some(available);
+      assert_eq!(
+        store
+          .check_capacity(&filesystem, 4, 4, None, 4)
+          .await
+          .is_ok(),
+        accepted,
+        "staged={staged}, available={available}"
+      );
+    }
+  }
 }
 
 #[tokio::test]

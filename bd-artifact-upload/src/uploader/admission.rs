@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 const MAX_FILES: usize = 64;
 const MAX_OWNED_BYTES: u64 = 640 * 1024 * 1024;
-const FREE_SPACE_HEADROOM: u64 = MAX_INDEX_BYTES + 1024 * 1024;
+pub(super) const FREE_SPACE_HEADROOM: u64 = MAX_INDEX_BYTES + 1024 * 1024;
 
 // Retained-file admission and uploader preparation must not race their filesystem inventories.
 // The permit carries no ownership state; durable files and the existing index remain authoritative.
@@ -111,6 +111,7 @@ impl ArtifactStore {
     }
     let mut identities = HashSet::new();
     let mut used = 0_u64;
+    let mut unmaterialized = 0_u64;
     let mut staged = HashMap::<Uuid, u64>::new();
     for path in list_files(filesystem, &ARTIFACT_UPLOAD_DIRECTORY).await? {
       let path = Path::new(&path);
@@ -164,7 +165,9 @@ impl ArtifactStore {
           .ok_or_else(|| anyhow::anyhow!("invalid retained workflow file"))?;
         // Before handoff, reserve RAW output as well as the retained source. Partial chunks from
         // failed preparation consume that reservation, not a second copy of the same headroom.
-        used = used.saturating_add(logical.saturating_sub(*staged.get(&id).unwrap_or(&0)));
+        let reservation = logical.saturating_sub(*staged.get(&id).unwrap_or(&0));
+        used = used.saturating_add(reservation);
+        unmaterialized = unmaterialized.saturating_add(reservation);
       }
       ids.insert(id.to_string());
     }
@@ -187,7 +190,9 @@ impl ArtifactStore {
       anyhow::bail!("artifact slots or physical byte admission exhausted");
     }
     if filesystem.available_space(Path::new(".")).await?
-      < output_bytes.saturating_add(FREE_SPACE_HEADROOM)
+      < unmaterialized
+        .saturating_add(output_bytes)
+        .saturating_add(FREE_SPACE_HEADROOM)
     {
       anyhow::bail!("insufficient free space for staged payloads and metadata");
     }

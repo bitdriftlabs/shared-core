@@ -18,6 +18,30 @@ fn input(file: &str, source: SourceKind) -> ArtifactInput {
 }
 
 #[tokio::test]
+async fn cancelled_path_copy_removes_late_creation_and_unclaimed_output() {
+  let directory = tempfile::tempdir().unwrap();
+  let original = directory.path().join("original");
+  let copy = directory.path().join("copy");
+  tokio::fs::write(&original, b"fixture").await.unwrap();
+  for abandon_before_open in [true, false] {
+    let file = File::open(&original).await.unwrap();
+    let (sender, receiver) = oneshot::channel();
+    if abandon_before_open {
+      drop(receiver);
+      copy_owned(copy.clone(), file, 7, sender).await;
+    } else {
+      let worker = tokio::spawn(copy_owned(copy.clone(), file, 7, sender));
+      let prepared = receiver.await.unwrap().unwrap();
+      assert_eq!(tokio::fs::read(&copy).await.unwrap(), b"fixture");
+      drop(prepared);
+      worker.await.unwrap();
+    }
+    assert!(!tokio::fs::try_exists(&copy).await.unwrap());
+    assert_eq!(tokio::fs::read(&original).await.unwrap(), b"fixture");
+  }
+}
+
+#[tokio::test]
 async fn file_sources_preserve_reference_and_offset() {
   let directory = tempfile::tempdir().unwrap();
   let fixtures = directory.path().join("fixtures");

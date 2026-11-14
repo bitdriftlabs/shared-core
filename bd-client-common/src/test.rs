@@ -26,6 +26,7 @@ use tokio::sync::oneshot;
 pub struct TestFileSystem {
   directory: tempfile::TempDir,
   pub disk_full: AtomicBool,
+  pub available_bytes: Mutex<Option<u64>>,
   pub fail_deletes: AtomicBool,
   pub fail_next_sync: AtomicBool,
   pub fail_next_rename: AtomicBool,
@@ -80,6 +81,9 @@ impl FileSystem for TestFileSystem {
   async fn available_space(&self, directory: &Path) -> anyhow::Result<u64> {
     if self.disk_full.load(Ordering::Relaxed) {
       return Ok(0);
+    }
+    if let Some(bytes) = *self.available_bytes.lock() {
+      return Ok(bytes);
     }
     Ok(fs2::available_space(self.directory.path().join(directory))?)
   }
@@ -270,6 +274,7 @@ impl TestFileSystem {
     Self {
       directory: tempfile::tempdir().expect("failed to create temp dir"),
       disk_full: AtomicBool::new(false),
+      available_bytes: Mutex::new(None),
       fail_deletes: AtomicBool::new(false),
       fail_next_sync: AtomicBool::new(false),
       fail_next_rename: AtomicBool::new(false),
