@@ -7,7 +7,7 @@
 
 use super::chunked::{CHUNK_BYTES, MAX_INDEX_BYTES, file_identity, read_index, safe_id};
 use super::{ARTIFACT_UPLOAD_DIRECTORY, REPORT_INDEX_FILE};
-use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
+use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file_system::FileSystem;
 use bd_runtime::runtime::{ConfigLoader, IntWatch, chunked_artifact_upload};
 use std::collections::{HashMap, HashSet};
@@ -53,7 +53,7 @@ impl ArtifactStore {
   }
 
   pub(crate) fn logical_limit(&self) -> u64 {
-    u64::from((*self.max_logical_bytes.read()).min(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES))
+    u64::from((*self.max_logical_bytes.read()).min(MAX_ARTIFACT_LOGICAL_BYTES))
   }
 
   fn check_logical_bytes(&self, logical_bytes: u64) -> anyhow::Result<()> {

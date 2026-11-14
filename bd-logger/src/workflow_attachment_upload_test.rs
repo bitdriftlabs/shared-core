@@ -10,7 +10,7 @@ use crate::workflow_attachment::{AdmittedAttachment, AttachmentStore, Attachment
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_artifact_upload::{EnqueueError, UploadSource, Uploader};
-use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
+use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
@@ -132,7 +132,7 @@ async fn workflow_chunk_logical_limit_is_inclusive_and_hard_bounded() {
   assert!(admit_file(&store, directory.path(), 0).await.is_err());
   let attachment = admit_file(&store, directory.path(), 1024).await.unwrap();
   store.release(attachment.id).await.unwrap();
-  let maximum = u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES);
+  let maximum = u64::from(MAX_ARTIFACT_LOGICAL_BYTES);
   assert!(
     admit_file(&store, directory.path(), maximum + 1)
       .await

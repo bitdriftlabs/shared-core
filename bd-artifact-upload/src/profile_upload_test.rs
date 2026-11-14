@@ -11,7 +11,7 @@ use bd_api::upload::TrackedArtifactUpload;
 use bd_client_common::artifact::{
   CLIENT_REPORT_ARTIFACT_TYPE_ID,
   CRASH_PROFILE_ARTIFACT_TYPE_ID,
-  MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES,
+  MAX_ARTIFACT_LOGICAL_BYTES,
 };
 use bd_client_common::file::{read_compressed, write_compressed};
 use bd_macros::ApproximateSize;
@@ -212,7 +212,7 @@ async fn profile_handoff_applies_current_admission_regardless_of_filename() {
       .join(name);
     let file = fs::File::create(&source).unwrap();
     file
-      .set_len(u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES) + 1)
+      .set_len(u64::from(MAX_ARTIFACT_LOGICAL_BYTES) + 1)
       .unwrap();
     let (tx, rx) = oneshot::channel();
     setup

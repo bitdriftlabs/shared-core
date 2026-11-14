@@ -23,7 +23,7 @@ use super::{
 };
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, TrackedArtifactUpload};
-use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
+use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::{FileSystem, RealFileSystem};
 use bd_log_primitives::LogFields;
@@ -1287,7 +1287,7 @@ async fn chunked_hard_logical_ceiling_rejects_oversized_files() {
     .write(true)
     .open(&path)
     .unwrap()
-    .set_len(u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES) + 1)
+    .set_len(u64::from(MAX_ARTIFACT_LOGICAL_BYTES) + 1)
     .unwrap();
   assert!(
     setup
@@ -1681,7 +1681,7 @@ async fn chunked_hard_linked_sources_are_charged_once_without_requiring_links() 
 async fn chunked_invalid_capture_metadata_consumes_owned_source_without_index_commit() {
   let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
-  for case in 0 .. 6 {
+  for case in 0 .. 7 {
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
     let mut metadata = setup.request(id);
@@ -1701,6 +1701,7 @@ async fn chunked_invalid_capture_metadata_consumes_owned_source_without_index_co
       3 => metadata.content_type = Some("invalid\nmime".into()),
       4 => metadata.chunks.push(ArtifactChunkDescriptor::default()),
       5 => metadata.session_id = "x".repeat(256),
+      6 => metadata.time.as_mut().unwrap().seconds = -62_135_596_801,
       _ => panic!("unknown invalid metadata"),
     }
     let (tx, rx) = oneshot::channel();

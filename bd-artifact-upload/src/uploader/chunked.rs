@@ -35,10 +35,15 @@ use crate::input::Input;
 use bd_client_common::artifact::{
   CRASH_PROFILE_ARTIFACT_TYPE_ID,
   CRASH_PROFILE_MAX_REPORT_IDS,
-  MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES,
+  MAX_ARTIFACT_LOGICAL_BYTES,
 };
 use bd_client_common::file::{read_compressed_limited, read_limited, write_compressed};
 use bd_client_common::file_system::{FileSystem, OwnedFile};
+use bd_metadata::artifact::{
+  ARTIFACT_CHUNK_BYTES,
+  MAX_ARTIFACT_MANIFEST_BYTES,
+  MAX_ARTIFACT_ORIGIN_BYTES,
+};
 use bd_proto::protos::client::api::{
   ArtifactChunkDescriptor,
   ArtifactPayloadEncoding,
@@ -48,6 +53,7 @@ use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::ChunkedArtifact;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::ConfigLoader;
+use bd_time::TimestampExt as _;
 use protobuf::Message;
 use protobuf::well_known_types::timestamp::Timestamp;
 use sha2::{Digest, Sha256};
@@ -59,12 +65,12 @@ use time::OffsetDateTime;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
 
-pub(super) const CHUNK_BYTES: u64 = 1024 * 1024;
+pub(super) const CHUNK_BYTES: u64 = ARTIFACT_CHUNK_BYTES as u64;
 pub(super) const MAX_INDEX_BYTES: u64 = 4 * 1024 * 1024;
-const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
+const MAX_MANIFEST_BYTES: u64 = MAX_ARTIFACT_MANIFEST_BYTES as u64;
 // Reserve room for request framing before staging new ownership.
 const RESERVED_INDEX_ENTRY_BYTES: u64 = MAX_MANIFEST_BYTES + 64;
-const MAX_CAPTURE_METADATA_BYTES: u64 = 8 * 1024;
+const MAX_CAPTURE_METADATA_BYTES: u64 = MAX_ARTIFACT_ORIGIN_BYTES as u64;
 
 //
 // Spool
@@ -97,10 +103,9 @@ pub(super) fn safe_id(value: &str) -> anyhow::Result<Uuid> {
 
 fn timestamp(value: Option<&Timestamp>) -> anyhow::Result<OffsetDateTime> {
   let value = value.ok_or_else(|| anyhow::anyhow!("missing artifact timestamp"))?;
-  Ok(
-    OffsetDateTime::from_unix_timestamp(value.seconds)?
-      .replace_nanosecond(u32::try_from(value.nanos)?)?,
-  )
+  value
+    .to_offset_date_time_checked()
+    .ok_or_else(|| anyhow::anyhow!("invalid artifact timestamp"))
 }
 
 fn validate_metadata(request: &UploadArtifactRequest, limit: u64) -> anyhow::Result<Uuid> {
@@ -208,7 +213,7 @@ fn validate_entry(entry: &ChunkedArtifact) -> anyhow::Result<&UploadArtifactRequ
   let size = request
     .logical_bytes
     .ok_or_else(|| anyhow::anyhow!("missing artifact logical size"))?;
-  if size > u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES)
+  if size > u64::from(MAX_ARTIFACT_LOGICAL_BYTES)
     || (size == 0 && request.command_id.is_none())
     || request.logical_sha256.len() != 32
     || request.chunks.len() as u64 != size.div_ceil(CHUNK_BYTES)
@@ -483,7 +488,7 @@ impl Uploader {
     if retained {
       // The retained store already admitted these bytes and reserved RAW staging headroom.
       // Runtime reductions cannot strand an accepted workflow attachment before its first flush.
-      if metadata.len() <= 4 || metadata.len() - 4 > u64::from(MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES) {
+      if metadata.len() <= 4 || metadata.len() - 4 > u64::from(MAX_ARTIFACT_LOGICAL_BYTES) {
         anyhow::bail!("retained workflow logical byte limit exceeded");
       }
       return stage(

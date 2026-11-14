@@ -1145,12 +1145,12 @@ pub mod artifact_upload {
 }
 
 pub mod chunked_artifact_upload {
-  use bd_client_common::artifact::MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES;
+  use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
 
   int_feature_flag!(
     MaxLogicalBytes,
     "artifact_upload.chunked.max_logical_bytes",
-    MAX_CHUNKED_ARTIFACT_LOGICAL_BYTES
+    MAX_ARTIFACT_LOGICAL_BYTES
   );
 }
 
