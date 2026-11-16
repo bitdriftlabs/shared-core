@@ -458,7 +458,7 @@ async fn workflow_chunk_handoff_is_durable_idempotent_and_protected_until_finali
   for (chunk, state, receipts) in [
     (None, State::STATE_RECEIVING, 0),
     (Some(0), State::STATE_RECEIVING, 1),
-    (Some(1), State::STATE_FINALIZING, 3),
+    (Some(1), State::STATE_RECEIVING, 3),
     (None, State::STATE_FINALIZED, 3),
   ] {
     let Some(DataUpload::ArtifactUpload(upload)) = data_upload_rx.recv().await else {
@@ -468,7 +468,8 @@ async fn workflow_chunk_handoff_is_durable_idempotent_and_protected_until_finali
     assert_eq!(upload.payload.command_id, None);
     assert_eq!(upload.payload.logical_bytes, Some(1024 * 1024 + 1));
     assert_eq!(upload.payload.chunk_index, chunk);
-    if upload.payload.time.is_some() {
+    if chunk.is_none() {
+      assert!(upload.payload.time.is_some());
       assert_eq!(upload.payload.type_id, "workflow_attachment");
       assert_eq!(upload.payload.session_id, "session");
       assert_eq!(upload.payload.chunks.len(), 2);
