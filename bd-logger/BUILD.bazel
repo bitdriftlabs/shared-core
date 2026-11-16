@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "all_crate_deps")
+load("@crates//bd-logger:data.bzl", "all_crate_deps", "crate_data")
 load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
 load("//tools/rust:tests.bzl", "rust_library_test")
 
@@ -14,6 +14,7 @@ rust_library_with_feature_variants(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "bd_logger",
     crate_root = "src/lib.rs",
@@ -27,5 +28,6 @@ rust_library_with_feature_variants(
 
 rust_library_test(
     crate = ":bd-logger-test",
+    crate_data = crate_data(),
     test_dependency_overrides = BD_WORKFLOWS_TEST_OVERRIDE,
 )

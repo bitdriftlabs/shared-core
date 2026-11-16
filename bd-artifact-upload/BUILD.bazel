@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "all_crate_deps")
+load("@crates//bd-artifact-upload:data.bzl", "all_crate_deps", "crate_data")
 load("//tools/lint:linters.bzl", "rust_library")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 
@@ -10,6 +10,7 @@ rust_library_with_test(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "bd_artifact_upload",
     crate_root = "src/lib.rs",
@@ -42,10 +43,10 @@ rust_library(
     edition = "2024",
     deps = [
         "//shared-core/bd-proto-util",
-        "@crates//:anyhow",
-        "@crates//:flate2",
-        "@crates//:log",
-        "@crates//:protobuf",
-        "@crates//:uuid",
+        "@crates//anyhow",
+        "@crates//flate2",
+        "@crates//log",
+        "@crates//protobuf",
+        "@crates//uuid",
     ],
 )

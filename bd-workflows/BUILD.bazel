@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "aliases")
+load("@crates//bd-workflows:data.bzl", "aliases", "crate_data")
 load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
 load("//tools/rust:tests.bzl", "rust_library_test")
 
@@ -10,6 +10,7 @@ rust_library_with_feature_variants(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    crate_data = crate_data(),
     crate_features = ["cloneable-config"],
     crate_name = "bd_workflows",
     crate_root = "src/lib.rs",
@@ -30,4 +31,7 @@ rust_library_with_feature_variants(
     },
 )
 
-rust_library_test(crate = ":bd-workflows")
+rust_library_test(
+    crate = ":bd-workflows",
+    crate_data = crate_data(),
+)

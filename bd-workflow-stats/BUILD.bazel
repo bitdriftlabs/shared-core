@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "aliases")
+load("@crates//bd-workflow-stats:data.bzl", "aliases", "crate_data")
 load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
 load("//tools/rust:tests.bzl", "rust_library_test")
 
@@ -7,6 +7,7 @@ package(default_visibility = ["//visibility:public"])
 rust_library_with_feature_variants(
     name = "bd-workflow-stats",
     srcs = glob(["src/**/*.rs"]),
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "bd_workflow_stats",
     crate_root = "src/lib.rs",
@@ -16,4 +17,7 @@ rust_library_with_feature_variants(
     },
 )
 
-rust_library_test(crate = ":bd-workflow-stats")
+rust_library_test(
+    crate = ":bd-workflow-stats",
+    crate_data = crate_data(),
+)
