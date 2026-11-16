@@ -204,33 +204,42 @@ enum Platform : int8_t {
   Platform_Android = 1,
   Platform_iOS = 2,
   Platform_macOS = 3,
+  Platform_tvOS = 4,
+  Platform_visionOS = 5,
+  Platform_watchOS = 6,
   Platform_MIN = Platform_Unknown,
-  Platform_MAX = Platform_macOS
+  Platform_MAX = Platform_watchOS
 };
 
-inline const Platform (&EnumValuesPlatform())[4] {
+inline const Platform (&EnumValuesPlatform())[7] {
   static const Platform values[] = {
     Platform_Unknown,
     Platform_Android,
     Platform_iOS,
-    Platform_macOS
+    Platform_macOS,
+    Platform_tvOS,
+    Platform_visionOS,
+    Platform_watchOS
   };
   return values;
 }
 
 inline const char * const *EnumNamesPlatform() {
-  static const char * const names[5] = {
+  static const char * const names[8] = {
     "Unknown",
     "Android",
     "iOS",
     "macOS",
+    "tvOS",
+    "visionOS",
+    "watchOS",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNamePlatform(Platform e) {
-  if (::flatbuffers::IsOutRange(e, Platform_Unknown, Platform_macOS)) return "";
+  if (::flatbuffers::IsOutRange(e, Platform_Unknown, Platform_watchOS)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesPlatform()[index];
 }
@@ -3128,7 +3137,8 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_FIELDS = 18,
     VT_FEATURE_FLAGS = 20,
     VT_PROCESSING_RESULT = 22,
-    VT_CRASH_INFO = 24
+    VT_CRASH_INFO = 24,
+    VT_CRASH_PROFILE_SOURCE = 26
   };
   const bitdrift_public::fbs::issue_reporting::v1::SDKInfo *sdk() const {
     return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::SDKInfo *>(VT_SDK);
@@ -3163,6 +3173,9 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>> *crash_info() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>> *>(VT_CRASH_INFO);
   }
+  const ::flatbuffers::Vector<uint8_t> *crash_profile_source() const {
+    return GetPointer<const ::flatbuffers::Vector<uint8_t> *>(VT_CRASH_PROFILE_SOURCE);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SDK) &&
@@ -3191,6 +3204,8 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_CRASH_INFO) &&
            verifier.VerifyVector(crash_info()) &&
            verifier.VerifyVectorOfTables(crash_info()) &&
+           VerifyOffset(verifier, VT_CRASH_PROFILE_SOURCE) &&
+           verifier.VerifyVector(crash_profile_source()) &&
            verifier.EndTable();
   }
 };
@@ -3232,6 +3247,9 @@ struct ReportBuilder {
   void add_crash_info(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>>> crash_info) {
     fbb_.AddOffset(Report::VT_CRASH_INFO, crash_info);
   }
+  void add_crash_profile_source(::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> crash_profile_source) {
+    fbb_.AddOffset(Report::VT_CRASH_PROFILE_SOURCE, crash_profile_source);
+  }
   explicit ReportBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3255,8 +3273,10 @@ inline ::flatbuffers::Offset<Report> CreateReport(
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> fields = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>> feature_flags = 0,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>>> crash_info = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>>> crash_info = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<uint8_t>> crash_profile_source = 0) {
   ReportBuilder builder_(_fbb);
+  builder_.add_crash_profile_source(crash_profile_source);
   builder_.add_crash_info(crash_info);
   builder_.add_processing_result(processing_result);
   builder_.add_feature_flags(feature_flags);
@@ -3283,12 +3303,14 @@ inline ::flatbuffers::Offset<Report> CreateReportDirect(
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *fields = nullptr,
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>> *feature_flags = nullptr,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result = 0,
-    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>> *crash_info = nullptr) {
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>> *crash_info = nullptr,
+    const std::vector<uint8_t> *crash_profile_source = nullptr) {
   auto errors__ = errors ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Error>>(*errors) : 0;
   auto binary_images__ = binary_images ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>(*binary_images) : 0;
   auto fields__ = fields ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>(*fields) : 0;
   auto feature_flags__ = feature_flags ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>(*feature_flags) : 0;
   auto crash_info__ = crash_info ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>>(*crash_info) : 0;
+  auto crash_profile_source__ = crash_profile_source ? _fbb.CreateVector<uint8_t>(*crash_profile_source) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateReport(
       _fbb,
       sdk,
@@ -3301,7 +3323,8 @@ inline ::flatbuffers::Offset<Report> CreateReportDirect(
       fields__,
       feature_flags__,
       processing_result,
-      crash_info__);
+      crash_info__,
+      crash_profile_source__);
 }
 
 inline bool VerifyCrashInfoDetails(::flatbuffers::Verifier &verifier, const void *obj, CrashInfoDetails type) {
@@ -3366,6 +3389,9 @@ inline const ::flatbuffers::TypeTable *PlatformTypeTable() {
     { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
     { ::flatbuffers::ET_CHAR, 0, 0 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
@@ -3375,10 +3401,13 @@ inline const ::flatbuffers::TypeTable *PlatformTypeTable() {
     "Unknown",
     "Android",
     "iOS",
-    "macOS"
+    "macOS",
+    "tvOS",
+    "visionOS",
+    "watchOS"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_ENUM, 4, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_ENUM, 7, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -4261,7 +4290,8 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     { ::flatbuffers::ET_SEQUENCE, 1, 7 },
     { ::flatbuffers::ET_SEQUENCE, 1, 8 },
     { ::flatbuffers::ET_SEQUENCE, 0, 9 },
-    { ::flatbuffers::ET_SEQUENCE, 1, 10 }
+    { ::flatbuffers::ET_SEQUENCE, 1, 10 },
+    { ::flatbuffers::ET_UCHAR, 1, -1 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::SDKInfoTypeTable,
@@ -4287,10 +4317,11 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     "fields",
     "feature_flags",
     "processing_result",
-    "crash_info"
+    "crash_info",
+    "crash_profile_source"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 11, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 12, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
