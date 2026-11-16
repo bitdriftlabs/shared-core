@@ -5,14 +5,15 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-//! Shared payload encoding and bounded I/O primitives.
+//! Shared payload encoding, filesystem capacity checks, and bounded I/O primitives.
 //!
-//! Upload owners choose their local envelope and publication policy; these helpers only transform
-//! bytes. In particular, whole-file attachments remain one zlib stream, whereas the chunk uploader
-//! calls the same compressor independently for each segment. Neither compression nor a successful
-//! write implies durable ownership: the owning store must publish and sync its index or sidecar.
-//! Bounded readers report malformed/oversized data as `InvalidData` while preserving underlying I/O
-//! errors, so recovery can discard corrupt data without treating a storage outage as corruption.
+//! Upload owners choose their local envelope and publication policy; encoding helpers only
+//! transform bytes. In particular, whole-file attachments remain one zlib stream, whereas the chunk
+//! uploader calls the same compressor independently for each segment. Neither compression nor a
+//! successful write implies durable ownership: the owning store must publish and sync its index or
+//! sidecar. Bounded readers report malformed/oversized data as `InvalidData` while preserving
+//! underlying I/O errors, so recovery can discard corrupt data without treating a storage outage as
+//! corruption.
 
 #[cfg(test)]
 #[path = "./file_test.rs"]
@@ -39,9 +40,8 @@ pub fn prepare_file_for_mmap(
   let required_file_size = requested_file_size.unwrap_or(current_file_size);
   let allocated_file_size = file.allocated_size()?;
   let required_disk_space = required_file_size.saturating_sub(allocated_file_size);
-  let available_disk_space = fs2::available_space(file_path)?;
-  let total_disk_space = fs2::total_space(file_path)?;
-  if !has_disk_space(required_disk_space, available_disk_space, total_disk_space) {
+  let available_disk_space = available_disk_space(file_path)?;
+  if available_disk_space < required_disk_space {
     log::error!(
       "Insufficient disk space to preallocate memory-mapped file {}: required \
        {required_disk_space}, available {available_disk_space}",
@@ -69,11 +69,29 @@ pub fn prepare_file_for_mmap(
   Ok(resized)
 }
 
-// A filesystem without a size limit, such as an unlimited tmpfs, reports zero total and available
-// space. Only filesystems that report a size can be checked up front; for the others, the
-// allocation below still fails if space runs out.
-fn has_disk_space(required: u64, available: u64, total: u64) -> bool {
-  total == 0 || available >= required
+/// Returns available bytes for admission, treating unsized filesystems as unbounded.
+///
+/// Some filesystems, notably unlimited tmpfs on remote build executors, report zero total and
+/// available space even though writes succeed. Checking available bytes alone would reject every
+/// mmap allocation and artifact staging attempt there. A nonzero total with zero available bytes,
+/// however, is a full filesystem and must still fail admission.
+///
+/// Represent the unsized case as `u64::MAX` so both synchronous mmap allocation and asynchronous
+/// artifact admission can use ordinary byte comparisons with the same policy. This is only a
+/// preflight hint, not a reservation: callers must still propagate allocation/write failures and
+/// enforce their own payload limits and storage budgets. Errors reading filesystem statistics also
+/// propagate; an unreadable filesystem is not an unsized one.
+pub(crate) fn available_disk_space(path: &Path) -> io::Result<u64> {
+  // Read both counters in one snapshot, rather than issuing separate available/total queries.
+  let stats = fs2::statvfs(path)?;
+  Ok(available_disk_space_from_stats(
+    stats.available_space(),
+    stats.total_space(),
+  ))
+}
+
+fn available_disk_space_from_stats(available: u64, total: u64) -> u64 {
+  if total == 0 { u64::MAX } else { available }
 }
 
 pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> anyhow::Result<Vec<u8>> {

@@ -8,6 +8,7 @@
 // Test code only.
 #![allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 
+use crate::file::available_disk_space;
 use crate::file_system::FileSystem;
 use async_trait::async_trait;
 use parking_lot::Mutex;
@@ -85,7 +86,9 @@ impl FileSystem for TestFileSystem {
     if let Some(bytes) = *self.available_bytes.lock() {
       return Ok(bytes);
     }
-    Ok(fs2::available_space(self.directory.path().join(directory))?)
+    Ok(available_disk_space(
+      &self.directory.path().join(directory),
+    )?)
   }
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
