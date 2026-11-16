@@ -36,10 +36,10 @@ fn prepare_file_for_mmap_resizes_and_preallocates() -> anyhow::Result<()> {
 
 #[test]
 fn disk_space_check_skips_unsized_filesystems() {
-  assert!(super::has_disk_space(10, 10, 100));
-  assert!(!super::has_disk_space(11, 10, 100));
-  assert!(!super::has_disk_space(1, 0, 100));
-  assert!(super::has_disk_space(1, 0, 0));
+  assert!(super::available_disk_space_from_stats(10, 100) >= 10);
+  assert!(super::available_disk_space_from_stats(10, 100) < 11);
+  assert_eq!(super::available_disk_space_from_stats(0, 100), 0);
+  assert_eq!(super::available_disk_space_from_stats(0, 0), u64::MAX);
 }
 
 #[test]

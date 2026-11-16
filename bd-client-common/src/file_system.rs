@@ -13,6 +13,7 @@
 //! `OwnedFile` is the complementary producer-side guard: it removes a handed-over absolute path,
 //! with synchronous cleanup as a fallback, or relinquishes it after a move.
 
+use crate::file::available_disk_space;
 use async_trait::async_trait;
 use std::path::{Path, PathBuf};
 
@@ -91,6 +92,9 @@ pub trait FileSystem: Send + Sync {
   async fn open_regular_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File>;
 
   /// Available payload space; callers must additionally reserve metadata/free-space headroom.
+  ///
+  /// Unsized filesystems return `u64::MAX`, not zero. A sized filesystem with no available space
+  /// must still return zero. Neither result reserves capacity or replaces write-error handling.
   async fn available_space(&self, directory: &Path) -> anyhow::Result<u64>;
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()>;
@@ -240,7 +244,7 @@ impl FileSystem for RealFileSystem {
 
   async fn available_space(&self, directory: &Path) -> anyhow::Result<u64> {
     let directory = self.directory.join(directory);
-    Ok(tokio::task::spawn_blocking(move || fs2::available_space(directory)).await??)
+    Ok(tokio::task::spawn_blocking(move || available_disk_space(&directory)).await??)
   }
 
   async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
