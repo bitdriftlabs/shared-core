@@ -13,9 +13,19 @@ use axum::{Json, Router};
 use bd_api::PlatformNetworkManager;
 use bd_error_reporter::reporter::Reporter;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
-use http::HeaderMap;
+use bytes::Bytes;
+use http::{HeaderMap, Request, Response};
+use http_body::Frame;
+use http_body_util::{BodyExt, StreamBody};
+use hyper::body::Incoming;
+use hyper::server::conn::http2::Builder;
+use hyper::service::service_fn;
+use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::net::TcpListener;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 #[tokio::test]
 async fn connect_failure() {
@@ -36,6 +46,99 @@ async fn connect_failure() {
     event_rx.recv().await,
     Some(bd_api::StreamEvent::StreamClosed(_))
   );
+}
+
+#[tokio::test]
+async fn abandoned_stream_before_initial_data_allows_replacement() {
+  let shutdown = ComponentShutdownTrigger::default();
+  let (network, handle) = HyperNetwork::new("http://localhost:1234", shutdown.make_shutdown());
+  let (event_tx, event_rx) = mpsc::channel(1);
+  let stream = handle
+    .start_stream(event_tx, &(), &HashMap::new())
+    .await
+    .unwrap();
+  drop(event_rx);
+  drop(stream);
+
+  let network_task = tokio::spawn(network.start());
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  let replacement = handle
+    .start_stream(event_tx, &(), &HashMap::new())
+    .await
+    .unwrap();
+  drop(replacement);
+  assert_matches!(
+    event_rx.recv().await,
+    Some(bd_api::StreamEvent::StreamClosed(_))
+  );
+  drop(handle);
+  network_task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn dropped_live_stream_allows_replacement() {
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let address = format!("http://{}", listener.local_addr().unwrap());
+  let (request_tx, mut requests) = mpsc::channel(2);
+  let server = tokio::spawn(async move {
+    let (socket, _) = listener.accept().await.unwrap();
+    Builder::new(TokioExecutor::new())
+      .serve_connection(
+        TokioIo::new(socket),
+        service_fn(move |request: Request<Incoming>| {
+          let request_tx = request_tx.clone();
+          async move {
+            tokio::spawn(async move {
+              let mut body = request.into_body();
+              while let Some(Ok(_)) = body.frame().await {}
+            });
+            let (body_tx, body_rx) = mpsc::channel::<Result<Frame<Bytes>, Infallible>>(1);
+            request_tx.send(body_tx).await.unwrap();
+            Ok::<_, Infallible>(Response::new(StreamBody::new(ReceiverStream::new(body_rx))))
+          }
+        }),
+      )
+      .await
+      .unwrap();
+  });
+  let shutdown = ComponentShutdownTrigger::default();
+  let (network, handle) = HyperNetwork::new(&address, shutdown.make_shutdown());
+  let mut network_task = tokio::spawn(network.start());
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  let mut stream = handle
+    .start_stream(event_tx, &(), &HashMap::new())
+    .await
+    .unwrap();
+  stream.send_data(b"first").await.unwrap();
+  let first_response = requests.recv().await.unwrap();
+  first_response
+    .send(Ok(Frame::data(Bytes::from_static(b"first response"))))
+    .await
+    .unwrap();
+  assert_matches!(event_rx.recv().await, Some(bd_api::StreamEvent::Data(_)));
+  drop(stream);
+  drop(event_rx);
+
+  let (event_tx, mut event_rx) = mpsc::channel(1);
+  let mut replacement = handle
+    .start_stream(event_tx, &(), &HashMap::new())
+    .await
+    .unwrap();
+  replacement.send_data(b"replacement").await.unwrap();
+  let second_response = tokio::select! {
+    request = requests.recv() => request.unwrap(),
+    result = &mut network_task => panic!("network stopped before replacement: {result:?}"),
+  };
+  second_response
+    .send(Ok(Frame::data(Bytes::from_static(b"replacement response"))))
+    .await
+    .unwrap();
+  assert_matches!(event_rx.recv().await, Some(bd_api::StreamEvent::Data(_)));
+  drop(replacement);
+  drop(event_rx);
+  drop(handle);
+  network_task.await.unwrap().unwrap();
+  server.abort();
 }
 
 #[test]

@@ -11,6 +11,7 @@ async-trait.workspace        = true
 axum.workspace               = true
 bd-api.path                  = "../bd-api"
 bd-artifact-upload.path      = "../bd-artifact-upload"
+bd-client-common.workspace   = true
 bd-client-stats              = { path = "../bd-client-stats", features = ["logger-cli-observer"] }
 bd-device.path               = "../bd-device"
 bd-hyper-network.path        = "../bd-hyper-network"
@@ -19,6 +20,7 @@ bd-log.path                  = "../bd-log"
 bd-log-primitives.path       = "../bd-log-primitives"
 bd-logger.path               = "../bd-logger"
 bd-proto.path                = "../bd-proto"
+bd-runtime.workspace         = true
 bd-session.path              = "../bd-session"
 bd-session-replay.path       = "../bd-session-replay"
 bd-shutdown.path             = "../bd-shutdown"
@@ -31,16 +33,19 @@ futures.workspace            = true
 libc.workspace               = true
 log.workspace                = true
 parking_lot.workspace        = true
+rand.workspace               = true
 reqwest.workspace            = true
 rmcp.workspace               = true
 serde.workspace              = true
 serde_json.workspace         = true
+sha2.workspace               = true
 sqlx.workspace               = true
 tarpc.workspace              = true
 time.workspace               = true
 tokio.workspace              = true
 tracing.workspace            = true
 tracing-subscriber.workspace = true
+uuid.workspace               = true
 
 [dev-dependencies]
 protobuf.workspace = true

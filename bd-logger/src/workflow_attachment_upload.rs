@@ -208,7 +208,20 @@ impl WorkflowAttachmentUploadWorker {
         continue;
       }
       let content_type = metadata.and_then(|metadata| metadata.content_type);
-      let source = PathBuf::from(format!("workflow-attachments/{id}.payload"));
+      let source = if let Some(store) = &store {
+        match store.upload_source(id).await {
+          Ok(source) => source,
+          Err(error) => {
+            failures.push(WorkflowAttachmentStagingFailure {
+              artifact_id: id,
+              error: error.to_string(),
+            });
+            continue;
+          },
+        }
+      } else {
+        PathBuf::from(format!("workflow-attachments/{id}.payload"))
+      };
       let (completion_tx, completion_rx) = if attachment_store.is_some() {
         let (completion_tx, completion_rx) = oneshot::channel();
         (Some(completion_tx), Some(completion_rx))

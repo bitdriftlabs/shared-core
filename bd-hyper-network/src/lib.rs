@@ -137,9 +137,7 @@ impl HyperNetwork {
       };
 
       if event_tx.send(event).await.is_err() {
-        // Channel has shut down on us, we must be shutting down.
-        log::debug!("event channel closed, shutting down hyper networking");
-        return Ok(());
+        log::debug!("stream event receiver closed; awaiting replacement stream");
       }
     }
   }
@@ -164,10 +162,21 @@ impl HyperNetwork {
       }
     };
 
-    body_sender
-      .send(Ok(Frame::data(initial_data?.into())))
+    let Some(initial_data) = initial_data else {
+      log::debug!("client dropped stream before initial data");
+      return Some(bd_api::StreamEvent::StreamClosed(
+        "client dropped stream".to_string(),
+      ));
+    };
+    if body_sender
+      .send(Ok(Frame::data(initial_data.into())))
       .await
-      .ok()?;
+      .is_err()
+    {
+      return Some(bd_api::StreamEvent::StreamClosed(
+        "request body closed".to_string(),
+      ));
+    }
 
     // TODO(snowp): Should this also be gated on the shutdown hook?
     let mut response = match client.request(request).await {
@@ -211,9 +220,12 @@ impl HyperNetwork {
       // Handle either an inbound message from the server or an outbound message from the api mux.
       let maybe_event = tokio::select! {
         data = stream.data_rx.recv() => {
-          // Short circuit if stream.data_rx has been closed - this indicates shutdown or that the
-          // stream has been dropped.
-          Self::handle_outbound_data(&body_sender, data?).await
+          if let Some(data) = data {
+            Self::handle_outbound_data(&body_sender, data).await
+          } else {
+            log::debug!("client dropped outbound stream; awaiting replacement");
+            Some(bd_api::StreamEvent::StreamClosed("client dropped stream".to_string()))
+          }
         },
         frame = response.body_mut().frame() => {
           Some(Self::handle_inbound_data(frame))
@@ -239,7 +251,9 @@ impl HyperNetwork {
             .await
             .is_err()
           {
-            return None;
+            return Some(bd_api::StreamEvent::StreamClosed(
+              "client event receiver closed".to_string(),
+            ));
           }
         },
         bd_api::StreamEvent::StreamClosed(closed) => {
@@ -342,7 +356,7 @@ impl<T> PlatformNetworkManager<T> for Handle {
       data_rx,
     };
 
-    self.new_stream_tx.send(new_stream).await.unwrap();
+    self.new_stream_tx.send(new_stream).await?;
 
     Ok(Box::new(StreamHandle { data_tx }))
   }
@@ -355,7 +369,7 @@ struct StreamHandle {
 #[async_trait::async_trait]
 impl PlatformNetworkStream for StreamHandle {
   async fn send_data(&mut self, data: &[u8]) -> anyhow::Result<()> {
-    let _ignored = self.data_tx.send(data.to_vec()).await;
+    self.data_tx.send(data.to_vec()).await?;
 
     Ok(())
   }

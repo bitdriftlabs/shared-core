@@ -5,19 +5,27 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+//! Workflow lifetime policy over payloads owned by the common artifact store.
+//!
+//! The sidecar, cancellation/claim handshake and log references intentionally
+//! remain here: they describe workflow lifetime, not upload-queue lifetime. The artifact store
+//! fsyncs bytes and metadata before publishing an ID, and a durable uploader lease blocks cleanup
+//! until upload retirement releases it.
+
 #[cfg(test)]
 #[path = "./workflow_attachment_test.rs"]
 mod tests;
 
-use bd_artifact_upload::{UploadSource, Uploader};
-use bd_client_common::file::{
-  read_and_compress_limited_with_size,
-  read_checksummed_data,
-  write_checksummed_data,
+use bd_artifact_upload::{ArtifactStore, UploadSource, Uploader};
+use bd_client_common::file::{read_checksummed_data, read_limited, write_checksummed_data};
+use bd_client_common::file_system::{
+  RealFileSystem,
+  delete_file_if_exists_async,
+  open_regular_file_async,
+  remove_dir_if_exists_async,
 };
-use bd_client_common::file_system::{delete_file_if_exists_async, remove_dir_if_exists_async};
 use bd_proto::protos::client::artifact::WorkflowAttachmentState;
-use bd_runtime::runtime::{ConfigLoader, IntWatch, attachment, workflow_attachment};
+use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_time::OffsetDateTimeExt;
 use bd_workflows::workflow::CommandArtifactMetadata;
@@ -31,25 +39,12 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::fs::{self, File};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{OnceCell, OwnedSemaphorePermit, Semaphore, oneshot, watch};
 use tokio::time::sleep;
 use uuid::Uuid;
 
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_SIDECAR_BYTES: u64 = 1024;
-// The timestamp needs at most 11 bytes (tag + uint64 varint), and the upload flag needs 2.
-const MAX_LIFECYCLE_METADATA_BYTES: u64 = 13;
-
-//
-// Capacity
-//
-
-#[derive(Default)]
-struct Capacity {
-  bytes: u64,
-  files: usize,
-}
 
 //
 // AttachmentStoreHandle
@@ -159,7 +154,6 @@ impl WorkflowAttachmentCleanupWorker {
 // TestHooks
 //
 
-#[cfg(test)]
 trait TestHooks: Send + Sync {
   fn admission_started(&self) {}
 
@@ -173,16 +167,12 @@ trait TestHooks: Send + Sync {
 pub struct AttachmentStore {
   sdk_directory: PathBuf,
   directory: PathBuf,
-  capacity: Mutex<Capacity>,
   oldest_timestamp: Mutex<Option<u64>>,
   cleanup_generation: AtomicU64,
   admissions: Semaphore,
-  #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
   upload_ownership: Arc<Semaphore>,
-  max_attachment_bytes: IntWatch<attachment::MaxBytes>,
-  max_owned_bytes: IntWatch<workflow_attachment::MaxOwnedBytes>,
-  max_owned_files: IntWatch<workflow_attachment::MaxOwnedFiles>,
+  artifacts: ArtifactStore,
 }
 
 //
@@ -199,7 +189,6 @@ impl AttachmentStore {
     let pending_uploads = Uploader::pending_workflow_attachments(sdk_directory).await?;
     let directory = sdk_directory.join("workflow-attachments");
     fs::create_dir_all(&directory).await?;
-    let mut capacity = Capacity::default();
     let mut oldest_timestamp: Option<u64> = None;
     let mut recovered_sidecar = false;
     let mut metadata_paths = Vec::new();
@@ -252,7 +241,7 @@ impl AttachmentStore {
       }
       if entry_path
         .extension()
-        .is_none_or(|extension| extension != "payload")
+        .is_none_or(|extension| extension != "payload" && extension != "raw")
       {
         continue;
       }
@@ -269,25 +258,24 @@ impl AttachmentStore {
         log::warn!("discarded nonregular workflow attachment payload {id}");
         continue;
       }
-      payload_ids.insert(id);
-      capacity.bytes = capacity.bytes.saturating_add(metadata.len());
-      capacity.files = capacity.files.saturating_add(1);
+      if !payload_ids.insert(id) {
+        return Err(io::Error::new(
+          io::ErrorKind::InvalidData,
+          "workflow attachment has multiple payload formats",
+        ));
+      }
     }
     metadata_paths.sort();
     metadata_paths.dedup();
     let store = Self {
       sdk_directory: sdk_directory.to_owned(),
       directory,
-      capacity: Mutex::new(capacity),
       oldest_timestamp: Mutex::new(None),
       cleanup_generation: AtomicU64::new(0),
       admissions: Semaphore::new(1),
-      #[cfg(test)]
       test_hooks: None,
       upload_ownership: Arc::new(Semaphore::new(1)),
-      max_attachment_bytes: runtime.register_int_watch(),
-      max_owned_bytes: runtime.register_int_watch(),
-      max_owned_files: runtime.register_int_watch(),
+      artifacts: ArtifactStore::new(runtime),
     };
     for metadata_path in metadata_paths {
       let id = owned_attachment_id(&metadata_path)
@@ -306,7 +294,7 @@ impl AttachmentStore {
         },
         Err(error) => return Err(error),
       };
-      if !metadata.uploaded && !fs::try_exists(store.payload_path(id)).await? {
+      if !metadata.uploaded && !has_payload {
         fs::remove_file(metadata_path).await?;
         recovered_sidecar = true;
         continue;
@@ -387,14 +375,12 @@ impl AttachmentStore {
       if result_tx.is_closed() {
         return;
       }
-      #[cfg(test)]
       if let Some(hooks) = &store.test_hooks {
         hooks.admission_started();
       }
       let result = store.admit_async(source, content_type).await;
       let artifact_id = result.as_ref().ok().map(|attachment| attachment.id);
       let _ = result_tx.send(result);
-      #[cfg(test)]
       if let Some(hooks) = &store.test_hooks {
         hooks.admission_completed();
       }
@@ -529,7 +515,7 @@ impl AttachmentStore {
       let path = entry.path();
       if path
         .extension()
-        .is_some_and(|extension| extension == "payload")
+        .is_some_and(|extension| extension == "payload" || extension == "raw")
         && let Some(id) = owned_attachment_id(&path)
       {
         if pending_uploads.contains(&id) {
@@ -595,8 +581,20 @@ impl AttachmentStore {
     Ok(())
   }
 
+  #[cfg(test)]
   fn payload_path(&self, id: Uuid) -> PathBuf {
     self.directory.join(format!("{id}.payload"))
+  }
+
+  pub(crate) async fn upload_source(&self, id: Uuid) -> io::Result<PathBuf> {
+    let raw = PathBuf::from(format!("workflow-attachments/{id}.raw"));
+    match fs::symlink_metadata(self.sdk_directory.join(&raw)).await {
+      Ok(_) => Ok(raw),
+      Err(error) if error.kind() == io::ErrorKind::NotFound => {
+        Ok(PathBuf::from(format!("workflow-attachments/{id}.payload")))
+      },
+      Err(error) => Err(error),
+    }
   }
 
   fn metadata_path(&self, id: Uuid) -> PathBuf {
@@ -626,39 +624,18 @@ impl AttachmentStore {
   }
 
   async fn remove_payload_async(&self, id: Uuid, allow_missing: bool) -> io::Result<()> {
-    let path = self.payload_path(id);
-    let metadata = match fs::symlink_metadata(&path).await {
-      Ok(metadata) => metadata,
-      Err(error) if allow_missing && error.kind() == io::ErrorKind::NotFound => return Ok(()),
-      Err(error) => return Err(error),
-    };
-    if !metadata.is_file() {
-      return Err(io::Error::other(
-        "workflow attachment is not a regular file",
-      ));
-    }
-    let (remaining_bytes, remaining_files) = {
-      let capacity = self.capacity.lock();
-      let bytes = capacity.bytes.checked_sub(metadata.len());
-      let files = capacity.files.checked_sub(1);
-      match (bytes, files) {
-        (Some(bytes), Some(files)) => (bytes, files),
-        _ => {
-          return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "workflow attachment capacity mismatch",
-          ));
-        },
-      }
-    };
-    fs::remove_file(path).await?;
-    {
-      let mut capacity = self.capacity.lock();
-      capacity.bytes = remaining_bytes;
-      capacity.files = remaining_files;
-    }
-    File::open(&self.directory).await?.sync_all().await?;
-    Ok(())
+    self
+      .artifacts
+      .remove_retained_payload(
+        &RealFileSystem::new(self.sdk_directory.clone()),
+        id,
+        allow_missing,
+      )
+      .await
+      .map_err(|error| match error.downcast::<io::Error>() {
+        Ok(error) => error,
+        Err(error) => io::Error::other(error),
+      })
   }
 
   async fn admit_async(
@@ -671,114 +648,29 @@ impl AttachmentStore {
         .map_err(io::Error::other)?,
       content_type: content_type.clone(),
       ..Default::default()
-    }
-    .write_to_bytes()
-    .map_err(io::Error::other)?;
-    if metadata.len() as u64 + MAX_LIFECYCLE_METADATA_BYTES > MAX_SIDECAR_BYTES {
-      return Err(io::Error::other(
-        "workflow attachment metadata exceeds size limit",
-      ));
-    }
-    let (current_bytes, current_files) = {
-      let capacity = self.capacity.lock();
-      (capacity.bytes, capacity.files)
     };
-    let max_attachment_bytes = u64::from(*self.max_attachment_bytes.read());
-    let max_owned_bytes = u64::from(*self.max_owned_bytes.read());
-    let max_owned_files = usize::try_from(*self.max_owned_files.read()).unwrap_or(usize::MAX);
-    if current_files >= max_owned_files {
-      return Err(io::Error::other("workflow attachment capacity exhausted"));
-    }
-
-    let reader: Box<dyn AsyncRead + Unpin + Send> = match source {
-      UploadSource::Bytes(bytes) => {
-        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_attachment_bytes {
-          return Err(io::Error::other("workflow attachment exceeds size limit"));
-        }
-        Box::new(io::Cursor::new(bytes))
-      },
-      UploadSource::File(file) => {
-        let file = tokio::fs::File::from_std(file);
-        validate_file(&file, max_attachment_bytes).await?;
-        Box::new(file)
-      },
-      UploadSource::Path(path) => {
-        let path = if path.is_absolute() {
-          path
-        } else {
-          self.sdk_directory.join(path)
-        };
-        let file = open_regular_file_async(&path).await?;
-        validate_file(&file, max_attachment_bytes).await?;
-        Box::new(file)
-      },
-      UploadSource::Retained(_) => {
-        return Err(io::Error::other(
-          "cannot admit an already retained attachment",
-        ));
-      },
-    };
-
     let id = Uuid::new_v4();
-    let pending = self.directory.join(format!(".{id}.partial"));
-    let path = self.directory.join(format!("{id}.payload"));
-    let ownership_marker = self.metadata_path(id);
-    let result: io::Result<AdmittedAttachment> = async {
-      let (compressed, size_bytes) =
-        read_and_compress_limited_with_size(reader, max_attachment_bytes)
-          .await
-          .map_err(io::Error::other)?;
-      if compressed.len() as u64 > max_owned_bytes.saturating_sub(current_bytes) {
-        return Err(io::Error::other("workflow attachment capacity exhausted"));
-      }
-      let mut output = tokio::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&pending)
-        .await?;
-      output.write_all(&compressed).await?;
-      output.sync_all().await?;
-      write_sidecar(&ownership_marker, &metadata).await?;
-      // Publish only after verifying the staged bytes; a crash before rename leaves no visible ID.
-      tokio::fs::rename(&pending, &path).await?;
-      tokio::fs::File::open(&self.directory)
-        .await?
-        .sync_all()
-        .await?;
-      let mut capacity = self.capacity.lock();
-      capacity.bytes += compressed.len() as u64;
-      capacity.files += 1;
-      log::debug!(
-        "admitted workflow attachment {id} ({} bytes)",
-        compressed.len()
-      );
-      Ok(AdmittedAttachment {
+    let size_bytes = self
+      .artifacts
+      .retain(
+        &RealFileSystem::new(self.sdk_directory.clone()),
+        source,
         id,
-        artifact_metadata: CommandArtifactMetadata::new(content_type, size_bytes),
-      })
-    }
-    .await;
-    if result.is_err() {
-      let _ = tokio::fs::remove_file(&pending).await;
-      let _ = tokio::fs::remove_file(&path).await;
-      let _ = tokio::fs::remove_file(&ownership_marker).await;
-      let _ = tokio::fs::remove_file(sidecar_staging_path(&ownership_marker)?).await;
-    }
-    result
+        &metadata,
+      )
+      .await
+      .map_err(io::Error::other)?;
+    Ok(AdmittedAttachment {
+      id,
+      artifact_metadata: CommandArtifactMetadata::new(content_type, size_bytes),
+    })
   }
 }
 
 async fn read_metadata(path: &Path) -> io::Result<WorkflowAttachmentState> {
   let file = open_regular_file_async(path).await?;
   let max_bytes = MAX_SIDECAR_BYTES + size_of::<u32>() as u64;
-  let mut bytes = Vec::new();
-  file.take(max_bytes + 1).read_to_end(&mut bytes).await?;
-  if bytes.len() as u64 > max_bytes {
-    return Err(io::Error::new(
-      io::ErrorKind::InvalidData,
-      "workflow attachment metadata exceeds size limit",
-    ));
-  }
+  let bytes = read_limited(file, max_bytes).await?;
   let bytes = read_checksummed_data(&bytes)
     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
   WorkflowAttachmentState::parse_from_bytes(&bytes)
@@ -851,35 +743,4 @@ async fn remove_owned_path_if_exists(path: &Path) -> io::Result<()> {
     delete_file_if_exists_async(path).await
   };
   result.map_err(io::Error::other)
-}
-
-async fn open_regular_file_async(path: &Path) -> io::Result<tokio::fs::File> {
-  if !tokio::fs::symlink_metadata(path).await?.is_file() {
-    return Err(io::Error::new(
-      io::ErrorKind::InvalidData,
-      "workflow attachment must be a regular file",
-    ));
-  }
-  let mut options = tokio::fs::OpenOptions::new();
-  options.read(true);
-  #[cfg(unix)]
-  options.custom_flags(libc::O_NOFOLLOW);
-  let file = options.open(path).await?;
-  if !file.metadata().await?.is_file() {
-    return Err(io::Error::new(
-      io::ErrorKind::InvalidData,
-      "workflow attachment must be a regular file",
-    ));
-  }
-  Ok(file)
-}
-
-async fn validate_file(file: &tokio::fs::File, max_attachment_bytes: u64) -> io::Result<()> {
-  let metadata = file.metadata().await?;
-  if !metadata.is_file() || metadata.len() > max_attachment_bytes {
-    return Err(io::Error::other(
-      "workflow attachment must be a regular file within size limit",
-    ));
-  }
-  Ok(())
 }

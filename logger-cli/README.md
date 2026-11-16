@@ -51,17 +51,17 @@ From another terminal, interact with the running logger:
 ./bazelw run //shared-core/logger-cli:logger-cli-bin -- log <message> --field <key1> <value1> --field <key2> <value2>
 ```
 
-Pass CLI arguments after `--`. Run `logger-cli --help` or
-`./bazelw run //shared-core/logger-cli:logger-cli-bin -- --help` for the complete command list.
-Run `logger-cli start --help` or
-`./bazelw run //shared-core/logger-cli:logger-cli-bin -- start --help` for start options.
+Pass CLI arguments after `--`. Run `logger-cli --help` or `./bazelw run
+//shared-core/logger-cli:logger-cli-bin -- --help` for the complete command list. Run `logger-cli
+start --help` or `./bazelw run //shared-core/logger-cli:logger-cli-bin -- start --help` for start
+options.
 
 The `start` command runs until stopped with `Ctrl-C`.
 
 Logger CLI always fulfills remote screenshot device commands with a deterministic 1x1 JPEG. This
 makes it suitable as the simulated device for end-to-end screenshot testing: after the command
-reaches `Succeeded`, its attachment is available through the device-command attachment endpoint
-as `image/jpeg`.
+reaches `Succeeded`, its attachment is available through the device-command attachment endpoint as
+`image/jpeg`.
 
 ### Fake Perfetto command
 
@@ -70,12 +70,12 @@ returns a deterministic 103-byte Perfetto protobuf trace as
 `application/vnd.bitdrift.perfetto-trace`. The trace contains a `logger-cli` track and one
 `fake-perfetto` instant event, plus one supported `PerfSample` referencing an interned,
 already-symbolized `fake_perfetto` frame. This exercises profile processing and bundle publication
-without requiring debug files. It is not a real CPU profile or a symbolication/name-recovery fixture;
-the resulting bundle has empty symbolication sidecars.
-The configured `--app-version-code` is included in artifact metadata as well as log fields.
+without requiring debug files. It is not a real CPU profile or a symbolication/name-recovery
+fixture; the resulting bundle has empty symbolication sidecars. The configured `--app-version-code`
+is included in artifact metadata as well as log fields.
 
-Register the same key in the backend command catalog for the chosen app/platform, then select it
-in a workflow command step. A workflow invocation has no direct command ID. Attach a session-flush
+Register the same key in the backend command catalog for the chosen app/platform, then select it in
+a workflow command step. A workflow invocation has no direct command ID. Attach a session-flush
 action to successful command completion so the uploaded `Command completed` log references the
 attachment and drives its upload. Calling `upload-artifacts`, `--capture-session`, or a direct
 command invocation does not verify that workflow path.
@@ -88,9 +88,9 @@ RUST_LOG=info,bd_logger=debug,bd_workflows=trace,bd_api=debug \
   start --platform android --app-id io.bitdrift.cli.workflow
 ```
 
-Deploy the workflow and confirm configuration receipt before sending a finite trigger sequence.
-Send the trigger followed by one ordinary follow-up log: the command step is evaluated on the next
-SDK event after the preceding match. Then wait for completion rather than repeatedly sending logs.
+Deploy the workflow and confirm configuration receipt before sending a finite trigger sequence. Send
+the trigger followed by one ordinary follow-up log: the command step is evaluated on the next SDK
+event after the preceding match. Then wait for completion rather than repeatedly sending logs.
 Verify both the uploaded completion log's typed attachment metadata and the exact raw attachment
 bytes at ingestion; a handler log alone does not establish either upload.
 
@@ -98,9 +98,35 @@ Use exclusive execution for a single-run command test. Parallel execution with `
 can evict the in-flight run when the SDK creates its next initial waiting run; its eventual command
 completion is then discarded. For parallel tests, allow capacity for that initial run as well.
 
+## Synthetic attachment controls
+
+`generate-attachment` streams an exact-size deterministic `perfetto`, `heap-graph`, or `opaque`
+fixture to a new file and prints its size, SHA-256 and expected semantic counts as JSON. Choose
+`--pattern zeros` or `--pattern random` and a reproducible `--seed`. Random fixtures use seeded
+`rand::rngs::StdRng`; identical options reproduce bytes within a build, not across dependency
+upgrades.
+
+Start with `--attachment-fixture-directory <directory>` to opt into `synthetic_attachment`, the same
+registered handler for direct and workflow commands. Its string arguments are `file` (a basename in
+that directory), `source` (`path`, `file`, `bytes`), `offset_bytes` (file handles only), and
+`content_type`. Path inputs use a separate SDK-owned copy; reference files are preserved. Bytes
+inputs are limited to 1 MiB. Normal SDK admission and whole/chunk routing still apply.
+
+For post-attribution profiles, enqueue an eligible Android parent with `enqueue-fake-crash --kind
+app-not-responding --upload --current-session`, using the running logger's SDK directory. Observe
+its canonical ID with `synthetic-reports`, then pass it to `enqueue-synthetic-profile --file
+<basename> --parent <report-id>` (repeat `--parent` for two). Submission JSON confirms durable local
+staging, not upload, processing or issue linkage. Default fake-crash behavior remains previous-run
+native crashes; these are not eligible profile parents in the issue API.
+
+See the monorepo's [canonical three-owner E2E
+procedure](../../.agents/skills/local-universe-e2e/references/workflow-command-perfetto.md) for
+registration, exact-size cases, public downloads, report links, recovery and cleanup.
+
 ## MCP Server
 
-An alternative way to interact with the logger CLI is via a small MCP server that allows an LLM agent to understand how to interact with the CLI.
+An alternative way to interact with the logger CLI is via a small MCP server that allows an LLM
+agent to understand how to interact with the CLI.
 
 To set up, build the mcp server using:
 ```bash
@@ -108,7 +134,8 @@ To set up, build the mcp server using:
 cargo install --bin logger-mcp -p logger-cli
 ```
 
-And add the MCP server to the configuration for your agent of choice. For example, using opencode this looks like
+And add the MCP server to the configuration for your agent of choice. For example, using opencode
+this looks like
 
 ```json
     "logger-cli": {
@@ -118,6 +145,7 @@ And add the MCP server to the configuration for your agent of choice. For exampl
     },
 ```
 
-At the moment logger-cli must be manually started via the `logger-cli` start above in order to work as the MCP server requires a running logger to interact with.
+At the moment logger-cli must be manually started via the `logger-cli` start above in order to work
+as the MCP server requires a running logger to interact with.
 
 Currently only a handful of operations are supported but can be extended as the tool sees more use.

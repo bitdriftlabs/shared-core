@@ -9,13 +9,16 @@ use super::{build_report, write_pending_report};
 use crate::cli::FakeCrashCommand;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Platform as ReportPlatform,
+  ReportType,
   root_as_report,
 };
+use clap::Parser;
 use logger_cli::types::Platform;
 
 #[test]
 fn builds_parseable_report() {
   let report = build_report(&FakeCrashCommand {
+    kind: logger_cli::issue_report::IssueKind::NativeCrash,
     reason: "SIGABRT".to_string(),
     detail: "generated test crash".to_string(),
     platform: Platform::Android,
@@ -34,6 +37,7 @@ fn builds_parseable_report() {
     ],
     file_name: None,
     upload: false,
+    current_session: false,
   })
   .unwrap();
 
@@ -70,11 +74,39 @@ fn builds_parseable_report() {
 }
 
 #[test]
+fn current_reports_publish_atomically_into_the_enabled_watcher() {
+  let directory = tempfile::tempdir().unwrap();
+  let options = crate::cli::Options::parse_from([
+    "logger-cli",
+    "enqueue-fake-crash",
+    "--upload",
+    "--current-session",
+    "--kind",
+    "app-not-responding",
+  ]);
+  let crate::cli::Command::EnqueueFakeCrash(command) = options.command else {
+    panic!("expected fake crash command");
+  };
+  assert!(write_pending_report(directory.path(), &command).is_err());
+  let watched = directory.path().join("reports/watcher/current_session");
+  std::fs::create_dir_all(&watched).unwrap();
+  let path = write_pending_report(directory.path(), &command).unwrap();
+  assert_eq!(path.parent(), Some(watched.as_path()));
+  let bytes = std::fs::read(path).unwrap();
+  assert_eq!(
+    root_as_report(&bytes).unwrap().type_(),
+    ReportType::AppNotResponding
+  );
+  assert_eq!(std::fs::read_dir(watched).unwrap().count(), 1);
+}
+
+#[test]
 fn writes_pending_fake_crash_report() {
   let sdk_directory = tempfile::tempdir().unwrap();
   let path = write_pending_report(
     sdk_directory.path(),
     &FakeCrashCommand {
+      kind: logger_cli::issue_report::IssueKind::NativeCrash,
       reason: "FakeCrash".to_string(),
       detail: "written to disk".to_string(),
       platform: Platform::Apple,
@@ -84,6 +116,7 @@ fn writes_pending_fake_crash_report() {
       feature_flags: Vec::new(),
       file_name: Some("queued-report".to_string()),
       upload: false,
+      current_session: false,
     },
   )
   .unwrap();

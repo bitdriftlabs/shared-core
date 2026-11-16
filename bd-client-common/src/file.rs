@@ -5,6 +5,15 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+//! Shared payload encoding and bounded I/O primitives.
+//!
+//! Upload owners choose their local envelope and publication policy; these helpers only transform
+//! bytes. In particular, whole-file attachments remain one zlib stream, whereas the chunk uploader
+//! calls the same compressor independently for each segment. Neither compression nor a successful
+//! write implies durable ownership: the owning store must publish and sync its index or sidecar.
+//! Bounded readers report malformed/oversized data as `InvalidData` while preserving underlying I/O
+//! errors, so recovery can discard corrupt data without treating a storage outage as corruption.
+
 #[cfg(test)]
 #[path = "./file_test.rs"]
 mod tests;
@@ -16,7 +25,7 @@ use flate2::Compression;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use fs2::FileExt;
 use std::fs::File;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::Path;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
@@ -110,14 +119,46 @@ pub async fn read_and_compress_limited_with_size(
 pub async fn read_limited(
   reader: impl AsyncRead + Unpin,
   max_input_bytes: u64,
-) -> anyhow::Result<Vec<u8>> {
+) -> io::Result<Vec<u8>> {
+  // Read one byte beyond the limit to distinguish an exact-boundary file from truncated success.
+  // All upload callers use finite limits; saturation also keeps this primitive safe for other
+  // users.
   let mut reader = reader.take(max_input_bytes.saturating_add(1));
   let mut input = Vec::new();
   reader.read_to_end(&mut input).await?;
   if u64::try_from(input.len()).unwrap_or(u64::MAX) > max_input_bytes {
-    anyhow::bail!("attachment exceeds size limit");
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      "attachment exceeds size limit",
+    ));
   }
   Ok(input)
+}
+
+/// Decodes a bounded zlib payload without trusting its advertised expansion ratio.
+pub fn read_compressed_limited(bytes: &[u8], max_bytes: u64) -> io::Result<Vec<u8>> {
+  // The decoder validates zlib integrity. The extra output byte bounds even a highly compressible
+  // corrupt index/chunk before protobuf parsing or logical-digest verification can allocate more.
+  let mut output = Vec::new();
+  let mut decoder = ZlibDecoder::new(bytes);
+  decoder
+    .by_ref()
+    .take(max_bytes.saturating_add(1))
+    .read_to_end(&mut output)
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+  if u64::try_from(output.len()).unwrap_or(u64::MAX) > max_bytes {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      "decoded payload exceeds size limit",
+    ));
+  }
+  if decoder.total_in() != bytes.len() as u64 {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      "trailing compressed payload bytes",
+    ));
+  }
+  Ok(output)
 }
 
 pub fn read_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -201,10 +242,13 @@ pub async fn async_write_checksummed_data(
   mut writer: impl AsyncWriteExt + Unpin,
 ) -> anyhow::Result<()> {
   let mut crc = crc32fast::Hasher::new();
-  let mut buffer = vec![0; 1024];
-  while let Ok(bytes_read) = reader.read(&mut buffer).await
-    && bytes_read > 0
-  {
+  let mut buffer = vec![0; 64 * 1024];
+  // An input error must not be sealed into an apparently valid, truncated CRC envelope.
+  loop {
+    let bytes_read = reader.read(&mut buffer).await?;
+    if bytes_read == 0 {
+      break;
+    }
     crc.update(&buffer[.. bytes_read]);
     writer.write_all(&buffer[.. bytes_read]).await?;
   }
@@ -213,6 +257,7 @@ pub async fn async_write_checksummed_data(
   // Write the CRC at the end of the data.
   let crc_bytes = crc.to_le_bytes();
   writer.write_all(&crc_bytes).await?;
+  writer.flush().await?;
 
   Ok(())
 }

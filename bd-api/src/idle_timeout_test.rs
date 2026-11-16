@@ -7,7 +7,7 @@
 
 use super::{EmptyMetadata, Setup, pending_command_update};
 use crate::DataUpload;
-use crate::upload::{IntentResponse, Tracked, UploadResponse};
+use crate::upload::{IntentResponse, Tracked, TrackedArtifactUpload, UploadResponse};
 use bd_client_common::{HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE};
 use bd_client_stats_store::test::StatsHelper as _;
 use bd_proto::protos::client::api::api_request::Request_type;
@@ -50,6 +50,7 @@ use tokio::time::Instant;
 enum PendingResponse {
   Upload(oneshot::Receiver<UploadResponse>),
   Intent(oneshot::Receiver<IntentResponse>),
+  Artifact(oneshot::Receiver<UploadArtifactResponse>),
 }
 
 impl PendingResponse {
@@ -59,6 +60,9 @@ impl PendingResponse {
         response.await.unwrap();
       },
       Self::Intent(response) => {
+        response.await.unwrap();
+      },
+      Self::Artifact(response) => {
         response.await.unwrap();
       },
     }
@@ -75,6 +79,7 @@ enum RequestKind {
   Logs,
   Sankey,
   Artifact,
+  Chunk,
   LogIntent,
   SankeyIntent,
   ArtifactIntent,
@@ -123,7 +128,25 @@ fn pending_request(kind: RequestKind, uuid: &str) -> (DataUpload, ApiResponse, P
           upload_uuid: uuid.to_string(),
           ..Default::default()
         }),
-        PendingResponse::Upload(receiver),
+        PendingResponse::Artifact(receiver),
+      )
+    },
+    RequestKind::Chunk => {
+      let (tracked, receiver) = TrackedArtifactUpload::new(
+        uuid.to_string(),
+        UploadArtifactRequest {
+          upload_uuid: uuid.to_string(),
+          logical_bytes: Some(0),
+          ..Default::default()
+        },
+      );
+      (
+        DataUpload::ArtifactUpload(tracked),
+        Response_type::ArtifactUpload(UploadArtifactResponse {
+          upload_uuid: uuid.to_string(),
+          ..Default::default()
+        }),
+        PendingResponse::Artifact(receiver),
       )
     },
     RequestKind::LogIntent => {
@@ -213,6 +236,7 @@ async fn tracked_uploads_and_intents_keep_stream_alive_until_response() {
     RequestKind::Logs,
     RequestKind::Sankey,
     RequestKind::Artifact,
+    RequestKind::Chunk,
     RequestKind::LogIntent,
     RequestKind::SankeyIntent,
     RequestKind::ArtifactIntent,
@@ -235,14 +259,20 @@ async fn tracked_uploads_and_intents_keep_stream_alive_until_response() {
 
 #[tokio::test(start_paused = true)]
 async fn pending_requests_keep_stream_alive_after_waiter_is_dropped() {
-  let (mut setup, mut idle_rx) = setup(1500).await;
-  let (request, response, receiver) = pending_request(RequestKind::Stats, "pending");
-  drop(receiver);
-  send_pending(&mut setup, request).await;
-  tokio::time::advance(10.seconds().unsigned_abs()).await;
-  setup.send_response(response).await;
-  setup.wait_for_pending_requests(false).await;
-  idle_rx.recv().await.unwrap();
+  for kind in [
+    RequestKind::Stats,
+    RequestKind::Artifact,
+    RequestKind::Chunk,
+  ] {
+    let (mut setup, mut idle_rx) = setup(1500).await;
+    let (request, response, receiver) = pending_request(kind, "pending");
+    drop(receiver);
+    send_pending(&mut setup, request).await;
+    tokio::time::advance(10.seconds().unsigned_abs()).await;
+    setup.send_response(response).await;
+    setup.wait_for_pending_requests(false).await;
+    idle_rx.recv().await.unwrap();
+  }
 }
 
 #[tokio::test(start_paused = true)]

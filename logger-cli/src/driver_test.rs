@@ -381,6 +381,7 @@ fn args(port: u16) -> LoggerArgs {
     os_version: None,
     entity_id: None,
     session_strategy: SessionStrategyConfig::Fixed,
+    attachment_fixture_directory: None,
   }
 }
 

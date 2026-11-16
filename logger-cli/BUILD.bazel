@@ -1,6 +1,6 @@
 load("//tools/lint:linters.bzl", "rust_binary")
 load("//tools/rust:feature_variants.bzl", "all_crate_deps_with_overrides")
-load("//tools/rust:tests.bzl", "rust_library_with_test")
+load("//tools/rust:tests.bzl", "rust_library_test", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -33,6 +33,11 @@ rust_binary(
     crate_root = "src/main.rs",
     edition = "2024",
     deps = LOGGER_CLI_DEPS + [":logger-cli"],
+)
+
+rust_library_test(
+    name = "cli-test",
+    crate = ":logger-cli-bin",
 )
 
 rust_binary(

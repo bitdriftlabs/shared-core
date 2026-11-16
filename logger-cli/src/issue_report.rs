@@ -46,6 +46,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   ThreadDetailsArgs,
   Timestamp,
 };
+use clap::ValueEnum;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use time::OffsetDateTime;
 
@@ -53,7 +54,7 @@ use time::OffsetDateTime;
 // IssueKind
 //
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum IssueKind {
   NativeCrash,
   JvmCrash,
