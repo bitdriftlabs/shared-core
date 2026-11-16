@@ -738,12 +738,7 @@ impl Uploader {
     let chunked = index
       .chunked_artifact
       .into_iter()
-      .filter_map(|entry| {
-        entry
-          .request
-          .into_option()
-          .filter(|request| request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
-      })
+      .filter(|request| request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
       .map(|request| {
         chunked::safe_id(&request.artifact_id)
           .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
@@ -981,7 +976,12 @@ impl Uploader {
           index_retry.reset_after(retry_delay);
         }
         () = self.shutdown.cancelled() => {
-          log::debug!("shutting down uploader");
+          log::debug!(
+            "shutting down uploader: whole_files={} chunked_files={} chunk_rpc_active={}",
+            self.index.len(),
+            self.chunked.entries.len(),
+            self.chunk_task_handle.is_some(),
+          );
           self.stop_current_upload();
           if let Some(task) = self.chunk_task_handle.take() {
             task.abort();

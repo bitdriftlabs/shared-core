@@ -153,26 +153,22 @@ fn progress(operation: TrackedArtifactUpload, state: State, receipts: &[u8]) {
     .unwrap();
 }
 
-fn thin(template: &UploadArtifactRequest, operation: &TrackedArtifactUpload, chunk: Option<u32>) {
+fn thin(template: &UploadArtifactRequest, operation: &TrackedArtifactUpload, index: u32) {
   let request = &operation.payload;
   let expected = UploadArtifactRequest {
     upload_uuid: operation.uuid.clone(),
     artifact_id: template.artifact_id.clone(),
     command_id: template.command_id.clone(),
     logical_bytes: template.logical_bytes,
-    chunk_index: chunk,
+    chunk_index: Some(index),
     contents: request.contents.clone(),
     ..Default::default()
   };
   assert_eq!(request, &expected);
-  if let Some(index) = chunk {
-    assert_eq!(
-      Sha256::digest(&request.contents).as_slice(),
-      template.chunks[index as usize].encoded_sha256
-    );
-  } else {
-    assert_eq!(request.contents, b"");
-  }
+  assert_eq!(
+    Sha256::digest(&request.contents).as_slice(),
+    template.chunks[index as usize].encoded_sha256
+  );
 }
 
 #[tokio::test]
@@ -325,13 +321,7 @@ async fn chunk_transfer_replays_each_lost_ack_and_waits_for_durable_finalization
     .enqueue_capture(path, setup.request(id), persisted_tx, Some(completion_tx))
     .unwrap();
   assert_eq!(persisted_rx.await.unwrap().unwrap(), CHUNK_BYTES + 1);
-  let template = setup
-    .chunk_index()
-    .await
-    .chunked_artifact
-    .remove(0)
-    .request
-    .unwrap();
+  let template = setup.chunk_index().await.chunked_artifact.remove(0);
   let original_bytes = template.write_to_bytes().unwrap();
   setup.chunk_transfer_enabled.send(true).unwrap();
   let first = setup.next_chunk_operation().await;
@@ -344,13 +334,13 @@ async fn chunk_transfer_replays_each_lost_ack_and_waits_for_durable_finalization
   // Lose chunk zero's ACK, then prove resume reconciles its durable receipt rather than resending
   // an already-received payload or assuming that a sent chunk has been committed.
   let chunk = setup.next_chunk_operation().await;
-  thin(&template, &chunk, Some(0));
+  thin(&template, &chunk, 0);
   drop(chunk);
   let resume = setup.next_chunk_operation().await;
   assert_eq!(resume.payload.chunks, template.chunks);
   progress(resume, State::STATE_RECEIVING, &[1]);
   let chunk = setup.next_chunk_operation().await;
-  thin(&template, &chunk, Some(1));
+  thin(&template, &chunk, 1);
   let chunk_bytes = chunk.payload.contents.clone();
   drop(chunk);
   let resume = setup.next_chunk_operation().await;
@@ -358,8 +348,9 @@ async fn chunk_transfer_replays_each_lost_ack_and_waits_for_durable_finalization
   let chunk = setup.next_chunk_operation().await;
   assert_eq!(chunk.payload.contents, chunk_bytes);
   progress(chunk, State::STATE_RECEIVING, &[3]);
-  let query = setup.next_chunk_operation().await;
-  thin(&template, &query, None);
+  let resume = setup.next_chunk_operation().await;
+  expected.upload_uuid.clone_from(&resume.uuid);
+  assert_eq!(resume.payload, expected);
   assert!(completion_rx.try_recv().is_err());
   assert!(
     setup
@@ -368,10 +359,11 @@ async fn chunk_transfer_replays_each_lost_ack_and_waits_for_durable_finalization
       .await
       .unwrap()
   );
-  progress(query, State::STATE_FINALIZING, &[3]);
-  let query = setup.next_chunk_operation().await;
-  thin(&template, &query, None);
-  drop(query);
+  progress(resume, State::STATE_RECEIVING, &[3]);
+  let resume = setup.next_chunk_operation().await;
+  expected.upload_uuid.clone_from(&resume.uuid);
+  assert_eq!(resume.payload, expected);
+  drop(resume);
   let resume = setup.next_chunk_operation().await;
   let mut replayed = resume.payload.clone();
   replayed.upload_uuid.clear();
@@ -745,7 +737,7 @@ async fn chunked_mixed_encoding_hashes_geometry_and_restart() {
   );
   let index = setup.chunk_index().await;
   assert_eq!(index.artifact, []);
-  let template = index.chunked_artifact[0].request.as_ref().unwrap();
+  let template = &index.chunked_artifact[0];
   assert_eq!(template.chunks.len(), 3);
   assert_eq!(template.time, capture_time);
   assert!(template.contents.is_empty() && template.upload_uuid.is_empty());
@@ -841,10 +833,7 @@ async fn descriptor_and_byte_sources_stage_without_a_source_copy_or_per_chunk_di
     resume.send(()).unwrap();
     assert_eq!(rx.await.unwrap().unwrap(), size);
     assert_eq!(
-      setup.chunk_index().await.chunked_artifact[0]
-        .request
-        .chunks
-        .len(),
+      setup.chunk_index().await.chunked_artifact[0].chunks.len(),
       3
     );
     assert_eq!(
@@ -1417,7 +1406,7 @@ async fn chunked_recovery_rejects_invalid_templates_and_inconsistent_chunks() {
       .unwrap()
       .unwrap();
     let mut index = setup.chunk_index().await;
-    let template = index.chunked_artifact[0].request.as_mut().unwrap();
+    let template = &mut index.chunked_artifact[0];
     match corruption {
       0 => template.artifact_id = "../escape".into(),
       1 => template.upload_uuid = Uuid::new_v4().to_string(),
@@ -1621,7 +1610,7 @@ async fn chunked_remote_files_may_be_empty_but_workflow_files_must_be_nonempty()
     );
     if accepted && empty {
       let index = setup.chunk_index().await;
-      let template = index.chunked_artifact[0].request.as_ref().unwrap();
+      let template = &index.chunked_artifact[0];
       assert_eq!(template.chunks, []);
       assert_eq!(template.logical_sha256, Sha256::digest([]).as_slice());
       let setup = recovered(setup).await;

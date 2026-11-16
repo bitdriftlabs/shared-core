@@ -190,15 +190,14 @@ impl Uploader {
         super::scrub_metadata(&self.scrub_rules.borrow(), &request.state_metadata);
     }
     let id = &request.artifact_id;
-    if let Some(existing) = self.chunked.entries.iter().find(|entry| {
-      entry
-        .request
-        .as_ref()
-        .is_some_and(|entry| entry.artifact_id == *id)
-    }) {
+    if let Some(existing) = self
+      .chunked
+      .entries
+      .iter()
+      .find(|entry| entry.artifact_id == *id)
+    {
       if chunked
         && request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
-        && let Some(existing) = existing.request.as_ref()
         && existing.type_id == request.type_id
         && existing.session_id == request.session_id
       {
@@ -221,6 +220,7 @@ impl Uploader {
       )));
     }
     let retained = matches!(source, UploadSource::Retained(_));
+    let artifact_id = request.artifact_id.clone();
     if self
       .index_proto()
       .compute_size()
@@ -242,10 +242,7 @@ impl Uploader {
             EnqueueError::Other(error)
           }
         })?;
-      let size = entry
-        .request
-        .as_ref()
-        .and_then(|request| request.logical_bytes);
+      let size = entry.logical_bytes;
       self.chunked.entries.push(entry);
       self.index_sync_required = true;
       size
@@ -273,7 +270,10 @@ impl Uploader {
     match self.write_index().await {
       Ok(()) => {
         files.published = true;
-        log::debug!("durably staged artifact");
+        log::debug!(
+          "durably staged artifact: artifact_id={artifact_id} chunked={chunked} \
+           logical_bytes={size:?}"
+        );
         Ok(size)
       },
       Err(error) if error.published => {

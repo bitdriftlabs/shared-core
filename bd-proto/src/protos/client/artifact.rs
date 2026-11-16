@@ -250,7 +250,7 @@ pub struct ArtifactUploadIndex {
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.artifact)
     pub artifact: ::std::vec::Vec<artifact_upload_index::Artifact>,
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.chunked_artifact)
-    pub chunked_artifact: ::std::vec::Vec<artifact_upload_index::ChunkedArtifact>,
+    pub chunked_artifact: ::std::vec::Vec<super::api::UploadArtifactRequest>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -387,129 +387,6 @@ impl ::protobuf::reflect::ProtobufValue for ArtifactUploadIndex {
 
 /// Nested message and enums of message `ArtifactUploadIndex`
 pub mod artifact_upload_index {
-    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.ChunkedArtifact)
-    #[derive(PartialEq,Clone,Default,Debug)]
-    pub struct ChunkedArtifact {
-        // message fields
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.ChunkedArtifact.request)
-        pub request: ::protobuf::MessageField<super::super::api::UploadArtifactRequest>,
-        // special fields
-        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.ChunkedArtifact.special_fields)
-        pub special_fields: ::protobuf::SpecialFields,
-    }
-
-    impl<'a> ::std::default::Default for &'a ChunkedArtifact {
-        fn default() -> &'a ChunkedArtifact {
-            <ChunkedArtifact as ::protobuf::Message>::default_instance()
-        }
-    }
-
-    impl ChunkedArtifact {
-        pub fn new() -> ChunkedArtifact {
-            ::std::default::Default::default()
-        }
-
-        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
-            let mut oneofs = ::std::vec::Vec::with_capacity(0);
-            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::api::UploadArtifactRequest>(
-                "request",
-                |m: &ChunkedArtifact| { &m.request },
-                |m: &mut ChunkedArtifact| { &mut m.request },
-            ));
-            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ChunkedArtifact>(
-                "ArtifactUploadIndex.ChunkedArtifact",
-                fields,
-                oneofs,
-            )
-        }
-    }
-
-    impl ::protobuf::Message for ChunkedArtifact {
-        const NAME: &'static str = "ChunkedArtifact";
-
-        fn is_initialized(&self) -> bool {
-            true
-        }
-
-        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-            while let Some(tag) = is.read_raw_tag_or_eof()? {
-                match tag {
-                    10 => {
-                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.request)?;
-                    },
-                    tag => {
-                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                    },
-                };
-            }
-            ::std::result::Result::Ok(())
-        }
-
-        // Compute sizes of nested messages
-        #[allow(unused_variables)]
-        fn compute_size(&self) -> u64 {
-            let mut my_size = 0;
-            if let Some(v) = self.request.as_ref() {
-                let len = v.compute_size();
-                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-            }
-            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-            self.special_fields.cached_size().set(my_size as u32);
-            my_size
-        }
-
-        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-            if let Some(v) = self.request.as_ref() {
-                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
-            }
-            os.write_unknown_fields(self.special_fields.unknown_fields())?;
-            ::std::result::Result::Ok(())
-        }
-
-        fn special_fields(&self) -> &::protobuf::SpecialFields {
-            &self.special_fields
-        }
-
-        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-            &mut self.special_fields
-        }
-
-        fn new() -> ChunkedArtifact {
-            ChunkedArtifact::new()
-        }
-
-        fn clear(&mut self) {
-            self.request.clear();
-            self.special_fields.clear();
-        }
-
-        fn default_instance() -> &'static ChunkedArtifact {
-            static instance: ChunkedArtifact = ChunkedArtifact {
-                request: ::protobuf::MessageField::none(),
-                special_fields: ::protobuf::SpecialFields::new(),
-            };
-            &instance
-        }
-    }
-
-    impl ::protobuf::MessageFull for ChunkedArtifact {
-        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ArtifactUploadIndex.ChunkedArtifact").unwrap()).clone()
-        }
-    }
-
-    impl ::std::fmt::Display for ChunkedArtifact {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            ::protobuf::text_format::fmt(self, f)
-        }
-    }
-
-    impl ::protobuf::reflect::ProtobufValue for ChunkedArtifact {
-        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-    }
-
     // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact)
     #[derive(PartialEq,Clone,Default,Debug)]
     pub struct Artifact {
@@ -1110,40 +987,38 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     unt\x18\x03\x20\x01(\x04R\tbootCount\x127\n\x18process_start_elapsed_ns\
     \x18\x04\x20\x01(\x04R\x15processStartElapsedNs\x12\x17\n\x07wall_ns\x18\
     \x05\x20\x01(\x03R\x06wallNs\x12\x1d\n\nelapsed_ns\x18\x06\x20\x01(\x04R\
-    \telapsedNs\"\xf4\n\n\x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\x01\
+    \telapsedNs\"\xfe\t\n\x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\x01\
     \x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.A\
-    rtifactR\x08artifact\x12r\n\x10chunked_artifact\x18\x02\x20\x03(\x0b2G.b\
-    itdrift_public.protobuf.client.v1.ArtifactUploadIndex.ChunkedArtifactR\
-    \x0fchunkedArtifact\x1af\n\x0fChunkedArtifact\x12S\n\x07request\x18\x01\
-    \x20\x01(\x0b29.bitdrift_public.protobuf.client.v1.UploadArtifactRequest\
-    R\x07request\x1a\xa2\x08\n\x08Artifact\x12\x12\n\x04name\x18\x01\x20\x01\
-    (\tR\x04name\x12.\n\x04time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.Ti\
-    mestampR\x04time\x12<\n\x1apending_intent_negotiation\x18\x03\x20\x01(\
-    \x08R\x18pendingIntentNegotiation\x12j\n\x08metadata\x18\x05\x20\x03(\
-    \x0b2N.bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.M\
-    etadataEntryR\x08metadata\x12\x1d\n\nsession_id\x18\x06\x20\x01(\tR\tses\
-    sionId\x12T\n\rfeature_flags\x18\x07\x20\x03(\x0b2/.bitdrift_public.prot\
-    obuf.client.v1.FeatureFlagR\x0cfeatureFlags\x12\x1c\n\x07type_id\x18\x08\
-    \x20\x01(\tH\0R\x06typeId\x88\x01\x01\x12X\n\x0estorage_format\x18\t\x20\
-    \x01(\x0e21.bitdrift_public.protobuf.client.v1.StorageFormatR\rstorageFo\
-    rmat\x12x\n\x17workflow_report_handoff\x18\n\x20\x01(\x0b2;.bitdrift_pub\
-    lic.protobuf.workflow.v1.WorkflowReportHandoffH\x01R\x15workflowReportHa\
-    ndoff\x88\x01\x01\x12\"\n\ncommand_id\x18\x0b\x20\x01(\tH\x02R\tcommandI\
-    d\x88\x01\x01\x12f\n\x10payload_encoding\x18\x0c\x20\x01(\x0e2;.bitdrift\
-    _public.protobuf.client.v1.ArtifactPayloadEncodingR\x0fpayloadEncoding\
-    \x12&\n\x0ccontent_type\x18\r\x20\x01(\tH\x03R\x0bcontentType\x88\x01\
-    \x01\x12]\n\rcrash_profile\x18\x0e\x20\x01(\x0b28.bitdrift_public.protob\
-    uf.client.v1.CrashProfileMetadataR\x0ccrashProfile\x1af\n\rMetadataEntry\
-    \x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\
-    \x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value:\x028\x01\
-    B\n\n\x08_type_idB\x1a\n\x18_workflow_report_handoffB\r\n\x0b_command_id\
-    B\x0f\n\r_content_type\"\xe6\x01\n\x17WorkflowAttachmentState\x12,\n\x12\
-    admitted_at_micros\x18\x01\x20\x01(\x04R\x10admittedAtMicros\x121\n\x12o\
-    ccurred_at_micros\x18\x02\x20\x01(\x04H\0R\x10occurredAtMicros\x88\x01\
-    \x01\x12&\n\x0ccontent_type\x18\x03\x20\x01(\tH\x01R\x0bcontentType\x88\
-    \x01\x01\x12\x1a\n\x08uploaded\x18\x04\x20\x01(\x08R\x08uploadedB\x15\n\
-    \x13_occurred_at_microsB\x0f\n\r_content_type*)\n\rStorageFormat\x12\x0f\
-    \n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
+    rtifactR\x08artifact\x12d\n\x10chunked_artifact\x18\x02\x20\x03(\x0b29.b\
+    itdrift_public.protobuf.client.v1.UploadArtifactRequestR\x0fchunkedArtif\
+    act\x1a\xa2\x08\n\x08Artifact\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04n\
+    ame\x12.\n\x04time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\
+    \x04time\x12<\n\x1apending_intent_negotiation\x18\x03\x20\x01(\x08R\x18p\
+    endingIntentNegotiation\x12j\n\x08metadata\x18\x05\x20\x03(\x0b2N.bitdri\
+    ft_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.MetadataEntryR\
+    \x08metadata\x12\x1d\n\nsession_id\x18\x06\x20\x01(\tR\tsessionId\x12T\n\
+    \rfeature_flags\x18\x07\x20\x03(\x0b2/.bitdrift_public.protobuf.client.v\
+    1.FeatureFlagR\x0cfeatureFlags\x12\x1c\n\x07type_id\x18\x08\x20\x01(\tH\
+    \0R\x06typeId\x88\x01\x01\x12X\n\x0estorage_format\x18\t\x20\x01(\x0e21.\
+    bitdrift_public.protobuf.client.v1.StorageFormatR\rstorageFormat\x12x\n\
+    \x17workflow_report_handoff\x18\n\x20\x01(\x0b2;.bitdrift_public.protobu\
+    f.workflow.v1.WorkflowReportHandoffH\x01R\x15workflowReportHandoff\x88\
+    \x01\x01\x12\"\n\ncommand_id\x18\x0b\x20\x01(\tH\x02R\tcommandId\x88\x01\
+    \x01\x12f\n\x10payload_encoding\x18\x0c\x20\x01(\x0e2;.bitdrift_public.p\
+    rotobuf.client.v1.ArtifactPayloadEncodingR\x0fpayloadEncoding\x12&\n\x0c\
+    content_type\x18\r\x20\x01(\tH\x03R\x0bcontentType\x88\x01\x01\x12]\n\rc\
+    rash_profile\x18\x0e\x20\x01(\x0b28.bitdrift_public.protobuf.client.v1.C\
+    rashProfileMetadataR\x0ccrashProfile\x1af\n\rMetadataEntry\x12\x10\n\x03\
+    key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bi\
+    tdrift_public.protobuf.logging.v1.DataR\x05value:\x028\x01B\n\n\x08_type\
+    _idB\x1a\n\x18_workflow_report_handoffB\r\n\x0b_command_idB\x0f\n\r_cont\
+    ent_type\"\xe6\x01\n\x17WorkflowAttachmentState\x12,\n\x12admitted_at_mi\
+    cros\x18\x01\x20\x01(\x04R\x10admittedAtMicros\x121\n\x12occurred_at_mic\
+    ros\x18\x02\x20\x01(\x04H\0R\x10occurredAtMicros\x88\x01\x01\x12&\n\x0cc\
+    ontent_type\x18\x03\x20\x01(\tH\x01R\x0bcontentType\x88\x01\x01\x12\x1a\
+    \n\x08uploaded\x18\x04\x20\x01(\x08R\x08uploadedB\x15\n\x13_occurred_at_\
+    microsB\x0f\n\r_content_type*)\n\rStorageFormat\x12\x0f\n\x0bCHECKSUMMED\
+    \x10\0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1166,11 +1041,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::payload::file_descriptor().clone());
             deps.push(super::workflow::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(5);
+            let mut messages = ::std::vec::Vec::with_capacity(4);
             messages.push(CrashProfileSource::generated_message_descriptor_data());
             messages.push(ArtifactUploadIndex::generated_message_descriptor_data());
             messages.push(WorkflowAttachmentState::generated_message_descriptor_data());
-            messages.push(artifact_upload_index::ChunkedArtifact::generated_message_descriptor_data());
             messages.push(artifact_upload_index::Artifact::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
             enums.push(StorageFormat::generated_enum_descriptor_data());

@@ -22,7 +22,8 @@ use super::{
   Uploader,
   WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID,
 };
-use bd_proto::protos::client::artifact::artifact_upload_index::{Artifact, ChunkedArtifact};
+use bd_proto::protos::client::api::UploadArtifactRequest;
+use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -33,7 +34,7 @@ use std::path::{Path, PathBuf};
 /// A borrowed view, not a third in-memory or persisted representation of artifact metadata.
 pub(super) enum StoredArtifact<'a> {
   WholeFile(&'a Artifact),
-  Chunked(&'a ChunkedArtifact),
+  Chunked(&'a UploadArtifactRequest),
 }
 
 impl StoredArtifact<'_> {
@@ -51,28 +52,19 @@ impl StoredArtifact<'_> {
           },
         )
       },
-      Self::Chunked(entry) => {
-        let request = entry
-          .request
-          .as_ref()
-          .ok_or_else(|| anyhow::anyhow!("missing chunk request"))?;
-        Ok(
-          (0 .. request.chunks.len())
-            .map(|index| chunk_path(&request.artifact_id, index))
-            .chain(self.source_path())
-            .collect(),
-        )
-      },
+      Self::Chunked(request) => Ok(
+        (0 .. request.chunks.len())
+          .map(|index| chunk_path(&request.artifact_id, index))
+          .chain(self.source_path())
+          .collect(),
+      ),
     }
   }
 
   fn source_path(&self) -> Option<PathBuf> {
     match self {
       Self::WholeFile(_) => None,
-      Self::Chunked(entry) => entry
-        .request
-        .as_ref()
-        .map(|request| source_path(&request.artifact_id)),
+      Self::Chunked(request) => Some(source_path(&request.artifact_id)),
     }
   }
 }

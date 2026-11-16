@@ -98,11 +98,7 @@ impl ArtifactStore {
       Ok(mut file) => {
         let index = read_index(&mut file).await?;
         ids.extend(index.artifact.into_iter().map(|entry| entry.name));
-        for entry in index.chunked_artifact {
-          let request = entry
-            .request
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("missing chunk request"))?;
+        for request in index.chunked_artifact {
           ids.insert(safe_id(&request.artifact_id)?.to_string());
         }
       },

@@ -50,7 +50,6 @@ use bd_proto::protos::client::api::{
   UploadArtifactRequest,
 };
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
-use bd_proto::protos::client::artifact::artifact_upload_index::ChunkedArtifact;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::TimestampExt as _;
@@ -77,7 +76,7 @@ const MAX_CAPTURE_METADATA_BYTES: u64 = MAX_ARTIFACT_ORIGIN_BYTES as u64;
 //
 
 pub(super) struct Spool {
-  pub(super) entries: Vec<ChunkedArtifact>,
+  pub(super) entries: Vec<UploadArtifactRequest>,
   pub(super) admission: ArtifactStore,
 }
 
@@ -201,11 +200,7 @@ pub(super) fn validate_capture_request(request: &UploadArtifactRequest) -> anyho
   Ok(id)
 }
 
-fn validate_entry(entry: &ChunkedArtifact) -> anyhow::Result<&UploadArtifactRequest> {
-  let request = entry
-    .request
-    .as_ref()
-    .ok_or_else(|| anyhow::anyhow!("missing local artifact request"))?;
+fn validate_entry(request: &UploadArtifactRequest) -> anyhow::Result<()> {
   validate_metadata(request, MAX_MANIFEST_BYTES)?;
 
   // Establish geometry before deriving any chunk offset. Empty remote files have no descriptors
@@ -238,7 +233,7 @@ fn validate_entry(entry: &ChunkedArtifact) -> anyhow::Result<&UploadArtifactRequ
       anyhow::bail!("inconsistent local chunk descriptor");
     }
   }
-  Ok(request)
+  Ok(())
 }
 
 // Shared spool names.
@@ -319,7 +314,7 @@ async fn stage(
   mut request: UploadArtifactRequest,
   files: &mut StagedFiles,
   checksummed: bool,
-) -> anyhow::Result<ChunkedArtifact> {
+) -> anyhow::Result<UploadArtifactRequest> {
   let size = input
     .size()
     .checked_sub(if checksummed { 4 } else { 0 })
@@ -382,12 +377,8 @@ async fn stage(
   request.logical_bytes = Some(size);
   request.logical_sha256 = whole.finalize().to_vec();
   request.chunks = chunks;
-  let entry = ChunkedArtifact {
-    request: Some(request).into(),
-    ..Default::default()
-  };
-  validate_entry(&entry)?;
-  Ok(entry)
+  validate_entry(&request)?;
+  Ok(request)
 }
 
 async fn write_chunk(
@@ -457,7 +448,7 @@ impl Uploader {
     request: UploadArtifactRequest,
     source_cleanup: &mut Option<OwnedFile>,
     files: &mut StagedFiles,
-  ) -> anyhow::Result<ChunkedArtifact> {
+  ) -> anyhow::Result<UploadArtifactRequest> {
     if self.index_proto().compute_size() + RESERVED_INDEX_ENTRY_BYTES > MAX_INDEX_BYTES {
       anyhow::bail!("insufficient bounded index space for chunked artifact metadata");
     }
@@ -552,34 +543,26 @@ impl Uploader {
     // IDs participate in collision detection so no two modes can claim the same artifact.
     let mut ids: HashSet<String> = self.index.iter().map(|entry| entry.name.clone()).collect();
     let mut retained = Vec::new();
-    for entry in std::mem::take(&mut self.chunked.entries) {
+    for request in std::mem::take(&mut self.chunked.entries) {
       // Reject malformed templates before deriving paths, allocating chunk buffers or decoding
       // data.
-      let request = match validate_entry(&entry) {
-        Ok(request) => request,
-        Err(error) => {
-          log::warn!("discarding invalid chunked artifact index entry: {error}");
-          *modified = true;
-          continue;
-        },
-      };
+      if let Err(error) = validate_entry(&request) {
+        log::warn!("discarding invalid chunked artifact index entry: {error}");
+        *modified = true;
+        continue;
+      }
       let id = &request.artifact_id;
       if !ids.insert(id.clone()) {
         // Remove both owners of a collision; choosing one could hide conflicting payload identity.
         log::warn!("discarding duplicate/cross-mode chunked artifact {id}");
-        retained.retain(|entry: &ChunkedArtifact| {
-          entry
-            .request
-            .as_ref()
-            .is_some_and(|request| request.artifact_id != *id)
-        });
+        retained.retain(|entry: &UploadArtifactRequest| entry.artifact_id != *id);
         self.index.retain(|entry| entry.name != *id);
         *modified = true;
         continue;
       }
       // The shared initializer persists any removals before orphan cleanup may delete payload
       // files. Unexpected I/O errors must not discard accepted ownership.
-      if let Err(error) = validate_files(self.file_system.as_ref(), request).await {
+      if let Err(error) = validate_files(self.file_system.as_ref(), &request).await {
         if error.downcast_ref::<io::Error>().is_some_and(|error| {
           !matches!(
             error.kind(),
@@ -592,7 +575,12 @@ impl Uploader {
         *modified = true;
         continue;
       }
-      retained.push(entry);
+      log::debug!(
+        "recovered chunked artifact: artifact_id={id} chunks={} logical_bytes={:?}",
+        request.chunks.len(),
+        request.logical_bytes,
+      );
+      retained.push(request);
     }
     self.chunked.entries = retained;
     self.index_sync_required |= *modified;
