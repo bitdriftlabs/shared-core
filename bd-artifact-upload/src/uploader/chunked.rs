@@ -13,10 +13,10 @@
 //! created-file ledger; `storage` supplies the filesystem inventory used by recovery and terminal
 //! cleanup.
 //!
-//! Preparation overlaps one bounded compression job with the preceding encoded chunk's write. Files
-//! become durable before their descriptors are published in the common index. Recovery ignores
-//! current admission flags/limits: accepted bytes survive runtime reductions and offline periods,
-//! and only malformed or missing data—not an unexpected I/O error—may invalidate them.
+//! Preparation compresses one continuous stream through bounded CPU jobs and encoded fragments.
+//! Files become durable before their descriptors are published in the common index. Recovery
+//! ignores current admission flags/limits: accepted bytes survive runtime reductions and offline
+//! periods, and only malformed or missing data—not an unexpected I/O error—may invalidate them.
 //!
 //! The code follows the ownership lifecycle: validate capture/index metadata, bound index decoding,
 //! encode or verify individual chunks, then admit/recover/retire entries through the shared
@@ -37,12 +37,14 @@ use bd_client_common::artifact::{
   CRASH_PROFILE_MAX_REPORT_IDS,
   MAX_ARTIFACT_LOGICAL_BYTES,
 };
-use bd_client_common::file::{read_compressed_limited, read_limited, write_compressed};
+use bd_client_common::file::{read_compressed_limited, read_limited};
 use bd_client_common::file_system::{FileSystem, OwnedFile};
+use bd_log_primitives::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_metadata::artifact::{
   ARTIFACT_CHUNK_BYTES,
   MAX_ARTIFACT_MANIFEST_BYTES,
   MAX_ARTIFACT_ORIGIN_BYTES,
+  artifact_encoded_bound,
 };
 use bd_proto::protos::client::api::{
   ArtifactChunkDescriptor,
@@ -53,12 +55,15 @@ use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::TimestampExt as _;
+use flate2::write::ZlibEncoder;
+use flate2::{Compression, Decompress, FlushDecompress, Status};
 use protobuf::Message;
 use protobuf::well_known_types::timestamp::Timestamp;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs::Metadata;
 use std::io;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
@@ -127,14 +132,12 @@ fn validate_metadata(request: &UploadArtifactRequest, limit: u64) -> anyhow::Res
   }
 
   // The retained request is a payload-free Begin/resume template, not a network attempt or a
-  // whole-file report. Chunks carry their own encoding; the outer encoding must remain RAW.
+  // whole-file report.
   if !request.upload_uuid.is_empty()
     || !request.contents.is_empty()
     || request.chunk_index.is_some()
     || !request.feature_flags.is_empty()
     || request.workflow_report_handoff.is_some()
-    || request.payload_encoding.enum_value()
-      != Ok(ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW)
   {
     anyhow::bail!("invalid local chunked artifact metadata");
   }
@@ -192,8 +195,11 @@ pub(super) fn validate_capture_request(request: &UploadArtifactRequest) -> anyho
   let id = validate_metadata(request, MAX_CAPTURE_METADATA_BYTES)?;
   // Producers supply capture identity and timestamp. Only staging may add file geometry/hashes.
   if request.logical_bytes.is_some()
+    || request.encoded_bytes.is_some()
     || !request.logical_sha256.is_empty()
     || !request.chunks.is_empty()
+    || request.payload_encoding.enum_value()
+      != Ok(ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW)
   {
     anyhow::bail!("capture metadata contains staging-only fields");
   }
@@ -208,27 +214,32 @@ fn validate_entry(request: &UploadArtifactRequest) -> anyhow::Result<()> {
   let size = request
     .logical_bytes
     .ok_or_else(|| anyhow::anyhow!("missing artifact logical size"))?;
+  let encoded = request
+    .encoded_bytes
+    .ok_or_else(|| anyhow::anyhow!("missing artifact encoded size"))?;
   if size > u64::from(MAX_ARTIFACT_LOGICAL_BYTES)
+    || encoded > artifact_encoded_bound(size)
+    || (size != 0 && encoded == 0)
     || (size == 0 && request.command_id.is_none())
     || request.logical_sha256.len() != 32
-    || request.chunks.len() as u64 != size.div_ceil(CHUNK_BYTES)
+    || request.chunks.len() as u64 != encoded.div_ceil(CHUNK_BYTES)
+    || request.payload_encoding.enum_value()
+      != Ok(
+        if size == 0 {
+          ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
+        } else {
+          ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+        },
+      )
   {
     anyhow::bail!("inconsistent local chunked artifact geometry");
   }
 
-  // Descriptor position determines logical offset/length. Compression is valid only when smaller
-  // than RAW; verify these bounds before recovery allocates or decompresses any payload.
+  // Descriptor position determines encoded offset/length, not logical output boundaries.
   for (index, descriptor) in request.chunks.iter().enumerate() {
-    let logical = (size - index as u64 * CHUNK_BYTES).min(CHUNK_BYTES);
-    let encoded = u64::from(descriptor.encoded_bytes);
-    if descriptor.logical_sha256.len() != 32
-      || descriptor.encoded_sha256.len() != 32
-      || encoded == 0
-      || match descriptor.encoding.enum_value() {
-        Ok(ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW) => encoded != logical,
-        Ok(ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB) => encoded >= logical,
-        _ => true,
-      }
+    if descriptor.encoded_sha256.len() != 32
+      || u64::from(descriptor.encoded_bytes)
+        != (encoded - index as u64 * CHUNK_BYTES).min(CHUNK_BYTES)
     {
       anyhow::bail!("inconsistent local chunk descriptor");
     }
@@ -278,36 +289,6 @@ pub(super) fn file_identity(_: &Metadata) -> Option<(u64, u64)> {
   None
 }
 
-fn encode_chunk(raw: Vec<u8>) -> anyhow::Result<(Vec<u8>, ArtifactChunkDescriptor)> {
-  // Try zlib once and retain RAW when compression would grow the payload. This function owns only
-  // bounded CPU buffers; the async owner remains responsible for all filesystem/index changes.
-  let logical_sha256 = Sha256::digest(&raw).to_vec();
-  let compressed = write_compressed(&raw)?;
-  let (encoded, encoding) = if compressed.len() < raw.len() {
-    (
-      compressed,
-      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB,
-    )
-  } else {
-    (raw, ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW)
-  };
-
-  // RAW did not change the bytes, so reuse its digest instead of hashing the same chunk again.
-  let encoded_sha256 = if encoding == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW {
-    logical_sha256.clone()
-  } else {
-    Sha256::digest(&encoded).to_vec()
-  };
-  let descriptor = ArtifactChunkDescriptor {
-    encoded_bytes: u32::try_from(encoded.len())?,
-    encoding: encoding.into(),
-    logical_sha256,
-    encoded_sha256,
-    ..Default::default()
-  };
-  Ok((encoded, descriptor))
-}
-
 async fn stage(
   fs: &dyn FileSystem,
   mut input: Input,
@@ -323,39 +304,59 @@ async fn stage(
   let mut crc = checksummed.then(crc32fast::Hasher::new);
   let mut remaining = size;
   let mut chunks = Vec::new();
-  let mut previous = None;
+  let mut encoder = ZlibEncoder::new(
+    Vec::new(),
+    Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
+  );
+  let mut pending = Vec::new();
+  let chunk_bytes = usize::try_from(CHUNK_BYTES)?;
+  let mut encoded_bytes = 0_u64;
 
-  // Only the next bounded compression job overlaps the preceding write. Join both even on error,
-  // so rollback cannot race an unfinished payload write or a detached compression job.
+  // One encoder spans all input reads. Draining its sink does not flush/reset the codec.
   while remaining != 0 {
-    let logical_bytes = remaining.min(CHUNK_BYTES);
+    let logical_bytes = remaining.min(64 * 1024);
     let mut raw = vec![0; usize::try_from(logical_bytes)?];
     input.reader().read_exact(&mut raw).await?;
-    let encode = tokio::task::spawn_blocking(move || {
+    let encoded = tokio::task::spawn_blocking(move || {
       whole.update(&raw);
       if let Some(crc) = &mut crc {
         crc.update(&raw);
       }
-      let (encoded, descriptor) = encode_chunk(raw)?;
-      Ok::<_, anyhow::Error>((encoded, descriptor, whole, crc))
-    });
-    let write = async {
-      if let Some((path, encoded)) = previous.take() {
-        write_chunk(fs, path, encoded, files).await?;
-      }
-      Ok::<_, anyhow::Error>(())
-    };
-    let (encoded, written) = tokio::join!(encode, write);
-    written?;
-    let (encoded, descriptor, next_whole, next_crc) = encoded??;
+      encoder.write_all(&raw)?;
+      let encoded = std::mem::take(encoder.get_mut());
+      Ok::<_, anyhow::Error>((encoded, encoder, whole, crc))
+    })
+    .await??;
+    let (encoded, next_encoder, next_whole, next_crc) = encoded;
+    encoder = next_encoder;
     whole = next_whole;
     crc = next_crc;
-    previous = Some((chunk_path(&request.artifact_id, chunks.len()), encoded));
+    encoded_bytes += encoded.len() as u64;
+    anyhow::ensure!(
+      encoded_bytes <= artifact_encoded_bound(size),
+      "compressed artifact exceeds bound"
+    );
+    pending.extend(encoded);
+    while pending.len() >= chunk_bytes {
+      let tail = pending.split_off(chunk_bytes);
+      chunks.push(stage_fragment(fs, &request.artifact_id, chunks.len(), pending, files).await?);
+      pending = tail;
+    }
     remaining -= logical_bytes;
-    chunks.push(descriptor);
   }
-  if let Some((path, encoded)) = previous {
-    write_chunk(fs, path, encoded, files).await?;
+  if size != 0 {
+    let trailer = tokio::task::spawn_blocking(move || encoder.finish()).await??;
+    encoded_bytes += trailer.len() as u64;
+    anyhow::ensure!(
+      encoded_bytes <= artifact_encoded_bound(size),
+      "compressed artifact exceeds bound"
+    );
+    pending.extend(trailer);
+    while !pending.is_empty() {
+      let tail = pending.split_off(pending.len().min(chunk_bytes));
+      chunks.push(stage_fragment(fs, &request.artifact_id, chunks.len(), pending, files).await?);
+      pending = tail;
+    }
   }
 
   // Detect observed growth, truncation or modification of the pinned input. This is not a snapshot:
@@ -375,10 +376,37 @@ async fn stage(
   // Publish only a complete, self-consistent manifest to the shared staging transaction. The
   // transaction, not this encoder, commits index ownership and releases the moved capture source.
   request.logical_bytes = Some(size);
+  request.encoded_bytes = Some(encoded_bytes);
+  request.payload_encoding = if size == 0 {
+    ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
+  } else {
+    ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+  }
+  .into();
   request.logical_sha256 = whole.finalize().to_vec();
   request.chunks = chunks;
   validate_entry(&request)?;
   Ok(request)
+}
+
+async fn stage_fragment(
+  fs: &dyn FileSystem,
+  id: &str,
+  index: usize,
+  encoded: Vec<u8>,
+  files: &mut StagedFiles,
+) -> anyhow::Result<ArtifactChunkDescriptor> {
+  let (encoded, descriptor) = tokio::task::spawn_blocking(move || {
+    let descriptor = ArtifactChunkDescriptor {
+      encoded_bytes: u32::try_from(encoded.len())?,
+      encoded_sha256: Sha256::digest(&encoded).to_vec(),
+      ..Default::default()
+    };
+    Ok::<_, anyhow::Error>((encoded, descriptor))
+  })
+  .await??;
+  write_chunk(fs, chunk_path(id, index), encoded, files).await?;
+  Ok(descriptor)
 }
 
 async fn write_chunk(
@@ -401,6 +429,8 @@ async fn validate_files(
   // validate_entry has already established geometry and allowed encodings. This pass verifies the
   // corresponding disk bytes without loading more than one encoded/decoded chunk at a time.
   let mut whole = Sha256::new();
+  let mut decoder = Decompress::new(true);
+  let mut ended = false;
   let size = request
     .logical_bytes
     .ok_or_else(|| anyhow::anyhow!("missing logical size"))?;
@@ -410,32 +440,52 @@ async fn validate_files(
       .open_regular_file(&chunk_path(&request.artifact_id, index))
       .await?;
     let encoded = read_limited(&mut file, u64::from(descriptor.encoded_bytes)).await?;
-    let expected = (size - index as u64 * CHUNK_BYTES).min(CHUNK_BYTES);
     let descriptor = descriptor.clone();
-    whole = tokio::task::spawn_blocking(move || {
+    let expected_encoded = request.encoded_bytes.unwrap_or_default();
+    (whole, decoder, ended) = tokio::task::spawn_blocking(move || {
       if encoded.len() != descriptor.encoded_bytes as usize
         || Sha256::digest(&encoded).as_slice() != descriptor.encoded_sha256
       {
         anyhow::bail!("staged chunk does not match encoded descriptor");
       }
-      let raw = if descriptor.encoding.enum_value_or_default()
-        == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-      {
-        read_compressed_limited(&encoded, expected)?
-      } else {
-        encoded
-      };
-      if raw.len() as u64 != expected
-        || Sha256::digest(&raw).as_slice() != descriptor.logical_sha256
-      {
-        anyhow::bail!("staged chunk does not match logical descriptor");
+      let mut offset = 0;
+      let mut output = vec![0; 64 * 1024];
+      loop {
+        let before_in = decoder.total_in();
+        let before_out = decoder.total_out();
+        let status = decoder
+          .decompress(&encoded[offset ..], &mut output, FlushDecompress::None)
+          .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        offset += usize::try_from(decoder.total_in() - before_in)?;
+        let produced = usize::try_from(decoder.total_out() - before_out)?;
+        anyhow::ensure!(
+          decoder.total_out() <= size,
+          "staged stream exceeds logical size"
+        );
+        whole.update(&output[.. produced]);
+        if status == Status::StreamEnd {
+          anyhow::ensure!(
+            decoder.total_in() == expected_encoded,
+            "trailing staged stream bytes"
+          );
+          ended = true;
+          break;
+        }
+        if offset == encoded.len() && produced < output.len() {
+          break;
+        }
+        anyhow::ensure!(
+          decoder.total_in() != before_in || produced != 0,
+          "stalled staged decoder"
+        );
       }
-      whole.update(&raw);
-      Ok::<_, anyhow::Error>(whole)
+      Ok::<_, anyhow::Error>((whole, decoder, ended))
     })
     .await??;
   }
-  if whole.finalize().as_slice() != request.logical_sha256 {
+  if (size != 0 && (!ended || decoder.total_out() != size))
+    || whole.finalize().as_slice() != request.logical_sha256
+  {
     anyhow::bail!("staged artifact does not match whole logical digest");
   }
   Ok(())
@@ -458,7 +508,13 @@ impl Uploader {
       self
         .chunked
         .admission
-        .check_capacity(self.file_system.as_ref(), size, 0, None, size)
+        .check_capacity(
+          self.file_system.as_ref(),
+          size,
+          0,
+          None,
+          artifact_encoded_bound(size),
+        )
         .await?;
       return stage(self.file_system.as_ref(), input, request, files, false).await;
     } else {

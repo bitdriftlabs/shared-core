@@ -10,12 +10,9 @@
 
 use crate::input::Input;
 use crate::{ArtifactStore, UploadSource};
-use bd_client_common::file::{
-  async_write_checksummed_data,
-  read_and_compress_limited_with_size,
-  write_checksummed_data,
-};
+use bd_client_common::file::{async_write_checksummed_data, write_checksummed_data};
 use bd_client_common::file_system::FileSystem;
+use bd_metadata::artifact::artifact_encoded_bound;
 use bd_proto::protos::client::artifact::WorkflowAttachmentState;
 use protobuf::Message;
 use std::path::{Path, PathBuf};
@@ -36,18 +33,14 @@ impl ArtifactStore {
     if size == 0 {
       anyhow::bail!("empty workflow artifact");
     }
-    let chunked = self.should_chunk(size)?;
-    let reservation = if chunked {
-      size.saturating_mul(2) + 4
-    } else {
-      size + 4096
-    };
+    self.check_logical_bytes(size)?;
+    let reservation = size + artifact_encoded_bound(size) + 4;
     self
       .check_capacity(filesystem, size, 0, None, reservation + 1028)
       .await?;
     let directory = Path::new("workflow-attachments");
     let pending = directory.join(format!(".{id}.partial"));
-    let target = directory.join(format!("{id}.{}", if chunked { "raw" } else { "payload" }));
+    let target = directory.join(format!("{id}.raw"));
     let marker = directory.join(format!("{id}.metadata"));
     let marker_partial = marker.with_extension("metadata.partial");
     let bytes = metadata.write_to_bytes()?;
@@ -56,18 +49,10 @@ impl ArtifactStore {
     }
     let result = async {
       let mut output = filesystem.create_file(&pending).await?;
-      let logical_bytes = if chunked {
-        async_write_checksummed_data(input.reader().take(size + 1), &mut output).await?;
-        if output.metadata().await?.len() != size + 4 {
-          anyhow::bail!("attachment changed during retention");
-        }
-        size
-      } else {
-        let (encoded, size) =
-          read_and_compress_limited_with_size(input.reader(), self.whole_file_limit()).await?;
-        output.write_all(&encoded).await?;
-        size
-      };
+      async_write_checksummed_data(input.reader().take(size + 1), &mut output).await?;
+      if output.metadata().await?.len() != size + 4 {
+        anyhow::bail!("attachment changed during retention");
+      }
       input.validate().await?;
       output.flush().await?;
       filesystem.sync_file_and_parent(&pending).await?;
@@ -79,8 +64,8 @@ impl ArtifactStore {
       filesystem.sync_file_and_parent(&marker).await?;
       filesystem.rename_file(&pending, &target).await?;
       filesystem.sync_file_and_parent(&target).await?;
-      log::debug!("retained artifact {id}: logical_bytes={logical_bytes}, chunked={chunked}");
-      Ok(logical_bytes)
+      log::debug!("retained artifact {id}: logical_bytes={size}");
+      Ok(size)
     }
     .await;
     if result.is_err() {

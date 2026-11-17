@@ -4,6 +4,8 @@ This repo contains bitdrift code shared between the client and server.
 
 ## Documentation
 
+- [Chunked artifact uploads](bd-artifact-upload/docs/chunked-uploads.md): compressed-byte geometry,
+  staging ownership, storage, verification and compatibility.
 - [Linked Android crash-profile contracts](bd-artifact-upload/docs/crash-profiles.md): on-device
   attribution, profile persistence and delivery.
 

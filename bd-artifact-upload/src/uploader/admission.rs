@@ -5,10 +5,11 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::chunked::{CHUNK_BYTES, MAX_INDEX_BYTES, file_identity, read_index, safe_id};
+use super::chunked::{MAX_INDEX_BYTES, file_identity, read_index, safe_id};
 use super::{ARTIFACT_UPLOAD_DIRECTORY, REPORT_INDEX_FILE};
 use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file_system::FileSystem;
+use bd_metadata::artifact::artifact_encoded_bound;
 use bd_runtime::runtime::{ConfigLoader, IntWatch, chunked_artifact_upload};
 use std::collections::{HashMap, HashSet};
 use std::fs::Metadata;
@@ -41,22 +42,11 @@ impl ArtifactStore {
     }
   }
 
-  #[must_use]
-  pub fn whole_file_limit(&self) -> u64 {
-    CHUNK_BYTES.min(self.logical_limit())
-  }
-
-  /// New captures use the whole-file representation when one bounded upload can carry them.
-  pub fn should_chunk(&self, logical_bytes: u64) -> anyhow::Result<bool> {
-    self.check_logical_bytes(logical_bytes)?;
-    Ok(logical_bytes > CHUNK_BYTES)
-  }
-
   pub(crate) fn logical_limit(&self) -> u64 {
     u64::from((*self.max_logical_bytes.read()).min(MAX_ARTIFACT_LOGICAL_BYTES))
   }
 
-  fn check_logical_bytes(&self, logical_bytes: u64) -> anyhow::Result<()> {
+  pub(crate) fn check_logical_bytes(&self, logical_bytes: u64) -> anyhow::Result<()> {
     if logical_bytes > self.logical_limit() {
       anyhow::bail!("artifact logical byte admission exhausted");
     }
@@ -78,7 +68,7 @@ impl ArtifactStore {
         metadata.len(),
         metadata.len(),
         file_identity(metadata),
-        metadata.len(),
+        artifact_encoded_bound(metadata.len()),
       )
       .await
   }
@@ -159,9 +149,11 @@ impl ArtifactStore {
           .len()
           .checked_sub(4)
           .ok_or_else(|| anyhow::anyhow!("invalid retained workflow file"))?;
-        // Before handoff, reserve RAW output as well as the retained source. Partial chunks from
-        // failed preparation consume that reservation, not a second copy of the same headroom.
-        let reservation = logical.saturating_sub(*staged.get(&id).unwrap_or(&0));
+        // Before handoff, reserve worst-case encoded output as well as the retained source. Chunks
+        // from failed preparation consume that reservation, not a second copy of the same
+        // headroom.
+        let reservation =
+          artifact_encoded_bound(logical).saturating_sub(*staged.get(&id).unwrap_or(&0));
         used = used.saturating_add(reservation);
         unmaterialized = unmaterialized.saturating_add(reservation);
       }

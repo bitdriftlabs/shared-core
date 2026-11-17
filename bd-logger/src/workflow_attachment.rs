@@ -583,7 +583,7 @@ impl AttachmentStore {
 
   #[cfg(test)]
   fn payload_path(&self, id: Uuid) -> PathBuf {
-    self.directory.join(format!("{id}.payload"))
+    self.directory.join(format!("{id}.raw"))
   }
 
   pub(crate) async fn upload_source(&self, id: Uuid) -> io::Result<PathBuf> {

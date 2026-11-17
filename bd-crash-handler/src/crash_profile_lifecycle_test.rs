@@ -19,7 +19,12 @@ use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::ReportType;
-use bd_proto::protos::client::api::UploadArtifactResponse;
+use bd_proto::protos::client::api::upload_artifact_response::State;
+use bd_proto::protos::client::api::{
+  ArtifactPayloadEncoding,
+  UploadArtifactRequest,
+  UploadArtifactResponse,
+};
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_runtime::runtime::{FeatureFlag as _, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
@@ -46,6 +51,9 @@ struct Pipeline {
   progress: watch::Receiver<u64>,
   filesystem: Arc<TestFileSystem>,
   uploads: mpsc::Receiver<DataUpload>,
+  pending_report: Option<String>,
+  pending_profile: Option<UploadArtifactRequest>,
+  completed_uploads: Vec<UploadArtifactRequest>,
   queue_revision: watch::Receiver<u64>,
   runtime: TestConfigLoader,
   attribution_shutdown: ComponentShutdownTrigger,
@@ -96,6 +104,9 @@ impl Pipeline {
       progress,
       filesystem,
       uploads,
+      pending_report: None,
+      pending_profile: None,
+      completed_uploads: Vec::new(),
       queue_revision,
       runtime,
       attribution_shutdown,
@@ -155,74 +166,135 @@ impl Pipeline {
     .unwrap()
   }
 
+  async fn next_completed_upload(&mut self) -> UploadArtifactRequest {
+    loop {
+      let upload = self.uploads.recv().await.unwrap();
+      let upload = match upload {
+        DataUpload::ArtifactUploadIntent(intent) => {
+          assert_eq!(intent.payload.type_id, CLIENT_REPORT_ARTIFACT_TYPE_ID);
+          assert!(intent.payload.crash_profile.is_none());
+          assert!(
+            self
+              .pending_report
+              .replace(intent.payload.artifact_id)
+              .is_none()
+          );
+          intent
+            .response_tx
+            .send(IntentResponse {
+              uuid: intent.uuid,
+              decision: IntentDecision::UploadImmediately,
+            })
+            .unwrap();
+          continue;
+        },
+        DataUpload::ArtifactUpload(upload) => upload,
+        _ => panic!("unexpected upload in crash-profile lifecycle"),
+      };
+      let mut request = upload.payload;
+      log::debug!(
+        "acknowledging lifecycle artifact: artifact_id={} type={} chunk_index={:?}",
+        request.artifact_id,
+        request.type_id,
+        request.chunk_index
+      );
+      let mut response = UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        ..Default::default()
+      };
+      if request.type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID {
+        assert_eq!(request.chunk_index, None);
+        assert_eq!(request.contents, b"");
+        assert_eq!(request.chunks.len(), 1);
+        assert_eq!(
+          request.payload_encoding,
+          ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB.into()
+        );
+        assert!(self.pending_profile.replace(request).is_none());
+        response.state = State::STATE_RECEIVING.into();
+        response.received_chunks = vec![0];
+        upload.response_tx.send(response).unwrap();
+        continue;
+      }
+      if request.chunk_index.is_some() {
+        assert_eq!(request.chunk_index, Some(0));
+        let mut begin = self.pending_profile.take().unwrap();
+        assert_eq!(request.artifact_id, begin.artifact_id);
+        // Thin fragments omit descriptive metadata; retain Begin for the completed-file assertions.
+        begin.contents = request.contents;
+        request = begin;
+        response.state = State::STATE_FINALIZED.into();
+        response.received_chunks = vec![1];
+      } else {
+        assert_eq!(request.type_id, CLIENT_REPORT_ARTIFACT_TYPE_ID);
+        assert_eq!(
+          self.pending_report.take(),
+          Some(request.artifact_id.clone())
+        );
+      }
+      upload.response_tx.send(response).unwrap();
+      return request;
+    }
+  }
+
   async fn acknowledge(&mut self, parents: &[String]) -> String {
-    let DataUpload::ArtifactUploadIntent(intent) = self.uploads.recv().await.unwrap() else {
-      panic!("expected ordinary artifact intent");
-    };
-    let artifact_id = intent.payload.artifact_id.clone();
     let type_id = if parents.is_empty() {
       CLIENT_REPORT_ARTIFACT_TYPE_ID
     } else {
       CRASH_PROFILE_ARTIFACT_TYPE_ID
     };
-    assert_eq!(intent.payload.type_id, type_id);
+    let request = loop {
+      if let Some(index) = self
+        .completed_uploads
+        .iter()
+        .position(|upload| upload.type_id == type_id)
+      {
+        break self.completed_uploads.remove(index);
+      }
+      // Service requests in arrival order: holding another artifact's ACK blocks the shared permit.
+      let upload = self.next_completed_upload().await;
+      self.completed_uploads.push(upload);
+    };
+    let artifact_id = request.artifact_id.clone();
+    assert_eq!(request.session_id, self.session_id);
     assert_eq!(
-      intent
-        .payload
+      request
         .crash_profile
         .as_ref()
         .map_or_default(|links| links.report_ids.as_slice()),
       parents
     );
-    intent
-      .response_tx
-      .send(IntentResponse {
-        uuid: intent.uuid,
-        decision: IntentDecision::UploadImmediately,
-      })
-      .unwrap();
-    let DataUpload::ArtifactUpload(upload) = self.uploads.recv().await.unwrap() else {
-      panic!("expected ordinary artifact upload");
-    };
-    assert_eq!(upload.payload.artifact_id, artifact_id);
-    assert_eq!(upload.payload.type_id, type_id);
-    assert_eq!(upload.payload.session_id, self.session_id);
     if !parents.is_empty() {
       assert_eq!(
-        upload.payload.crash_profile.as_ref().unwrap().report_ids,
-        parents
-      );
-      assert_eq!(
-        read_compressed(&upload.payload.contents).unwrap(),
+        read_compressed(&request.contents).unwrap(),
         heap_profile(7, BOOT_EPOCH_NS, 5_000_000_000)
       );
       assert_eq!(
-        upload.payload.state_metadata["app_version"].string_data(),
+        request.state_metadata["app_version"].string_data(),
         "receiving-build"
       );
     }
-    let before_ack = *self.queue_revision.borrow_and_update();
-    upload
-      .response_tx
-      .send(UploadArtifactResponse {
-        upload_uuid: upload.uuid,
-        ..Default::default()
-      })
-      .unwrap();
     // This observes the real uploader retiring its durable index entry, not merely sending ACK.
-    self
-      .queue_revision
-      .wait_for(|revision| *revision > before_ack)
-      .await
-      .unwrap();
-    assert!(
-      self
-        .pending()
-        .await
+    loop {
+      let revision = *self.queue_revision.borrow_and_update();
+      let pending = self.pending().await;
+      if pending
         .artifact
         .iter()
         .all(|entry| entry.name != artifact_id)
-    );
+        && pending
+          .chunked_artifact
+          .iter()
+          .all(|entry| entry.artifact_id != artifact_id)
+      {
+        break;
+      }
+      self
+        .queue_revision
+        .wait_for(|current| *current > revision)
+        .await
+        .unwrap();
+    }
     artifact_id
   }
 
@@ -249,7 +321,9 @@ async fn real_monitor_candidates_survive_report_and_profile_upload_acks() {
   assert_eq!(pipeline.acknowledge(&[]).await, parent);
   assert!(!first.exists());
   let profile = pipeline.acknowledge(std::slice::from_ref(&parent)).await;
-  assert_eq!(pipeline.pending().await.artifact, Vec::new());
+  let pending = pipeline.pending().await;
+  assert_eq!(pending.artifact, []);
+  assert_eq!(pending.chunked_artifact, []);
 
   // Neither real ACK removes the RAM-only candidate. A later result reuses its canonical ID.
   pipeline.submit();
@@ -293,7 +367,11 @@ async fn actual_persistence_rejection_retires_source_but_not_report_candidate() 
       .await
       .unwrap();
     assert!(!rejected.exists());
-    assert_eq!(pipeline.pending().await.artifact, Vec::new());
+    let pending = pipeline.pending().await;
+    assert_eq!(pending.artifact, []);
+    assert_eq!(pending.chunked_artifact, []);
+    assert_eq!(pipeline.completed_uploads, []);
+    assert!(pipeline.pending_profile.is_none());
     assert!(matches!(
       pipeline.uploads.try_recv(),
       Err(mpsc::error::TryRecvError::Empty)

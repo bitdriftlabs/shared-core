@@ -22,6 +22,7 @@ use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Updat
 use bd_proto::protos::client::api::device_command_update_ack::Disposition;
 use bd_proto::protos::client::api::handshake_response::{self, StreamSettings};
 use bd_proto::protos::client::api::log_upload_intent_response::{Decision, UploadImmediately};
+use bd_proto::protos::client::api::upload_artifact_response::State as ArtifactState;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
@@ -114,6 +115,7 @@ struct ServiceState {
   handshake_response_control: HandshakeResponseControl,
   stats_upload_response_control: StatsUploadResponseControl,
   artifact_upload_response_control: ArtifactUploadResponseControl,
+  artifact_upload_receipts: Mutex<HashMap<String, (usize, Vec<u8>)>>,
 
   event_tx: Sender<ObservedEvent>,
   handshake_request_tx: Sender<(i32, HandshakeRequest)>,
@@ -465,6 +467,39 @@ impl RequestProcessor {
       Some(Request_type::ArtifactUpload(upload)) => {
         log::debug!("[S{}] received artifact upload", self.stream_id);
 
+        let (state, received_chunks) = if upload.logical_bytes.is_some() {
+          let mut uploads = self.stream_state.artifact_upload_receipts.lock().unwrap();
+          let progress = if let Some(index) = upload.chunk_index {
+            let progress = uploads
+              .get_mut(&upload.artifact_id)
+              .expect("fragment before Begin");
+            let index = usize::try_from(index).unwrap();
+            assert!(index < progress.0);
+            progress.1[index / 8] |= 1 << (index % 8);
+            progress
+          } else {
+            uploads
+              .entry(upload.artifact_id.clone())
+              .or_insert_with(|| {
+                (
+                  upload.chunks.len(),
+                  vec![0; upload.chunks.len().div_ceil(8)],
+                )
+              })
+          };
+          let complete =
+            (0 .. progress.0).all(|index| progress.1[index / 8] & (1 << (index % 8)) != 0);
+          (
+            if complete {
+              ArtifactState::STATE_FINALIZED
+            } else {
+              ArtifactState::STATE_RECEIVING
+            },
+            progress.1.clone(),
+          )
+        } else {
+          (ArtifactState::STATE_UNSPECIFIED, Vec::new())
+        };
         self
           .stream_state
           .artifact_upload_tx
@@ -492,6 +527,8 @@ impl RequestProcessor {
           response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
             upload_uuid: upload.upload_uuid.clone(),
             error: String::new(),
+            state: state.into(),
+            received_chunks,
             ..Default::default()
           })),
           ..Default::default()
@@ -1022,6 +1059,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           handshake_response_control: server_handshake_response_control.clone(),
           stats_upload_response_control: server_stats_upload_response_control.clone(),
           artifact_upload_response_control: server_artifact_upload_response_control.clone(),
+          artifact_upload_receipts: Mutex::default(),
           event_tx,
           handshake_request_tx,
           shutdown_tx,

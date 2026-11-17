@@ -8,9 +8,10 @@
 use super::*;
 use crate::crash_profile::PidObservation;
 use crate::test::heap_profile;
-use crate::uploader::ARTIFACT_UPLOAD_DIRECTORY;
+use crate::uploader::{ARTIFACT_UPLOAD_DIRECTORY, REPORT_INDEX_FILE};
 use crate::{EnqueueError, MockClient, Uploader};
-use bd_client_common::file::read_compressed;
+use bd_api::DataUpload;
+use bd_client_common::file::{read_compressed, read_compressed_protobuf};
 use bd_client_common::file_system::{FileSystem, RealFileSystem};
 use bd_client_stats_store::Collector;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
@@ -20,6 +21,9 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp,
   root_as_report,
 };
+use bd_proto::protos::client::api::UploadArtifactResponse;
+use bd_proto::protos::client::api::upload_artifact_response::State;
+use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_runtime::runtime::{FeatureFlag as _, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
@@ -376,7 +380,7 @@ async fn relative_sources_persist_the_matched_bytes_and_are_retired_on_rejection
       .await
       .unwrap();
     let shutdown = ComponentShutdownTrigger::default();
-    let (upload_tx, _uploads) = mpsc::channel(16);
+    let (upload_tx, mut uploads) = mpsc::channel(16);
     let (uploader, client) = Uploader::new(
       filesystem.clone(),
       upload_tx,
@@ -398,19 +402,54 @@ async fn relative_sources_persist_the_matched_bytes_and_are_retired_on_rejection
 
     assert!(!source.exists());
     assert_eq!(std::fs::read(&decoy).unwrap(), b"not the matched profile");
-    let pending = Uploader::pending_artifacts(&sdk_directory).await.unwrap();
-    assert_eq!(pending.len(), usize::from(accepted));
     if accepted {
-      let entry = &pending[0];
+      let index = read_compressed_protobuf::<ArtifactUploadIndex>(
+        &filesystem
+          .read_file(&ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE))
+          .await
+          .unwrap(),
+      )
+      .unwrap();
+      assert_eq!(index.chunked_artifact.len(), 1);
+      let entry = &index.chunked_artifact[0];
       assert_eq!(
         entry.crash_profile.as_ref().unwrap().report_ids,
         vec![report_id.to_string()]
       );
-      let payload = filesystem
-        .read_file(&ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name))
-        .await
+      let DataUpload::ArtifactUpload(begin) = uploads.recv().await.unwrap() else {
+        panic!("profile must negotiate through a metadata-only Begin");
+      };
+      assert_eq!(begin.payload.artifact_id, entry.artifact_id);
+      assert_eq!(begin.payload.chunk_index, None);
+      assert_eq!(begin.payload.contents.as_slice(), b"");
+      begin
+        .response_tx
+        .send(UploadArtifactResponse {
+          upload_uuid: begin.uuid,
+          state: State::STATE_RECEIVING.into(),
+          received_chunks: vec![0],
+          ..Default::default()
+        })
         .unwrap();
-      assert_eq!(read_compressed(&payload).unwrap(), contents);
+      let DataUpload::ArtifactUpload(payload) = uploads.recv().await.unwrap() else {
+        panic!("expected admitted profile fragment");
+      };
+      assert_eq!(payload.payload.chunk_index, Some(0));
+      assert_eq!(
+        read_compressed(&payload.payload.contents).unwrap(),
+        contents
+      );
+      payload
+        .response_tx
+        .send(UploadArtifactResponse {
+          upload_uuid: payload.uuid,
+          state: State::STATE_FINALIZED.into(),
+          received_chunks: vec![1],
+          ..Default::default()
+        })
+        .unwrap();
+    } else {
+      assert!(uploads.try_recv().is_err());
     }
     shutdown.shutdown().await;
     uploader_task.await.unwrap();

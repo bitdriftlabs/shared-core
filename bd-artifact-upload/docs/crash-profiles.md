@@ -1,8 +1,10 @@
 # Linked Android crash-profile contracts
 
 [`CrashProfileMetadata`](../../api/src/bitdrift_public/protobuf/client/v1/api.proto) contains only
-the artifact IDs of the associated crash reports. It is carried on the existing artifact intent,
-upload and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/artifact.proto).
+the artifact IDs of the associated crash reports. It is carried on metadata-only Begin, the accepted
+server manifest and the [durable
+index](../../api/src/bitdrift_public/protobuf/client/v1/artifact.proto). Legacy producers can also
+carry it on the existing artifact intent/upload messages.
 
 ## Identity and matching
 
@@ -45,21 +47,23 @@ upload and [durable index](../../api/src/bitdrift_public/protobuf/client/v1/arti
 ## Persistence and delivery
 
 `bd-artifact-upload::Client::enqueue_crash_profile` queues a profile exactly like a command
-attachment (whole-file through 1 MiB logical size, streamed chunks above it, ownership of an
+attachment (one streaming preparation and encoded-fragment transport at every size, ownership of an
 absolute source path) with the receiving build's static metadata and the `crash_profile` report IDs,
 and returns its artifact ID. Attribution resolves relative source paths once before queueing, so
 matching, persistence and source cleanup refer to the same file. That metadata is retained in the
-index and forwarded unchanged to intent and upload. Existing persistence notifications, retries and
-ACKs are unchanged.
+index. Begin negotiates intent without payload and binds the first accepted metadata; retries apply
+current scrub rules without replacing the accepted server context. Persistence notifications and
+source ownership are unchanged.
 
 The common native `ArtifactStore` owns and accounts for upload-ready whole/chunked payloads and
 retained workflow payloads together: at most 64 artifact IDs and 640 MiB physical storage including
-RAW staging reservations. New work rejects under pressure rather than evicting accepted uploads.
-Filesystem headroom also protects still-unwritten RAW reservations, subtracting chunks already
-staged rather than charging their physical bytes twice. `artifact_upload.chunked.max_logical_bytes`
-is the shared new-file policy, defaulting to and clamped at 256 MiB. Android's private
-pre-attribution store uses that same setting for its separate per-file/aggregate budget; it enters
-native capacity only at handoff. Runtime reductions do not evict durably accepted uploads.
+worst-case encoded staging reservations. New work rejects under pressure rather than evicting
+accepted uploads. Filesystem headroom also protects still-unwritten encoded reservations,
+subtracting chunks already staged rather than charging their physical bytes twice.
+`artifact_upload.chunked.max_logical_bytes` is the shared new-file policy, defaulting to and clamped
+at 256 MiB. Android's private pre-attribution store uses that same setting for its separate
+per-file/aggregate budget; it enters native capacity only at handoff. Runtime reductions do not
+evict durably accepted uploads.
 
 `ReportAttribution` is the platform hook: the logger seeds it from the pending index before the
 uploader starts, and the crash monitor adds each enqueued report that carries source facts.
@@ -69,7 +73,8 @@ source through the ordinary attachment path without removing its report candidat
 cancel the attribution worker even while it awaits a persistence acknowledgement; an upload already
 accepted by the uploader keeps its ordinary ownership and delivery semantics.
 
-Profiles use ordinary artifact intent decisions and upload ACKs. A successful ACK covers the whole
+Profiles negotiate intent through Begin, including one-fragment profiles. Dropped retires bytes
+without sending any fragment; Retryable retains them. A successful Finalized ACK covers the whole
 submitted artifact and its report links after raw ownership and durable work scheduling; processing
 remains asynchronous. Failed submissions retry through the normal upload path.
 
@@ -77,6 +82,9 @@ Additional links identify retained server bytes by the same scoped profile artif
 expired content fails normally rather than resurrecting it. There are no content receipts, embedded
 hashes, custom ACKs or feature-protocol versions. Local storage keeps its existing
 compression/checksum handling.
+
+All profiles use the shared [compress-before-chunking protocol](chunked-uploads.md): one zlib stream
+split into encoded fragments, retained verbatim on the server and verified before publication.
 
 ## Diagnosing trace clock failures
 
@@ -126,8 +134,8 @@ for rollout and rollback.
 Regenerate shared-core bindings with `make -C shared-core protos`; the monorepo generation command
 is `just protos`. The report schema gained the additive `crash_profile_source:[ubyte]` field;
 regenerate Capture SDK Kotlin bindings with its pinned flatc version. Tests cover legacy indexes,
-metadata enqueue/persistence/restart, queue-size accounting and profile metadata relay using
-ordinary intent decisions and ACKs. Host lifecycle tests connect the real crash monitor, Android
+metadata enqueue/persistence/restart, queue-size accounting and profile metadata relay using Begin
+intent decisions and fragment ACKs. Host lifecycle tests connect the real crash monitor, Android
 attribution adapter and uploader through a test-only Bazel feature variant, including post-ACK
 candidate reuse, late current-process report dispatch after empty startup recovery, attachment-limit
 and filesystem persistence rejection, and deterministic shutdown.
