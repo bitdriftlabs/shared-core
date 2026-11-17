@@ -95,17 +95,20 @@ and uses `RETENTION_NONE` when pending work is empty.
 ### BatchBuilder Timestamp Tracking
 
 `BatchBuilder` (in `consumer.rs`) tracks `oldest_micros` and `newest_micros` incrementally as
-logs are added via `add_log`. This avoids a second scan of the batch at flush time. Both fields
-are reset to `None` by `take()` when the batch is consumed. Callers must read `timestamp_range()`
-*before* calling `take()` — `take()` resets the fields.
+logs are added via `add_log`. This lets the continuous uploader avoid a second scan of the batch
+at flush time. Both fields are reset to `None` by `take()` when the batch is consumed. Callers must
+read `timestamp_range()` *before* calling `take()` — `take()` resets the fields.
 
-Two flush paths interact with state uploads:
-- `ContinuousBufferUploader::flush_current_batch`
-- `CompleteBufferUpload::flush_batch`
+Two flush paths notify state uploads with `notify_upload_needed` before uploading logs, and they
+obtain the timestamp range differently:
+- `ContinuousBufferUploader::flush_current_batch` reads `timestamp_range()`, calls `take()` to
+  produce the log batch, then notifies with the saved range.
+- `CompleteBufferUpload::flush_batch` uploads a batch from the artifact store: either one just
+  staged by `persist_and_flush_current_batch`, which calls `take()` when staging, or one recovered
+  from a previous run. A persisted batch has no `BatchBuilder` state, so it scans the logs with
+  `timestamp_range_for_logs` and notifies before the upload.
 
-Both follow the same pattern: read `timestamp_range()`, call `notify_upload_needed` if a range is
-available, then call `take()` to produce the log batch. `StreamedBufferUpload::start` does not
-notify state uploads yet (see its `TODO`).
+`StreamedBufferUpload::start` does not notify state uploads yet (see its `TODO`).
 
 ### Wake Channel Backpressure
 
