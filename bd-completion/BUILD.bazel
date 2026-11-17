@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("@crates//bd-completion:data.bzl", "aliases", "all_crate_deps", "crate_data")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -9,6 +9,7 @@ rust_library_with_test(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "bd_completion",
     crate_root = "src/lib.rs",

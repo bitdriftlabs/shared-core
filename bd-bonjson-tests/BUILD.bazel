@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "all_crate_deps")
+load("@crates//bd-bonjson-tests:data.bzl", "all_crate_deps", "crate_data")
 load("@rules_cc//cc:defs.bzl", "cc_library")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 
@@ -17,6 +17,7 @@ rust_library_with_test(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "bd_bonjson_tests",
     crate_root = "src/lib.rs",

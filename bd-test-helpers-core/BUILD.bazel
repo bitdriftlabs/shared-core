@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("@crates//bd-test-helpers-core:data.bzl", "aliases", "all_crate_deps", "crate_data")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -6,6 +6,7 @@ package(default_visibility = ["//visibility:public"])
 rust_library_with_test(
     name = "bd-test-helpers-core",
     srcs = glob(["src/**/*.rs"]),
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "bd_test_helpers_core",
     crate_root = "src/lib.rs",

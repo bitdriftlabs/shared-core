@@ -1,3 +1,4 @@
+load("@crates//bd-crash-handler:data.bzl", "crate_data")
 load("//tools/lint:linters.bzl", "rust_library")
 load("//tools/rust:feature_variants.bzl", "all_crate_deps_with_overrides")
 load("//tools/rust:tests.bzl", "rust_library_test")
@@ -18,7 +19,10 @@ rust_library(
     crate_name = "bd_crash_handler",
     crate_root = "src/lib.rs",
     edition = "2024",
-    deps = all_crate_deps_with_overrides(normal = True),
+    deps = all_crate_deps_with_overrides(
+        crate_data(),
+        normal = True,
+    ),
 )
 
 rust_library(
@@ -33,6 +37,7 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2024",
     deps = all_crate_deps_with_overrides(
+        crate_data(),
         dependency_overrides = CRASH_PROFILE_TEST_OVERRIDE,
         normal = True,
     ),
@@ -40,5 +45,6 @@ rust_library(
 
 rust_library_test(
     crate = ":bd-crash-handler-test",
+    crate_data = crate_data(),
     test_dependency_overrides = CRASH_PROFILE_TEST_OVERRIDE,
 )
