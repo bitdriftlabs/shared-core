@@ -8,9 +8,9 @@
 use super::*;
 use crate::workflow_attachment::{AdmittedAttachment, AttachmentStore, AttachmentStoreHandle};
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_artifact_upload::{EnqueueError, UploadSource, Uploader};
 use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
+use bd_client_common::file::read_checksummed_data;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
@@ -50,12 +50,8 @@ async fn admit_file(
 }
 
 #[tokio::test]
-async fn workflow_file_routing_uses_logical_size_before_retention() {
-  for (size, extension) in [
-    (1024 * 1024 - 1, "payload"),
-    (1024 * 1024, "payload"),
-    (1024 * 1024 + 1, "raw"),
-  ] {
+async fn workflow_files_retain_raw_sources_for_one_streaming_preparation_at_every_size() {
+  for size in [1024 * 1024 - 1, 1024 * 1024, 1024 * 1024 + 1] {
     let directory = tempfile::tempdir().unwrap();
     let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
     let store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
@@ -80,25 +76,15 @@ async fn workflow_file_routing_uses_logical_size_before_retention() {
         .await
         .unwrap();
       let source = store.upload_source(attachment.id).await.unwrap();
-      assert_eq!(source.extension().unwrap(), extension);
-      if extension == "raw" {
-        assert_eq!(
-          tokio::fs::metadata(directory.path().join(source))
-            .await
-            .unwrap()
-            .len(),
-          size + 4
-        );
-      } else {
-        let compressed = tokio::fs::read(directory.path().join(source))
-          .await
-          .unwrap();
-        let mut decoded = Vec::new();
-        ZlibDecoder::new(compressed.as_slice())
-          .read_to_end(&mut decoded)
-          .unwrap();
-        assert_eq!(decoded, vec![0; usize::try_from(size).unwrap()]);
-      }
+      assert_eq!(source.extension().unwrap(), "raw");
+      let stored = tokio::fs::read(directory.path().join(source))
+        .await
+        .unwrap();
+      assert_eq!(stored.len() as u64, size + 4);
+      assert_eq!(
+        read_checksummed_data(&stored).unwrap(),
+        vec![0; usize::try_from(size).unwrap()]
+      );
       store.release(attachment.id).await.unwrap();
       assert!(
         tokio::fs::read_dir(directory.path().join("workflow-attachments"))
@@ -347,13 +333,13 @@ async fn workflow_chunk_failed_persistence_and_restart_keep_retained_ownership()
     assert_eq!(upload.payload.artifact_id, id.to_string());
     assert_eq!(upload.payload.session_id, "session");
     assert_eq!(upload.payload.logical_bytes, Some(1024 * 1024 + 17));
-    assert_eq!(upload.payload.chunks.len(), 2);
+    assert_eq!(upload.payload.chunks.len(), 1);
     upload
       .response_tx
       .send(UploadArtifactResponse {
         upload_uuid: upload.uuid,
         state: State::STATE_FINALIZED.into(),
-        received_chunks: vec![3],
+        received_chunks: vec![1],
         ..Default::default()
       })
       .unwrap();
@@ -458,8 +444,7 @@ async fn workflow_chunk_handoff_is_durable_idempotent_and_protected_until_finali
   for (chunk, state, receipts) in [
     (None, State::STATE_RECEIVING, 0),
     (Some(0), State::STATE_RECEIVING, 1),
-    (Some(1), State::STATE_RECEIVING, 3),
-    (None, State::STATE_FINALIZED, 3),
+    (None, State::STATE_FINALIZED, 1),
   ] {
     let Some(DataUpload::ArtifactUpload(upload)) = data_upload_rx.recv().await else {
       panic!("expected shared chunk transport, not intent negotiation");
@@ -472,7 +457,7 @@ async fn workflow_chunk_handoff_is_durable_idempotent_and_protected_until_finali
       assert!(upload.payload.time.is_some());
       assert_eq!(upload.payload.type_id, "workflow_attachment");
       assert_eq!(upload.payload.session_id, "session");
-      assert_eq!(upload.payload.chunks.len(), 2);
+      assert_eq!(upload.payload.chunks.len(), 1);
     }
     assert!(payload.exists());
     upload
@@ -495,7 +480,7 @@ async fn workflow_chunk_handoff_is_durable_idempotent_and_protected_until_finali
 }
 
 #[tokio::test]
-async fn cancelled_staging_retains_real_admission_ownership_through_both_syncs() {
+async fn cancelled_staging_retains_real_admission_ownership_through_fragment_and_index_syncs() {
   let filesystem = Arc::new(TestFileSystem::new());
   let directory = filesystem.directory();
   let runtime = TestConfigLoader::new_in_directory(directory).await;
@@ -512,8 +497,9 @@ async fn cancelled_staging_retains_real_admission_ownership_through_both_syncs()
     )
     .await
     .unwrap();
-  let payload = PathBuf::from(format!("workflow-attachments/{}.payload", attachment.id));
-  let source_sync = filesystem.gate_next_sync(payload.clone());
+  let payload = PathBuf::from(format!("workflow-attachments/{}.raw", attachment.id));
+  let fragment_sync =
+    filesystem.gate_next_sync(format!("report_uploads/chunk-{}-0", attachment.id).into());
   let (data_upload_tx, mut data_upload_rx) = tokio::sync::mpsc::channel(1);
   let shutdown = ComponentShutdownTrigger::default();
   let (uploader, client) = Uploader::new(
@@ -539,7 +525,7 @@ async fn cancelled_staging_retains_real_admission_ownership_through_both_syncs()
       .stage(HashMap::from([(attachment.id, "session".into())]))
       .await
   });
-  let resume_source = source_sync.await.unwrap();
+  let resume_fragment = fragment_sync.await.unwrap();
   stage.abort();
   assert!(matches!(stage.await, Err(error) if error.is_cancelled()));
   worker.await.unwrap();
@@ -558,7 +544,7 @@ async fn cancelled_staging_retains_real_admission_ownership_through_both_syncs()
   let mut cleanup = Box::pin(store.cleanup_all());
   assert!(futures_util::poll!(cleanup.as_mut()).is_pending());
   let index_sync = filesystem.gate_next_sync("report_uploads/report_index.pb".into());
-  resume_source.send(()).unwrap();
+  resume_fragment.send(()).unwrap();
   let resume_index = index_sync.await.unwrap();
   assert_eq!(
     Uploader::pending_workflow_attachments(directory)
@@ -580,14 +566,18 @@ async fn cancelled_staging_retains_real_admission_ownership_through_both_syncs()
       .unwrap()
   );
 
-  let Some(DataUpload::ArtifactUploadIntent(intent)) = data_upload_rx.recv().await else {
-    panic!("expected workflow intent");
+  let Some(DataUpload::ArtifactUpload(begin)) = data_upload_rx.recv().await else {
+    panic!("expected workflow Begin");
   };
-  intent
+  assert_eq!(begin.payload.chunk_index, None);
+  assert_eq!(begin.payload.contents.as_slice(), b"");
+  begin
     .response_tx
-    .send(IntentResponse {
-      uuid: intent.uuid,
-      decision: IntentDecision::UploadImmediately,
+    .send(UploadArtifactResponse {
+      upload_uuid: begin.uuid,
+      state: State::STATE_RECEIVING.into(),
+      received_chunks: vec![0],
+      ..Default::default()
     })
     .unwrap();
   let Some(DataUpload::ArtifactUpload(upload)) = data_upload_rx.recv().await else {
@@ -603,6 +593,8 @@ async fn cancelled_staging_retains_real_admission_ownership_through_both_syncs()
     .response_tx
     .send(UploadArtifactResponse {
       upload_uuid: upload.uuid,
+      state: State::STATE_FINALIZED.into(),
+      received_chunks: vec![1],
       ..Default::default()
     })
     .unwrap();
@@ -635,7 +627,7 @@ impl TestHooks for UploadCompletionHook {
 }
 
 #[tokio::test]
-async fn single_payload_survives_log_retirement_until_real_upload_completes() {
+async fn retained_source_survives_log_retirement_until_fragment_upload_completes() {
   let directory = tempfile::tempdir().unwrap();
   let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
   let attachment_store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone());
@@ -688,7 +680,7 @@ async fn single_payload_survives_log_retirement_until_real_upload_completes() {
   );
   let payload = directory
     .path()
-    .join(format!("workflow-attachments/{}.payload", attachment.id));
+    .join(format!("workflow-attachments/{}.raw", attachment.id));
   assert!(tokio::fs::try_exists(&payload).await.unwrap());
   assert!(
     !tokio::fs::try_exists(
@@ -702,14 +694,18 @@ async fn single_payload_survives_log_retirement_until_real_upload_completes() {
   store.cleanup_all().await.unwrap();
   assert!(tokio::fs::try_exists(&payload).await.unwrap());
 
-  let Some(DataUpload::ArtifactUploadIntent(intent)) = data_upload_rx.recv().await else {
-    panic!("expected workflow artifact intent");
+  let Some(DataUpload::ArtifactUpload(begin)) = data_upload_rx.recv().await else {
+    panic!("expected workflow artifact Begin");
   };
-  intent
+  assert_eq!(begin.payload.chunk_index, None);
+  assert_eq!(begin.payload.contents.as_slice(), b"");
+  begin
     .response_tx
-    .send(IntentResponse {
-      uuid: intent.uuid,
-      decision: IntentDecision::UploadImmediately,
+    .send(UploadArtifactResponse {
+      upload_uuid: begin.uuid,
+      state: State::STATE_RECEIVING.into(),
+      received_chunks: vec![0],
+      ..Default::default()
     })
     .unwrap();
   let Some(DataUpload::ArtifactUpload(upload)) = data_upload_rx.recv().await else {
@@ -724,6 +720,8 @@ async fn single_payload_survives_log_retirement_until_real_upload_completes() {
     .response_tx
     .send(UploadArtifactResponse {
       upload_uuid: upload.uuid,
+      state: State::STATE_FINALIZED.into(),
+      received_chunks: vec![1],
       ..Default::default()
     })
     .unwrap();
@@ -788,7 +786,7 @@ async fn cancelled_staging_keeps_cleanup_excluded_until_the_queue_releases_its_l
   assert!(futures_util::poll!(cleanup.as_mut()).is_pending());
   let payload = directory
     .path()
-    .join(format!("workflow-attachments/{}.payload", attachment.id));
+    .join(format!("workflow-attachments/{}.raw", attachment.id));
   assert!(tokio::fs::try_exists(&payload).await.unwrap());
   drop(ack);
   drop(lease);
@@ -1078,7 +1076,7 @@ async fn successful_upload_releases_the_retained_payload() {
       directory
         .path()
         .join("workflow-attachments")
-        .join(format!("{}.payload", admitted.id)),
+        .join(format!("{}.raw", admitted.id)),
     )
     .await
     .unwrap()

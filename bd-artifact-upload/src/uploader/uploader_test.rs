@@ -20,12 +20,13 @@ use crate::uploader::{
 };
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse};
+use bd_api::upload::{IntentDecision, IntentResponse, TrackedArtifactUpload};
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_common::file_system::FileSystem;
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_log_filter::ScrubRules;
+use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{
   ArtifactPayloadEncoding,
   UploadArtifactRequest,
@@ -64,6 +65,20 @@ use uuid::Uuid;
 #[path = "../profile_upload_test.rs"]
 mod profile_tests;
 
+const COMMAND_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+pub(super) fn progress(operation: TrackedArtifactUpload, state: State, receipts: &[u8]) {
+  operation
+    .response_tx
+    .send(UploadArtifactResponse {
+      upload_uuid: operation.uuid,
+      state: state.into(),
+      received_chunks: receipts.to_vec(),
+      ..Default::default()
+    })
+    .unwrap();
+}
+
 fn no_scrub_rules() -> watch::Receiver<Arc<ScrubRules>> {
   watch::channel(Arc::new(ScrubRules::default())).1
 }
@@ -93,16 +108,15 @@ impl TestHooks for UploadTestHooks {
     }
   }
 
-  fn whole_file_preparation_started(&self, source: &UploadSource, request: &UploadArtifactRequest) {
+  fn whole_file_preparation_started(&self, source: &UploadSource) {
     self.preparing_whole_file.store(true, Ordering::Relaxed);
-    self.notify_preparation_error.store(
-      !matches!(source, UploadSource::Bytes(_)) || super::is_compressed_attachment(request),
-      Ordering::Relaxed,
-    );
+    self
+      .notify_preparation_error
+      .store(!matches!(source, UploadSource::Bytes(_)), Ordering::Relaxed);
   }
 
   fn payload_prepared(&self) {
-    // File/command preparation errors notify the fixture, but index failures must not look like
+    // File preparation errors notify the fixture, but index failures must not look like
     // accepted entries. Successful whole-file commits always notify, including byte reports.
     self
       .notify_preparation_error
@@ -145,6 +159,36 @@ pub(super) struct Setup {
 }
 
 impl Setup {
+  pub(super) async fn next_chunk_operation(&mut self) -> TrackedArtifactUpload {
+    loop {
+      let DataUpload::ArtifactUpload(operation) = self.data_upload_rx.recv().await.unwrap() else {
+        panic!("expected file operation, not a separate intent");
+      };
+      assert!(operation.payload.logical_bytes.is_some());
+      if !operation.response_tx.is_closed() {
+        return operation;
+      }
+    }
+  }
+
+  async fn allow_file_begin(&mut self) -> UploadArtifactRequest {
+    self.chunk_transfer_enabled.send(true).unwrap();
+    let begin = self.next_chunk_operation().await;
+    assert_eq!(begin.payload.chunk_index, None);
+    assert_eq!(begin.payload.contents.as_slice(), b"");
+    let template = begin.payload.clone();
+    progress(
+      begin,
+      if template.chunks.is_empty() {
+        State::STATE_FINALIZED
+      } else {
+        State::STATE_RECEIVING
+      },
+      &vec![0; template.chunks.len().div_ceil(8)],
+    );
+    template
+  }
+
   // Tests that rewrite persisted state must stop its owner first: periodic reconciliation now
   // shares startup's inventory and can correctly remove any unindexed whole-file or chunk payload.
   pub(super) fn abort_for_recovery(&self) {
@@ -611,64 +655,83 @@ async fn basic_flow() {
   let mut setup = Setup::new().await;
 
   let timestamp = datetime!(2023-10-01 12:00:00 UTC);
-  let id = setup
-    .client
-    .enqueue_upload(
-      UploadSource::File(setup.make_file(b"abc")),
-      "client_report".to_string(),
-      [("foo".into(), "bar".into())].into(),
-      Some(timestamp),
-      "session_id".to_string(),
-      vec![],
-      None,
-      None,
-    )
-    .unwrap();
+  let contents = vec![42; 64 * 1024 + 1];
+  let mut file = setup.make_file(&[b"prefix:".as_slice(), &contents].concat());
+  file.seek(SeekFrom::Start(7)).unwrap();
+  for (source, expected) in [
+    (UploadSource::Bytes(contents.clone()), contents.as_slice()),
+    (UploadSource::File(file), contents.as_slice()),
+    (UploadSource::Bytes(Vec::new()), b"".as_slice()),
+  ] {
+    let id = setup
+      .client
+      .enqueue_upload(
+        source,
+        "client_report".to_string(),
+        [("foo".into(), "bar".into())].into(),
+        Some(timestamp),
+        "session_id".to_string(),
+        vec![],
+        None,
+        None,
+      )
+      .unwrap();
 
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-      assert_eq!(intent.payload.artifact_id, id.to_string());
-      assert_eq!(intent.payload.type_id, "client_report");
-      assert_eq!(intent.payload.time, timestamp.into_proto());
-      assert_eq!(intent.payload.session_id, Some("session_id".to_string()));
-      assert_eq!(intent.payload.metadata, [("foo".into(), Data {
-          data_type: Some(Data_type::StringData("bar".to_string())),
+    assert_eq!(
+      setup.entry_received_rx.recv().await.unwrap(),
+      id.to_string()
+    );
+    let upload = setup.data_upload_rx.recv().await.unwrap();
+    assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+        assert_eq!(intent.payload.artifact_id, id.to_string());
+        assert_eq!(intent.payload.type_id, "client_report");
+        assert_eq!(intent.payload.time, timestamp.into_proto());
+        assert_eq!(intent.payload.session_id, Some("session_id".to_string()));
+        assert_eq!(intent.payload.metadata, [("foo".into(), Data {
+            data_type: Some(Data_type::StringData("bar".to_string())),
+            ..Default::default()
+        })].into());
+
+        intent.response_tx.send(IntentResponse {
+            uuid: intent.uuid,
+            decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
+    });
+
+    let upload = setup.data_upload_rx.recv().await.unwrap();
+    assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
+        assert_eq!(upload.payload.artifact_id, id.to_string());
+        assert_eq!(upload.payload.contents, expected);
+        assert_eq!(upload.payload.type_id, "client_report");
+        assert_eq!(upload.payload.logical_bytes, None);
+        assert_eq!(
+          upload.payload.payload_encoding.enum_value_or_default(),
+          ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
+        );
+        assert_eq!(upload.payload.time, timestamp.into_proto());
+        assert_eq!(upload.payload.session_id, "session_id");
+        assert_eq!(upload.payload.state_metadata, [("foo".into(), Data {
+            data_type: Some(Data_type::StringData("bar".to_string())),
+            ..Default::default()
+        })].into());
+
+        upload.response_tx.send(UploadArtifactResponse {
+          upload_uuid: upload.uuid,
           ..Default::default()
-      })].into());
+        }).unwrap();
+    });
 
-      intent.response_tx.send(IntentResponse {
-          uuid: intent.uuid,
-          decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
-  });
+    setup.upload_complete_rx.recv().await.unwrap();
 
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-      assert_eq!(upload.payload.artifact_id, id.to_string());
-      assert_eq!(upload.payload.contents, b"abc");
-      assert_eq!(upload.payload.type_id, "client_report");
-      assert_eq!(upload.payload.time, timestamp.into_proto());
-      assert_eq!(upload.payload.session_id, "session_id");
-      assert_eq!(upload.payload.state_metadata, [("foo".into(), Data {
-          data_type: Some(Data_type::StringData("bar".to_string())),
-          ..Default::default()
-      })].into());
-
-      upload.response_tx.send(UploadArtifactResponse {
-        upload_uuid: upload.uuid,
-        ..Default::default()
-      }).unwrap();
-  });
-
-  setup.upload_complete_rx.recv().await.unwrap();
-
-  let files = setup.filesystem.files();
-  let index_file = &files[&super::ARTIFACT_UPLOAD_DIRECTORY
-    .join(&*super::REPORT_INDEX_FILE)
-    .to_str()
-    .unwrap()
-    .to_string()];
-  let index_file: ArtifactUploadIndex = read_compressed_protobuf(index_file).unwrap();
-  assert_eq!(index_file, ArtifactUploadIndex::default());
+    let files = setup.filesystem.files();
+    let index_file = &files[&super::ARTIFACT_UPLOAD_DIRECTORY
+      .join(&*super::REPORT_INDEX_FILE)
+      .to_str()
+      .unwrap()
+      .to_string()];
+    let index_file: ArtifactUploadIndex = read_compressed_protobuf(index_file).unwrap();
+    assert_eq!(index_file, ArtifactUploadIndex::default());
+  }
+  setup.shutdown().await;
 }
 
 #[tokio::test]
@@ -1316,36 +1379,34 @@ async fn command_upload_persistence_reports_original_size() {
         Some(completion_tx),
       )
       .unwrap();
-    assert_eq!(
-      setup.entry_received_rx.recv().await.unwrap(),
-      artifact_id.to_string()
-    );
     assert_eq!(persisted_rx.await.unwrap().unwrap(), expected_size_bytes);
-    let upload = setup.data_upload_rx.recv().await.unwrap();
-    assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-      assert_eq!(intent.payload.artifact_id, artifact_id.to_string());
-      assert_eq!(intent.payload.metadata, command_state_metadata());
-      intent.response_tx.send(IntentResponse {
-        uuid: intent.uuid,
-        decision: bd_api::upload::IntentDecision::UploadImmediately,
-      }).unwrap();
-    });
-    let upload = setup.data_upload_rx.recv().await.unwrap();
-    assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-      assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
-      assert_eq!(upload.payload.state_metadata, command_state_metadata());
+    let begin = setup.allow_file_begin().await;
+    assert_eq!(begin.artifact_id, artifact_id.to_string());
+    assert_eq!(begin.state_metadata, command_state_metadata());
+    if expected_size_bytes == 0 {
       assert_eq!(
-        upload.payload.payload_encoding.enum_value_or_default(),
+        begin.payload_encoding.enum_value_or_default(),
+        ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
+      );
+      assert_eq!(begin.chunks, []);
+    } else {
+      assert_eq!(
+        begin.payload_encoding.enum_value_or_default(),
         ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
       );
+      let upload = setup.next_chunk_operation().await;
+      assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
+      assert_eq!(upload.payload.chunk_index, Some(0));
       let mut decoded = Vec::new();
-      ZlibDecoder::new(upload.payload.contents.as_slice()).read_to_end(&mut decoded).unwrap();
-      assert_eq!(decoded, contents[..usize::try_from(expected_size_bytes).unwrap()]);
-      upload.response_tx.send(UploadArtifactResponse {
-        upload_uuid: upload.uuid,
-        ..Default::default()
-      }).unwrap();
-    });
+      ZlibDecoder::new(upload.payload.contents.as_slice())
+        .read_to_end(&mut decoded)
+        .unwrap();
+      assert_eq!(
+        decoded,
+        contents[.. usize::try_from(expected_size_bytes).unwrap()]
+      );
+      progress(upload, State::STATE_FINALIZED, &[1]);
+    }
     completion_rx.await.unwrap().unwrap();
     assert_eq!(
       setup.upload_complete_rx.recv().await.unwrap(),
@@ -1357,7 +1418,8 @@ async fn command_upload_persistence_reports_original_size() {
 
 #[tokio::test]
 async fn command_upload_preserves_identity_and_content_type_after_restart() {
-  let mut setup = Setup::new().await;
+  let setup = Setup::new().await;
+  let (tx, rx) = oneshot::channel();
   let artifact_id = setup
     .client
     .enqueue_command_upload(
@@ -1366,38 +1428,32 @@ async fn command_upload_preserves_identity_and_content_type_after_restart() {
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      COMMAND_ID.to_string(),
       Some("application/vnd.example.capture".to_string()),
-      None,
+      Some(tx),
       None,
     )
     .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    artifact_id.to_string()
-  );
+  rx.await.unwrap().unwrap();
 
   let mut setup = setup.reinitialize().await;
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    assert!(intent.response_tx.is_closed());
-  });
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    assert_eq!(intent.payload.artifact_id, artifact_id.to_string());
-    assert_eq!(intent.payload.metadata, command_state_metadata());
-    intent.response_tx.send(IntentResponse {
-      uuid: intent.uuid,
-      decision: bd_api::upload::IntentDecision::UploadImmediately,
-    }).unwrap();
-  });
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-    assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
-    assert_eq!(upload.payload.state_metadata, command_state_metadata());
-    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
-    assert_eq!(upload.payload.content_type.as_deref(), Some("application/vnd.example.capture"));
-  });
+  let begin = setup.allow_file_begin().await;
+  assert_eq!(begin.artifact_id, artifact_id.to_string());
+  assert_eq!(begin.state_metadata, command_state_metadata());
+  assert_eq!(begin.command_id.as_deref(), Some(COMMAND_ID));
+  assert_eq!(
+    begin.content_type.as_deref(),
+    Some("application/vnd.example.capture")
+  );
+  let upload = setup.next_chunk_operation().await;
+  assert_eq!(upload.payload.artifact_id, artifact_id.to_string());
+  assert_eq!(upload.payload.command_id.as_deref(), Some(COMMAND_ID));
+  progress(upload, State::STATE_FINALIZED, &[1]);
+  assert_eq!(
+    setup.upload_complete_rx.recv().await.unwrap(),
+    artifact_id.to_string()
+  );
+  setup.shutdown().await;
 }
 
 #[tokio::test]
@@ -1772,6 +1828,66 @@ async fn intent_drop() {
 }
 
 #[tokio::test]
+async fn file_begin_retries_apply_current_scrub_rules_without_payload_or_manifest_changes() {
+  let mut setup = Setup::new().await;
+  let (tx, rx) = oneshot::channel();
+  setup
+    .client
+    .enqueue_command_upload(
+      UploadSource::Bytes(b"attachment".to_vec()),
+      "device_command_attachment".into(),
+      None,
+      "session".into(),
+      Vec::new(),
+      COMMAND_ID.into(),
+      None,
+      Some(tx),
+      None,
+    )
+    .unwrap();
+  rx.await.unwrap().unwrap();
+  let make_rules = |keys: &[&str]| {
+    let (rules, failures) = ScrubRules::new(ScrubConfiguration {
+      rules: keys
+        .iter()
+        .map(|key| scrub_rule(remove_field!(key)))
+        .collect(),
+      ..Default::default()
+    });
+    assert_eq!(failures, 0);
+    Arc::new(rules)
+  };
+  setup.scrub_rules_tx.send_replace(make_rules(&["app_id"]));
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let first = setup.next_chunk_operation().await;
+  assert_eq!(first.payload.chunk_index, None);
+  assert_eq!(first.payload.contents.as_slice(), b"");
+  assert!(!first.payload.state_metadata.contains_key("app_id"));
+  assert!(first.payload.state_metadata.contains_key("platform"));
+  let mut original = first.payload.clone();
+  setup
+    .scrub_rules_tx
+    .send_replace(make_rules(&["app_id", "platform"]));
+  drop(first);
+  let retry = setup.next_chunk_operation().await;
+  assert_eq!(retry.payload.chunk_index, None);
+  assert_eq!(retry.payload.contents.as_slice(), b"");
+  assert!(!retry.payload.state_metadata.contains_key("app_id"));
+  assert!(!retry.payload.state_metadata.contains_key("platform"));
+  original.upload_uuid.clone_from(&retry.payload.upload_uuid);
+  original
+    .state_metadata
+    .clone_from(&retry.payload.state_metadata);
+  assert_eq!(original, retry.payload);
+  progress(retry, State::STATE_RECEIVING, &[0]);
+  let payload = setup.next_chunk_operation().await;
+  assert!(payload.payload.state_metadata.is_empty());
+  progress(payload, State::STATE_FINALIZED, &[1]);
+  setup.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await;
+}
+
+#[tokio::test]
 async fn command_upload_intent_drop_completes_with_failure() {
   let mut setup = Setup::new().await;
   let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
@@ -1783,26 +1899,31 @@ async fn command_upload_intent_drop_completes_with_failure() {
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      COMMAND_ID.to_string(),
       None,
       None,
       Some(completion_tx),
     )
     .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id.to_string()
-  );
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    intent.response_tx.send(IntentResponse {
-      uuid: intent.uuid,
-      decision: bd_api::upload::IntentDecision::Drop,
-    }).unwrap();
-  });
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let begin = setup.next_chunk_operation().await;
+  assert_eq!(begin.payload.artifact_id, id.to_string());
+  assert_eq!(begin.payload.chunk_index, None);
+  assert_eq!(begin.payload.contents.as_slice(), b"");
+  progress(begin, State::STATE_DROPPED, &[]);
 
   assert_matches!(completion_rx.await.unwrap(), Err(error) if error.contains("intent negotiation"));
+  assert!(setup.data_upload_rx.try_recv().is_err());
+  let index = read_compressed_protobuf::<ArtifactUploadIndex>(
+    &setup
+      .filesystem
+      .read_file(&ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE))
+      .await
+      .unwrap(),
+  )
+  .unwrap();
+  assert_eq!(index.chunked_artifact, []);
+  setup.shutdown().await;
 }
 
 #[tokio::test]
@@ -1918,41 +2039,29 @@ async fn command_upload_negative_ack_retries_without_stopping_uploader() {
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      COMMAND_ID.to_string(),
       None,
       None,
       Some(completion_tx),
     )
     .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id.to_string()
-  );
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    intent.response_tx.send(IntentResponse {
-      uuid: intent.uuid,
-      decision: bd_api::upload::IntentDecision::UploadImmediately,
-    }).unwrap();
-  });
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-    upload.response_tx.send(UploadArtifactResponse {
+  setup.allow_file_begin().await;
+  let upload = setup.next_chunk_operation().await;
+  upload
+    .response_tx
+    .send(UploadArtifactResponse {
       upload_uuid: upload.uuid,
+      state: State::STATE_RETRYABLE.into(),
       error: "temporary failure".into(),
       ..Default::default()
-    }).unwrap();
-  });
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-    assert_eq!(upload.payload.artifact_id, id.to_string());
-    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
-    upload.response_tx.send(UploadArtifactResponse {
-      upload_uuid: upload.uuid,
-      ..Default::default()
-    }).unwrap();
-  });
+    })
+    .unwrap();
+  let resumed = setup.allow_file_begin().await;
+  assert_eq!(resumed.artifact_id, id.to_string());
+  assert_eq!(resumed.command_id.as_deref(), Some(COMMAND_ID));
+  let upload = setup.next_chunk_operation().await;
+  assert_eq!(upload.payload.artifact_id, id.to_string());
+  progress(upload, State::STATE_FINALIZED, &[1]);
   completion_rx.await.unwrap().unwrap();
 
   let follow_up_id = setup
@@ -1975,53 +2084,67 @@ async fn command_upload_negative_ack_retries_without_stopping_uploader() {
 }
 
 #[tokio::test]
-async fn corrupt_command_upload_discard_completes_without_retry() {
-  let mut setup = Setup::new().await;
-  let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
-  let id = setup
-    .client
-    .enqueue_command_upload(
-      UploadSource::File(setup.make_file(b"screenshot")),
-      "screenshot".to_string(),
-      None,
-      "session_id".to_string(),
-      vec![],
-      "command_id".to_string(),
-      None,
-      None,
-      Some(completion_tx),
+async fn corrupt_command_fragments_fail_without_retry_and_release_owned_bytes() {
+  for corruption in ["checksum", "short", "oversized", "missing"] {
+    let mut setup = Setup::new().await;
+    let (completion_tx, completion_rx) = oneshot::channel();
+    let id = setup
+      .client
+      .enqueue_command_upload(
+        UploadSource::File(setup.make_file(b"screenshot")),
+        "screenshot".to_string(),
+        None,
+        "session_id".to_string(),
+        vec![],
+        COMMAND_ID.to_string(),
+        None,
+        None,
+        Some(completion_tx),
+      )
+      .unwrap();
+    setup.chunk_transfer_enabled.send(true).unwrap();
+    let begin = setup.next_chunk_operation().await;
+    let path = super::chunked::chunk_path(&id.to_string(), 0);
+    if corruption == "missing" {
+      setup.filesystem.delete_file(&path).await.unwrap();
+    } else {
+      let mut contents = setup.filesystem.read_file(&path).await.unwrap();
+      match corruption {
+        "checksum" => contents[0] ^= 1,
+        "short" => {
+          contents.pop();
+        },
+        "oversized" => {
+          contents.resize(usize::try_from(super::chunked::CHUNK_BYTES).unwrap() + 1, 0);
+        },
+        _ => panic!("unexpected corruption: {corruption}"),
+      }
+      setup.filesystem.write_file(&path, &contents).await.unwrap();
+    }
+    progress(begin, State::STATE_RECEIVING, &[0]);
+    let error = timeout(5.std_seconds(), completion_rx)
+      .await
+      .unwrap()
+      .unwrap()
+      .unwrap_err();
+    assert!(
+      error.contains("invalid staged fragment"),
+      "{corruption}: {error}"
+    );
+    assert!(!setup.filesystem.exists(&path).await.unwrap());
+    let index = read_compressed_protobuf::<ArtifactUploadIndex>(
+      &setup
+        .filesystem
+        .read_file(&ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE))
+        .await
+        .unwrap(),
     )
     .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id.to_string()
-  );
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    setup
-      .filesystem
-      .write_file(&super::ARTIFACT_UPLOAD_DIRECTORY.join(id.to_string()), b"corrupt")
-      .await
-      .unwrap();
-    intent.response_tx.send(IntentResponse {
-      uuid: intent.uuid,
-      decision: bd_api::upload::IntentDecision::UploadImmediately,
-    }).unwrap();
-  });
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-    assert_eq!(upload.payload.contents, b"corrupt");
-    assert_eq!(
-      upload.payload.payload_encoding.enum_value_or_default(),
-      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-    );
-    upload.response_tx.send(UploadArtifactResponse {
-      upload_uuid: upload.uuid,
-      ..Default::default()
-    }).unwrap();
-  });
-  completion_rx.await.unwrap().unwrap();
+    assert_eq!(index.chunked_artifact, []);
+    assert!(setup.data_upload_rx.try_recv().is_err());
+    assert!(setup.upload_complete_rx.try_recv().is_err());
+    setup.shutdown().await;
+  }
 }
 
 #[tokio::test]
@@ -2036,58 +2159,34 @@ async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
       None,
       "session_id".to_string(),
       vec![],
-      "command_id".to_string(),
+      COMMAND_ID.to_string(),
       Some("image/jpeg".to_string()),
       None,
       Some(completion_tx),
     )
     .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    id.to_string()
-  );
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    intent.response_tx.send(IntentResponse {
-      uuid: intent.uuid,
-      decision: bd_api::upload::IntentDecision::UploadImmediately,
-    }).unwrap();
-  });
-
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-    assert_eq!(upload.payload.artifact_id, id.to_string());
-    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
-    assert_eq!(upload.payload.content_type.as_deref(), Some("image/jpeg"));
+  for acknowledge in [false, true] {
+    let begin = setup.allow_file_begin().await;
+    assert_eq!(begin.artifact_id, id.to_string());
+    assert_eq!(begin.command_id.as_deref(), Some(COMMAND_ID));
+    assert_eq!(begin.content_type.as_deref(), Some("image/jpeg"));
     assert_eq!(
-      upload.payload.payload_encoding.enum_value_or_default(),
+      begin.payload_encoding.enum_value_or_default(),
       ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
     );
+    let upload = setup.next_chunk_operation().await;
+    assert_eq!(upload.payload.artifact_id, id.to_string());
+    assert_eq!(upload.payload.command_id.as_deref(), Some(COMMAND_ID));
+    assert_eq!(upload.payload.chunk_index, Some(0));
     let mut contents = Vec::new();
     flate2::read::ZlibDecoder::new(upload.payload.contents.as_slice())
       .read_to_end(&mut contents)
       .unwrap();
     assert_eq!(contents, b"screenshot");
-  });
-  let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
-    assert_eq!(upload.payload.artifact_id, id.to_string());
-    assert_eq!(upload.payload.command_id.as_deref(), Some("command_id"));
-    assert_eq!(upload.payload.content_type.as_deref(), Some("image/jpeg"));
-    assert_eq!(
-      upload.payload.payload_encoding.enum_value_or_default(),
-      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-    );
-    let mut contents = Vec::new();
-    flate2::read::ZlibDecoder::new(upload.payload.contents.as_slice())
-      .read_to_end(&mut contents)
-      .unwrap();
-    assert_eq!(contents, b"screenshot");
-    upload.response_tx.send(UploadArtifactResponse {
-      upload_uuid: upload.uuid,
-      ..Default::default()
-    }).unwrap();
-  });
+    if acknowledge {
+      progress(upload, State::STATE_FINALIZED, &[1]);
+    }
+  }
   completion_rx.await.unwrap().unwrap();
 }
 
@@ -2192,7 +2291,7 @@ async fn rejected_command_upload_deletes_owned_source() {
 
 #[tokio::test]
 async fn command_source_is_consumed_before_persistence_ack() {
-  let mut setup = Setup::new().await;
+  let setup = Setup::new().await;
   std::fs::create_dir_all(".tmp").unwrap();
   let directory = tempfile::TempDir::with_prefix_in("command-source", ".tmp").unwrap();
   let source = directory.path().canonicalize().unwrap().join("payload");
@@ -2217,7 +2316,6 @@ async fn command_source_is_consumed_before_persistence_ack() {
   assert!(!source.exists());
   std::fs::write(&source, b"replacement").unwrap();
   drop(completed_rx);
-  setup.entry_received_rx.recv().await.unwrap();
   setup.shutdown().await;
   assert_eq!(std::fs::read(source).unwrap(), b"replacement");
 }
@@ -2297,9 +2395,10 @@ async fn assert_command_source_consumed_before_error_ack(failure: PersistenceFai
       type_id: "device_command_attachment".into(),
       session_id: "session".into(),
       command_id: Some(Uuid::new_v4().to_string()),
+      time: uploader.time_provider.now().into_proto(),
       ..Default::default()
     },
-    PreparationMode::WholeFile,
+    PreparationMode::Chunked,
   );
   upload.persisted_tx = Some(PersistenceAck::Command(persisted_tx));
   tokio::join!(uploader.track_upload(upload), async {

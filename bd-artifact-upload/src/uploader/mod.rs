@@ -14,9 +14,10 @@
 //! entries share the index, but their spool files stay separate and workflow payloads remain
 //! borrowed.
 //!
-//! Attachment preparation selects whole-file or chunked storage by logical size for every source
-//! type. All payloads share capacity admission without evicting accepted work. Whole-file uploads
-//! retain their intent/order policy; chunks share fair network capacity between attempts.
+//! Commands, crash profiles and newly retained workflows use chunked storage at every size. Client
+//! reports, snapshots and legacy retained workflows use whole-file storage. All payloads share
+//! capacity admission without evicting accepted work. Whole-file uploads retain their intent/order
+//! policy; chunks share fair network capacity between attempts.
 //! Persistence never implies upload success or restored invocation authority.
 //!
 //! Optional lifecycle hooks let tests observe recovery and gate staging/upload completion without
@@ -165,27 +166,24 @@ fn request_size(request: &UploadArtifactRequest) -> usize {
     .saturating_add(spare_profile_bytes)
 }
 
-// Command and crash-profile attachments share compression, size limits and source ownership.
-fn is_compressed_attachment(request: &UploadArtifactRequest) -> bool {
-  request.command_id.is_some() || request.type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID
-}
-
 //
 // PreparationMode
 //
 
+// TODO: Unify report/snapshot transport after preserving their metadata, pre-encoded payloads and
+// publication semantics, and evaluating S3 admission/receipt costs. See
+// docs/chunked-uploads.md#deferred-transport-unification.
 #[derive(ApproximateSize, Clone, Copy, Debug, PartialEq, Eq)]
 enum PreparationMode {
   WholeFile,
   Chunked,
-  File,
 }
 
 impl NewUpload {
   fn new(source: UploadSource, request: UploadArtifactRequest, mode: PreparationMode) -> Self {
     // Command/crash-profile/chunk capture paths transfer even when enqueue is rejected. Snapshot
     // paths remain retryable inputs until publication; retained workflow paths stay borrowed.
-    let source_cleanup = (mode != PreparationMode::WholeFile || is_compressed_attachment(&request))
+    let source_cleanup = (mode == PreparationMode::Chunked)
       .then(|| source.owned_file())
       .flatten();
     Self {
@@ -202,15 +200,13 @@ impl NewUpload {
 
 #[derive(Debug)]
 pub enum UploadSource {
-  // Bytes are copied directly to the durable report directory with a checksum before upload.
+  // In-memory input. Preparation determines its durable representation and transport encoding.
   Bytes(Vec<u8>),
-  // When a file handle is provided the uploader will copy the contents of the file to disk and
-  // append a CRC checksum to the end of the file to allow for integrity checking when we later
-  // read.
+  // Input from the descriptor's current position, including files whose paths were unlinked.
   File(std::fs::File),
-  // For raw files they are directly moved to the target location without modification. This is
-  // intended for use cases where the data format is already self-validating (e.g. crc checksum or
-  // zlib compression).
+  // A named input whose ownership follows the producer contract, not its payload encoding.
+  // Whole-file snapshots stay unchanged and retryable until publication; chunked captures
+  // transfer ownership even on rejection and are compressed during preparation.
   Path(PathBuf),
   // A workflow payload borrowed through a durable upload-index lease: .payload is zlib; .raw is
   // streamed, checksummed input for chunk preparation.
@@ -361,8 +357,7 @@ pub trait Client: Send + Sync {
 
   /// Takes ownership of absolute path sources even on rejection. Persistence acknowledgements
   /// report the uncompressed payload size; dropping the caller's waits does not cancel the upload.
-  /// Path sources select whole-file or chunked upload by size; chunked uploads have no overall
-  /// timeout.
+  /// Every source uses compress-before-chunking at every size, with no overall upload timeout.
   fn enqueue_command_upload(
     &self,
     source: UploadSource,
@@ -429,10 +424,12 @@ impl UploadClient {
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<Uuid, EnqueueError> {
     let mode = if matches!(&source, UploadSource::Retained(path) if path.extension().is_some_and(|extension| extension == "raw"))
+      || command_id.is_some()
+      || type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID
+      || (type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
+        && !matches!(&source, UploadSource::Retained(_)))
     {
       PreparationMode::Chunked
-    } else if command_id.is_some() || type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID {
-      PreparationMode::File
     } else {
       PreparationMode::WholeFile
     };
@@ -468,9 +465,7 @@ impl UploadClient {
     upload.persisted_tx = persisted_tx;
     upload.completion_tx = completion_tx;
     upload.source_lease = source_lease;
-    if mode == PreparationMode::Chunked
-      || (mode == PreparationMode::File && matches!(upload.source, UploadSource::Path(_)))
-    {
+    if mode == PreparationMode::Chunked {
       chunked::validate_capture_request(&upload.request).map_err(|error| {
         log::warn!("invalid artifact chunk capture metadata: {error}");
         EnqueueError::Other(error)
@@ -646,7 +641,7 @@ trait TestHooks: Send + Sync {
 
   async fn initialized(&self);
 
-  fn whole_file_preparation_started(&self, source: &UploadSource, request: &UploadArtifactRequest);
+  fn whole_file_preparation_started(&self, source: &UploadSource);
 
   fn payload_prepared(&self);
 

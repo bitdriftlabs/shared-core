@@ -9,7 +9,7 @@
 
 use super::admission::FREE_SPACE_HEADROOM;
 use super::chunked::{CHUNK_BYTES, MAX_INDEX_BYTES, chunk_path, source_path};
-use super::tests::{Setup, wait_for_queue_revision};
+use super::tests::{Setup, progress, wait_for_queue_revision};
 use super::{
   ARTIFACT_UPLOAD_DIRECTORY,
   ArtifactStore,
@@ -25,10 +25,15 @@ use super::{
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, TrackedArtifactUpload};
 use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
-use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
+use bd_client_common::file::{
+  read_compressed,
+  read_compressed_protobuf,
+  write_compressed_protobuf,
+};
 use bd_client_common::file_system::{FileSystem, RealFileSystem};
 use bd_client_common::test::TestFileSystem;
 use bd_log_primitives::LogFields;
+use bd_metadata::artifact::artifact_encoded_bound;
 use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{
   ArtifactChunkDescriptor,
@@ -45,14 +50,17 @@ use bd_runtime::runtime::{FeatureFlag as _, chunked_artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_time::{OffsetDateTimeExt as _, TimeProvider as _};
+use flate2::Compression;
 use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
 use protobuf::Message;
 use rand::rngs::StdRng;
 use rand::{RngExt as _, SeedableRng as _};
 use sha2::{Digest, Sha256};
-use std::io::{Read, Seek as _, SeekFrom};
+use std::io::{Read, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
+use std::time::Instant;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -72,17 +80,6 @@ impl Setup {
     self.client.submit(upload)
   }
 
-  async fn next_chunk_operation(&mut self) -> TrackedArtifactUpload {
-    loop {
-      let DataUpload::ArtifactUpload(operation) = self.data_upload_rx.recv().await.unwrap() else {
-        panic!("expected chunk-mode operation");
-      };
-      assert!(operation.payload.logical_bytes.is_some());
-      if !operation.response_tx.is_closed() {
-        return operation;
-      }
-    }
-  }
   async fn configure_admission(&self, extra: Vec<(&str, ValueKind)>) {
     self
       .runtime
@@ -141,18 +138,6 @@ impl Setup {
   }
 }
 
-fn progress(operation: TrackedArtifactUpload, state: State, receipts: &[u8]) {
-  operation
-    .response_tx
-    .send(UploadArtifactResponse {
-      upload_uuid: operation.uuid,
-      state: state.into(),
-      received_chunks: receipts.to_vec(),
-      ..Default::default()
-    })
-    .unwrap();
-}
-
 fn thin(template: &UploadArtifactRequest, operation: &TrackedArtifactUpload, index: u32) {
   let request = &operation.payload;
   let expected = UploadArtifactRequest {
@@ -172,7 +157,8 @@ fn thin(template: &UploadArtifactRequest, operation: &TrackedArtifactUpload, ind
 }
 
 #[tokio::test]
-async fn file_routing_uses_logical_size_for_commands_and_profiles() {
+async fn commands_and_profiles_negotiate_then_transfer_one_encoded_fragment_at_every_logical_size()
+{
   for (profile, source_kind) in [false, true]
     .into_iter()
     .flat_map(|profile| ["path", "file", "bytes"].map(|kind| (profile, kind)))
@@ -233,75 +219,24 @@ async fn file_routing_uses_logical_size_for_commands_and_profiles() {
       };
       assert_eq!(path.exists(), source_kind != "path");
       let index = setup.chunk_index().await;
-      if size <= CHUNK_BYTES {
-        assert_eq!(index.chunked_artifact, []);
-        assert_eq!(index.artifact.len(), 1);
-        let DataUpload::ArtifactUploadIntent(intent) = setup.data_upload_rx.recv().await.unwrap()
-        else {
-          panic!("small files must use whole-file intent negotiation");
-        };
-        intent
-          .response_tx
-          .send(IntentResponse {
-            uuid: intent.uuid,
-            decision: IntentDecision::UploadImmediately,
-          })
-          .unwrap();
-        let DataUpload::ArtifactUpload(upload) = setup.data_upload_rx.recv().await.unwrap() else {
-          panic!("expected whole-file payload");
-        };
-        assert_eq!(upload.payload.artifact_id, id.to_string());
-        assert!(upload.payload.logical_bytes.is_none());
-        assert_eq!(upload.payload.chunks, []);
-        let mut decoded = Vec::new();
-        ZlibDecoder::new(upload.payload.contents.as_slice())
-          .read_to_end(&mut decoded)
-          .unwrap();
-        assert_eq!(decoded, bytes);
-        upload
-          .response_tx
-          .send(UploadArtifactResponse {
-            upload_uuid: upload.uuid,
-            ..Default::default()
-          })
-          .unwrap();
-      } else {
-        assert_eq!(index.artifact, []);
-        assert_eq!(index.chunked_artifact.len(), 1);
-        setup.chunk_transfer_enabled.send(true).unwrap();
-        let begin = setup.next_chunk_operation().await;
-        assert_eq!(begin.payload.artifact_id, id.to_string());
-        assert_eq!(begin.payload.logical_bytes, Some(size));
-        assert_eq!(begin.payload.chunks.len(), 2);
-        assert_eq!(begin.payload.contents, b"");
-        let chunks = begin.payload.chunks.clone();
-        progress(begin, State::STATE_RECEIVING, &[0]);
-        let mut decoded = Vec::new();
-        for (index, descriptor) in chunks.into_iter().enumerate() {
-          let index = u32::try_from(index).unwrap();
-          let upload = setup.next_chunk_operation().await;
-          assert_eq!(upload.payload.chunk_index, Some(index));
-          if descriptor.encoding.enum_value_or_default()
-            == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-          {
-            ZlibDecoder::new(upload.payload.contents.as_slice())
-              .read_to_end(&mut decoded)
-              .unwrap();
-          } else {
-            decoded.extend_from_slice(&upload.payload.contents);
-          }
-          progress(
-            upload,
-            if index == 1 {
-              State::STATE_FINALIZED
-            } else {
-              State::STATE_RECEIVING
-            },
-            &[if index == 1 { 3 } else { 1 }],
-          );
-        }
-        assert_eq!(decoded, bytes);
-      }
+      assert_eq!(index.artifact, []);
+      assert_eq!(index.chunked_artifact.len(), 1);
+      setup.chunk_transfer_enabled.send(true).unwrap();
+      let begin = setup.next_chunk_operation().await;
+      assert_eq!(begin.payload.artifact_id, id.to_string());
+      assert_eq!(begin.payload.logical_bytes, Some(size));
+      assert_eq!(begin.payload.chunks.len(), 1);
+      assert_eq!(begin.payload.contents, b"");
+      assert_eq!(begin.payload.chunk_index, None);
+      progress(begin, State::STATE_RECEIVING, &[0]);
+      let upload = setup.next_chunk_operation().await;
+      assert_eq!(upload.payload.chunk_index, Some(0));
+      let mut decoded = Vec::new();
+      ZlibDecoder::new(upload.payload.contents.as_slice())
+        .read_to_end(&mut decoded)
+        .unwrap();
+      assert_eq!(decoded, bytes);
+      progress(upload, State::STATE_FINALIZED, &[1]);
       setup.shutdown().await;
     }
   }
@@ -312,9 +247,9 @@ async fn chunk_transfer_replays_each_lost_ack_and_waits_for_durable_finalization
   let mut setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
-  let path = setup
-    .capture(id, &vec![42; usize::try_from(CHUNK_BYTES).unwrap() + 1])
-    .await;
+  let mut bytes = vec![0; usize::try_from(CHUNK_BYTES).unwrap() + 1];
+  StdRng::seed_from_u64(42).fill(&mut bytes[..]);
+  let path = setup.capture(id, &bytes).await;
   let (persisted_tx, persisted_rx) = oneshot::channel();
   let (completion_tx, mut completion_rx) = oneshot::channel();
   setup
@@ -707,81 +642,117 @@ async fn chunked_unpublished_index_failure_rolls_back_only_created_paths() {
 }
 
 #[tokio::test]
-async fn chunked_mixed_encoding_hashes_geometry_and_restart() {
-  let setup = Setup::new().await;
-  setup.configure_admission(Vec::new()).await;
-  let id = Uuid::new_v4();
-  let chunk_bytes = usize::try_from(CHUNK_BYTES).unwrap();
-  let mut bytes = vec![0; chunk_bytes];
-  bytes.resize(chunk_bytes * 2, 0);
-  StdRng::seed_from_u64(0x1234_5678).fill(&mut bytes[chunk_bytes ..]);
-  bytes.extend_from_slice(b"short last chunk");
-  let path = setup.capture(id, &bytes).await;
-  let metadata = setup.request(id);
-  let capture_time = metadata.time.clone();
-  assert_eq!(
-    setup
-      .stage_capture(path.clone(), metadata)
-      .await
-      .unwrap()
-      .unwrap(),
-    bytes.len() as u64
-  );
-  assert!(!path.exists());
-  assert!(
-    !setup
-      .filesystem
-      .exists(&source_path(&id.to_string()))
-      .await
-      .unwrap()
-  );
-  let index = setup.chunk_index().await;
-  assert_eq!(index.artifact, []);
-  let template = &index.chunked_artifact[0];
-  assert_eq!(template.chunks.len(), 3);
-  assert_eq!(template.time, capture_time);
-  assert!(template.contents.is_empty() && template.upload_uuid.is_empty());
-  assert!(template.chunk_index.is_none());
-  assert_eq!(template.logical_sha256, Sha256::digest(&bytes).as_slice());
-  let mut reconstructed = Vec::new();
-  for (position, descriptor) in template.chunks.iter().enumerate() {
-    let encoded = setup
-      .filesystem
-      .read_file(&chunk_path(&id.to_string(), position))
-      .await
-      .unwrap();
-    assert_eq!(encoded.len(), descriptor.encoded_bytes as usize);
-    assert_eq!(
-      Sha256::digest(&encoded).as_slice(),
-      descriptor.encoded_sha256
-    );
-    let start = position * chunk_bytes;
-    let raw = &bytes[start .. bytes.len().min(start + chunk_bytes)];
-    assert_eq!(Sha256::digest(raw).as_slice(), descriptor.logical_sha256);
-    if position != 0 {
-      assert_eq!(
-        descriptor.encoding.enum_value().unwrap(),
-        ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
-      );
-      reconstructed.extend(encoded);
-    } else {
-      assert_eq!(
-        descriptor.encoding.enum_value().unwrap(),
-        ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-      );
-      ZlibDecoder::new(encoded.as_slice())
-        .read_to_end(&mut reconstructed)
-        .unwrap();
+async fn chunked_single_stream_hashes_encoded_geometry_and_restart() {
+  for (kind, expected_chunks) in [
+    ("compressible", 1),
+    ("mixed", 2),
+    ("incompressible", 3),
+    ("already_compressed", 3),
+  ] {
+    let setup = Setup::new().await;
+    setup.configure_admission(Vec::new()).await;
+    let id = Uuid::new_v4();
+    let chunk_bytes = usize::try_from(CHUNK_BYTES).unwrap();
+    let mut bytes = vec![0; chunk_bytes * 2];
+    if kind != "compressible" {
+      let offset = if kind == "mixed" { chunk_bytes } else { 0 };
+      StdRng::seed_from_u64(0x1234_5678).fill(&mut bytes[offset ..]);
     }
+    bytes.extend_from_slice(b"short last chunk");
+    if kind == "already_compressed" {
+      let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+      encoder.write_all(&bytes).unwrap();
+      bytes = encoder.finish().unwrap();
+    }
+    let path = setup.capture(id, &bytes).await;
+    let metadata = setup.request(id);
+    let capture_time = metadata.time.clone();
+    let gate = setup
+      .filesystem
+      .gate_next_sync(chunk_path(&id.to_string(), expected_chunks - 1));
+    let started = Instant::now();
+    let staged = setup.stage_capture(path.clone(), metadata);
+    let release = gate.await.unwrap();
+    // At the last payload sync, ownership still retains the source alongside every fragment.
+    let mut peak_payload_bytes = setup
+      .filesystem
+      .read_file(&source_path(&id.to_string()))
+      .await
+      .unwrap()
+      .len();
+    for index in 0 .. expected_chunks {
+      peak_payload_bytes += setup
+        .filesystem
+        .read_file(&chunk_path(&id.to_string(), index))
+        .await
+        .unwrap()
+        .len();
+    }
+    release.send(()).unwrap();
+    assert_eq!(staged.await.unwrap().unwrap(), bytes.len() as u64);
+    let preparation = started.elapsed();
+    assert!(!path.exists());
+    assert!(
+      !setup
+        .filesystem
+        .exists(&source_path(&id.to_string()))
+        .await
+        .unwrap()
+    );
+    let index = setup.chunk_index().await;
+    assert_eq!(index.artifact, []);
+    let template = &index.chunked_artifact[0];
+    assert_eq!(template.chunks.len(), expected_chunks, "{kind}");
+    assert_eq!(template.time, capture_time);
+    assert!(template.contents.is_empty() && template.upload_uuid.is_empty());
+    assert!(template.chunk_index.is_none());
+    assert_eq!(template.logical_sha256, Sha256::digest(&bytes).as_slice());
+    let mut compressed = Vec::new();
+    for (position, descriptor) in template.chunks.iter().enumerate() {
+      let encoded = setup
+        .filesystem
+        .read_file(&chunk_path(&id.to_string(), position))
+        .await
+        .unwrap();
+      assert_eq!(encoded.len(), descriptor.encoded_bytes as usize);
+      assert_eq!(
+        Sha256::digest(&encoded).as_slice(),
+        descriptor.encoded_sha256
+      );
+      assert!(encoded.len() <= chunk_bytes);
+      if position + 1 != template.chunks.len() {
+        assert_eq!(encoded.len(), chunk_bytes);
+      }
+      compressed.extend(encoded);
+    }
+    assert_eq!(template.encoded_bytes, Some(compressed.len() as u64));
+    assert_eq!(peak_payload_bytes, bytes.len() + compressed.len());
+    assert!(compressed.len() as u64 <= artifact_encoded_bound(bytes.len() as u64));
+    assert_eq!(
+      template.payload_encoding.enum_value().unwrap(),
+      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+    );
+    let mut reconstructed = Vec::new();
+    ZlibDecoder::new(compressed.as_slice())
+      .read_to_end(&mut reconstructed)
+      .unwrap();
+    assert_eq!(reconstructed, bytes);
+    let started = Instant::now();
+    let mut setup = recovered(setup).await;
+    log::info!(
+      "chunked codec sample: input={kind} logical={} encoded={} fragments={expected_chunks} \
+       peak_payload_bytes={peak_payload_bytes} preparation={preparation:?} recovery={:?}",
+      bytes.len(),
+      compressed.len(),
+      started.elapsed()
+    );
+    assert_eq!(setup.chunk_index().await, index);
+    assert!(
+      setup.data_upload_rx.try_recv().is_err(),
+      "M2 must not transmit chunked spools"
+    );
+    setup.shutdown().await;
   }
-  assert_eq!(reconstructed, bytes);
-  let mut setup = recovered(setup).await;
-  assert_eq!(setup.chunk_index().await, index);
-  assert!(
-    setup.data_upload_rx.try_recv().is_err(),
-    "M2 must not transmit chunked spools"
-  );
-  setup.shutdown().await;
 }
 
 #[tokio::test]
@@ -789,7 +760,8 @@ async fn descriptor_and_byte_sources_stage_without_a_source_copy_or_per_chunk_di
   for bytes_source in [false, true] {
     let setup = Setup::with_buffer(4 * 1024 * 1024).await;
     let size = CHUNK_BYTES * 2 + 1;
-    let bytes = vec![42; usize::try_from(size).unwrap()];
+    let mut bytes = vec![0; usize::try_from(size).unwrap()];
+    StdRng::seed_from_u64(42).fill(&mut bytes[..]);
     let id = Uuid::new_v4();
     let path = setup.capture(id, &bytes).await;
     let source = if bytes_source {
@@ -1186,7 +1158,7 @@ async fn disk_admission_protects_unmaterialized_raw_reservations() {
       .set_len(staged)
       .await
       .unwrap();
-    let required = FREE_SPACE_HEADROOM + 4 + 100_u64.saturating_sub(staged);
+    let required = FREE_SPACE_HEADROOM + 4 + artifact_encoded_bound(100).saturating_sub(staged);
     for (available, accepted) in [(required - 1, false), (required, true)] {
       *filesystem.available_bytes.lock() = Some(available);
       assert_eq!(
@@ -1251,8 +1223,8 @@ async fn common_byte_capacity_includes_whole_chunked_and_retained_payloads() {
 #[tokio::test]
 async fn chunked_logical_and_source_plus_staging_byte_admission() {
   for (used_bytes, accepted) in [
-    (640 * 1024 * 1024 - 7, false),
-    (640 * 1024 * 1024 - 8, true),
+    (640 * 1024 * 1024 - 4 - artifact_encoded_bound(4) + 1, false),
+    (640 * 1024 * 1024 - 4 - artifact_encoded_bound(4), true),
   ] {
     let setup = Setup::new().await;
     setup.configure_admission(Vec::new()).await;
@@ -1292,7 +1264,7 @@ async fn chunked_logical_limit_updates_command_and_workflow_admission() {
         ValueKind::Int(limit),
       )])
       .await;
-    assert_eq!(admission.should_chunk(4).is_ok(), accepted);
+    assert_eq!(admission.check_logical_bytes(4).is_ok(), accepted);
     let id = Uuid::new_v4();
     let path = setup.capture(id, b"file").await;
     assert_eq!(
@@ -1682,9 +1654,15 @@ async fn chunked_hard_linked_sources_are_charged_once_without_requiring_links() 
     .filesystem
     .directory()
     .join(source_path(&Uuid::new_v4().to_string()));
+  let encoded_len = setup
+    .filesystem
+    .read_file(&chunk_path(&first.to_string(), 0))
+    .await
+    .unwrap()
+    .len() as u64;
   std::fs::File::create(padding)
     .unwrap()
-    .set_len(640 * 1024 * 1024 - 8)
+    .set_len(640 * 1024 * 1024 - encoded_len - artifact_encoded_bound(encoded_len))
     .unwrap();
   let second = Uuid::new_v4();
   let path = setup.filesystem.directory().join("linked-capture");
@@ -1703,11 +1681,14 @@ async fn chunked_hard_linked_sources_are_charged_once_without_requiring_links() 
     .unwrap();
   assert_eq!(setup.chunk_index().await.chunked_artifact.len(), 2);
   assert_eq!(
-    setup
-      .filesystem
-      .read_file(&chunk_path(&first.to_string(), 0))
-      .await
-      .unwrap(),
+    read_compressed(
+      &setup
+        .filesystem
+        .read_file(&chunk_path(&first.to_string(), 0))
+        .await
+        .unwrap()
+    )
+    .unwrap(),
     b"file"
   );
   setup.shutdown().await;
@@ -1881,11 +1862,14 @@ async fn chunked_cross_mode_collision_does_not_delete_accepted_chunks() {
   );
   assert_eq!(setup.chunk_index().await, original);
   assert_eq!(
-    setup
-      .filesystem
-      .read_file(&chunk_path(&id.to_string(), 0))
-      .await
-      .unwrap(),
+    read_compressed(
+      &setup
+        .filesystem
+        .read_file(&chunk_path(&id.to_string(), 0))
+        .await
+        .unwrap()
+    )
+    .unwrap(),
     b"file"
   );
   let mut index = original;

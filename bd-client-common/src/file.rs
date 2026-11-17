@@ -8,8 +8,8 @@
 //! Shared payload encoding, filesystem capacity checks, and bounded I/O primitives.
 //!
 //! Upload owners choose their local envelope and publication policy; encoding helpers only
-//! transform bytes. In particular, whole-file attachments remain one zlib stream, whereas the chunk
-//! uploader calls the same compressor independently for each segment. Neither compression nor a
+//! transform bytes. Whole-file and chunked attachments both encode one complete zlib stream.
+//! Neither compression nor a
 //! successful write implies durable ownership: the owning store must publish and sync its index or
 //! sidecar. Bounded readers report malformed/oversized data as `InvalidData` while preserving
 //! underlying I/O errors, so recovery can discard corrupt data without treating a storage outage as

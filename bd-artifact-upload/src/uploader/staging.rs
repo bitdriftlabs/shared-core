@@ -35,11 +35,7 @@ use super::{
   retained_persistence_error,
 };
 use crate::input::Input;
-use bd_client_common::file::{
-  async_write_checksummed_data,
-  read_and_compress_limited_with_size,
-  write_checksummed_data,
-};
+use bd_client_common::file::async_write_checksummed_data;
 use bd_client_common::file_system::OwnedFile;
 use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
@@ -149,43 +145,10 @@ impl Uploader {
     let chunked = match mode {
       PreparationMode::WholeFile => false,
       PreparationMode::Chunked => true,
-      PreparationMode::File => {
-        let size = match &source {
-          UploadSource::Path(path) => self
-            .file_system
-            .open_regular_file(path)
-            .await?
-            .metadata()
-            .await
-            .map_err(anyhow::Error::from)?
-            .len(),
-          UploadSource::Bytes(bytes) => bytes.len() as u64,
-          UploadSource::File(file) => Input::open(
-            UploadSource::File(file.try_clone().map_err(anyhow::Error::from)?),
-            self.file_system.as_ref(),
-          )
-          .await?
-          .size(),
-          UploadSource::Retained(_) => {
-            return Err(
-              anyhow::anyhow!("retained payload already has a stored representation").into(),
-            );
-          },
-        };
-        if size == 0 && request.command_id.is_none() {
-          return Err(anyhow::anyhow!("empty workflow artifact").into());
-        }
-        let chunked = self.chunked.admission.should_chunk(size)?;
-        log::debug!(
-          "routing file artifact {}: logical_bytes={size}, chunked={chunked}",
-          request.artifact_id
-        );
-        chunked
-      },
     };
     if chunked {
       super::chunked::validate_capture_request(&request)?;
-      // The scrubbed Begin is immutable after admission, including across restart/config changes.
+      // Retain only scrubbed metadata; transfer also applies the rules current at each Begin.
       request.state_metadata =
         super::scrub_metadata(&self.scrub_rules.borrow(), &request.state_metadata);
     }
@@ -248,9 +211,9 @@ impl Uploader {
       size
     } else {
       if let Some(hooks) = &self.test_hooks {
-        hooks.whole_file_preparation_started(&source, &request);
+        hooks.whole_file_preparation_started(&source);
       }
-      let (entry, size) = self
+      let entry = self
         .prepare_whole_file(source, request, files)
         .await
         .map_err(|error| {
@@ -262,7 +225,7 @@ impl Uploader {
         })?;
       self.index.push_back(entry);
       self.index_sync_required = true;
-      size
+      None
     };
     if let Some(hooks) = &self.test_hooks {
       hooks.payload_prepared();
@@ -304,167 +267,110 @@ impl Uploader {
     source: UploadSource,
     request: UploadArtifactRequest,
     files: &mut StagedFiles,
-  ) -> anyhow::Result<(Artifact, Option<u64>)> {
+  ) -> anyhow::Result<Artifact> {
     let retained = matches!(source, UploadSource::Retained(_));
-    let compressed_attachment = super::is_compressed_attachment(&request);
     let target = ARTIFACT_UPLOAD_DIRECTORY.join(&request.artifact_id);
-    let mut size_bytes = None;
-    let mut reserved_size = 0;
-    // Register the target before its first write: a short write is still an owned file requiring
-    // rollback. Borrowed workflow data is never written, copied, restored or unlinked here.
-    if !retained {
-      let (size, identity) = match &source {
-        UploadSource::Path(path) => {
-          let metadata = self
-            .file_system
-            .open_regular_file(path)
-            .await?
-            .metadata()
-            .await?;
-          (metadata.len(), super::chunked::file_identity(&metadata))
-        },
-        UploadSource::File(file) => (
-          Input::open(
-            UploadSource::File(file.try_clone()?),
-            self.file_system.as_ref(),
-          )
-          .await?
-          .size(),
-          None,
-        ),
-        UploadSource::Bytes(bytes) => (bytes.len() as u64, None),
-        UploadSource::Retained(_) => anyhow::bail!("unexpected retained artifact"),
-      };
-      self
-        .chunked
-        .admission
-        .check_capacity(
-          self.file_system.as_ref(),
-          size,
-          if matches!(source, UploadSource::Path(_)) {
-            size
-          } else {
-            0
-          },
-          identity,
-          size.saturating_add(4096),
-        )
-        .await?;
-      reserved_size = size;
-      files.created.push(target.clone());
-    }
     let format = match source {
-      source if compressed_attachment => {
-        if let UploadSource::Path(path) = &source {
-          files.original = Some((path.clone(), false));
-        }
-        let limit = self.chunked.admission.whole_file_limit();
-        let mut input = Input::open(source, self.file_system.as_ref()).await?;
-        if input.size() != reserved_size {
-          anyhow::bail!("attachment changed before preparation");
-        }
-        let (encoded, size) = read_and_compress_limited_with_size(input.reader(), limit).await?;
-        input.validate().await?;
-        let mut output = self.file_system.create_file(&target).await?;
-        output.write_all(&encoded).await?;
-        output.flush().await?;
-        size_bytes = Some(size);
-        StorageFormat::RAW
-      },
-      UploadSource::Bytes(bytes) => {
-        let mut output = self.file_system.create_file(&target).await?;
-        output.write_all(&write_checksummed_data(&bytes)).await?;
-        output.flush().await?;
-        StorageFormat::CHECKSUMMED
-      },
-      UploadSource::File(file) => {
-        let mut input = Input::open(UploadSource::File(file), self.file_system.as_ref()).await?;
-        if input.size() != reserved_size {
-          anyhow::bail!("artifact changed before preparation");
-        }
-        let mut output = self.file_system.create_file(&target).await?;
-        async_write_checksummed_data(input.reader().take(reserved_size + 1), &mut output).await?;
-        input.validate().await?;
-        if output.metadata().await?.len() != reserved_size + 4 {
-          anyhow::bail!("artifact changed during preparation");
-        }
-        StorageFormat::CHECKSUMMED
-      },
-      UploadSource::Path(path) => {
-        if let Err(error) = self.file_system.rename_file(&path, &target).await {
-          log::debug!("failed to move artifact source, falling back to copy: {error}");
-          let mut input = self.file_system.open_regular_file(&path).await?;
-          let mut output = self.file_system.create_file(&target).await?;
-          // A Path payload is already self-validating. Copy its bytes exactly, matching rename;
-          // adding a CRC here would corrupt RAW snapshot uploads on cross-filesystem fallback.
-          tokio::io::copy(&mut input, &mut output).await?;
-          output.flush().await?;
-          files.original = Some((path, false));
-        } else {
-          files.original = Some((path, true));
-        }
-        StorageFormat::RAW
-      },
       UploadSource::Retained(path) => {
         self.file_system.sync_file_and_parent(&path).await?;
         StorageFormat::RAW
       },
-    };
-    let payload_encoding = if compressed_attachment
-      || (retained && request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
-    {
-      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-    } else {
-      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
-    };
-    if !retained {
-      if !compressed_attachment
-        && self
+      source => {
+        let original = match &source {
+          UploadSource::Path(path) => Some(path.clone()),
+          _ => None,
+        };
+        let mut input = Input::open(source, self.file_system.as_ref()).await?;
+        let size = input.size();
+        let identity = match &input {
+          Input::File { file, .. } if original.is_some() => {
+            super::chunked::file_identity(&file.metadata().await?)
+          },
+          _ => None,
+        };
+        self
+          .chunked
+          .admission
+          .check_capacity(
+            self.file_system.as_ref(),
+            size,
+            if original.is_some() { size } else { 0 },
+            identity,
+            size.saturating_add(4096),
+          )
+          .await?;
+        // Register before writing or moving: even a partial payload needs rollback.
+        files.created.push(target.clone());
+        let format = if let Some(path) = original {
+          if let Err(error) = self.file_system.rename_file(&path, &target).await {
+            log::debug!("failed to move artifact source, falling back to copy: {error}");
+            let mut output = self.file_system.create_file(&target).await?;
+            // Legacy snapshots are already self-validating. Copy exactly the bytes a rename
+            // preserves, without adding a storage checksum or another compression layer.
+            tokio::io::copy(&mut input.reader().take(size + 1), &mut output).await?;
+            output.flush().await?;
+            files.original = Some((path, false));
+          } else {
+            files.original = Some((path, true));
+          }
+          StorageFormat::RAW
+        } else {
+          let mut output = self.file_system.create_file(&target).await?;
+          async_write_checksummed_data(input.reader().take(size + 1), &mut output).await?;
+          StorageFormat::CHECKSUMMED
+        };
+        input.validate().await?;
+        let expected_size = size
+          + if format == StorageFormat::CHECKSUMMED {
+            4
+          } else {
+            0
+          };
+        if self
           .file_system
           .open_regular_file(&target)
           .await?
           .metadata()
           .await?
           .len()
-          != reserved_size
-            + if format == StorageFormat::CHECKSUMMED {
-              4
-            } else {
-              0
-            }
-      {
-        anyhow::bail!("artifact changed during preparation");
-      }
-      self.file_system.sync_file_and_parent(&target).await?;
-    }
-    Ok((
-      Artifact {
-        name: request.artifact_id,
-        type_id: Some(
-          if request.type_id.is_empty() {
-            super::CLIENT_REPORT_ARTIFACT_TYPE_ID.into()
-          } else {
-            request.type_id
-          },
-        ),
-        time: if request.time.is_some() {
-          request.time
-        } else {
-          self.time_provider.now().into_proto()
-        },
-        session_id: request.session_id,
-        pending_intent_negotiation: true,
-        metadata: request.state_metadata,
-        storage_format: format.into(),
-        feature_flags: request.feature_flags,
-        command_id: request.command_id,
-        content_type: request.content_type,
-        payload_encoding: payload_encoding.into(),
-        crash_profile: request.crash_profile,
-        ..Default::default()
+          != expected_size
+        {
+          anyhow::bail!("artifact changed during preparation");
+        }
+        self.file_system.sync_file_and_parent(&target).await?;
+        format
       },
-      size_bytes,
-    ))
+    };
+    let payload_encoding = if retained && request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID {
+      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+    } else {
+      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
+    };
+    Ok(Artifact {
+      name: request.artifact_id,
+      type_id: Some(
+        if request.type_id.is_empty() {
+          super::CLIENT_REPORT_ARTIFACT_TYPE_ID.into()
+        } else {
+          request.type_id
+        },
+      ),
+      time: if request.time.is_some() {
+        request.time
+      } else {
+        self.time_provider.now().into_proto()
+      },
+      session_id: request.session_id,
+      pending_intent_negotiation: true,
+      metadata: request.state_metadata,
+      storage_format: format.into(),
+      feature_flags: request.feature_flags,
+      command_id: request.command_id,
+      content_type: request.content_type,
+      payload_encoding: payload_encoding.into(),
+      crash_profile: request.crash_profile,
+      ..Default::default()
+    })
   }
 
   async fn rollback_files(&mut self, files: &mut StagedFiles) {

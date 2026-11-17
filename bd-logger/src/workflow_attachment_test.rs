@@ -8,7 +8,6 @@
 use super::{AttachmentStore, AttachmentStoreHandle, TestHooks, WorkflowAttachmentCleanupWorker};
 use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_artifact_upload::{Client as _, MockClient, UploadSource, Uploader};
 use bd_buffer::Buffer as RingBuffer;
 use bd_buffer::buffer::NonVolatileFileHeader;
@@ -20,6 +19,7 @@ use bd_client_common::file::{
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::Collector;
 use bd_log_primitives::{EncodableLog, Log, log_level};
+use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{RuntimeUpdate, UploadArtifactResponse};
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, WorkflowAttachmentState};
@@ -204,7 +204,7 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
       client
         .enqueue_workflow_attachment(
           attachment.id,
-          format!("workflow-attachments/{}.payload", attachment.id).into(),
+          store.upload_source(attachment.id).await.unwrap(),
           "session".into(),
           None,
           Some(persisted_tx),
@@ -213,9 +213,11 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
         )
         .unwrap();
       persisted_rx.await.unwrap().unwrap();
-      let Some(DataUpload::ArtifactUploadIntent(_intent)) = data_upload_rx.recv().await else {
-        panic!("expected initial workflow intent");
+      let Some(DataUpload::ArtifactUpload(begin)) = data_upload_rx.recv().await else {
+        panic!("expected initial workflow Begin");
       };
+      assert_eq!(begin.payload.chunk_index, None);
+      assert_eq!(begin.payload.contents.as_slice(), b"");
       shutdown.shutdown().await;
       uploader.await.unwrap();
       (attachment.id, store.payload_path(attachment.id))
@@ -245,9 +247,11 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
     );
     let mut revision = client.upload_queue_revision();
     let uploader = tokio::spawn(uploader.run());
-    let Some(DataUpload::ArtifactUploadIntent(intent)) = data_upload_rx.recv().await else {
-      panic!("expected recovered workflow intent");
+    let Some(DataUpload::ArtifactUpload(begin)) = data_upload_rx.recv().await else {
+      panic!("expected recovered workflow Begin");
     };
+    assert_eq!(begin.payload.chunk_index, None);
+    assert_eq!(begin.payload.contents.as_slice(), b"");
     let store = match first_store {
       Some(store) => store,
       None => store_handle.get().await.unwrap(),
@@ -267,11 +271,13 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
         .await
         .unwrap()
     );
-    intent
+    begin
       .response_tx
-      .send(IntentResponse {
-        uuid: intent.uuid,
-        decision: IntentDecision::UploadImmediately,
+      .send(UploadArtifactResponse {
+        upload_uuid: begin.uuid,
+        state: State::STATE_RECEIVING.into(),
+        received_chunks: vec![0],
+        ..Default::default()
       })
       .unwrap();
     let Some(DataUpload::ArtifactUpload(upload)) = data_upload_rx.recv().await else {
@@ -282,13 +288,14 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
       .read_to_end(&mut decoded)
       .unwrap();
     assert_eq!(decoded, b"attachment");
-    assert!(cleanup.cleanup_once().await);
     assert!(!cleanup.cleanup_once().await);
     let previous = *revision.borrow();
     upload
       .response_tx
       .send(UploadArtifactResponse {
         upload_uuid: upload.uuid,
+        state: State::STATE_FINALIZED.into(),
+        received_chunks: vec![1],
         ..Default::default()
       })
       .unwrap();
@@ -360,26 +367,15 @@ async fn read_checked(store: &AttachmentStore, id: Uuid) -> io::Result<Vec<u8>> 
   let mut file = super::open_regular_file_async(&path).await?;
   let metadata = file.metadata().await?;
   let read_limit = MIN_READ_LIMIT_BYTES;
-  if metadata.len() > read_limit {
+  if metadata.len() > read_limit + 4 {
     return Err(io::Error::new(
       io::ErrorKind::InvalidData,
       "attachment exceeds size limit",
     ));
   }
-  let mut compressed =
-    Vec::with_capacity(usize::try_from(metadata.len()).map_err(io::Error::other)?);
-  file.read_to_end(&mut compressed).await?;
-  let mut payload = Vec::new();
-  let read = ZlibDecoder::new(compressed.as_slice())
-    .take(read_limit.saturating_add(1))
-    .read_to_end(&mut payload)?;
-  if read as u64 > read_limit {
-    return Err(io::Error::new(
-      io::ErrorKind::InvalidData,
-      "attachment exceeds size limit",
-    ));
-  }
-  Ok(payload)
+  let mut stored = Vec::with_capacity(usize::try_from(metadata.len()).map_err(io::Error::other)?);
+  file.read_to_end(&mut stored).await?;
+  read_checksummed_data(&stored).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 async fn new_store(directory: &tempfile::TempDir) -> AttachmentStore {
@@ -2056,7 +2052,7 @@ async fn restart_preserves_staged_metadata_on_io_errors() {
 
 #[tokio::test]
 async fn restart_isolates_nonregular_owned_entries() {
-  for extension in ["payload", "metadata", "metadata.partial"] {
+  for extension in ["raw", "metadata", "metadata.partial"] {
     for is_symlink in [
       false,
       #[cfg(unix)]

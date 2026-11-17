@@ -2486,7 +2486,7 @@ async fn workflow_command_processed_session_boundary_and_attribution() {
             .tmp_dir
             .path()
             .join("workflow-attachments")
-            .join(format!("{id}.payload"))
+            .join(format!("{id}.raw"))
         )
         .await
         .unwrap()
@@ -3909,7 +3909,7 @@ async fn failed_workflow_outcome_replay_releases_attachment() {
     .tmp_dir
     .path()
     .join("workflow-attachments")
-    .join(format!("{}.payload", attachment.id));
+    .join(format!("{}.raw", attachment.id));
   let state_store = TestStore::new().await;
   let state_store = (*state_store).clone();
 
@@ -3963,7 +3963,7 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
     .await
     .unwrap();
   let attachment_directory = setup.tmp_dir.path().join("workflow-attachments");
-  let payload_path = attachment_directory.join(format!("{}.payload", attachment.id));
+  let payload_path = attachment_directory.join(format!("{}.raw", attachment.id));
   let metadata_path = attachment_directory.join(format!("{}.metadata", attachment.id));
   let occurred_at = OffsetDateTime::now_utc();
   let state_store = TestStore::new().await;
@@ -4031,7 +4031,7 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
     .await
     .unwrap();
   let attachment_directory = setup.tmp_dir.path().join("workflow-attachments");
-  let payload_path = attachment_directory.join(format!("{}.payload", attachment.id));
+  let payload_path = attachment_directory.join(format!("{}.raw", attachment.id));
   let metadata_path = attachment_directory.join(format!("{}.metadata", attachment.id));
   let occurred_at = OffsetDateTime::now_utc();
   let state_store = TestStore::new().await;

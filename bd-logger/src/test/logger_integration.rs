@@ -64,6 +64,7 @@ use bd_proto::protos::client::api::{
   ClientStateUpdate,
   DebugDataRequest,
   DeviceCommandUpdate,
+  UploadArtifactRequest,
   client_state_update,
   debug_data_request,
   device_command_update,
@@ -3420,6 +3421,25 @@ fn command_state_metadata() -> HashMap<String, Data> {
     .collect()
 }
 
+fn assert_single_fragment_upload(
+  setup: &mut Setup,
+  begin: &UploadArtifactRequest,
+  expected: &[u8],
+) {
+  assert_eq!(begin.chunk_index, None);
+  assert_eq!(begin.contents.as_slice(), b"");
+  assert_eq!(begin.chunks.len(), 1);
+  let fragment = setup.server.blocking_next_artifact_upload().unwrap();
+  assert_eq!(fragment.artifact_id, begin.artifact_id);
+  assert_eq!(fragment.command_id, begin.command_id);
+  assert_eq!(fragment.chunk_index, Some(0));
+  assert_eq!(fragment.logical_bytes, begin.logical_bytes);
+  assert_eq!(fragment.chunks, []);
+  let mut decoder = ZlibDecoder::new(Vec::new());
+  decoder.write_all(&fragment.contents).unwrap();
+  assert_eq!(decoder.finish().unwrap(), expected);
+}
+
 #[test]
 fn screenshot_device_command_stages_correlated_attachment() {
   let command_id = "d4a6e1e7-4bf8-434e-b42b-fde1a3d9d0cb";
@@ -3457,7 +3477,7 @@ fn screenshot_device_command_stages_correlated_attachment() {
       ..
     }) if received_command_id == command_id
   );
-  let artifact_id = assert_matches!(
+  let artifact = assert_matches!(
     setup.server.blocking_next_artifact_upload(),
     Some(artifact) => {
       assert_eq!(artifact.command_id.as_deref(), Some(command_id));
@@ -3467,12 +3487,11 @@ fn screenshot_device_command_stages_correlated_attachment() {
         artifact.payload_encoding.enum_value_or_default(),
         ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
       );
-      let mut decoder = ZlibDecoder::new(Vec::new());
-      decoder.write_all(&artifact.contents).unwrap();
-      assert_eq!(decoder.finish().unwrap(), screenshot);
-      artifact.artifact_id
+      artifact
     }
   );
+  assert_single_fragment_upload(&mut setup, &artifact, &screenshot);
+  let artifact_id = artifact.artifact_id;
   assert_matches!(
     setup.server.blocking_next_device_command_update(),
     Some(DeviceCommandUpdate {
@@ -4046,7 +4065,7 @@ fn registered_custom_device_command_stages_correlated_attachment() {
       ..
     })
   );
-  let artifact_id = assert_matches!(
+  let artifact = assert_matches!(
     setup.server.blocking_next_artifact_upload(),
     Some(artifact) => {
       assert_eq!(artifact.command_id.as_deref(), Some(command_id));
@@ -4057,12 +4076,11 @@ fn registered_custom_device_command_stages_correlated_attachment() {
         artifact.payload_encoding.enum_value_or_default(),
         ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
       );
-      let mut decoder = ZlibDecoder::new(Vec::new());
-      decoder.write_all(&artifact.contents).unwrap();
-      assert_eq!(decoder.finish().unwrap(), b"custom-command-attachment");
-      artifact.artifact_id
+      artifact
     }
   );
+  assert_single_fragment_upload(&mut setup, &artifact, b"custom-command-attachment");
+  let artifact_id = artifact.artifact_id;
   assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
     update_sequence_number: 2,
     update_type: Some(device_command_update::Update_type::Completed(completed)),
@@ -4325,15 +4343,13 @@ fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
     artifact.payload_encoding.enum_value_or_default(),
     ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
   );
-  let mut decoder = ZlibDecoder::new(Vec::new());
-  decoder.write_all(&artifact.contents).unwrap();
-  assert_eq!(decoder.finish().unwrap(), attachment);
+  assert_single_fragment_upload(&mut setup, &artifact, &attachment);
 
   let payload_path = setup
     .sdk_directory
     .path()
     .join("workflow-attachments")
-    .join(format!("{artifact_id}.payload"));
+    .join(format!("{artifact_id}.raw"));
   assert_eq!(
     setup.wait_for_workflow_attachment_upload_completion(),
     artifact_id
@@ -4516,15 +4532,13 @@ fn workflow_screenshot_command_uploads_attachment() {
     artifact.payload_encoding.enum_value_or_default(),
     ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
   );
-  let mut decoder = ZlibDecoder::new(Vec::new());
-  decoder.write_all(&artifact.contents).unwrap();
-  assert_eq!(decoder.finish().unwrap(), screenshot);
+  assert_single_fragment_upload(&mut setup, &artifact, &screenshot);
 
   let payload_path = setup
     .sdk_directory
     .path()
     .join("workflow-attachments")
-    .join(format!("{artifact_id}.payload"));
+    .join(format!("{artifact_id}.raw"));
   assert_eq!(
     setup.wait_for_workflow_attachment_upload_completion(),
     artifact_id

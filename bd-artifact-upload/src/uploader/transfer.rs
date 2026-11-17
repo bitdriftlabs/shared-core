@@ -19,6 +19,7 @@ use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{UploadArtifactRequest, UploadArtifactResponse};
 use bd_stats_common::Counter as _;
 use sha2::{Digest, Sha256};
+use std::io;
 use tokio::time::Instant;
 
 //
@@ -28,6 +29,7 @@ use tokio::time::Instant;
 pub(super) struct Progress {
   begin: bool,
   receipts: Vec<u8>,
+  intent_observed: bool,
   ready: Instant,
   backoff: ExponentialBackoff,
 }
@@ -37,6 +39,7 @@ impl Progress {
     Self {
       begin: true,
       receipts: Vec::new(),
+      intent_observed: false,
       ready: Instant::now(),
       backoff,
     }
@@ -80,6 +83,25 @@ pub(super) struct Attempt {
   result: anyhow::Result<UploadArtifactResponse>,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("invalid staged fragment: {0}")]
+struct InvalidFragment(anyhow::Error);
+
+fn fragment_read_error(error: impl Into<anyhow::Error>) -> anyhow::Error {
+  let error = error.into();
+  // Accepted fragments are immutable; missing or invalid bytes cannot heal on transport retries.
+  if error.downcast_ref::<io::Error>().is_some_and(|error| {
+    matches!(
+      error.kind(),
+      io::ErrorKind::NotFound | io::ErrorKind::InvalidData
+    )
+  }) {
+    InvalidFragment(error).into()
+  } else {
+    error
+  }
+}
+
 fn validate_ack(
   request: &UploadArtifactRequest,
   uuid: &str,
@@ -93,6 +115,13 @@ fn validate_ack(
     .state
     .enum_value()
     .map_err(|value| anyhow::anyhow!("unknown artifact acknowledgement state {value}"))?;
+  if state == State::STATE_DROPPED {
+    anyhow::ensure!(
+      response.error.is_empty() && response.received_chunks.is_empty(),
+      "invalid artifact intent drop acknowledgement"
+    );
+    return Ok(state);
+  }
   if matches!(state, State::STATE_RETRYABLE | State::STATE_REJECTED) {
     anyhow::ensure!(
       !response.error.is_empty()
@@ -153,6 +182,7 @@ impl Uploader {
         continue;
       }
       let mut request = progress.request(template);
+      let scrub_rules = self.scrub_rules.clone();
       let descriptor = request
         .chunk_index
         .map(|index| template.chunks[index as usize].clone());
@@ -177,13 +207,18 @@ impl Uploader {
           }
           if let Some(descriptor) = descriptor {
             let path = chunk_path(&id, request.chunk_index.unwrap_or_default() as usize);
-            let mut file = filesystem.open_regular_file(&path).await?;
-            let contents = read_limited(&mut file, CHUNK_BYTES).await?;
+            let mut file = filesystem
+              .open_regular_file(&path)
+              .await
+              .map_err(fragment_read_error)?;
+            let contents = read_limited(&mut file, CHUNK_BYTES)
+              .await
+              .map_err(fragment_read_error)?;
             request.contents = tokio::task::spawn_blocking(move || {
               anyhow::ensure!(
                 contents.len() == descriptor.encoded_bytes as usize
                   && Sha256::digest(&contents).as_slice() == descriptor.encoded_sha256,
-                "staged chunk changed before transfer"
+                InvalidFragment(anyhow::anyhow!("staged chunk changed before transfer"))
               );
               Ok::<_, anyhow::Error>(contents)
             })
@@ -193,6 +228,8 @@ impl Uploader {
           // share this capacity and release it during retry backoff.
           let waiting = Instant::now();
           let _permit = capacity.acquire_owned().await?;
+          request.state_metadata =
+            super::scrub_metadata(&scrub_rules.borrow(), &request.state_metadata);
           log::debug!(
             "sending chunked artifact: artifact_id={id} upload_uuid={uuid} operation={operation} \
              chunk_index={chunk_index:?} capacity_wait_ms={} payload_bytes={}",
@@ -240,6 +277,19 @@ impl Uploader {
     let response = attempt.result.and_then(|response| {
       validate_ack(entry, &attempt.uuid, &response).map(|state| (response, state))
     });
+    if matches!(
+      &response,
+      Ok((_, State::STATE_RECEIVING | State::STATE_FINALIZED))
+    ) {
+      let progress = self
+        .chunk_progress
+        .get_mut(&attempt.id)
+        .ok_or_else(|| anyhow::anyhow!("missing chunk transfer progress"))?;
+      if !progress.intent_observed {
+        progress.intent_observed = true;
+        self.stats.accepted_intent.inc();
+      }
+    }
     match response {
       Ok((_, State::STATE_FINALIZED)) => {
         log::debug!("chunked artifact finalized: artifact_id={}", attempt.id);
@@ -256,6 +306,23 @@ impl Uploader {
           response.error
         );
         self.retire_chunk(index, Err(response.error)).await?;
+      },
+      Ok((_, State::STATE_DROPPED)) => {
+        log::debug!("artifact intent dropped: artifact_id={}", attempt.id);
+        self.stats.dropped_intent.inc();
+        self
+          .retire_chunk(
+            index,
+            Err("artifact dropped during intent negotiation".into()),
+          )
+          .await?;
+      },
+      Err(error) if error.is::<InvalidFragment>() => {
+        log::warn!(
+          "retiring corrupt chunked artifact: artifact_id={} error={error}",
+          attempt.id
+        );
+        self.retire_chunk(index, Err(error.to_string())).await?;
       },
       result => {
         let progress = self
