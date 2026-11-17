@@ -7,6 +7,21 @@
   `bd-client-common::file_system`, and run blocking work such as building or syncing a
   memory-mapped file with `tokio::task::spawn_blocking`. Never hold a lock across that work.
 
+## Validating Inside the Monorepo
+
+- Run every command from the monorepo root, where `./bazelw` and the `justfile` live, not from
+  `shared-core/`. Most shared-core test targets are `//shared-core/<crate>:test`; read the
+  crate's `BUILD.bazel` before guessing a name.
+- Format with `just rustfmt shared-core/<paths>`.
+- After changing a public signature, find its callers in shared-core and the monorepo with
+  `git grep --recurse-submodules` from the monorepo root (plain `git grep` skips `shared-core/`).
+  Lint every affected package, such as `./bazelw test --config=clippy //shared-core/...`, not only
+  the touched ones.
+- Shared-core CI runs Cargo, not Bazel: stable `cargo clippy` over the whole workspace and nightly
+  `cargo fmt`, both on the latest toolchains. Before pushing, run `just shared-core-ci` from the
+  monorepo root for the same Clippy and rustfmt commands, and `ci/check_license.sh` here.
+- The root `clippy.toml` applies to every crate without its own. Do not add a per-crate copy.
+
 ## Deterministic Tests
 
 - Treat a timeout or intermittent failure as a test defect. Replace wall-clock sleeps and polling
@@ -19,7 +34,7 @@
   deflaked regression, prove it with uncached serial repetitions, for example:
 
 	```sh
-	../bazelw test --nocache_test_results --runs_per_test=25 --local_test_jobs=1 <target>
+	./bazelw test --nocache_test_results --runs_per_test=25 --local_test_jobs=1 //shared-core/<crate>:test
 	```
 
 - Add focused debug or trace logging around asynchronous lifecycle transitions when a test needs a
