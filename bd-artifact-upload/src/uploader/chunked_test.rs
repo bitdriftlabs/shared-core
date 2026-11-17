@@ -1418,6 +1418,67 @@ async fn chunked_recovery_rejects_invalid_templates_and_inconsistent_chunks() {
 }
 
 #[tokio::test]
+async fn chunked_recovery_checks_stream_integrity_with_valid_encoded_descriptors() {
+  for corruption in [
+    "valid",
+    "truncated_trailer",
+    "trailing_data",
+    "logical_expansion",
+  ] {
+    let setup = Setup::new().await;
+    setup.configure_admission(Vec::new()).await;
+    let id = Uuid::new_v4();
+    let path = setup.capture(id, &vec![b'x'; 64 * 1024 + 1]).await;
+    setup
+      .stage_capture(path, setup.request(id))
+      .await
+      .unwrap()
+      .unwrap();
+    setup.abort_for_recovery();
+    let mut index = setup.chunk_index().await;
+    let template = &mut index.chunked_artifact[0];
+    assert_eq!(template.chunks.len(), 1);
+    let path = chunk_path(&id.to_string(), 0);
+    let mut encoded = setup.filesystem.read_file(&path).await.unwrap();
+    match corruption {
+      "valid" => {},
+      "truncated_trailer" => encoded.truncate(encoded.len() - 1),
+      "trailing_data" => encoded.push(0),
+      "logical_expansion" => {
+        template.logical_bytes = Some(template.logical_bytes.unwrap() - 1);
+      },
+      _ => panic!("unknown corruption"),
+    }
+    // Keep metadata and encoded integrity valid so recovery must check the continuous zlib stream.
+    let encoded_bytes = u64::try_from(encoded.len()).unwrap();
+    assert!(encoded_bytes <= artifact_encoded_bound(template.logical_bytes.unwrap()));
+    template.encoded_bytes = Some(encoded_bytes);
+    template.chunks[0].encoded_bytes = u32::try_from(encoded_bytes).unwrap();
+    template.chunks[0].encoded_sha256 = Sha256::digest(&encoded).to_vec();
+    setup.filesystem.write_file(&path, &encoded).await.unwrap();
+    setup.write_chunk_index(&index).await;
+
+    let setup = recovered(setup).await;
+    let expected = if corruption == "valid" {
+      index.chunked_artifact
+    } else {
+      Vec::new()
+    };
+    assert_eq!(
+      setup.chunk_index().await.chunked_artifact,
+      expected,
+      "{corruption}"
+    );
+    assert_eq!(
+      setup.filesystem.exists(&path).await.unwrap(),
+      corruption == "valid",
+      "{corruption}"
+    );
+    setup.shutdown().await;
+  }
+}
+
+#[tokio::test]
 async fn chunked_recovery_bounds_compressed_and_decoded_index() {
   for compressed in [false, true] {
     let setup = Setup::new().await;
