@@ -1252,7 +1252,7 @@ async fn extend_basic(#[case] mode: StoreMode) -> anyhow::Result<()> {
       make_string_value("value2"),
     ),
     (
-      Scope::GlobalState,
+      Scope::System,
       "key3".to_string(),
       make_string_value("value3"),
     ),
@@ -1281,7 +1281,7 @@ async fn extend_basic(#[case] mode: StoreMode) -> anyhow::Result<()> {
   assert_eq!(
     setup
       .store
-      .get_with_timestamp(Scope::GlobalState, "key3")
+      .get_with_timestamp(Scope::System, "key3")
       .unwrap()
       .timestamp,
     ts
@@ -1333,7 +1333,7 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
     ),
     // New insert
     (
-      Scope::GlobalState,
+      Scope::System,
       "key3".to_string(),
       make_string_value("value3"),
     ),
@@ -1349,7 +1349,7 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
   );
   assert_eq!(setup.store.get(Scope::FeatureFlagExposure, "key2"), None);
   assert_eq!(
-    setup.store.get(Scope::GlobalState, "key3"),
+    setup.store.get(Scope::System, "key3"),
     Some(&make_string_value("value3"))
   );
 
@@ -1365,7 +1365,7 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
   assert_eq!(
     setup
       .store
-      .get_with_timestamp(Scope::GlobalState, "key3")
+      .get_with_timestamp(Scope::System, "key3")
       .unwrap()
       .timestamp,
     ts
@@ -1524,16 +1524,16 @@ async fn post_update_rotation_failure_preserves_insert_result() -> anyhow::Resul
   let old_value = make_string_value("old");
   let new_value = make_string_value("new");
   store
-    .insert(Scope::GlobalState, "key".to_string(), old_value.clone())
+    .insert(Scope::System, "key".to_string(), old_value.clone())
     .await?;
 
   store.fail_next_post_update_rotation_for_testing();
   let (_, previous_value) = store
-    .insert(Scope::GlobalState, "key".to_string(), new_value.clone())
+    .insert(Scope::System, "key".to_string(), new_value.clone())
     .await?;
 
   assert_eq!(previous_value, Some(old_value));
-  assert_eq!(store.get(Scope::GlobalState, "key"), Some(&new_value));
+  assert_eq!(store.get(Scope::System, "key"), Some(&new_value));
   assert_eq!(store.persistence_mode(), PersistenceMode::InMemory);
   collector.assert_counter_eq(1, "test:kv:persistence_fallbacks", BTreeMap::new());
 
@@ -1549,14 +1549,14 @@ async fn post_update_rotation_failure_preserves_extend_result() -> anyhow::Resul
     persistent_store_for_post_update_rotation_failure().await?;
   store
     .insert(
-      Scope::GlobalState,
+      Scope::System,
       "replaced".to_string(),
       make_string_value("old"),
     )
     .await?;
   store
     .insert(
-      Scope::GlobalState,
+      Scope::System,
       "removed".to_string(),
       make_string_value("old"),
     )
@@ -1566,32 +1566,28 @@ async fn post_update_rotation_failure_preserves_extend_result() -> anyhow::Resul
   store
     .extend(vec![
       (
-        Scope::GlobalState,
+        Scope::System,
         "replaced".to_string(),
         make_string_value("new"),
       ),
       (
-        Scope::GlobalState,
+        Scope::System,
         "added".to_string(),
         make_string_value("value"),
       ),
-      (
-        Scope::GlobalState,
-        "removed".to_string(),
-        StateValue::default(),
-      ),
+      (Scope::System, "removed".to_string(), StateValue::default()),
     ])
     .await?;
 
   assert_eq!(
-    store.get(Scope::GlobalState, "replaced"),
+    store.get(Scope::System, "replaced"),
     Some(&make_string_value("new"))
   );
   assert_eq!(
-    store.get(Scope::GlobalState, "added"),
+    store.get(Scope::System, "added"),
     Some(&make_string_value("value"))
   );
-  assert!(store.get(Scope::GlobalState, "removed").is_none());
+  assert!(store.get(Scope::System, "removed").is_none());
   assert_eq!(store.persistence_mode(), PersistenceMode::InMemory);
   collector.assert_counter_eq(1, "test:kv:persistence_fallbacks", BTreeMap::new());
 
@@ -1607,14 +1603,14 @@ async fn post_update_rotation_failure_preserves_remove_result() -> anyhow::Resul
     persistent_store_for_post_update_rotation_failure().await?;
   let old_value = make_string_value("old");
   store
-    .insert(Scope::GlobalState, "key".to_string(), old_value.clone())
+    .insert(Scope::System, "key".to_string(), old_value.clone())
     .await?;
 
   store.fail_next_post_update_rotation_for_testing();
-  let removed = store.remove(Scope::GlobalState, "key").await?;
+  let removed = store.remove(Scope::System, "key").await?;
 
   assert!(removed.is_some_and(|(_, value)| value == old_value));
-  assert!(store.get(Scope::GlobalState, "key").is_none());
+  assert!(store.get(Scope::System, "key").is_none());
   assert_eq!(store.persistence_mode(), PersistenceMode::InMemory);
   collector.assert_counter_eq(1, "test:kv:persistence_fallbacks", BTreeMap::new());
 
@@ -1734,7 +1730,7 @@ async fn extend_persistence() -> anyhow::Result<()> {
         make_string_value("value2"),
       ),
       (
-        Scope::GlobalState,
+        Scope::System,
         "key3".to_string(),
         make_string_value("value3"),
       ),
@@ -1769,7 +1765,7 @@ async fn extend_persistence() -> anyhow::Result<()> {
     Some(&make_string_value("value2"))
   );
   assert_eq!(
-    store.get(Scope::GlobalState, "key3"),
+    store.get(Scope::System, "key3"),
     Some(&make_string_value("value3"))
   );
 

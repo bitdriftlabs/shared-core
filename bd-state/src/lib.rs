@@ -317,8 +317,8 @@ impl Store {
   /// state will be captured before clearing all ephemeral scopes. This allows crash reporting
   /// to access the previous run's feature flags while ensuring the current process starts fresh.
   ///
-  /// Both `FeatureFlag` and `GlobalState` scopes are cleared on each process start, requiring
-  /// users to re-set these values.
+  /// The `FeatureFlagExposure` scope is cleared on each process start, requiring users to re-set
+  /// feature flags.
   ///
   /// The directory will be created if it doesn't exist.
   ///
@@ -360,11 +360,10 @@ impl Store {
     };
 
     // Clear ephemeral scopes so the current process starts with fresh state.
-    // Users must re-set feature flags and global state on each process start.
+    // Users must re-set feature flags on each process start.
 
     // Ignore errors during clearing - we'll proceed with whatever state we have.
     let _ = store.clear(Scope::FeatureFlagExposure).await;
-    let _ = store.clear(Scope::GlobalState).await;
 
     Ok(StoreInitResult {
       store,

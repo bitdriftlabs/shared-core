@@ -18,14 +18,14 @@ This document focuses on how state is recorded, persisted, and uploaded with log
 
 ## 1) State model and process lifecycle
 
-State is namespaced by `Scope` (`FeatureFlagExposure`, `GlobalState`, `System`) and keyed by
+State is namespaced by `Scope` (`FeatureFlagExposure`, `System`) and keyed by
 string. Values are protobuf `StateValue`s.
 
 On persistent startup (`Store::persistent`):
 
 1. `VersionedKVStore` is opened and replayed into an in-memory `ScopedMaps` cache.
 2. That cache is cloned into `previous_state` (for crash/context reporting).
-3. `FeatureFlagExposure` and `GlobalState` are cleared for the new process.
+3. `FeatureFlagExposure` is cleared for the new process.
 4. `System` scope is not blanket-cleared by this startup path.
 
 If persistent initialization fails, `persistent_or_fallback` falls back to in-memory storage and

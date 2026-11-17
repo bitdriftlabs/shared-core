@@ -111,7 +111,7 @@ fn frame_encode_decode() {
 #[test]
 fn frame_with_delete() {
   let frame = Frame::new(
-    Scope::GlobalState,
+    Scope::System,
     "key2",
     1_700_000_000_000_000,
     make_string_value(""),
@@ -230,12 +230,7 @@ fn frame_multiple_frames() {
     1000,
     make_string_value("first"),
   );
-  let frame2 = Frame::new(
-    Scope::GlobalState,
-    "key2",
-    2000,
-    make_string_value("second"),
-  );
+  let frame2 = Frame::new(Scope::System, "key2", 2000, make_string_value("second"));
   let frame3 = Frame::new(
     Scope::FeatureFlagExposure,
     "key3",
@@ -306,7 +301,7 @@ fn compute_encoded_size_matches_frame_encoded_size() {
     let timestamp = 123_456_789_u64;
 
     // Method 1: Create frame and call encoded_size()
-    let frame = Frame::new(Scope::GlobalState, key, timestamp, value.clone());
+    let frame = Frame::new(Scope::System, key, timestamp, value.clone());
     let size_via_frame = frame.encoded_size();
 
     // Method 2: Use compute_encoded_size without creating frame

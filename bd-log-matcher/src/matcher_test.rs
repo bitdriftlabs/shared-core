@@ -1527,27 +1527,6 @@ fn state_match_data_values() {
 }
 
 #[test]
-fn custom_field_state_scopes_are_unsupported() {
-  for scope in [StateScope::CUSTOM_FIELDS, StateScope::OOTB_FIELDS] {
-    let matcher = simple_log_matcher(StateMatch(base_log_matcher::StateMatch {
-      scope: scope.into(),
-      state_key: "field".to_string(),
-      state_value_match: MessageField::from_option(Some(
-        bd_proto::protos::state::matcher::StateValueMatch {
-          value_match: Some(state_value_match::Value_match::IsSetMatch(
-            bd_proto::protos::value_matcher::value_matcher::IsSetMatch::default(),
-          )),
-          ..Default::default()
-        },
-      )),
-      ..Default::default()
-    }));
-
-    assert!(TestMatcher::new(&matcher).is_err());
-  }
-}
-
-#[test]
 fn state_match_is_set() {
   struct Input {
     state_values: Vec<(&'static str, &'static str)>,

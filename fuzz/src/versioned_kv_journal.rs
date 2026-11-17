@@ -35,7 +35,7 @@ impl<'a> Arbitrary<'a> for ArbitraryScope {
     let variant: u8 = u.arbitrary()?;
     Ok(Self(match variant % 2 {
       0 => Scope::FeatureFlagExposure,
-      1 => Scope::GlobalState,
+      1 => Scope::System,
       _ => unreachable!(),
     }))
   }

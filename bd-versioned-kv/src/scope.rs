@@ -13,7 +13,8 @@ use strum::FromRepr;
 #[repr(u8)]
 pub enum Scope {
   FeatureFlagExposure = 1,
-  GlobalState         = 2,
+  // 2 was the removed global state scope, which no SDK ever stored. Do not reuse it, so a frame
+  // can never be read back under a different scope.
   System              = 3,
 }
 

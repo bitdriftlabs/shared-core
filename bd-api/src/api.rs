@@ -643,9 +643,8 @@ impl Api {
   fn map_state_scope(scope: protobuf::EnumOrUnknown<StateScope>) -> Option<bd_state::Scope> {
     match scope.enum_value().ok()? {
       StateScope::FEATURE_FLAG => Some(bd_state::Scope::FeatureFlagExposure),
-      StateScope::GLOBAL_STATE => Some(bd_state::Scope::GlobalState),
       StateScope::SYSTEM => Some(bd_state::Scope::System),
-      StateScope::CUSTOM_FIELDS | StateScope::OOTB_FIELDS | StateScope::UNSPECIFIED => None,
+      StateScope::UNSPECIFIED => None,
     }
   }
 

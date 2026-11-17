@@ -89,15 +89,6 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
             value,
             |timestamped| &timestamped.value,
           ),
-          bd_state::Scope::GlobalState => self.emit_multi_tag_matches(
-            action,
-            count,
-            &base_tags,
-            multi_tag,
-            scoped_maps.global_state.iter(),
-            value,
-            |timestamped| &timestamped.value,
-          ),
           bd_state::Scope::System => self.emit_multi_tag_matches(
             action,
             count,
