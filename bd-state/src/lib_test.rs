@@ -98,7 +98,7 @@ async fn clear_scope() {
   setup
     .store
     .insert(
-      Scope::GlobalState,
+      Scope::System,
       "key1".to_string(),
       crate::string_value("global_value"),
     )
@@ -113,7 +113,7 @@ async fn clear_scope() {
   assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag2"), None);
   assert!(
     reader
-      .get(Scope::GlobalState, "key1")
+      .get(Scope::System, "key1")
       .is_some_and(|v| v.has_string_value() && v.string_value() == "global_value")
   );
 }
@@ -145,7 +145,7 @@ async fn iter_scope() {
   setup
     .store
     .insert(
-      Scope::GlobalState,
+      Scope::System,
       "key1".to_string(),
       crate::string_value("global_value"),
     )
@@ -274,15 +274,6 @@ async fn ephemeral_scopes_cleared_on_restart() {
       .await
       .unwrap()
       .unwrap();
-    store
-      .insert(
-        Scope::GlobalState,
-        "key1".to_string(),
-        crate::string_value("global_value"),
-      )
-      .await
-      .unwrap()
-      .unwrap();
 
     // Verify they're present
     let reader = store.read().await;
@@ -295,11 +286,6 @@ async fn ephemeral_scopes_cleared_on_restart() {
       reader
         .get(Scope::FeatureFlagExposure, "flag2")
         .is_some_and(|v| v.has_string_value() && v.string_value() == "value2")
-    );
-    assert!(
-      reader
-        .get(Scope::GlobalState, "key1")
-        .is_some_and(|v| v.has_string_value() && v.string_value() == "global_value")
     );
   }
 
@@ -325,13 +311,6 @@ async fn ephemeral_scopes_cleared_on_restart() {
         .count(),
       2
     );
-    assert_eq!(
-      prev_snapshot
-        .iter()
-        .filter(|(scope, ..)| *scope == Scope::GlobalState)
-        .count(),
-      1
-    );
     assert!(
       prev_snapshot
         .get(Scope::FeatureFlagExposure, "flag1")
@@ -346,19 +325,11 @@ async fn ephemeral_scopes_cleared_on_restart() {
           |entry| entry.value.has_string_value() && entry.value.string_value() == "value2"
         )
     );
-    assert!(
-      prev_snapshot
-        .get(Scope::GlobalState, "key1")
-        .is_some_and(
-          |entry| entry.value.has_string_value() && entry.value.string_value() == "global_value"
-        )
-    );
 
     // But current store should be empty (ephemeral scopes cleared)
     let reader = store.read().await;
     assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
     assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag2"), None);
-    assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
   }
 }
 
@@ -456,15 +427,6 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
       .unwrap();
     store
       .insert(
-        Scope::GlobalState,
-        "key1".to_string(),
-        crate::string_value("global_value"),
-      )
-      .await
-      .unwrap()
-      .unwrap();
-    store
-      .insert(
         Scope::System,
         SYSTEM_SESSION_ID_KEY.to_string(),
         crate::string_value("session-1"),
@@ -497,7 +459,6 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
 
     let reader = store.read().await;
     assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
-    assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
     assert!(
       reader
         .get(Scope::System, SYSTEM_SESSION_ID_KEY)
@@ -902,7 +863,7 @@ async fn clear_returns_all_removed_state_changes() {
   setup
     .store
     .insert(
-      Scope::GlobalState,
+      Scope::System,
       "key1".to_string(),
       crate::string_value("global_value"),
     )
@@ -929,13 +890,13 @@ async fn clear_returns_all_removed_state_changes() {
     ));
   }
 
-  // Verify FeatureFlag scope is cleared but GlobalState remains
+  // Verify FeatureFlag scope is cleared but System remains
   let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
   assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag2"), None);
   assert!(
     reader
-      .get(Scope::GlobalState, "key1")
+      .get(Scope::System, "key1")
       .is_some_and(|v| v.has_string_value() && v.string_value() == "global_value")
   );
 }
@@ -974,11 +935,7 @@ async fn last_change_micros_updated_on_insert() {
   .store;
 
   store
-    .insert(
-      Scope::GlobalState,
-      "k".to_string(),
-      crate::string_value("v"),
-    )
+    .insert(Scope::System, "k".to_string(), crate::string_value("v"))
     .await
     .unwrap();
 
@@ -1005,11 +962,7 @@ async fn last_change_micros_not_updated_on_noop_insert() {
   .store;
 
   store
-    .insert(
-      Scope::GlobalState,
-      "k".to_string(),
-      crate::string_value("v"),
-    )
+    .insert(Scope::System, "k".to_string(), crate::string_value("v"))
     .await
     .unwrap();
   let after_first = store.last_change_micros();
@@ -1019,11 +972,7 @@ async fn last_change_micros_not_updated_on_noop_insert() {
 
   // Inserting the same value is a no-op: last_change_micros must not advance.
   store
-    .insert(
-      Scope::GlobalState,
-      "k".to_string(),
-      crate::string_value("v"),
-    )
+    .insert(Scope::System, "k".to_string(), crate::string_value("v"))
     .await
     .unwrap();
 
@@ -1048,11 +997,7 @@ async fn last_change_micros_updated_on_remove() {
   .store;
 
   store
-    .insert(
-      Scope::GlobalState,
-      "k".to_string(),
-      crate::string_value("v"),
-    )
+    .insert(Scope::System, "k".to_string(), crate::string_value("v"))
     .await
     .unwrap();
 
@@ -1060,11 +1005,7 @@ async fn last_change_micros_updated_on_remove() {
   time_provider.advance(time::Duration::seconds(5));
   let t2 = time_provider.now();
 
-  store
-    .remove(Scope::GlobalState, "k")
-    .await
-    .unwrap()
-    .unwrap();
+  store.remove(Scope::System, "k").await.unwrap().unwrap();
 
   let expected_micros =
     t2.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(t2.microsecond());
@@ -1090,11 +1031,7 @@ async fn last_change_micros_never_decreases() {
   .store;
 
   store
-    .insert(
-      Scope::GlobalState,
-      "k1".to_string(),
-      crate::string_value("v"),
-    )
+    .insert(Scope::System, "k1".to_string(), crate::string_value("v"))
     .await
     .unwrap();
   let after_t2 = store.last_change_micros();
@@ -1103,11 +1040,7 @@ async fn last_change_micros_never_decreases() {
   time_provider.set_time(t1);
 
   store
-    .insert(
-      Scope::GlobalState,
-      "k2".to_string(),
-      crate::string_value("v"),
-    )
+    .insert(Scope::System, "k2".to_string(), crate::string_value("v"))
     .await
     .unwrap();
 

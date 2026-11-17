@@ -13,10 +13,12 @@ This document provides guidance for AI agents working with the `bd-state` crate,
 
 ### Scopes
 State is organized into scopes defined in `bd-versioned-kv::Scope`:
-- `FeatureFlag`: Runtime feature flags and configuration
-- `GlobalState`: Application-wide state that should persist
+- `FeatureFlagExposure`: Runtime feature flag exposures
+- `System`: SDK-owned state, such as the memory pressure level and entity ID
 
-**Critical behavior**: Both scopes are **ephemeral** - they are automatically cleared when a new `Store` is created. This ensures each process starts with fresh state. Consumers must re-populate these values on startup.
+**Critical behavior**: `FeatureFlagExposure` is **ephemeral** - it is automatically cleared when a new `Store` is created, so consumers must re-populate it on startup. `System` is not blanket-cleared; its owners manage their own keys.
+
+Global fields are not stored here; `bd-crash-handler::global_state` persists them for crash reports.
 
 ### State Lifecycle
 1. **Initialization**: `Store::new()` loads existing state from disk

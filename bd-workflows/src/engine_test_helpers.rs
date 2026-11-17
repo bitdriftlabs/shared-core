@@ -475,7 +475,6 @@ pub fn make_state_change_rule(
     rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
       scope: match scope {
         bd_state::Scope::FeatureFlagExposure => StateScope::FEATURE_FLAG.into(),
-        bd_state::Scope::GlobalState => StateScope::GLOBAL_STATE.into(),
         bd_state::Scope::System => StateScope::SYSTEM.into(),
       },
       key: key.to_string(),

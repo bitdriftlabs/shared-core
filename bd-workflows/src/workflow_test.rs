@@ -287,7 +287,7 @@ fn sankey_body_skips_state_changes_without_skipping_field_or_fixed_values() {
   let finished = state("finished");
   let initial = state("initial").declare_transition_with_all(
     &finished,
-    make_state_change_rule(Scope::GlobalState, "key", make_is_set_match()),
+    make_state_change_rule(Scope::FeatureFlagExposure, "key", make_is_set_match()),
     &[make_emit_sankey_action("sankey", 2, vec![])],
     &[
       make_sankey_extraction("sankey", true, Value_type::LogBodyExtracted(true)),
@@ -302,7 +302,7 @@ fn sankey_body_skips_state_changes_without_skipping_field_or_fixed_values() {
   let mut workflow =
     AnnotatedWorkflow::new(WorkflowBuilder::new("sankey", &[&initial, &finished]).make_config());
   let state_change = StateChange::inserted(
-    Scope::GlobalState,
+    Scope::FeatureFlagExposure,
     "key",
     string_value("value"),
     datetime!(2026-01-01 00:00 UTC),

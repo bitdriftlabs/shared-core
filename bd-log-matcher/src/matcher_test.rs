@@ -1527,10 +1527,11 @@ fn state_match_data_values() {
 }
 
 #[test]
-fn custom_field_state_scopes_are_unsupported() {
-  for scope in [StateScope::CUSTOM_FIELDS, StateScope::OOTB_FIELDS] {
+fn unspecified_and_removed_state_scopes_are_unsupported() {
+  // 2, 4 and 5 are the reserved global state, custom field and SDK-owned field scopes.
+  for scope in [0, 2, 4, 5] {
     let matcher = simple_log_matcher(StateMatch(base_log_matcher::StateMatch {
-      scope: scope.into(),
+      scope: protobuf::EnumOrUnknown::from_i32(scope),
       state_key: "field".to_string(),
       state_value_match: MessageField::from_option(Some(
         bd_proto::protos::state::matcher::StateValueMatch {

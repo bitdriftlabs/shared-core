@@ -70,7 +70,7 @@ async fn normal_growth_pattern() -> anyhow::Result<()> {
   for i in 0 .. 10 {
     store
       .insert(
-        Scope::GlobalState,
+        Scope::System,
         format!("key_{i}"),
         make_string_value(&large_value),
       )
@@ -106,11 +106,7 @@ async fn max_capacity_limiting() -> anyhow::Result<()> {
   let value = "x".repeat(512);
   for i in 0 .. 20 {
     store
-      .insert(
-        Scope::GlobalState,
-        format!("key_{i}"),
-        make_string_value(&value),
-      )
+      .insert(Scope::System, format!("key_{i}"), make_string_value(&value))
       .await?;
 
     // Try rotating periodically
@@ -144,7 +140,7 @@ async fn config_changes_on_restart() -> anyhow::Result<()> {
     for i in 0 .. 5 {
       store
         .insert(
-          Scope::GlobalState,
+          Scope::System,
           format!("key_{i}"),
           make_string_value("value"),
         )
@@ -290,11 +286,7 @@ async fn growth_with_compaction() -> anyhow::Result<()> {
 
   for i in 0 .. entries_needed {
     store
-      .insert(
-        Scope::GlobalState,
-        format!("key_{i}"),
-        make_string_value(&value),
-      )
+      .insert(Scope::System, format!("key_{i}"), make_string_value(&value))
       .await?;
   }
 
@@ -331,7 +323,7 @@ async fn insert_triggers_rotation_on_capacity_exceeded() -> anyhow::Result<()> {
 
   let result = store
     .insert(
-      Scope::GlobalState,
+      Scope::System,
       "large_key".to_string(),
       make_string_value(&large_value),
     )
@@ -352,7 +344,7 @@ async fn insert_triggers_rotation_on_capacity_exceeded() -> anyhow::Result<()> {
 
   // Verify the value was actually inserted
   assert_eq!(store.len(), 1);
-  assert!(store.contains_key(Scope::GlobalState, "large_key"));
+  assert!(store.contains_key(Scope::System, "large_key"));
 
   Ok(())
 }
@@ -381,7 +373,7 @@ async fn oversized_value_keeps_persistent_store() -> anyhow::Result<()> {
 
   let Err(error) = store
     .insert(
-      Scope::GlobalState,
+      Scope::System,
       "huge_key".to_string(),
       make_string_value(&huge_value),
     )
@@ -426,19 +418,13 @@ async fn compaction_helps_at_max_capacity() -> anyhow::Result<()> {
   let value = "x".repeat(512); // 512 byte values
   for i in 0 .. 10 {
     store
-      .insert(
-        Scope::GlobalState,
-        format!("key_{i}"),
-        make_string_value(&value),
-      )
+      .insert(Scope::System, format!("key_{i}"), make_string_value(&value))
       .await?;
   }
 
   // Delete most entries to create compaction opportunity
   for i in 0 .. 8 {
-    store
-      .remove(Scope::GlobalState, &format!("key_{i}"))
-      .await?;
+    store.remove(Scope::System, &format!("key_{i}")).await?;
   }
 
   // Now we have lots of tombstone entries taking up space
@@ -449,7 +435,7 @@ async fn compaction_helps_at_max_capacity() -> anyhow::Result<()> {
   let new_value = "y".repeat(512);
   let result = store
     .insert(
-      Scope::GlobalState,
+      Scope::System,
       "new_key".to_string(),
       make_string_value(&new_value),
     )
@@ -486,11 +472,7 @@ async fn compaction_capacity_rejection_keeps_persistent_store() -> anyhow::Resul
   let value = "x".repeat(512);
   for i in 0 .. 10 {
     store
-      .insert(
-        Scope::GlobalState,
-        format!("key_{i}"),
-        make_string_value(&value),
-      )
+      .insert(Scope::System, format!("key_{i}"), make_string_value(&value))
       .await?;
   }
 
@@ -500,7 +482,7 @@ async fn compaction_capacity_rejection_keeps_persistent_store() -> anyhow::Resul
 
   let Err(error) = store
     .insert(
-      Scope::GlobalState,
+      Scope::System,
       "large_key".to_string(),
       make_string_value(&large_value),
     )
@@ -510,7 +492,7 @@ async fn compaction_capacity_rejection_keeps_persistent_store() -> anyhow::Resul
   };
 
   assert!(matches!(error, UpdateError::CapacityExceeded));
-  assert!(!store.contains_key(Scope::GlobalState, "large_key"));
+  assert!(!store.contains_key(Scope::System, "large_key"));
   assert!(store.journal_path().is_some());
 
   Ok(())

@@ -59,7 +59,7 @@ async fn make_state_store(
   result
     .store
     .insert(
-      bd_state::Scope::GlobalState,
+      bd_state::Scope::FeatureFlagExposure,
       "test_key".to_string(),
       bd_state::string_value("test_value"),
     )
@@ -78,7 +78,7 @@ async fn make_state_store(
 async fn insert_state_change(state_store: &bd_state::Store, key: &str) {
   state_store
     .insert(
-      bd_state::Scope::GlobalState,
+      bd_state::Scope::FeatureFlagExposure,
       key.to_string(),
       bd_state::string_value("test_value"),
     )

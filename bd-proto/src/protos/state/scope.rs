@@ -38,14 +38,8 @@ pub enum StateScope {
     UNSPECIFIED = 0,
     // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.state.v1.StateScope.FEATURE_FLAG)
     FEATURE_FLAG = 1,
-    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.state.v1.StateScope.GLOBAL_STATE)
-    GLOBAL_STATE = 2,
     // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.state.v1.StateScope.SYSTEM)
     SYSTEM = 3,
-    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.state.v1.StateScope.CUSTOM_FIELDS)
-    CUSTOM_FIELDS = 4,
-    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.state.v1.StateScope.OOTB_FIELDS)
-    OOTB_FIELDS = 5,
 }
 
 impl ::protobuf::Enum for StateScope {
@@ -59,10 +53,7 @@ impl ::protobuf::Enum for StateScope {
         match value {
             0 => ::std::option::Option::Some(StateScope::UNSPECIFIED),
             1 => ::std::option::Option::Some(StateScope::FEATURE_FLAG),
-            2 => ::std::option::Option::Some(StateScope::GLOBAL_STATE),
             3 => ::std::option::Option::Some(StateScope::SYSTEM),
-            4 => ::std::option::Option::Some(StateScope::CUSTOM_FIELDS),
-            5 => ::std::option::Option::Some(StateScope::OOTB_FIELDS),
             _ => ::std::option::Option::None
         }
     }
@@ -71,10 +62,7 @@ impl ::protobuf::Enum for StateScope {
         match str {
             "UNSPECIFIED" => ::std::option::Option::Some(StateScope::UNSPECIFIED),
             "FEATURE_FLAG" => ::std::option::Option::Some(StateScope::FEATURE_FLAG),
-            "GLOBAL_STATE" => ::std::option::Option::Some(StateScope::GLOBAL_STATE),
             "SYSTEM" => ::std::option::Option::Some(StateScope::SYSTEM),
-            "CUSTOM_FIELDS" => ::std::option::Option::Some(StateScope::CUSTOM_FIELDS),
-            "OOTB_FIELDS" => ::std::option::Option::Some(StateScope::OOTB_FIELDS),
             _ => ::std::option::Option::None
         }
     }
@@ -82,10 +70,7 @@ impl ::protobuf::Enum for StateScope {
     const VALUES: &'static [StateScope] = &[
         StateScope::UNSPECIFIED,
         StateScope::FEATURE_FLAG,
-        StateScope::GLOBAL_STATE,
         StateScope::SYSTEM,
-        StateScope::CUSTOM_FIELDS,
-        StateScope::OOTB_FIELDS,
     ];
 }
 
@@ -96,7 +81,11 @@ impl ::protobuf::EnumFull for StateScope {
     }
 
     fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
-        let index = *self as usize;
+        let index = match self {
+            StateScope::UNSPECIFIED => 0,
+            StateScope::FEATURE_FLAG => 1,
+            StateScope::SYSTEM => 2,
+        };
         Self::enum_descriptor().value_by_index(index)
     }
 }
@@ -115,10 +104,10 @@ impl StateScope {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n-bitdrift_public/protobuf/state/v1/scope.proto\x12!bitdrift_public.pro\
-    tobuf.state.v1*q\n\nStateScope\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\x10\n\
-    \x0cFEATURE_FLAG\x10\x01\x12\x10\n\x0cGLOBAL_STATE\x10\x02\x12\n\n\x06SY\
-    STEM\x10\x03\x12\x11\n\rCUSTOM_FIELDS\x10\x04\x12\x0f\n\x0bOOTB_FIELDS\
-    \x10\x05b\x06proto3\
+    tobuf.state.v1*w\n\nStateScope\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\x10\n\
+    \x0cFEATURE_FLAG\x10\x01\x12\n\n\x06SYSTEM\x10\x03\"\x04\x08\x02\x10\x02\
+    \"\x04\x08\x04\x10\x04\"\x04\x08\x05\x10\x05*\x0cGLOBAL_STATE*\rCUSTOM_F\
+    IELDS*\x0bOOTB_FIELDSb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

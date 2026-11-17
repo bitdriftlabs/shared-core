@@ -368,25 +368,6 @@ pub fn feature_flag_is_set(key: &str) -> LogMatcher {
   state_is_set(StateScope::FEATURE_FLAG, key)
 }
 
-/// Creates a matcher for global state values.
-///
-/// This is a convenience function equivalent to `state_equals(StateScope::GLOBAL_STATE, key,
-/// value)`.
-#[inline]
-#[must_use]
-pub fn global_state_equals(key: &str, value: &str) -> LogMatcher {
-  state_equals(StateScope::GLOBAL_STATE, key, value)
-}
-
-/// Creates a matcher that checks if a global state value is set (has any value).
-///
-/// This is a convenience function equivalent to `state_is_set(StateScope::GLOBAL_STATE, key)`.
-#[inline]
-#[must_use]
-pub fn global_state_is_set(key: &str) -> LogMatcher {
-  state_is_set(StateScope::GLOBAL_STATE, key)
-}
-
 // Helper functions
 
 /// Creates a log field matcher that matches when a field is equal to the provided string value.

@@ -775,10 +775,7 @@ impl StateChangeMatch {
         anyhow::bail!("invalid state scope: unspecified");
       },
       bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
-      bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
-      bd_proto::protos::state::scope::StateScope::CUSTOM_FIELDS
-      | bd_proto::protos::state::scope::StateScope::OOTB_FIELDS
-      | bd_proto::protos::state::scope::StateScope::SYSTEM => {
+      bd_proto::protos::state::scope::StateScope::SYSTEM => {
         anyhow::bail!("invalid state scope: system");
       },
     };
@@ -1277,10 +1274,7 @@ fn parse_state_scope(scope: bd_proto::protos::state::scope::StateScope) -> anyho
       anyhow::bail!("invalid state scope: unspecified");
     },
     bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Ok(Scope::FeatureFlagExposure),
-    bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Ok(Scope::GlobalState),
-    bd_proto::protos::state::scope::StateScope::CUSTOM_FIELDS
-    | bd_proto::protos::state::scope::StateScope::OOTB_FIELDS
-    | bd_proto::protos::state::scope::StateScope::SYSTEM => {
+    bd_proto::protos::state::scope::StateScope::SYSTEM => {
       anyhow::bail!("invalid state scope: system");
     },
   }

@@ -644,10 +644,8 @@ impl Leaf {
           let state_key = state_match.state_key.clone();
           let scope = match state_match.scope.enum_value_or_default() {
             StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
-            StateScope::GLOBAL_STATE => Scope::GlobalState,
             StateScope::SYSTEM => Scope::System,
-            StateScope::CUSTOM_FIELDS | StateScope::OOTB_FIELDS | StateScope::UNSPECIFIED => {
-              // Custom and SDK-owned fields are not stored in the bd_state namespaces.
+            StateScope::UNSPECIFIED => {
               return Err(anyhow!("Unsupported state scope"));
             },
           };
