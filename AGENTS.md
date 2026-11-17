@@ -17,9 +17,8 @@
   `git grep --recurse-submodules` from the monorepo root (plain `git grep` skips `shared-core/`).
   Lint every affected package, such as `./bazelw test --config=clippy //shared-core/...`, not only
   the touched ones.
-- Shared-core CI runs Cargo, not Bazel: stable `cargo clippy` over the whole workspace and nightly
-  `cargo fmt`, both on the latest toolchains. Before pushing, run `just shared-core-ci` from the
-  monorepo root for the same Clippy and rustfmt commands, and `ci/check_license.sh` here.
+- Shared-core CI runs Cargo on the latest stable and nightly toolchains, so it can occasionally
+  report a lint newer than the monorepo's pinned Clippy. Fix those from the CI report.
 - The root `clippy.toml` applies to every crate without its own. Do not add a per-crate copy.
 
 ## Deterministic Tests
