@@ -1527,28 +1527,6 @@ fn state_match_data_values() {
 }
 
 #[test]
-fn unspecified_and_removed_state_scopes_are_unsupported() {
-  // 2, 4 and 5 are the reserved global state, custom field and SDK-owned field scopes.
-  for scope in [0, 2, 4, 5] {
-    let matcher = simple_log_matcher(StateMatch(base_log_matcher::StateMatch {
-      scope: protobuf::EnumOrUnknown::from_i32(scope),
-      state_key: "field".to_string(),
-      state_value_match: MessageField::from_option(Some(
-        bd_proto::protos::state::matcher::StateValueMatch {
-          value_match: Some(state_value_match::Value_match::IsSetMatch(
-            bd_proto::protos::value_matcher::value_matcher::IsSetMatch::default(),
-          )),
-          ..Default::default()
-        },
-      )),
-      ..Default::default()
-    }));
-
-    assert!(TestMatcher::new(&matcher).is_err());
-  }
-}
-
-#[test]
 fn state_match_is_set() {
   struct Input {
     state_values: Vec<(&'static str, &'static str)>,

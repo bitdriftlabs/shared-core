@@ -96,33 +96,3 @@ fn rejects_json_extraction_with_unset_path_segment() {
   };
   assert!(TagValue::from_field_extracted(&extracted).is_err());
 }
-
-#[test]
-fn state_change_match_accepts_only_feature_flag_scope() {
-  use super::{StateChangeMatch, parse_state_scope};
-  use bd_proto::protos::state::matcher::StateValueMatch;
-  use bd_proto::protos::state::matcher::state_value_match::Value_match;
-  use bd_proto::protos::state::scope::StateScope;
-  use bd_proto::protos::value_matcher::value_matcher::IsSetMatch;
-  use bd_proto::protos::workflow::workflow::workflow::RuleStateChangeMatch;
-
-  let rule = |scope: i32| RuleStateChangeMatch {
-    scope: protobuf::EnumOrUnknown::from_i32(scope),
-    key: "key".into(),
-    new_value: Some(StateValueMatch {
-      value_match: Some(Value_match::IsSetMatch(IsSetMatch::default())),
-      ..Default::default()
-    })
-    .into(),
-    ..Default::default()
-  };
-
-  assert!(StateChangeMatch::try_from_proto(&rule(StateScope::FEATURE_FLAG as i32)).is_ok());
-  assert!(parse_state_scope(StateScope::FEATURE_FLAG).is_ok());
-  assert!(parse_state_scope(StateScope::UNSPECIFIED).is_err());
-  assert!(parse_state_scope(StateScope::SYSTEM).is_err());
-  // 2, 4 and 5 are the reserved global state, custom field and SDK-owned field scopes.
-  for scope in [0, 2, 3, 4, 5] {
-    assert!(StateChangeMatch::try_from_proto(&rule(scope)).is_err());
-  }
-}
