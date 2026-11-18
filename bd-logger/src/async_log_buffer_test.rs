@@ -1679,6 +1679,109 @@ fn workflow_generated_logs_keep_the_parent_context_and_overrides() {
 }
 
 #[tokio::test]
+async fn persisted_previous_run_preserves_exact_context_without_rewinding_current_session() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let current_session_id = setup.session_strategy.session_id().unwrap();
+  let test_store = TestStore::new().await;
+  let state_store = (*test_store).clone();
+  buffer
+    .update_system_session_id(&state_store, &current_session_id)
+    .await;
+
+  // This snapshot belongs to a newer process than the pending event. Neither it nor live
+  // providers may contribute fields to an event whose complete context was already persisted.
+  buffer.global_state_tracker.maybe_update_global_state(
+    &[
+      ("app_version".into(), "newer-version".into()),
+      ("newer_process_only".into(), "unrelated".into()),
+    ]
+    .into(),
+  );
+  buffer.global_state_reader = bd_crash_handler::global_state::Reader::new(setup.store.clone());
+  buffer.metadata_collector =
+    MetadataCollector::new(Arc::new(FailingMetadataProvider), [].into(), [].into());
+  let event_buffer = EventBuffer::new(EventBufferLimits {
+    log_limit_bytes: 1_000_000,
+    total_limit_bytes: 10_000_000,
+  });
+  let sender = Sender::new(
+    event_buffer.clone(),
+    Arc::new(FailingMetadataProvider),
+    setup.session_strategy.clone(),
+    DeviceCommandRegistry::default(),
+  );
+  let occurred_at = OffsetDateTime::UNIX_EPOCH;
+  let logged_at = occurred_at + 2.days();
+  AsyncLogBuffer::<TestReplay>::enqueue_log_with_provider_snapshot(
+    &sender,
+    log_level::INFO,
+    LogType::LIFECYCLE,
+    "AppExit".into(),
+    [(
+      "app_version".into(),
+      AnnotatedLogField::new_ootb("original-version"),
+    )]
+    .into(),
+    [("matching".into(), AnnotatedLogField::new_custom("original"))].into(),
+    Some(LogAttributesOverrides::PersistedPreviousRun {
+      session_id: "original-session".into(),
+      occurred_at,
+    }),
+    None,
+    ProviderSnapshot {
+      timestamp: logged_at,
+      ootb_fields: [("live_field".into(), "ignored".into())].into(),
+      custom_fields: [].into(),
+    },
+  )
+  .unwrap();
+  event_buffer.mark_startup_gate_ready();
+  let EventBufferEntry::Ingress(event) = event_buffer.next_batch(1).await.entries.pop().unwrap()
+  else {
+    panic!("expected persisted log ingress");
+  };
+  assert!(
+    matches!(event.context, EventContext::PreviousProcess { logged_at: timestamp }
+    if timestamp == logged_at)
+  );
+  let LoggerIngressPayload::Log(log) = event.payload else {
+    panic!("expected log");
+  };
+  let normalized = buffer
+    .normalize_log(log, &state_store, Some(event.context))
+    .await
+    .unwrap();
+  assert_eq!(normalized.session_id.as_ref(), "original-session");
+  assert_eq!(normalized.occurred_at, occurred_at);
+  assert_eq!(
+    normalized.fields,
+    [
+      ("app_version".into(), "original-version".into()),
+      ("_logged_at".into(), logged_at.to_string().into()),
+    ]
+    .into()
+  );
+  assert_eq!(
+    normalized.matching_fields,
+    [("matching".into(), "original".into())].into()
+  );
+  assert_eq!(
+    setup.session_strategy.try_current_session_id().unwrap(),
+    current_session_id
+  );
+  let reader = test_store.read().await;
+  assert_eq!(
+    reader
+      .get(Scope::System, SYSTEM_SESSION_ID_KEY)
+      .unwrap()
+      .string_value(),
+    current_session_id.as_ref()
+  );
+}
+
+#[tokio::test]
 async fn feature_flag_exposure_captures_its_admission_session() {
   let mut setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
@@ -1968,7 +2071,7 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 574;
+  let baseline_log_expected_size = 582;
   let baseline_log = create_baseline_log();
   assert_eq!(
     baseline_log_expected_size,

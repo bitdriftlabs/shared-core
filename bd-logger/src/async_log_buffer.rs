@@ -25,7 +25,7 @@ use crate::logger::{
   with_thread_local_logger_guard,
 };
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
-use crate::metadata::MetadataCollector;
+use crate::metadata::{LogMetadata, MetadataCollector};
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::workflow_attachment::{AttachmentStoreHandle, WorkflowAttachmentCleanupWorker};
 use crate::{Block, battery, internal_report, network};
@@ -352,7 +352,10 @@ fn admission_context(
 ) -> anyhow::Result<EventContext> {
   if matches!(
     attributes_overrides,
-    Some(LogAttributesOverrides::PreviousRunSessionID(_))
+    Some(
+      LogAttributesOverrides::PreviousRunSessionID(_)
+        | LogAttributesOverrides::PersistedPreviousRun { .. }
+    )
   ) {
     // Prior-process logs only retain their admission timestamp. Capturing current-process fields
     // would waste work and could drop a crash report if an irrelevant field provider fails.
@@ -393,7 +396,10 @@ fn admission_context_from_provider(
 ) -> anyhow::Result<EventContext> {
   if matches!(
     attributes_overrides,
-    Some(LogAttributesOverrides::PreviousRunSessionID(_))
+    Some(
+      LogAttributesOverrides::PreviousRunSessionID(_)
+        | LogAttributesOverrides::PersistedPreviousRun { .. }
+    )
   ) {
     return Ok(EventContext::PreviousProcess {
       logged_at: provider.timestamp,
@@ -1334,6 +1340,29 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           };
           Ok((metadata, Some(session_id)))
         },
+        Some(EventContext::PreviousProcess { logged_at })
+          if matches!(
+            &log.attributes_overrides,
+            Some(LogAttributesOverrides::PersistedPreviousRun { .. })
+          ) =>
+        {
+          Ok((
+            LogMetadata {
+              timestamp: logged_at,
+              fields: log
+                .fields
+                .into_iter()
+                .map(|(key, value)| (key, value.value))
+                .collect(),
+              matching_fields: log
+                .matching_fields
+                .into_iter()
+                .map(|(key, value)| (key, value.value))
+                .collect(),
+            },
+            None,
+          ))
+        },
         Some(EventContext::PreviousProcess { logged_at }) => Ok((
           MetadataCollector::metadata_from_fields_with_previous_global_state(
             log.fields,
@@ -1346,7 +1375,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         None
           if matches!(
             &log.attributes_overrides,
-            Some(LogAttributesOverrides::PreviousRunSessionID(_))
+            Some(
+              LogAttributesOverrides::PreviousRunSessionID(_)
+                | LogAttributesOverrides::PersistedPreviousRun { .. }
+            )
           ) =>
         {
           // Since we're mimicing a log from the previous app start we want to use the previous
@@ -1391,6 +1423,17 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               )])),
             )
           },
+          Some(LogAttributesOverrides::PersistedPreviousRun {
+            ref session_id,
+            occurred_at,
+          }) => (
+            session_id.clone(),
+            occurred_at,
+            Some(LogFields::from([(
+              "_logged_at".into(),
+              LogFieldValue::String(metadata.timestamp.to_string()),
+            )])),
+          ),
           Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
             // Occurred at override provided. Emit log with overrides applied.
             (
@@ -1417,7 +1460,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         if !command_owned
           && !matches!(
             log.attributes_overrides,
-            Some(LogAttributesOverrides::PreviousRunSessionID(_))
+            Some(
+              LogAttributesOverrides::PreviousRunSessionID(_)
+                | LogAttributesOverrides::PersistedPreviousRun { .. }
+            )
           )
         {
           self

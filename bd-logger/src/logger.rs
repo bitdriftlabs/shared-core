@@ -46,6 +46,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
 use std::time::Duration;
+use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
@@ -598,6 +599,44 @@ impl LoggerHandle {
         "operation not allowed from within a field provider"
       ))
     }
+  }
+
+  /// Admits a reconstructed `AppExit` with its original session, timestamp, and complete fields.
+  ///
+  /// Does not invoke current-process field providers or merge previous-process global state.
+  /// Success means admission to the in-memory event buffer, not durable storage or upload.
+  pub fn log_persisted_app_exit(
+    &self,
+    session_id: Arc<str>,
+    occurred_at: OffsetDateTime,
+    fields: AnnotatedLogFields,
+  ) -> anyhow::Result<()> {
+    let result = AsyncLogBuffer::<LoggerReplay>::enqueue_log_with_provider_snapshot(
+      &self.tx,
+      log_level::INFO,
+      LogType::LIFECYCLE,
+      "AppExit".into(),
+      fields,
+      [].into(),
+      Some(LogAttributesOverrides::PersistedPreviousRun {
+        session_id,
+        occurred_at,
+      }),
+      None,
+      ProviderSnapshot {
+        timestamp: OffsetDateTime::now_utc(),
+        ootb_fields: [].into(),
+        custom_fields: [].into(),
+      },
+    );
+    self.stats.log_emission_counters.record(&result);
+    result.map_err(|error| anyhow::anyhow!("failed to admit persisted AppExit: {error:?}"))
+  }
+
+  /// Reads the last active session without creating one or treating termination as new activity.
+  /// Returns an error if the session has not been loaded yet.
+  pub fn current_session_id(&self) -> anyhow::Result<Arc<str>> {
+    self.session_strategy.try_current_session_id()
   }
 
   pub fn start_new_session(&self, session_id: Option<Arc<str>>) -> anyhow::Result<()> {

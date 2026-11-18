@@ -96,6 +96,13 @@ pub enum LogAttributesOverrides {
   /// All relevant metadata must already be attached because current-session metadata is not added
   /// to previous-process logs.
   PreviousRunSessionID(OffsetDateTime),
+  /// Replays a persisted previous-process event with its exact session identity and provider
+  /// fields. Unlike `PreviousRunSessionID` this also supports events retained across multiple
+  /// process restarts.
+  PersistedPreviousRun {
+    session_id: Arc<str>,
+    occurred_at: OffsetDateTime,
+  },
   /// Overrides when the log occurred, for example for spans with a provided timestamp.
   OccurredAt(OffsetDateTime),
 }
