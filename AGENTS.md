@@ -9,10 +9,10 @@
 
 ## Validating Inside the Monorepo
 
-- Run every command from the monorepo root, where `./bazelw` and the `justfile` live, not from
-  `shared-core/`. Most shared-core test targets are `//shared-core/<crate>:test`; read the
-  crate's `BUILD.bazel` before guessing a name.
-- Format with `just rustfmt shared-core/<paths>`.
+- Run Bazel commands from the monorepo root, where `./bazelw` lives, not from `shared-core/`. Most
+  shared-core test targets are `//shared-core/<crate>:test`; read the crate's `BUILD.bazel` before
+  guessing a name.
+- Format with `cargo +nightly fmt --all` from `shared-core/`; CI checks the same command.
 - After changing a public signature, find its callers in shared-core and the monorepo with
   `git grep --recurse-submodules` from the monorepo root (plain `git grep` skips `shared-core/`).
   Lint every affected package, such as `./bazelw test --config=clippy //shared-core/...`, not only
