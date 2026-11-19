@@ -112,6 +112,7 @@ use tokio::time::Instant;
 use uuid::Uuid;
 
 const REGISTERED_COMMAND_ARTIFACT_TYPE_ID: &str = "device_command_attachment";
+const MAX_FAILURE_MESSAGE_BYTES: usize = 4096;
 
 //
 // TestHooks
@@ -582,7 +583,7 @@ pub struct CommandAttachment {
   pub content_type: Option<String>,
 }
 
-/// The reason a command failed. Detailed messages retain their existing wire/log representation.
+/// The reason a command failed. Its display message is reported separately from app context.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum CommandError {
   /// The execution deadline expired. Platform work may finish after its Rust future is cancelled.
@@ -620,6 +621,9 @@ impl CommandError {
 }
 
 /// The terminal outcome of an application-defined command.
+///
+/// The SDK reserves `_result`, `_duration_ms`, and the prefixes `_command_`,
+/// `_workflow_command_`, and `_span_` in command outcome logs.
 #[derive(Debug)]
 pub enum CommandResult {
   Completed {
@@ -628,6 +632,8 @@ pub enum CommandResult {
   },
   Failed {
     error: CommandError,
+    /// Application context, separate from the failure message. The server rejects direct results
+    /// with invalid context.
     fields: LogFields,
   },
 }
@@ -1327,9 +1333,8 @@ async fn execute_platform_device_command(
         attachment,
       )
     },
-    CommandResult::Failed { error, mut fields } => {
-      fields.insert("error".into(), error.into_message().into());
-      failed_device_command_update_with_fields(&command_id, 2, fields)
+    CommandResult::Failed { error, fields } => {
+      failed_device_command_update_with_fields(&command_id, 2, error, fields)
     },
   };
   send_device_command_update_with_artifact(&senders, update, artifact_metadata).await
@@ -1449,21 +1454,28 @@ fn failed_device_command_update(
   failed_device_command_update_with_fields(
     command_id,
     update_sequence_number,
-    [("error".into(), error.into_message().into())].into(),
+    error,
+    LogFields::default(),
   )
 }
 
 fn failed_device_command_update_with_fields(
   command_id: &str,
   update_sequence_number: u64,
+  error: CommandError,
   fields: LogFields,
 ) -> DeviceCommandUpdate {
+  let mut message = error.into_message();
+  message.truncate(message.floor_char_boundary(MAX_FAILURE_MESSAGE_BYTES));
   DeviceCommandUpdate {
     command_id: command_id.to_string(),
     update_sequence_number,
     update_type: Some(device_command_update::Update_type::Failed(
       device_command_update::Failed {
-        context: Some(device_command_context(fields)).into(),
+        context: (!fields.is_empty())
+          .then(|| device_command_context(fields))
+          .into(),
+        failure_message: Some(message),
         ..Default::default()
       },
     )),
@@ -1479,7 +1491,7 @@ fn device_command_outcome_log(
   span: &CommandSpan,
   now: OffsetDateTime,
 ) -> Option<LogLine> {
-  let (succeeded, context, artifact_id) = match update.update_type.as_ref()? {
+  let (succeeded, context, artifact_id, message) = match update.update_type.as_ref()? {
     device_command_update::Update_type::Completed(completed) => {
       let artifact_id = match completed
         .attachment
@@ -1491,25 +1503,23 @@ fn device_command_outcome_log(
         },
         _ => None,
       };
-      (true, completed.context.as_ref(), artifact_id)
+      (true, completed.context.as_ref(), artifact_id, None)
     },
-    device_command_update::Update_type::Failed(failed) => (false, failed.context.as_ref(), None),
+    device_command_update::Update_type::Failed(failed) => (
+      false,
+      failed.context.as_ref(),
+      None,
+      failed.failure_message.clone(),
+    ),
     device_command_update::Update_type::Accepted(_) => return None,
   };
-  let mut fields: LogFields = context
+  let fields: LogFields = context
     .into_iter()
     .flat_map(|context| &context.fields)
     .filter_map(|(key, value)| {
       DataValue::from_proto(value.clone()).map(|value| (key.clone().into(), value))
     })
     .collect();
-  let message = if succeeded {
-    None
-  } else {
-    fields
-      .remove("error")
-      .and_then(|value| value.as_str().map(str::to_owned))
-  };
   let (log_level, mut fields, command_attachment) = CommandOutcome {
     succeeded,
     message,
@@ -1568,6 +1578,8 @@ async fn submit_device_command_update(
   update: DeviceCommandUpdate,
 ) -> anyhow::Result<()> {
   let senders = &execution.senders;
+  // TODO: Consider scrubbing direct command result context before upload; it bypasses log
+  // scrubbing.
   let (update, response_rx) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
   let deadline = senders
     .command_state

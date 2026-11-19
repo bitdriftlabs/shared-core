@@ -16,7 +16,6 @@ pub use bd_proto::protos::client::api::log_upload_intent_request::{
 pub use bd_proto::protos::client::api::log_upload_intent_response::Decision as LogsUploadDecision;
 use bd_proto::protos::client::api::sankey_intent_response::Decision as SankeyPathUploadDecision;
 use bd_proto::protos::client::api::{
-  DeviceCommandResultContext,
   DeviceCommandUpdate,
   DeviceCommandUpdateAck,
   LogUploadRequest,
@@ -29,8 +28,6 @@ use bd_proto::protos::client::api::{
   device_command_update,
   upload_artifact_intent_response,
 };
-use bd_proto::protos::logging::payload::Data;
-use bd_proto::protos::logging::payload::data::Data_type;
 use parking_lot::Mutex;
 use protobuf::Message;
 use std::collections::{BTreeMap, HashMap};
@@ -601,20 +598,9 @@ impl TrackedDeviceCommandUpdate {
         update_sequence_number: payload.update_sequence_number,
         update_type: Some(device_command_update::Update_type::Failed(
           device_command_update::Failed {
-            context: Some(DeviceCommandResultContext {
-              fields: [(
-                "error".to_string(),
-                Data {
-                  data_type: Some(Data_type::StringData(
-                    "device command result exceeds the 4 MiB update limit".to_string(),
-                  )),
-                  ..Default::default()
-                },
-              )]
-              .into(),
-              ..Default::default()
-            })
-            .into(),
+            failure_message: Some(
+              "device command result exceeds the 4 MiB update limit".to_string(),
+            ),
             ..Default::default()
           },
         )),

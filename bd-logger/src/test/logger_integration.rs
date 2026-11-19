@@ -3581,10 +3581,7 @@ fn screenshot_device_command_reports_platform_handler_failures() {
         update_type: Some(device_command_update::Update_type::Failed(failed)),
         ..
       }) if received_command_id == command_id => {
-        assert_matches!(
-          failed.context.as_ref().and_then(|context| context.fields.get("error")),
-          Some(value) if value.data_type == Some(Data_type::StringData(expected_error.to_string()))
-        );
+        assert_eq!(failed.failure_message.as_deref(), Some(expected_error));
       }
     );
     setup.logger_handle.flush_state(Block::Yes {
@@ -3766,10 +3763,7 @@ fn runtime_device_command_handlers_follow_registration_changes() {
     update_type: Some(device_command_update::Update_type::Failed(failed)),
     ..
   }) => {
-    assert_matches!(
-      failed.context.as_ref().and_then(|context| context.fields.get("error")),
-      Some(value) if value.data_type == Some(Data_type::StringData("command unknown".to_string()))
-    );
+    assert_eq!(failed.failure_message.as_deref(), Some("command unknown"));
   });
 
   other_handle
@@ -3988,8 +3982,8 @@ fn registered_custom_device_command_reports_failure_context() {
   let registered_command_id = "com.example.capture.failure";
   let handler: Arc<dyn RegisteredCommandHandler> = Arc::new(TestDeviceCommandHandler {
     result: Mutex::new(Some(CommandResult::Failed {
-      error: CommandError::HandlerFailed("capture failed".to_string()),
-      fields: [("reason".into(), "camera unavailable".into())].into(),
+      error: CommandError::HandlerFailed("profiling_failed".to_string()),
+      fields: [("error".into(), "ERROR_FAILED_RATE_LIMIT_PROCESS".into())].into(),
     })),
   });
   let mut setup = Setup::new_with_options(SetupOptions {
@@ -4019,8 +4013,8 @@ fn registered_custom_device_command_reports_failure_context() {
     ..
   }) => {
     let fields = &failed.context.as_ref().unwrap().fields;
-    assert_matches!(fields.get("error"), Some(value) if value.data_type == Some(Data_type::StringData("capture failed".to_string())));
-    assert_matches!(fields.get("reason"), Some(value) if value.data_type == Some(Data_type::StringData("camera unavailable".to_string())));
+    assert_eq!(failed.failure_message.as_deref(), Some("profiling_failed"));
+    assert_eq!(fields["error"].string_data(), "ERROR_FAILED_RATE_LIMIT_PROCESS");
   });
 }
 
@@ -4598,10 +4592,7 @@ fn unregistered_custom_device_command_fails_without_acceptance() {
     update_type: Some(device_command_update::Update_type::Failed(failed)),
     ..
   }) => {
-    assert_matches!(
-      failed.context.as_ref().and_then(|context| context.fields.get("error")),
-      Some(value) if value.data_type == Some(Data_type::StringData("command unknown".to_string()))
-    );
+    assert_eq!(failed.failure_message.as_deref(), Some("command unknown"));
   });
   setup.logger_handle.flush_state(Block::Yes {
     timeout: 15.std_seconds(),

@@ -871,12 +871,8 @@ fn assert_timeout_update(update: DeviceCommandUpdate) {
   let Some(device_command_update::Update_type::Failed(failed)) = update.update_type else {
     panic!("expected a failed command update");
   };
-  let fields = &failed.context.as_ref().unwrap().fields;
-  assert_eq!(fields.len(), 1);
-  assert_eq!(
-    DataValue::from_proto(fields.get("error").unwrap().clone()),
-    Some("command timed out".into())
-  );
+  assert!(failed.context.is_none());
+  assert_eq!(failed.failure_message.as_deref(), Some("command timed out"));
 }
 
 #[tokio::test(start_paused = true)]
@@ -1575,11 +1571,7 @@ fn failed_error(update: DeviceCommandUpdate) -> String {
   let Some(device_command_update::Update_type::Failed(failed)) = update.update_type else {
     panic!("expected a failed command update");
   };
-  let fields = &failed.context.as_ref().unwrap().fields;
-  match DataValue::from_proto(fields.get("error").unwrap().clone()) {
-    Some(DataValue::String(error)) => error,
-    other => panic!("expected a string error, got {other:?}"),
-  }
+  failed.failure_message.unwrap()
 }
 
 #[tokio::test]
@@ -2217,6 +2209,65 @@ async fn command_execution_preserves_ready_result_at_timeout_boundary() {
   assert_eq!(execution.await.unwrap(), Ok(()));
 }
 
+#[test]
+fn direct_failure_message_is_truncated_at_a_utf8_boundary() {
+  let exact = "x".repeat(4096);
+  let prefix = "x".repeat(4095);
+  for (message, expected) in [
+    (exact.clone(), exact.clone()),
+    (format!("{exact}x"), exact),
+    (format!("{prefix}\u{e9}"), prefix),
+  ] {
+    let update = failed_device_command_update_with_fields(
+      "command",
+      1,
+      CommandError::HandlerFailed(message),
+      LogFields::default(),
+    );
+    let Some(device_command_update::Update_type::Failed(failed)) = update.update_type else {
+      panic!("expected a typed command failure update");
+    };
+    assert_eq!(failed.failure_message.as_deref(), Some(expected.as_str()));
+  }
+}
+
+#[tokio::test]
+async fn direct_failure_transport_leaves_context_validation_to_server() {
+  let (directory, _runtime, policy) = command_runtime();
+  let (dispatcher, mut updates) = direct_dispatcher(
+    directory.path(),
+    policy,
+    RegisteredCommandDispatcher::default(),
+    RemoteScreenshotCaptureHandler::new(Arc::new(ScreenshotTarget)),
+    Arc::new(MockClient::new()),
+  );
+  let command_id = Uuid::new_v4().to_string();
+  assert!(dispatcher.command_state.admit(&DeviceCommandRequest {
+    command_id: command_id.clone().into(),
+    sdk_instance_id: dispatcher.command_state.sdk_instance_id.clone().into(),
+    expires_at: (OffsetDateTime::now_utc() + Duration::days(1)).into_proto(),
+    ..Default::default()
+  }));
+  let execution = direct_execution(&dispatcher, &command_id);
+  let update = failed_device_command_update_with_fields(
+    &command_id,
+    1,
+    CommandError::HandlerFailed("capture failed".into()),
+    [("error".into(), "x".repeat(4097).into())].into(),
+  );
+  let (result, ()) = tokio::join!(
+    send_device_command_update(&execution, update.clone()),
+    async {
+      let Some(DataUpload::DeviceCommandUpdate(tracked)) = updates.recv().await else {
+        panic!("expected a command update");
+      };
+      assert_eq!(tracked.payload, update);
+      tracked.response_tx.send(()).unwrap();
+    }
+  );
+  result.unwrap();
+}
+
 #[tokio::test]
 async fn command_execution_polls_borrowed_future_in_calling_task() {
   let (_directory, _runtime, policy) = command_runtime();
@@ -2259,12 +2310,8 @@ async fn typed_command_errors_preserve_workflow_messages_and_fields() {
     let Some(device_command_update::Update_type::Failed(failed)) = update.update_type else {
       panic!("expected a typed command failure update");
     };
-    let fields = &failed.context.as_ref().unwrap().fields;
-    assert_eq!(fields.len(), 1);
-    assert_eq!(
-      DataValue::from_proto(fields.get("error").unwrap().clone()),
-      Some(expected.into())
-    );
+    assert!(failed.context.is_none());
+    assert_eq!(failed.failure_message.as_deref(), Some(expected));
     let outcome = workflow_command_outcome(
       CommandResult::Failed {
         error,
@@ -2453,8 +2500,9 @@ fn terminal_device_command_updates_produce_outcome_logs() {
   let failed = failed_device_command_update_with_fields(
     &command_id,
     1,
+    CommandError::HandlerFailed("profiling_failed".into()),
     [
-      ("error".into(), "not registered".into()),
+      ("error".into(), "ERROR_FAILED_RATE_LIMIT_PROCESS".into()),
       ("reason".into(), "missing".into()),
     ]
     .into(),
@@ -2477,13 +2525,16 @@ fn terminal_device_command_updates_produce_outcome_logs() {
       .unwrap()
       .value
       .as_str(),
-    Some("not registered")
+    Some("profiling_failed")
   );
   assert_eq!(
     log.fields.get("reason").unwrap().value.as_str(),
     Some("missing")
   );
-  assert!(!log.fields.contains_key("error"));
+  assert_eq!(
+    log.fields.get("error").unwrap().value.as_str(),
+    Some("ERROR_FAILED_RATE_LIMIT_PROCESS")
+  );
   assert!(!log.fields.contains_key("_command_artifact_id"));
   assert!(!log.fields.contains_key("_command_artifact_content_type"));
   assert!(!log.fields.contains_key("_command_artifact_size_bytes"));

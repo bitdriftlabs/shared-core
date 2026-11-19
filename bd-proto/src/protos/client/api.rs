@@ -11175,6 +11175,8 @@ pub mod device_command_update {
         // message fields
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed.context)
         pub context: ::protobuf::MessageField<super::DeviceCommandResultContext>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed.failure_message)
+        pub failure_message: ::std::option::Option<::std::string::String>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Failed.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -11192,12 +11194,17 @@ pub mod device_command_update {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut fields = ::std::vec::Vec::with_capacity(2);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::DeviceCommandResultContext>(
                 "context",
                 |m: &Failed| { &m.context },
                 |m: &mut Failed| { &mut m.context },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "failure_message",
+                |m: &Failed| { &m.failure_message },
+                |m: &mut Failed| { &mut m.failure_message },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Failed>(
                 "DeviceCommandUpdate.Failed",
@@ -11220,6 +11227,9 @@ pub mod device_command_update {
                     10 => {
                         ::protobuf::rt::read_singular_message_into_field(is, &mut self.context)?;
                     },
+                    18 => {
+                        self.failure_message = ::std::option::Option::Some(is.read_string()?);
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -11236,6 +11246,9 @@ pub mod device_command_update {
                 let len = v.compute_size();
                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
             }
+            if let Some(v) = self.failure_message.as_ref() {
+                my_size += ::protobuf::rt::string_size(2, &v);
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -11244,6 +11257,9 @@ pub mod device_command_update {
         fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
             if let Some(v) = self.context.as_ref() {
                 ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            if let Some(v) = self.failure_message.as_ref() {
+                os.write_string(2, v)?;
             }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
@@ -11263,12 +11279,14 @@ pub mod device_command_update {
 
         fn clear(&mut self) {
             self.context.clear();
+            self.failure_message = ::std::option::Option::None;
             self.special_fields.clear();
         }
 
         fn default_instance() -> &'static Failed {
             static instance: Failed = Failed {
                 context: ::protobuf::MessageField::none(),
+                failure_message: ::std::option::Option::None,
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -14496,103 +14514,105 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     _public.protobuf.client.v1.DeviceCommandResultContext.FieldsEntryR\x06fi\
     eldsB\x08\xfaB\x05\x9a\x01\x02\x10d\x1ad\n\x0bFieldsEntry\x12\x10\n\x03k\
     ey\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bit\
-    drift_public.protobuf.logging.v1.DataR\x05value:\x028\x01\"\xdc\n\n\x13D\
-    eviceCommandUpdate\x12'\n\ncommand_id\x18\x01\x20\x01(\tR\tcommandIdB\
-    \x08\xfaB\x05r\x03\xb0\x01\x01\x124\n\x16update_sequence_number\x18\x02\
-    \x20\x01(\x04R\x14updateSequenceNumber\x12^\n\x08accepted\x18\x03\x20\
-    \x01(\x0b2@.bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Accep\
-    tedH\0R\x08accepted\x12a\n\tcompleted\x18\x04\x20\x01(\x0b2A.bitdrift_pu\
-    blic.protobuf.client.v1.DeviceCommandUpdate.CompletedH\0R\tcompleted\x12\
-    X\n\x06failed\x18\x05\x20\x01(\x0b2>.bitdrift_public.protobuf.client.v1.\
-    DeviceCommandUpdate.FailedH\0R\x06failed\x1aT\n\x08Accepted\x121\n\x12to\
-    tal_result_bytes\x18\x01\x20\x01(\x04H\0R\x10totalResultBytes\x88\x01\
-    \x01B\x15\n\x13_total_result_bytes\x1a\xfa\x05\n\tCompleted\x12)\n\x10ou\
-    tput_truncated\x18\x01\x20\x01(\x08R\x0foutputTruncated\x12X\n\x07contex\
-    t\x18\x02\x20\x01(\x0b2>.bitdrift_public.protobuf.client.v1.DeviceComman\
-    dResultContextR\x07context\x12l\n\nattachment\x18\x03\x20\x01(\x0b2L.bit\
-    drift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachment\
-    R\nattachment\x1a\xf9\x03\n\nAttachment\x12g\n\x04none\x18\x01\x20\x01(\
-    \x0b2Q.bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.\
-    Attachment.NoneH\0R\x04none\x12s\n\x08artifact\x18\x02\x20\x01(\x0b2U.bi\
-    tdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachmen\
-    t.ArtifactH\0R\x08artifact\x12z\n\x0blog_batches\x18\x03\x20\x01(\x0b2W.\
-    bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Attachm\
-    ent.LogBatchesH\0R\nlogBatches\x1a\x06\n\x04None\x1a5\n\x08Artifact\x12)\
-    \n\x0bartifact_id\x18\x01\x20\x01(\tR\nartifactIdB\x08\xfaB\x05r\x03\xb0\
-    \x01\x01\x1a:\n\nLogBatches\x12,\n\x12total_result_bytes\x18\x01\x20\x01\
-    (\x04R\x10totalResultBytesB\x16\n\x0fattachment_type\x12\x03\xf8B\x01\
-    \x1ab\n\x06Failed\x12X\n\x07context\x18\x01\x20\x01(\x0b2>.bitdrift_publ\
-    ic.protobuf.client.v1.DeviceCommandResultContextR\x07contextB\x12\n\x0bu\
-    pdate_type\x12\x03\xf8B\x01\"\xf0\x02\n\x16DeviceCommandUpdateAck\x12'\n\
-    \ncommand_id\x18\x01\x20\x01(\tR\tcommandIdB\x08\xfaB\x05r\x03\xb0\x01\
-    \x01\x124\n\x16update_sequence_number\x18\x02\x20\x01(\x04R\x14updateSeq\
-    uenceNumber\x12\x14\n\x05error\x18\x03\x20\x01(\tR\x05error\x12h\n\x0bdi\
-    sposition\x18\x04\x20\x01(\x0e2F.bitdrift_public.protobuf.client.v1.Devi\
-    ceCommandUpdateAck.DispositionR\x0bdisposition\"w\n\x0bDisposition\x12\
-    \x1b\n\x17DISPOSITION_UNSPECIFIED\x10\0\x12\x17\n\x13DISPOSITION_APPLIED\
-    \x10\x01\x12\x19\n\x15DISPOSITION_RETRYABLE\x10\x02\x12\x17\n\x13DISPOSI\
-    TION_RETIRED\x10\x03\"Z\n\x18SankeyPathUploadResponse\x12(\n\x0bupload_u\
-    uid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\
-    \x05error\x18\x02\x20\x01(\tR\x05error\"\xcb\x02\n\x14SankeyIntentRespon\
-    se\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\
-    \x02\x10\x01\x12{\n\x12upload_immediately\x18\x03\x20\x01(\x0b2J.bitdrif\
-    t_public.protobuf.client.v1.SankeyIntentResponse.UploadImmediatelyH\0R\
-    \x11uploadImmediately\x12S\n\x04drop\x18\x04\x20\x01(\x0b2=.bitdrift_pub\
-    lic.protobuf.client.v1.SankeyIntentResponse.DropH\0R\x04drop\x1a\x13\n\
-    \x11UploadImmediately\x1a\x06\n\x04DropB\n\n\x08decisionJ\x04\x08\x02\
-    \x10\x03R\x08decision\"\xb5\x08\n\x10DebugDataRequest\x12{\n\x13workflow\
-    _debug_data\x18\x01\x20\x03(\x0b2K.bitdrift_public.protobuf.client.v1.De\
-    bugDataRequest.WorkflowDebugDataEntryR\x11workflowDebugData\x1a\x87\x02\
-    \n\x1bWorkflowTransitionDebugData\x12+\n\x10transition_index\x18\x01\x20\
-    \x01(\rH\0R\x0ftransitionIndex\x12/\n\x12timeout_transition\x18\x02\x20\
-    \x01(\x08H\0R\x11timeoutTransition\x12)\n\x10transition_count\x18\x03\
-    \x20\x01(\x04R\x0ftransitionCount\x12L\n\x14last_transition_time\x18\x04\
-    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x12lastTransitionTimeB\x11\
-    \n\x0ftransition_type\x1a\x8c\x01\n\x16WorkflowStateDebugData\x12r\n\x0b\
-    transitions\x18\x01\x20\x03(\x0b2P.bitdrift_public.protobuf.client.v1.De\
-    bugDataRequest.WorkflowTransitionDebugDataR\x0btransitions\x1a\xfb\x02\n\
-    \x11WorkflowDebugData\x12j\n\x06states\x18\x01\x20\x03(\x0b2R.bitdrift_p\
-    ublic.protobuf.client.v1.DebugDataRequest.WorkflowDebugData.StatesEntryR\
-    \x06states\x12q\n\x0bstart_reset\x18\x02\x20\x01(\x0b2P.bitdrift_public.\
-    protobuf.client.v1.DebugDataRequest.WorkflowTransitionDebugDataR\nstartR\
-    eset\x1a\x86\x01\n\x0bStatesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\
-    \x03key\x12a\n\x05value\x18\x02\x20\x01(\x0b2K.bitdrift_public.protobuf.\
-    client.v1.DebugDataRequest.WorkflowStateDebugDataR\x05value:\x028\x01\
-    \x1a\x8c\x01\n\x16WorkflowDebugDataEntry\x12\x10\n\x03key\x18\x01\x20\
-    \x01(\tR\x03key\x12\\\n\x05value\x18\x02\x20\x01(\x0b2F.bitdrift_public.\
-    protobuf.client.v1.DebugDataRequest.WorkflowDebugDataR\x05value:\x028\
-    \x01\"\x15\n\x13StateUpdateResponse\"\xff\x0b\n\x0bApiResponse\x12U\n\th\
-    andshake\x18\x01\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.Hands\
-    hakeResponseH\0R\thandshake\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25.bi\
-    tdrift_public.protobuf.client.v1.LogUploadResponseH\0R\tlogUpload\x12i\n\
-    \x11log_upload_intent\x18\x08\x20\x01(\x0b2;.bitdrift_public.protobuf.cl\
-    ient.v1.LogUploadIntentResponseH\0R\x0flogUploadIntent\x12\\\n\x0cstats_\
-    upload\x18\x07\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.StatsUp\
-    loadResponseH\0R\x0bstatsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20.bi\
-    tdrift_public.protobuf.client.v1.PongResponseH\0R\x04pong\x12l\n\x14conf\
-    iguration_update\x18\x04\x20\x01(\x0b27.bitdrift_public.protobuf.client.\
-    v1.ConfigurationUpdateH\0R\x13configurationUpdate\x12Z\n\x0eruntime_upda\
-    te\x18\x05\x20\x01(\x0b21.bitdrift_public.protobuf.client.v1.RuntimeUpda\
-    teH\0R\rruntimeUpdate\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.bi\
-    tdrift_public.protobuf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\n\
-    \rflush_buffers\x18\t\x20\x01(\x0b20.bitdrift_public.protobuf.client.v1.\
-    FlushBuffersH\0R\x0cflushBuffers\x12r\n\x15sankey_diagram_upload\x18\x0c\
-    \x20\x01(\x0b2<.bitdrift_public.protobuf.client.v1.SankeyPathUploadRespo\
-    nseH\0R\x13sankeyDiagramUpload\x12p\n\x16sankey_intent_response\x18\r\
-    \x20\x01(\x0b28.bitdrift_public.protobuf.client.v1.SankeyIntentResponseH\
-    \0R\x14sankeyIntentResponse\x12e\n\x0fartifact_upload\x18\x0e\x20\x01(\
-    \x0b2:.bitdrift_public.protobuf.client.v1.UploadArtifactResponseH\0R\x0e\
-    artifactUpload\x12k\n\x0fartifact_intent\x18\x0f\x20\x01(\x0b2@.bitdrift\
-    _public.protobuf.client.v1.UploadArtifactIntentResponseH\0R\x0eartifactI\
-    ntent\x12\\\n\x0cstate_update\x18\x10\x20\x01(\x0b27.bitdrift_public.pro\
-    tobuf.client.v1.StateUpdateResponseH\0R\x0bstateUpdate\x12w\n\x19device_\
-    command_update_ack\x18\x11\x20\x01(\x0b2:.bitdrift_public.protobuf.clien\
-    t.v1.DeviceCommandUpdateAckH\0R\x16deviceCommandUpdateAckB\x14\n\rrespon\
-    se_type\x12\x03\xf8B\x01J\x04\x08\n\x10\x0bJ\x04\x08\x0b\x10\x0c*`\n\x17\
-    ArtifactPayloadEncoding\x12!\n\x1dARTIFACT_PAYLOAD_ENCODING_RAW\x10\0\
-    \x12\"\n\x1eARTIFACT_PAYLOAD_ENCODING_ZLIB\x10\x012x\n\nApiService\x12j\
-    \n\x03Mux\x12..bitdrift_public.protobuf.client.v1.ApiRequest\x1a/.bitdri\
-    ft_public.protobuf.client.v1.ApiResponse(\x010\x01b\x06proto3\
+    drift_public.protobuf.logging.v1.DataR\x05value:\x028\x01\"\x9f\x0b\n\
+    \x13DeviceCommandUpdate\x12'\n\ncommand_id\x18\x01\x20\x01(\tR\tcommandI\
+    dB\x08\xfaB\x05r\x03\xb0\x01\x01\x124\n\x16update_sequence_number\x18\
+    \x02\x20\x01(\x04R\x14updateSequenceNumber\x12^\n\x08accepted\x18\x03\
+    \x20\x01(\x0b2@.bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.A\
+    cceptedH\0R\x08accepted\x12a\n\tcompleted\x18\x04\x20\x01(\x0b2A.bitdrif\
+    t_public.protobuf.client.v1.DeviceCommandUpdate.CompletedH\0R\tcompleted\
+    \x12X\n\x06failed\x18\x05\x20\x01(\x0b2>.bitdrift_public.protobuf.client\
+    .v1.DeviceCommandUpdate.FailedH\0R\x06failed\x1aT\n\x08Accepted\x121\n\
+    \x12total_result_bytes\x18\x01\x20\x01(\x04H\0R\x10totalResultBytes\x88\
+    \x01\x01B\x15\n\x13_total_result_bytes\x1a\xfa\x05\n\tCompleted\x12)\n\
+    \x10output_truncated\x18\x01\x20\x01(\x08R\x0foutputTruncated\x12X\n\x07\
+    context\x18\x02\x20\x01(\x0b2>.bitdrift_public.protobuf.client.v1.Device\
+    CommandResultContextR\x07context\x12l\n\nattachment\x18\x03\x20\x01(\x0b\
+    2L.bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Atta\
+    chmentR\nattachment\x1a\xf9\x03\n\nAttachment\x12g\n\x04none\x18\x01\x20\
+    \x01(\x0b2Q.bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Compl\
+    eted.Attachment.NoneH\0R\x04none\x12s\n\x08artifact\x18\x02\x20\x01(\x0b\
+    2U.bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.Atta\
+    chment.ArtifactH\0R\x08artifact\x12z\n\x0blog_batches\x18\x03\x20\x01(\
+    \x0b2W.bitdrift_public.protobuf.client.v1.DeviceCommandUpdate.Completed.\
+    Attachment.LogBatchesH\0R\nlogBatches\x1a\x06\n\x04None\x1a5\n\x08Artifa\
+    ct\x12)\n\x0bartifact_id\x18\x01\x20\x01(\tR\nartifactIdB\x08\xfaB\x05r\
+    \x03\xb0\x01\x01\x1a:\n\nLogBatches\x12,\n\x12total_result_bytes\x18\x01\
+    \x20\x01(\x04R\x10totalResultBytesB\x16\n\x0fattachment_type\x12\x03\xf8\
+    B\x01\x1a\xa4\x01\n\x06Failed\x12X\n\x07context\x18\x01\x20\x01(\x0b2>.b\
+    itdrift_public.protobuf.client.v1.DeviceCommandResultContextR\x07context\
+    \x12,\n\x0ffailure_message\x18\x02\x20\x01(\tH\0R\x0efailureMessage\x88\
+    \x01\x01B\x12\n\x10_failure_messageB\x12\n\x0bupdate_type\x12\x03\xf8B\
+    \x01\"\xf0\x02\n\x16DeviceCommandUpdateAck\x12'\n\ncommand_id\x18\x01\
+    \x20\x01(\tR\tcommandIdB\x08\xfaB\x05r\x03\xb0\x01\x01\x124\n\x16update_\
+    sequence_number\x18\x02\x20\x01(\x04R\x14updateSequenceNumber\x12\x14\n\
+    \x05error\x18\x03\x20\x01(\tR\x05error\x12h\n\x0bdisposition\x18\x04\x20\
+    \x01(\x0e2F.bitdrift_public.protobuf.client.v1.DeviceCommandUpdateAck.Di\
+    spositionR\x0bdisposition\"w\n\x0bDisposition\x12\x1b\n\x17DISPOSITION_U\
+    NSPECIFIED\x10\0\x12\x17\n\x13DISPOSITION_APPLIED\x10\x01\x12\x19\n\x15D\
+    ISPOSITION_RETRYABLE\x10\x02\x12\x17\n\x13DISPOSITION_RETIRED\x10\x03\"Z\
+    \n\x18SankeyPathUploadResponse\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\
+    \nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\
+    \x01(\tR\x05error\"\xcb\x02\n\x14SankeyIntentResponse\x12(\n\x0bintent_u\
+    uid\x18\x01\x20\x01(\tR\nintentUuidB\x07\xfaB\x04r\x02\x10\x01\x12{\n\
+    \x12upload_immediately\x18\x03\x20\x01(\x0b2J.bitdrift_public.protobuf.c\
+    lient.v1.SankeyIntentResponse.UploadImmediatelyH\0R\x11uploadImmediately\
+    \x12S\n\x04drop\x18\x04\x20\x01(\x0b2=.bitdrift_public.protobuf.client.v\
+    1.SankeyIntentResponse.DropH\0R\x04drop\x1a\x13\n\x11UploadImmediately\
+    \x1a\x06\n\x04DropB\n\n\x08decisionJ\x04\x08\x02\x10\x03R\x08decision\"\
+    \xb5\x08\n\x10DebugDataRequest\x12{\n\x13workflow_debug_data\x18\x01\x20\
+    \x03(\x0b2K.bitdrift_public.protobuf.client.v1.DebugDataRequest.Workflow\
+    DebugDataEntryR\x11workflowDebugData\x1a\x87\x02\n\x1bWorkflowTransition\
+    DebugData\x12+\n\x10transition_index\x18\x01\x20\x01(\rH\0R\x0ftransitio\
+    nIndex\x12/\n\x12timeout_transition\x18\x02\x20\x01(\x08H\0R\x11timeoutT\
+    ransition\x12)\n\x10transition_count\x18\x03\x20\x01(\x04R\x0ftransition\
+    Count\x12L\n\x14last_transition_time\x18\x04\x20\x01(\x0b2\x1a.google.pr\
+    otobuf.TimestampR\x12lastTransitionTimeB\x11\n\x0ftransition_type\x1a\
+    \x8c\x01\n\x16WorkflowStateDebugData\x12r\n\x0btransitions\x18\x01\x20\
+    \x03(\x0b2P.bitdrift_public.protobuf.client.v1.DebugDataRequest.Workflow\
+    TransitionDebugDataR\x0btransitions\x1a\xfb\x02\n\x11WorkflowDebugData\
+    \x12j\n\x06states\x18\x01\x20\x03(\x0b2R.bitdrift_public.protobuf.client\
+    .v1.DebugDataRequest.WorkflowDebugData.StatesEntryR\x06states\x12q\n\x0b\
+    start_reset\x18\x02\x20\x01(\x0b2P.bitdrift_public.protobuf.client.v1.De\
+    bugDataRequest.WorkflowTransitionDebugDataR\nstartReset\x1a\x86\x01\n\
+    \x0bStatesEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12a\n\x05va\
+    lue\x18\x02\x20\x01(\x0b2K.bitdrift_public.protobuf.client.v1.DebugDataR\
+    equest.WorkflowStateDebugDataR\x05value:\x028\x01\x1a\x8c\x01\n\x16Workf\
+    lowDebugDataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\\\n\
+    \x05value\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.client.v1.Debu\
+    gDataRequest.WorkflowDebugDataR\x05value:\x028\x01\"\x15\n\x13StateUpdat\
+    eResponse\"\xff\x0b\n\x0bApiResponse\x12U\n\thandshake\x18\x01\x20\x01(\
+    \x0b25.bitdrift_public.protobuf.client.v1.HandshakeResponseH\0R\thandsha\
+    ke\x12V\n\nlog_upload\x18\x02\x20\x01(\x0b25.bitdrift_public.protobuf.cl\
+    ient.v1.LogUploadResponseH\0R\tlogUpload\x12i\n\x11log_upload_intent\x18\
+    \x08\x20\x01(\x0b2;.bitdrift_public.protobuf.client.v1.LogUploadIntentRe\
+    sponseH\0R\x0flogUploadIntent\x12\\\n\x0cstats_upload\x18\x07\x20\x01(\
+    \x0b27.bitdrift_public.protobuf.client.v1.StatsUploadResponseH\0R\x0bsta\
+    tsUpload\x12F\n\x04pong\x18\x03\x20\x01(\x0b20.bitdrift_public.protobuf.\
+    client.v1.PongResponseH\0R\x04pong\x12l\n\x14configuration_update\x18\
+    \x04\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.ConfigurationUpda\
+    teH\0R\x13configurationUpdate\x12Z\n\x0eruntime_update\x18\x05\x20\x01(\
+    \x0b21.bitdrift_public.protobuf.client.v1.RuntimeUpdateH\0R\rruntimeUpda\
+    te\x12Z\n\x0eerror_shutdown\x18\x06\x20\x01(\x0b21.bitdrift_public.proto\
+    buf.client.v1.ErrorShutdownH\0R\rerrorShutdown\x12W\n\rflush_buffers\x18\
+    \t\x20\x01(\x0b20.bitdrift_public.protobuf.client.v1.FlushBuffersH\0R\
+    \x0cflushBuffers\x12r\n\x15sankey_diagram_upload\x18\x0c\x20\x01(\x0b2<.\
+    bitdrift_public.protobuf.client.v1.SankeyPathUploadResponseH\0R\x13sanke\
+    yDiagramUpload\x12p\n\x16sankey_intent_response\x18\r\x20\x01(\x0b28.bit\
+    drift_public.protobuf.client.v1.SankeyIntentResponseH\0R\x14sankeyIntent\
+    Response\x12e\n\x0fartifact_upload\x18\x0e\x20\x01(\x0b2:.bitdrift_publi\
+    c.protobuf.client.v1.UploadArtifactResponseH\0R\x0eartifactUpload\x12k\n\
+    \x0fartifact_intent\x18\x0f\x20\x01(\x0b2@.bitdrift_public.protobuf.clie\
+    nt.v1.UploadArtifactIntentResponseH\0R\x0eartifactIntent\x12\\\n\x0cstat\
+    e_update\x18\x10\x20\x01(\x0b27.bitdrift_public.protobuf.client.v1.State\
+    UpdateResponseH\0R\x0bstateUpdate\x12w\n\x19device_command_update_ack\
+    \x18\x11\x20\x01(\x0b2:.bitdrift_public.protobuf.client.v1.DeviceCommand\
+    UpdateAckH\0R\x16deviceCommandUpdateAckB\x14\n\rresponse_type\x12\x03\
+    \xf8B\x01J\x04\x08\n\x10\x0bJ\x04\x08\x0b\x10\x0c*`\n\x17ArtifactPayload\
+    Encoding\x12!\n\x1dARTIFACT_PAYLOAD_ENCODING_RAW\x10\0\x12\"\n\x1eARTIFA\
+    CT_PAYLOAD_ENCODING_ZLIB\x10\x012x\n\nApiService\x12j\n\x03Mux\x12..bitd\
+    rift_public.protobuf.client.v1.ApiRequest\x1a/.bitdrift_public.protobuf.\
+    client.v1.ApiResponse(\x010\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

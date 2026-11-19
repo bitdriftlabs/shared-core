@@ -2519,10 +2519,8 @@ async fn device_command_oversized_result_becomes_bounded_failure() {
     panic!("expected an oversized-result failure");
   };
   assert_eq!(
-    failed.context.as_ref().unwrap().fields["error"].data_type,
-    Some(Data_type::StringData(
-      "device command result exceeds the 4 MiB update limit".to_string()
-    ))
+    failed.failure_message.as_deref(),
+    Some("device command result exceeds the 4 MiB update limit")
   );
   let mut setup = Setup::new().await;
   setup.next_stream(1.seconds()).await.unwrap();
