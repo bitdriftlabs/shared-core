@@ -2209,6 +2209,28 @@ async fn command_execution_preserves_ready_result_at_timeout_boundary() {
   assert_eq!(execution.await.unwrap(), Ok(()));
 }
 
+#[test]
+fn direct_failure_message_is_truncated_at_a_utf8_boundary() {
+  let exact = "x".repeat(4096);
+  let prefix = "x".repeat(4095);
+  for (message, expected) in [
+    (exact.clone(), exact.clone()),
+    (format!("{exact}x"), exact),
+    (format!("{prefix}\u{e9}"), prefix),
+  ] {
+    let update = failed_device_command_update_with_fields(
+      "command",
+      1,
+      CommandError::HandlerFailed(message),
+      LogFields::default(),
+    );
+    let Some(device_command_update::Update_type::Failed(failed)) = update.update_type else {
+      panic!("expected a typed command failure update");
+    };
+    assert_eq!(failed.failure_message.as_deref(), Some(expected.as_str()));
+  }
+}
+
 #[tokio::test]
 async fn direct_failure_transport_leaves_context_validation_to_server() {
   let (directory, _runtime, policy) = command_runtime();
