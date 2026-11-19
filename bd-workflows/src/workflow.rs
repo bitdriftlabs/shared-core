@@ -89,6 +89,9 @@ pub fn command_details(selector: Option<&WorkflowCommandSelector>) -> String {
         Ok(WellKnownCommandType::STACK_SAMPLING_TRACE) => {
           output.push_str("\"stack_sampling_trace\"");
         },
+        Ok(WellKnownCommandType::HEAP_PROFILE_TRACE) => {
+          output.push_str("\"heap_profile_trace\"");
+        },
         Ok(WellKnownCommandType::FILE_LIST) => output.push_str("\"file_list\""),
         Ok(WellKnownCommandType::FILE_SIZE) => output.push_str("\"file_size\""),
         Ok(WellKnownCommandType::FILE_CLEAR) => output.push_str("\"file_clear\""),
