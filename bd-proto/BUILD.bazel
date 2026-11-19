@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "all_crate_deps")
+load("@crates//bd-proto:data.bzl", "all_crate_deps", "crate_data")
 load("//tools/lint:linters.bzl", "rust_binary")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 
@@ -11,10 +11,6 @@ exports_files([
 
 rust_binary(
     name = "generate-protos",
-    data = ["@@+http_archive+shared_core_flatbuffers//:flatc"],
-    env = {
-        "FLATC": "$(rootpath @@+http_archive+shared_core_flatbuffers//:flatc)",
-    },
     srcs = [
         "src/bin/generate_protos.rs",
         "src/proto_config.rs",
@@ -22,10 +18,14 @@ rust_binary(
     crate_features = ["codegen"],
     crate_name = "generate_protos",
     crate_root = "src/bin/generate_protos.rs",
+    data = ["@@+http_archive+shared_core_flatbuffers//:flatc"],
     edition = "2024",
+    env = {
+        "FLATC": "$(rootpath @@+http_archive+shared_core_flatbuffers//:flatc)",
+    },
     deps = all_crate_deps(normal = True) + [
-        "@crates//:flatc-rust",
-        "@crates//:protobuf-codegen",
+        "@crates//flatc-rust",
+        "@crates//protobuf-codegen",
     ],
 )
 
@@ -35,6 +35,7 @@ rust_library_with_test(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "bd_proto",
     crate_root = "src/lib.rs",

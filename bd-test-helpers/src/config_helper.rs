@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use base_log_matcher::{AnyMatch, MessageMatch, StringMatchType, TypeMatch};
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
@@ -18,6 +18,7 @@ use bd_proto::protos::config::v1::config::log_matcher::{
   base_log_matcher,
 };
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
+use bd_proto::protos::filter::scrub::{ScrubConfiguration, ScrubRule};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::{Workflow, WorkflowsConfiguration};
 #[rustfmt::skip]
@@ -139,6 +140,7 @@ pub struct ConfigurationUpdateParts {
   pub debug_workflows: Vec<Workflow>,
   pub bdtail_streams: Vec<BdTailStream>,
   pub filters_configuration: Vec<Filter>,
+  pub scrub_rules: Vec<ScrubRule>,
 }
 
 #[must_use]
@@ -176,6 +178,12 @@ pub fn configuration_update_from_parts(
       filters_configuration: (!parts.filters_configuration.is_empty())
         .then(|| FiltersConfiguration {
           filters: parts.filters_configuration,
+          ..Default::default()
+        })
+        .into(),
+      scrub_configuration: (!parts.scrub_rules.is_empty())
+        .then(|| ScrubConfiguration {
+          rules: parts.scrub_rules,
           ..Default::default()
         })
         .into(),

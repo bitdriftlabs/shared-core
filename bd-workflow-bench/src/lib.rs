@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #![deny(
   clippy::expect_used,
@@ -20,12 +20,14 @@ mod bootstrap;
 mod corpus;
 mod data;
 mod fixtures;
+mod regex_matchers;
 mod replay;
 mod report;
 
 use anyhow::anyhow;
 use clap::Parser;
 pub use fixtures::{FixturePaths, default_fixture_paths};
+pub use regex_matchers::RegexMatcherCorpus;
 pub use replay::{BenchmarkCorpus, WorkflowReplay};
 use report::{
   EngineOutcome,

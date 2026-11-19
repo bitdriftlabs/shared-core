@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("@crates//bd-profile:data.bzl", "aliases", "all_crate_deps")
 load("//tools/lint:linters.bzl", "rust_library")
 
 package(default_visibility = ["//visibility:public"])

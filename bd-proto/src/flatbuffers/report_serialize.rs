@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./report_serialize_test.rs"]
@@ -682,7 +682,7 @@ impl Serialize for Report<'_> {
   where
     S: Serializer,
   {
-    let mut s = serializer.serialize_struct("Report", 11)?;
+    let mut s = serializer.serialize_struct("Report", 12)?;
     if let Some(f) = self.sdk() {
       s.serialize_field("sdk", &f)?;
     } else {
@@ -734,6 +734,8 @@ impl Serialize for Report<'_> {
     } else {
       s.skip_field("crash_info")?;
     }
+    // Encoded SDK-local process facts used on-device for profile attribution, not report content.
+    s.skip_field("crash_profile_source")?;
     s.end()
   }
 }

@@ -1,3 +1,4 @@
+load("@crates//fuzz:data.bzl", "crate_data")
 load("//tools/rust:feature_variants.bzl", "all_crate_deps_with_overrides")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 load(":fuzz.bzl", "fuzz_binary")
@@ -19,6 +20,7 @@ FUZZ_RUNTIME_DATA = select({
 })
 
 FUZZ_DEPS = all_crate_deps_with_overrides(
+    crate_data(),
     dependency_overrides = {
         "//shared-core/bd-buffer": "//shared-core/bd-buffer:bd-buffer-fuzz",
         "//shared-core/bd-client-stats-store": "//shared-core/bd-client-stats-store:bd-client-stats-store-fuzz",
@@ -35,6 +37,7 @@ rust_library_with_test(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "fuzz",
     crate_root = "src/lib.rs",
@@ -47,71 +50,83 @@ rust_library_with_test(
 
 fuzz_binary(
     name = "bonjson",
-    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/bonjson.rs"],
     crate_features = ["default"],
     crate_name = "bonjson",
     crate_root = "fuzz_targets/bonjson.rs",
     edition = "2024",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
 fuzz_binary(
     name = "buffer_corruption_fuzz_test",
-    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/buffer_corruption_fuzz_test.rs"],
     crate_features = ["default"],
     crate_name = "buffer_corruption_fuzz_test",
     crate_root = "fuzz_targets/buffer_corruption_fuzz_test.rs",
     edition = "2024",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
 fuzz_binary(
     name = "mpsc_buffer_fuzz_test",
-    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/mpsc_buffer_fuzz_test.rs"],
     crate_features = ["default"],
     crate_name = "mpsc_buffer_fuzz_test",
     crate_root = "fuzz_targets/mpsc_buffer_fuzz_test.rs",
     edition = "2024",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
 fuzz_binary(
     name = "spsc_buffer_fuzz_test",
-    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/spsc_buffer_fuzz_test.rs"],
     crate_features = ["default"],
     crate_name = "spsc_buffer_fuzz_test",
     crate_root = "fuzz_targets/spsc_buffer_fuzz_test.rs",
     edition = "2024",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
 fuzz_binary(
     name = "versioned_kv_journal",
-    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/versioned_kv_journal.rs"],
     crate_features = ["default"],
     crate_name = "versioned_kv_journal",
     crate_root = "fuzz_targets/versioned_kv_journal.rs",
     edition = "2024",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
 
 fuzz_binary(
     name = "workflow_state",
-    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/workflow_state.rs"],
     crate_features = ["default"],
     crate_name = "workflow_state",
     crate_root = "fuzz_targets/workflow_state.rs",
+    edition = "2024",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
+    tags = ["manual"],
+    deps = FUZZ_DEPS + [":fuzz"],
+)
+
+fuzz_binary(
+    name = "regex_prefilter",
+    fuzz_runtime_data = FUZZ_RUNTIME_DATA,
+    srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/regex_prefilter.rs"],
+    crate_features = ["default"],
+    crate_name = "regex_prefilter",
+    crate_root = "fuzz_targets/regex_prefilter.rs",
     edition = "2024",
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],

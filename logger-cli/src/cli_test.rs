@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{Command, Options, SessionStrategy};
 use crate::cli::FakeFeatureFlag;
@@ -18,6 +18,43 @@ fn parses_set_entity_id_command() {
     options.command,
     Command::SetEntityId(cmd) if cmd.entity_id == "entity-123"
   ));
+}
+
+#[test]
+fn synthetic_controls_preserve_explicit_sizes_sources_and_parents() {
+  let options = Options::try_parse_from([
+    "logger-cli",
+    "generate-attachment",
+    "--output",
+    "fixture",
+    "--size-bytes",
+    "268435457",
+    "--kind",
+    "heap-graph",
+  ])
+  .unwrap();
+  assert!(
+    matches!(options.command, Command::GenerateAttachment(cmd) if cmd.size_bytes == 268_435_457)
+  );
+  let options = Options::try_parse_from([
+    "logger-cli",
+    "enqueue-synthetic-profile",
+    "--file",
+    "fixture",
+    "--source",
+    "file",
+    "--offset-bytes",
+    "7",
+    "--parent",
+    "first",
+    "--parent",
+    "second",
+  ])
+  .unwrap();
+  assert!(
+    matches!(options.command, Command::EnqueueSyntheticProfile(cmd)
+    if cmd.offset_bytes == 7 && cmd.parent == ["first", "second"])
+  );
 }
 
 #[test]

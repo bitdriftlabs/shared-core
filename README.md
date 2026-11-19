@@ -2,19 +2,17 @@
 
 This repo contains bitdrift code shared between the client and server.
 
+## Documentation
+
+- [Chunked artifact uploads](bd-artifact-upload/docs/chunked-uploads.md): compressed-byte geometry,
+  staging ownership, storage, verification and compatibility.
+- [Linked Android crash-profile contracts](bd-artifact-upload/docs/crash-profiles.md): on-device
+  attribution, profile persistence and delivery.
+
 ## Licensing
 
-Packages are individually licensed under either Apache License 2.0 or PolyForm Strict 1.0.0.
+Packages are individually licensed under either Apache License 2.0 or PolyForm Shield 1.0.0.
 See [LICENSES.md](LICENSES.md) for the package map and canonical license texts.
-
-Strict is a source-available license, not an open-source license. Previously published versions
-retain their original licenses. Third-party components retain their own licenses and notices.
-
-Check license metadata and headers without modifying files with `ci/check_license.sh`. To update
-missing headers or normalize canonical header formatting, run `python3 ci/license_header.py`,
-then rerun the check. Noncanonical first-party headers are rejected, not migrated. Generated
-binding headers are validated by the owning generation workflow and are never repaired by the
-license checker.
 
 ## Development
 

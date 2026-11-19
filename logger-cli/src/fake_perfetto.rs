@@ -3,13 +3,13 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./fake_perfetto_test.rs"]
 mod tests;
 
-use bd_artifact_upload::UploadSource;
+use bd_artifact_upload::{PERFETTO_CONTENT_TYPE, UploadSource};
 use bd_logger::{
   CommandAttachment,
   CommandError,
@@ -19,7 +19,6 @@ use bd_logger::{
 };
 
 pub const COMMAND_NAME: &str = "fake_perfetto";
-const CONTENT_TYPE: &str = "application/vnd.bitdrift.perfetto-trace";
 
 // A named track, an instant event, and one PerfSample with an interned, already-symbolized frame.
 // The explicit incremental-state clear makes the profile usable without earlier producer packets.
@@ -57,7 +56,7 @@ impl RegisteredCommandHandler for FakePerfettoCommand {
       fields: [].into(),
       attachment: Some(CommandAttachment {
         source: UploadSource::Bytes(TRACE.to_vec()),
-        content_type: Some(CONTENT_TYPE.to_string()),
+        content_type: Some(PERFETTO_CONTENT_TYPE.to_string()),
       }),
     }
   }

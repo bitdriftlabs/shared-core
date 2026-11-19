@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 //! Shared execution primitives for direct device commands and workflow command matchers.
 //!
@@ -53,6 +53,7 @@ use anyhow::anyhow;
 use bd_api::upload::{DeviceCommandState, TrackedDeviceCommandUpdate};
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadCompletion};
 use bd_artifact_upload::UploadSource;
+use bd_client_common::file_system::OwnedFile;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -101,16 +102,17 @@ use protobuf::Message;
 use std::collections::HashMap;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use time::OffsetDateTime;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{oneshot, watch};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use uuid::Uuid;
 
 const REGISTERED_COMMAND_ARTIFACT_TYPE_ID: &str = "device_command_attachment";
+const MAX_FAILURE_MESSAGE_BYTES: usize = 4096;
 
 //
 // TestHooks
@@ -581,7 +583,7 @@ pub struct CommandAttachment {
   pub content_type: Option<String>,
 }
 
-/// The reason a command failed. Detailed messages retain their existing wire/log representation.
+/// The reason a command failed. Its display message is reported separately from app context.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum CommandError {
   /// The execution deadline expired. Platform work may finish after its Rust future is cancelled.
@@ -619,6 +621,9 @@ impl CommandError {
 }
 
 /// The terminal outcome of an application-defined command.
+///
+/// The SDK reserves `_result`, `_duration_ms`, and the prefixes `_command_`,
+/// `_workflow_command_`, and `_span_` in command outcome logs.
 #[derive(Debug)]
 pub enum CommandResult {
   Completed {
@@ -627,6 +632,8 @@ pub enum CommandResult {
   },
   Failed {
     error: CommandError,
+    /// Application context, separate from the failure message. The server rejects direct results
+    /// with invalid context.
     fields: LogFields,
   },
 }
@@ -656,7 +663,7 @@ impl CommandResultGuard {
 impl Drop for CommandResultGuard {
   fn drop(&mut self) {
     if let Some(result) = &self.0 {
-      drop(HandedOverFile::from_result(result));
+      drop(handed_over_file(result));
     }
   }
 }
@@ -986,7 +993,9 @@ impl WorkflowCommandExecutor {
     // The guard deletes the handler's file when it drops: after the store has taken its copy,
     // or at once if this future is cancelled during admission. The unlink is synchronous, so no
     // cancellable await sits between an admitted attachment and the outcome that references it.
-    let _handed_over = HandedOverFile::from_result(&result);
+    // TODO: Move normal unlink off-thread together with a cancellation-safe admitted-outcome
+    // handoff. Adding an await here alone could abandon an admitted attachment without its outcome.
+    let _handed_over = handed_over_file(&result);
     workflow_command_outcome(result, &self.attachment_store).await
   }
 }
@@ -1006,43 +1015,13 @@ struct PlatformCommand {
 /// needed: workflow admission copies the payload, then this guard deletes the original.
 /// Direct uploads instead transfer ownership to the uploader at enqueue. A relative path is left
 /// alone: each consumer resolves it against its own root.
-struct HandedOverFile {
-  path: Option<PathBuf>,
-}
-
-impl HandedOverFile {
-  fn from_result(result: &CommandResult) -> Self {
-    match result {
-      CommandResult::Completed {
-        attachment: Some(attachment),
-        ..
-      } => Self::from_attachment(attachment),
-      _ => Self { path: None },
-    }
-  }
-
-  fn from_attachment(attachment: &CommandAttachment) -> Self {
-    Self {
-      path: match &attachment.source {
-        UploadSource::Path(path) if path.is_absolute() => Some(path.clone()),
-        _ => None,
-      },
-    }
-  }
-}
-
-impl Drop for HandedOverFile {
-  fn drop(&mut self) {
-    // A single unlink of a small file, kept synchronous so there is no cancellation point.
-    if let Some(path) = self.path.take()
-      && let Err(error) = std::fs::remove_file(&path)
-      && error.kind() != std::io::ErrorKind::NotFound
-    {
-      log::debug!(
-        "failed to remove command attachment file {}: {error}",
-        path.display()
-      );
-    }
+fn handed_over_file(result: &CommandResult) -> Option<OwnedFile> {
+  match result {
+    CommandResult::Completed {
+      attachment: Some(attachment),
+      ..
+    } => attachment.source.owned_file(),
+    _ => None,
   }
 }
 
@@ -1354,9 +1333,8 @@ async fn execute_platform_device_command(
         attachment,
       )
     },
-    CommandResult::Failed { error, mut fields } => {
-      fields.insert("error".into(), error.into_message().into());
-      failed_device_command_update_with_fields(&command_id, 2, fields)
+    CommandResult::Failed { error, fields } => {
+      failed_device_command_update_with_fields(&command_id, 2, error, fields)
     },
   };
   send_device_command_update_with_artifact(&senders, update, artifact_metadata).await
@@ -1476,21 +1454,28 @@ fn failed_device_command_update(
   failed_device_command_update_with_fields(
     command_id,
     update_sequence_number,
-    [("error".into(), error.into_message().into())].into(),
+    error,
+    LogFields::default(),
   )
 }
 
 fn failed_device_command_update_with_fields(
   command_id: &str,
   update_sequence_number: u64,
+  error: CommandError,
   fields: LogFields,
 ) -> DeviceCommandUpdate {
+  let mut message = error.into_message();
+  message.truncate(message.floor_char_boundary(MAX_FAILURE_MESSAGE_BYTES));
   DeviceCommandUpdate {
     command_id: command_id.to_string(),
     update_sequence_number,
     update_type: Some(device_command_update::Update_type::Failed(
       device_command_update::Failed {
-        context: Some(device_command_context(fields)).into(),
+        context: (!fields.is_empty())
+          .then(|| device_command_context(fields))
+          .into(),
+        failure_message: Some(message),
         ..Default::default()
       },
     )),
@@ -1506,7 +1491,7 @@ fn device_command_outcome_log(
   span: &CommandSpan,
   now: OffsetDateTime,
 ) -> Option<LogLine> {
-  let (succeeded, context, artifact_id) = match update.update_type.as_ref()? {
+  let (succeeded, context, artifact_id, message) = match update.update_type.as_ref()? {
     device_command_update::Update_type::Completed(completed) => {
       let artifact_id = match completed
         .attachment
@@ -1518,25 +1503,23 @@ fn device_command_outcome_log(
         },
         _ => None,
       };
-      (true, completed.context.as_ref(), artifact_id)
+      (true, completed.context.as_ref(), artifact_id, None)
     },
-    device_command_update::Update_type::Failed(failed) => (false, failed.context.as_ref(), None),
+    device_command_update::Update_type::Failed(failed) => (
+      false,
+      failed.context.as_ref(),
+      None,
+      failed.failure_message.clone(),
+    ),
     device_command_update::Update_type::Accepted(_) => return None,
   };
-  let mut fields: LogFields = context
+  let fields: LogFields = context
     .into_iter()
     .flat_map(|context| &context.fields)
     .filter_map(|(key, value)| {
       DataValue::from_proto(value.clone()).map(|value| (key.clone().into(), value))
     })
     .collect();
-  let message = if succeeded {
-    None
-  } else {
-    fields
-      .remove("error")
-      .and_then(|value| value.as_str().map(str::to_owned))
-  };
   let (log_level, mut fields, command_attachment) = CommandOutcome {
     succeeded,
     message,
@@ -1588,24 +1571,27 @@ async fn send_device_command_update_with_artifact(
 }
 
 // Transport only: an ACK failure does not reopen terminal arbitration or retry the handler.
-// The original command expiry bounds submission/ACK waits; execution has its separate policy.
+// The fixed local retention deadline bounds submission/ACK waits; execution has its separate
+// policy.
 async fn submit_device_command_update(
   execution: &DeviceCommandExecution,
   update: DeviceCommandUpdate,
 ) -> anyhow::Result<()> {
   let senders = &execution.senders;
+  // TODO: Consider scrubbing direct command result context before upload; it bypasses log
+  // scrubbing.
   let (update, response_rx) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
-  let remaining = senders
+  let deadline = senders
     .command_state
-    .remaining_time(&update.payload.command_id)
-    .ok_or_else(|| anyhow::anyhow!("command expired before update submission"))?;
-  if remaining.is_zero() {
-    anyhow::bail!("command expired before update submission");
+    .deadline(&update.payload.command_id)
+    .ok_or_else(|| anyhow!("command delivery deadline elapsed before update submission"))?;
+  if deadline <= Instant::now() {
+    anyhow::bail!("command delivery deadline elapsed before update submission");
   }
-  let update = update.with_remaining_time(remaining);
-  // Include channel backpressure in the original expiry budget, not just the ACK wait. Otherwise
-  // a full API queue can retain the execution forever even after its waiter has expired.
-  tokio::time::timeout(remaining, async {
+  let update = update.with_deadline(deadline);
+  // Include channel backpressure in the same budget as the ACK wait. Reconstructing a deadline
+  // here would extend retention across updates or after a reconnect.
+  tokio::time::timeout_at(deadline, async {
     let permit = senders
       .data_upload_tx
       .reserve()
@@ -1621,5 +1607,5 @@ async fn submit_device_command_update(
       .map_err(|_| anyhow!("device command update was not acknowledged"))
   })
   .await
-  .map_err(|_| anyhow!("command expired while submitting update"))?
+  .map_err(|_| anyhow!("command delivery deadline elapsed while submitting update"))?
 }

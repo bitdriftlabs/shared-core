@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./global_state_test.rs"]
@@ -143,7 +143,9 @@ pub(crate) fn fields_to_crash_state(fields: &LogFields) -> CrashGlobalState {
       .iter()
       .map(|(key, value)| payload::log::Field {
         key: key.clone().into(),
-        value: Some(value.clone().into_proto()).into(),
+        value_type: Some(payload::log::field::Value_type::Value(
+          value.clone().into_proto(),
+        )),
         ..Default::default()
       })
       .collect(),
@@ -168,10 +170,10 @@ impl Reader {
       s.fields
         .into_iter()
         .filter_map(|field| {
-          Some((
-            Cow::Owned(field.key),
-            DataValue::from_proto(field.value.into_option()?)?,
-          ))
+          let Some(payload::log::field::Value_type::Value(value)) = field.value_type else {
+            return None;
+          };
+          Some((Cow::Owned(field.key), DataValue::from_proto(value)?))
         })
         .collect()
     }));
@@ -184,22 +186,18 @@ impl Reader {
 
   #[must_use]
   pub fn global_state_fields(&self) -> LogFields {
-    self
-      .store
-      .get(&KEY)
-      .map(|state| {
-        state
-          .fields
-          .into_iter()
-          .filter_map(|mut field| {
-            Some((
-              field.key.into(),
-              DataValue::from_proto(field.value.take()?)?,
-            ))
-          })
-          .collect()
-      })
-      .unwrap_or_default()
+    self.store.get(&KEY).map_or_default(|state| {
+      state
+        .fields
+        .into_iter()
+        .filter_map(|field| {
+          let Some(payload::log::field::Value_type::Value(value)) = field.value_type else {
+            return None;
+          };
+          Some((field.key.into(), DataValue::from_proto(value)?))
+        })
+        .collect()
+    })
   }
 
   #[must_use]

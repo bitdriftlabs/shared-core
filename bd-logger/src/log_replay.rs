@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
@@ -16,11 +16,20 @@ use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::{Counter, Histogram};
-use bd_log_filter::FilterChain;
+use bd_field_interning::FieldInterner;
+use bd_log_filter::{FilterChain, ScrubRules};
 use bd_log_metadata::LogFields;
 use bd_log_primitives::command_attachment::{AttachmentSource, LogAttachment};
 use bd_log_primitives::tiny_set::TinySet;
-use bd_log_primitives::{EncodableLog, FieldsRef, Log, LogMessage, LossyIntToU32, log_level};
+use bd_log_primitives::{
+  AnnotatedLogFields,
+  EncodableLog,
+  FieldsRef,
+  Log,
+  LogMessage,
+  LossyIntToU32,
+  log_level,
+};
 use bd_log_util::warn_every;
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto_util::serialization::ProtoMessageSerialize;
@@ -107,6 +116,7 @@ pub trait LogReplay {
     &mut self,
     log: Log,
     command_event: Option<WorkflowCommandEvent>,
+    intern: Option<InternContext<'_>>,
     pipeline: &mut ProcessingPipeline,
     state: &bd_state::Store,
     now: OffsetDateTime,
@@ -126,6 +136,17 @@ pub trait LogReplay {
 }
 
 //
+// InternContext
+//
+
+/// What the pipeline needs to intern the persistent fields of a log written by this process.
+/// Logs from a previous process are never interned: their fields come from that process's state.
+pub struct InternContext<'a> {
+  pub interner: &'a mut FieldInterner,
+  pub persistent: &'a AnnotatedLogFields,
+}
+
+//
 // LoggerReplay
 //
 
@@ -137,12 +158,13 @@ impl LogReplay for LoggerReplay {
     &mut self,
     log: Log,
     command_event: Option<WorkflowCommandEvent>,
+    intern: Option<InternContext<'_>>,
     pipeline: &mut ProcessingPipeline,
     state_store: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     pipeline
-      .process_log(log, command_event.as_ref(), state_store, now)
+      .process_log(log, command_event.as_ref(), intern, state_store, now)
       .await
   }
 
@@ -175,7 +197,8 @@ impl LogReplay for LoggerReplay {
 
 // Maintains the machinery required to process incoming logs.
 // Processing a log involves (not a full list):
-//  * modifying it according to active filter chain.
+//  * redacting it according to active scrub rules, then modifying it according to active filter
+//    chain.
 //  * processing it using workflows engine.
 //  * potentially streaming it according to bd tail configuration.
 //  * writing it to buffers according to active buffer selector(s).
@@ -184,6 +207,7 @@ pub struct ProcessingPipeline {
   buffer_selector: BufferSelector,
   pub(crate) workflows_engine: WorkflowsEngine<Counter, Histogram>,
   tail_configs: TailConfigurations,
+  scrub_rules: Arc<ScrubRules>,
   filter_chain: FilterChain,
   min_log_compression_size: IntWatch<MinLogCompressionSize>,
 
@@ -262,6 +286,7 @@ impl ProcessingPipeline {
       buffer_selector: config.buffer_selector,
       workflows_engine,
       tail_configs: config.tail_configs,
+      scrub_rules: config.scrub_rules,
       filter_chain: config.filter_chain,
       min_log_compression_size: runtime.register_int_watch(),
 
@@ -282,6 +307,7 @@ impl ProcessingPipeline {
     self.buffer_selector = config.buffer_selector;
     self.buffer_producers = config.buffer_producers;
     self.tail_configs = config.tail_configs;
+    self.scrub_rules = config.scrub_rules;
     self.filter_chain = config.filter_chain;
 
     let workflows_engine_config = WorkflowsEngineConfig::new(
@@ -342,6 +368,7 @@ impl ProcessingPipeline {
     &mut self,
     mut log: Log,
     command_event: Option<&WorkflowCommandEvent>,
+    intern: Option<InternContext<'_>>,
     state: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
@@ -349,6 +376,9 @@ impl ProcessingPipeline {
 
     let state_reader = state.read().await;
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
+    // Scrub rules run before every filter so that a filter copying a field, such as the
+    // server-synthesized `_path_template` filter, copies the redacted value.
+    self.scrub_rules.process(&mut log);
     self.filter_chain.process(&mut log, &state_reader);
     let mut log = EncodableLog::new(log, (*self.min_log_compression_size.read()).into());
     let has_workflow_attachment = log
@@ -404,6 +434,20 @@ impl ProcessingPipeline {
 
     Self::handle_common_pre_buffer_write(&result.triggered_flush_buffers_action_ids);
 
+    // Interning compares the final log, after scrub rules and filters, with the current field set.
+    // It is decided once, so every buffer and the stream store the same encoding, and only for a
+    // log that may be written, so every version has a log that refers to it.
+    let streams = self.tail_configs.matching_streams(&log.log, &state_reader);
+    if let Some(intern) = intern
+      && (!result.log_destination_buffer_ids.is_empty() || !streams.is_empty())
+    {
+      let interned = intern
+        .interner
+        .intern(&log.log, intern.persistent, &self.scrub_rules)
+        .await;
+      log.set_interned(interned);
+    }
+
     let mut written_to_buffers = TinySet::default();
     let committed = match Self::write_to_buffers(
       &mut self.buffer_producers,
@@ -451,7 +495,7 @@ impl ProcessingPipeline {
       // committed reference is not upload readiness: continuous uploads can lag, and an unflushed
       // trigger buffer may never upload the payload. Direct command attachments are already
       // uploaded before their terminal logs are emitted.
-      match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
+      match self.tail_configs.stream_log(&mut log, &streams) {
         Ok(true) => self.stats.streamed_logs.inc(),
         Ok(false) => {},
         Err(error) => log::debug!("failed to stream log: {error:?}"),
@@ -486,6 +530,19 @@ impl ProcessingPipeline {
     matching_fields: &LogFields,
   ) -> LogReplayResult {
     let state_reader = state.read().await;
+
+    // The global fields reach workflows and, when the state change triggers a flush, a synthetic
+    // log, so they are scrubbed as the same fields are on every log.
+    let scrubbed_fields;
+    let (fields, matching_fields) = if self.scrub_rules.is_empty() {
+      (fields, matching_fields)
+    } else {
+      scrubbed_fields = (
+        self.scrub_rules.scrub_fields(fields),
+        self.scrub_rules.scrub_fields(matching_fields),
+      );
+      (&scrubbed_fields.0, &scrubbed_fields.1)
+    };
 
     let empty_set = TinySet::default();
     let mut result = self.workflows_engine.process_event(
@@ -635,11 +692,13 @@ impl ProcessingPipeline {
             occurred_at: occurred_at.unix_timestamp_micros(),
             log_level: log_level::DEBUG,
             message: log_message,
-            fields: log_fields,
+            fields: bd_log_primitives::LogFieldsRef::inline(log_fields),
             session_id,
             action_ids: &action_ids,
             log_type: LogType::INTERNAL_SDK,
             stream_ids: &[],
+            // The synthetic log is never interned.
+            field_set_version: 0,
           };
           let size = raw_log.compute_message_size();
           let reserved = buffer_producer.reserve(size.to_u32_lossy(), true)?;

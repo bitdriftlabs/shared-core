@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./builder_test.rs"]
@@ -193,6 +193,7 @@ pub struct LoggerBuilder {
   internal_logger: bool,
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
+  report_attribution: Option<Arc<dyn bd_artifact_upload::ReportAttribution>>,
   command_dispatcher: RegisteredCommandDispatcher,
   test_hooks: Option<Arc<dyn TestHooks>>,
   startup_replay_eligibility: StartupReplayEligibility,
@@ -209,6 +210,7 @@ impl LoggerBuilder {
       internal_logger: false,
       time_provider: None,
       crash_report_hook: None,
+      report_attribution: None,
       command_dispatcher: RegisteredCommandDispatcher::default(),
       test_hooks: None,
       startup_replay_eligibility: StartupReplayEligibility::Unknown,
@@ -271,6 +273,17 @@ impl LoggerBuilder {
     hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
   ) -> Self {
     self.crash_report_hook = hook;
+    self
+  }
+
+  /// Sets the platform's report attribution. It is seeded from the pending upload index before the
+  /// uploader starts, then receives each freshly enqueued report carrying source facts.
+  #[must_use]
+  pub fn with_report_attribution(
+    mut self,
+    attribution: Option<Arc<dyn bd_artifact_upload::ReportAttribution>>,
+  ) -> Self {
+    self.report_attribution = attribution;
     self
   }
 
@@ -441,6 +454,7 @@ impl LoggerBuilder {
       data_upload_tx.clone(),
       self.startup_replay_eligibility,
     );
+    let field_set_table = async_log_buffer.field_set_table();
     let workflow_attachment_cleanup_ready = async_log_buffer.workflow_attachment_cleanup_ready();
 
     let data_upload_tx_clone = data_upload_tx.clone();
@@ -505,6 +519,11 @@ impl LoggerBuilder {
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
 
+      // Open the field-set table only while holding the directory lock and with the cached runtime
+      // loaded, and before any uploader can read a buffered log from an earlier run.
+      let mut async_log_buffer = async_log_buffer;
+      async_log_buffer.prepare_field_interning().await;
+
       // Initialize state store using runtime configuration. This may fall back to an in-memory
       // store if persistent storage cannot be initialized or if directed by configuration.
       let state_directory = self.params.sdk_directory.join("state");
@@ -543,6 +562,9 @@ impl LoggerBuilder {
         log.log_internal("state store initialization failed, using in-memory fallback");
       }
 
+      // Configuration applies publish their scrub rules here; the uploader reads whatever rules
+      // are current when it builds each request and never waits for them.
+      let (scrub_rules_tx, scrub_rules_rx) = tokio::sync::watch::channel(Arc::default());
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
         data_upload_tx_clone.clone(),
@@ -550,9 +572,24 @@ impl LoggerBuilder {
         &runtime_loader,
         &collector_clone,
         self.params.static_metadata.command_artifact_metadata(),
+        scrub_rules_rx,
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
+      // The uploader has not started yet, so no ACK, rejection or eviction can remove a pending
+      // report before it is restored.
+      if let Some(attribution) = &self.report_attribution {
+        bd_artifact_upload::restore_pending_reports(
+          attribution.as_ref(),
+          &self.params.sdk_directory,
+        )
+        .await;
+        attribution.start(
+          artifact_client.clone(),
+          &runtime_loader,
+          shutdown_handle.make_shutdown(),
+        );
+      }
       async_log_buffer.set_retention_registry(
         retention_registry.clone(),
         artifact_client.upload_queue_revision(),
@@ -616,6 +653,7 @@ impl LoggerBuilder {
           .map_err(Into::into)
         },
         self.crash_report_hook,
+        self.report_attribution,
       );
 
       let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
@@ -640,9 +678,10 @@ impl LoggerBuilder {
         pending_trigger_uploads,
         process_local_pending_flush_state,
         self.test_hooks.clone(),
+        field_set_table,
       );
 
-      let command_state = Arc::new(DeviceCommandState::new(time_provider.clone()));
+      let command_state = Arc::new(DeviceCommandState::new());
       let updater = Arc::new(client_config::Config::new_with_time_provider(
         &self.params.sdk_directory,
         LoggerUpdate::new(
@@ -658,6 +697,7 @@ impl LoggerBuilder {
           command_execution_policy,
           command_state.clone(),
           time_provider.clone(),
+          scrub_rules_tx,
           &scope.scope("config"),
         ),
         time_provider.clone(),

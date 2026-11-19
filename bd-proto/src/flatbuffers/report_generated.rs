@@ -7202,6 +7202,7 @@ impl<'a> Report<'a> {
   pub const VT_FEATURE_FLAGS: flatbuffers::VOffsetT = 20;
   pub const VT_PROCESSING_RESULT: flatbuffers::VOffsetT = 22;
   pub const VT_CRASH_INFO: flatbuffers::VOffsetT = 24;
+  pub const VT_CRASH_PROFILE_SOURCE: flatbuffers::VOffsetT = 26;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -7213,6 +7214,7 @@ impl<'a> Report<'a> {
     args: &'args ReportArgs<'args>
   ) -> flatbuffers::WIPOffset<Report<'bldr>> {
     let mut builder = ReportBuilder::new(_fbb);
+    if let Some(x) = args.crash_profile_source { builder.add_crash_profile_source(x); }
     if let Some(x) = args.crash_info { builder.add_crash_info(x); }
     if let Some(x) = args.processing_result { builder.add_processing_result(x); }
     if let Some(x) = args.feature_flags { builder.add_feature_flags(x); }
@@ -7259,6 +7261,9 @@ impl<'a> Report<'a> {
     let crash_info = self.crash_info().map(|x| {
       x.iter().map(|t| t.unpack()).collect()
     });
+    let crash_profile_source = self.crash_profile_source().map(|x| {
+      x.into_iter().collect()
+    });
     ReportT {
       sdk,
       type_,
@@ -7271,6 +7276,7 @@ impl<'a> Report<'a> {
       feature_flags,
       processing_result,
       crash_info,
+      crash_profile_source,
     }
   }
 
@@ -7351,6 +7357,13 @@ impl<'a> Report<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<CrashInfo>>>>(Report::VT_CRASH_INFO, None)}
   }
+  #[inline]
+  pub fn crash_profile_source(&self) -> Option<flatbuffers::Vector<'a, u8>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, u8>>>(Report::VT_CRASH_PROFILE_SOURCE, None)}
+  }
 }
 
 impl flatbuffers::Verifiable for Report<'_> {
@@ -7371,6 +7384,7 @@ impl flatbuffers::Verifiable for Report<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<FeatureFlag>>>>("feature_flags", Self::VT_FEATURE_FLAGS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<ProcessingResult>>("processing_result", Self::VT_PROCESSING_RESULT, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<CrashInfo>>>>("crash_info", Self::VT_CRASH_INFO, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, u8>>>("crash_profile_source", Self::VT_CRASH_PROFILE_SOURCE, false)?
      .finish();
     Ok(())
   }
@@ -7387,6 +7401,7 @@ pub struct ReportArgs<'a> {
     pub feature_flags: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<FeatureFlag<'a>>>>>,
     pub processing_result: Option<flatbuffers::WIPOffset<ProcessingResult<'a>>>,
     pub crash_info: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<CrashInfo<'a>>>>>,
+    pub crash_profile_source: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, u8>>>,
 }
 impl<'a> Default for ReportArgs<'a> {
   #[inline]
@@ -7403,6 +7418,7 @@ impl<'a> Default for ReportArgs<'a> {
       feature_flags: None,
       processing_result: None,
       crash_info: None,
+      crash_profile_source: None,
     }
   }
 }
@@ -7457,6 +7473,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ReportBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_CRASH_INFO, crash_info);
   }
   #[inline]
+  pub fn add_crash_profile_source(&mut self, crash_profile_source: flatbuffers::WIPOffset<flatbuffers::Vector<'b , u8>>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_CRASH_PROFILE_SOURCE, crash_profile_source);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> ReportBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     ReportBuilder {
@@ -7485,6 +7505,7 @@ impl core::fmt::Debug for Report<'_> {
       ds.field("feature_flags", &self.feature_flags());
       ds.field("processing_result", &self.processing_result());
       ds.field("crash_info", &self.crash_info());
+      ds.field("crash_profile_source", &self.crash_profile_source());
       ds.finish()
   }
 }
@@ -7502,6 +7523,7 @@ pub struct ReportT {
   pub feature_flags: Option<Vec<FeatureFlagT>>,
   pub processing_result: Option<Box<ProcessingResultT>>,
   pub crash_info: Option<Vec<CrashInfoT>>,
+  pub crash_profile_source: Option<Vec<u8>>,
 }
 impl Default for ReportT {
   fn default() -> Self {
@@ -7517,6 +7539,7 @@ impl Default for ReportT {
       feature_flags: None,
       processing_result: None,
       crash_info: None,
+      crash_profile_source: None,
     }
   }
 }
@@ -7556,6 +7579,9 @@ impl ReportT {
     let crash_info = self.crash_info.as_ref().map(|x|{
       let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
     });
+    let crash_profile_source = self.crash_profile_source.as_ref().map(|x|{
+      _fbb.create_vector(x)
+    });
     Report::create(_fbb, &ReportArgs{
       sdk,
       type_,
@@ -7568,6 +7594,7 @@ impl ReportT {
       feature_flags,
       processing_result,
       crash_info,
+      crash_profile_source,
     })
   }
 }

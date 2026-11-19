@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./service_test.rs"]
@@ -20,7 +20,6 @@ use bd_shutdown::ComponentShutdown;
 use bd_stats_common::{Counter as _, labels};
 use bd_time::TimeDurationExt;
 use futures_util::future::BoxFuture;
-use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::Poll;
 use tokio::sync::mpsc::Sender;
@@ -30,7 +29,7 @@ use tower::util::BoxCloneService;
 #[path = "./ratelimit.rs"]
 mod ratelimit;
 
-pub type Upload = BoxCloneService<UploadRequest, UploadResult, Infallible>;
+pub type Upload = BoxCloneService<UploadRequest, UploadResult, !>;
 
 // Creates a new UploadService with retries enabled.
 pub fn new(
@@ -114,12 +113,17 @@ impl UploadRequest {
 // overhead).
 impl RequestSized for UploadRequest {
   fn per_request_size(&self) -> u32 {
-    self
+    // Field sets are charged like logs: interning moves persistent fields from the logs into them.
+    let field_set_bytes: u64 = self
       .log_upload
-      .logs
+      .field_sets
       .iter()
-      .map(Vec::len)
-      .sum::<usize>()
+      .map(protobuf::Message::compute_size)
+      .sum();
+    let log_bytes =
+      u64::try_from(self.log_upload.logs.iter().map(Vec::len).sum::<usize>()).unwrap_or(u64::MAX);
+    log_bytes
+      .saturating_add(field_set_bytes)
       .try_into()
       .unwrap_or(u32::MAX)
   }
@@ -153,7 +157,7 @@ struct Uploader {
 
 impl tower::Service<UploadRequest> for Uploader {
   type Response = UploadResult;
-  type Error = Infallible;
+  type Error = !;
   type Future = BoxFuture<'static, std::result::Result<Self::Response, Self::Error>>;
 
   fn poll_ready(
@@ -170,6 +174,7 @@ impl tower::Service<UploadRequest> for Uploader {
       upload_uuid: request.uuid.clone(),
       proto_logs: request.log_upload.logs.clone(),
       buffer_uuid: request.log_upload.buffer_id.clone(),
+      field_sets: request.log_upload.field_sets.clone(),
       trigger_uuids: request.request_trigger_uuid.iter().cloned().collect(),
       ackless: request.ackless,
       command_id: request
@@ -265,13 +270,13 @@ impl RetryPolicy {
   }
 }
 
-impl tower::retry::Policy<UploadRequest, UploadResult, Infallible> for RetryPolicy {
+impl tower::retry::Policy<UploadRequest, UploadResult, !> for RetryPolicy {
   type Future = futures_util::future::BoxFuture<'static, ()>;
 
   fn retry(
     &mut self,
     req: &mut UploadRequest,
-    result: &mut std::result::Result<UploadResult, Infallible>,
+    result: &mut std::result::Result<UploadResult, !>,
   ) -> Option<Self::Future> {
     log::debug!(
       "considering request with {} logs, {} attempts left",

@@ -74,6 +74,20 @@ instead of containing one record for every replayed log. `summary.json` includes
 Callgrind's elapsed time includes Valgrind instrumentation overhead and must not be compared with
 Criterion's wall-clock measurements.
 
+## Regex matcher benchmarks
+
+`regex_matchers` (Callgrind, Linux only) and `regex_matchers_criterion` (wall time) isolate regex
+evaluation from the rest of the engine. They take every distinct regex message or field matcher
+from the `large` corpus's workflow configuration and evaluate each one against every corpus log
+through `Tree::do_match`. Matchers whose regex does not compile are skipped, as the engine rejects
+them. `all` uses every log; `typical` leaves out logs whose message is over 10 KiB, because a few
+very large messages hold most of the corpus's message bytes.
+
+```sh
+cargo bench -p bd-workflow-bench --bench regex_matchers
+cargo bench -p bd-workflow-bench --bench regex_matchers_criterion
+```
+
 The config file is a JSON `ApiResponse` whose `configurationUpdate` message contains the workflow
 configuration.
 

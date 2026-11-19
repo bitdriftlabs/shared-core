@@ -4,6 +4,15 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
+//! Reflection-based PGV support checks and value validation.
+//!
+//! Descriptor support is checked independently of a field's current value: an empty or omitted
+//! field must not hide an unsupported rule. Byte-length rules are needed by artifact digests and
+//! receipt bitmaps, including on whole-file upload messages whose chunk fields are empty. They
+//! count raw bytes, honor explicit `ignore_empty`, and otherwise validate defaults like other
+//! scalar rules. Unimplemented byte content/address rules still fail explicitly rather than
+//! weakening a schema.
+
 #[cfg(test)]
 #[path = "./proto_validate_test.rs"]
 mod proto_validate_test;
@@ -417,6 +426,19 @@ fn verify_enum_rules_supported(rules: &FieldRules) -> error::Result<()> {
   Ok(())
 }
 
+fn verify_bytes_rules_supported(rules: &FieldRules) -> error::Result<()> {
+  let bytes = rules.bytes();
+  not_implemented(bytes.has_const(), "bytes rules const")?;
+  not_implemented(bytes.has_pattern(), "bytes rules pattern")?;
+  not_implemented(bytes.has_prefix(), "bytes rules prefix")?;
+  not_implemented(bytes.has_suffix(), "bytes rules suffix")?;
+  not_implemented(bytes.has_contains(), "bytes rules contains")?;
+  not_implemented(!bytes.in_.is_empty(), "bytes rules in")?;
+  not_implemented(!bytes.not_in.is_empty(), "bytes rules not_in")?;
+  not_implemented(bytes.well_known.is_some(), "bytes rules well_known")?;
+  Ok(())
+}
+
 // Verify that a reflected field rule set only uses validations we support. The returned bool
 // indicates whether descriptor recursion should continue for this field.
 fn verify_value_support(
@@ -506,7 +528,9 @@ fn verify_value_support(
     },
     RuntimeType::Bool => {},
     RuntimeType::VecU8 => {
-      not_implemented(rules.has_bytes(), "bytes validation")?;
+      if rules.has_bytes() {
+        verify_bytes_rules_supported(rules)?;
+      }
     },
     RuntimeType::Enum(_) => {
       if rules.has_enum() {
@@ -702,7 +726,30 @@ fn validate_value(
       }
     },
     RuntimeType::VecU8 => {
-      not_implemented(rules.has_bytes(), "bytes validation")?;
+      if rules.has_bytes()
+        && let Some(ReflectValueRef::Bytes(value)) = value
+      {
+        let bytes = rules.bytes();
+        // A non-optional empty byte field is a real scalar default. Skip its length constraints
+        // only when the schema permits that default (for example an omitted chunk digest).
+        if !(bytes.ignore_empty() && value.is_empty()) {
+          let length = value.len() as u64;
+          if bytes.len.is_some_and(|expected| length != expected)
+            || bytes.min_len.is_some_and(|minimum| length < minimum)
+            || bytes.max_len.is_some_and(|maximum| length > maximum)
+          {
+            return Err(error::Error::ProtoValidation(format!(
+              "field '{}' in message '{}' has invalid byte length {length} (len={:?}, \
+               min_len={:?}, max_len={:?})",
+              formatter.field_name(field_descriptor, message_descriptor),
+              formatter.message_name(message_descriptor),
+              bytes.len,
+              bytes.min_len,
+              bytes.max_len,
+            )));
+          }
+        }
+      }
     },
     RuntimeType::Enum(enum_descriptor) => {
       if rules.has_enum()

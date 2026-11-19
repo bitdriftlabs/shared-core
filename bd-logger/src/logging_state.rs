@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
@@ -19,7 +19,7 @@ use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_crash_handler::global_state;
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_event_buffer::ProviderSnapshot;
-use bd_log_filter::FilterChain;
+use bd_log_filter::{FilterChain, ScrubRules};
 use bd_log_primitives::tiny_set::TinySet;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
@@ -361,6 +361,7 @@ pub struct ConfigUpdate {
   pub(crate) buffer_selector: BufferSelector,
   pub(crate) workflows_configuration: WorkflowsConfiguration,
   pub(crate) tail_configs: TailConfigurations,
+  pub(crate) scrub_rules: Arc<ScrubRules>,
   pub(crate) filter_chain: FilterChain,
   pub(crate) from_cache: bool,
 }
@@ -387,10 +388,10 @@ impl BufferProducers {
     for (buffer_id, (buffer_type, _)) in buffer_manager.buffers() {
       match buffer_type {
         bd_proto::protos::config::v1::config::buffer_config::Type::CONTINUOUS => {
-          continuous_buffer_ids.insert(buffer_id.clone().into());
+          continuous_buffer_ids.insert(buffer_id.into());
         },
         bd_proto::protos::config::v1::config::buffer_config::Type::TRIGGER => {
-          trigger_buffer_ids.insert(buffer_id.clone().into());
+          trigger_buffer_ids.insert(buffer_id.into());
         },
       }
     }

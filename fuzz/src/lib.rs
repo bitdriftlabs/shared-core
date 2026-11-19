@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use arbitrary::Arbitrary;
 use bd_buffer::buffer::{
@@ -34,6 +34,7 @@ use tempfile::TempDir;
 pub mod buffer_corruption_fuzz_test;
 pub mod json_path;
 pub mod mpsc_buffer_fuzz_test;
+pub mod regex_prefilter;
 pub mod spsc_buffer_fuzz_test;
 pub mod versioned_kv_journal;
 pub mod workflow_state;

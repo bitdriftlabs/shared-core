@@ -3,9 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
-
-#![allow(clippy::unwrap_used)]
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{Driver, stop_worker, wait_for_configuration};
 use crate::issue_report::{IssueKind, IssueReport, StackFrame};
@@ -21,8 +19,8 @@ use bd_test_helpers::config_helper::{
   make_buffer_matcher_matching_everything,
 };
 use bd_test_helpers::runtime::{ValueKind, make_update};
+use bd_test_helpers::test_api_server::log_upload::hydrate_logs;
 use bd_test_helpers::test_api_server::{ServerHandle, StreamAction, start_server};
-use protobuf::Message;
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -108,12 +106,8 @@ async fn next_logs(server: &mut ServerHandle, wanted: &[&str]) -> Vec<Log> {
       .any(|log: &Log| log.message.string_data() == *message)
   }) {
     let upload = server.next_log_upload().await.unwrap();
-    logs.extend(
-      upload
-        .proto_logs
-        .iter()
-        .map(|bytes| Log::parse_from_bytes(bytes).unwrap()),
-    );
+    // Interned logs carry their persistent fields only after hydration.
+    logs.extend(hydrate_logs(&upload));
   }
   logs
 }
@@ -371,7 +365,7 @@ fn field<'a>(log: &'a Log, key: &str) -> &'a str {
     .iter()
     .find(|field| field.key == key)
     .unwrap()
-    .value
+    .value()
     .string_data()
 }
 
@@ -384,8 +378,10 @@ fn args(port: u16) -> LoggerArgs {
     app_version: "1.2.3".into(),
     app_version_code: "123".into(),
     model: "test-device".into(),
+    os_version: None,
     entity_id: None,
     session_strategy: SessionStrategyConfig::Fixed,
+    attachment_fixture_directory: None,
   }
 }
 

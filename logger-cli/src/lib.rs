@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 mod fake_perfetto;
 mod fake_screenshot;
@@ -14,4 +14,6 @@ pub mod logger;
 pub mod metadata;
 pub mod service;
 pub mod storage;
+pub mod synthetic_artifact;
+pub mod synthetic_fixture;
 pub mod types;

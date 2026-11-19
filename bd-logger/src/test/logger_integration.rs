@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
 use crate::logger::{Block, CaptureSession};
@@ -64,6 +64,7 @@ use bd_proto::protos::client::api::{
   ClientStateUpdate,
   DebugDataRequest,
   DeviceCommandUpdate,
+  UploadArtifactRequest,
   client_state_update,
   debug_data_request,
   device_command_update,
@@ -107,6 +108,8 @@ use bd_test_helpers::config_helper::{
   make_workflow_config_flushing_buffer,
   match_message,
 };
+use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
+use bd_test_helpers::filter::scrub_rule;
 use bd_test_helpers::metadata::EmptyMetadata;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
@@ -517,7 +520,7 @@ fn log_upload_with_compression() {
         assert_eq!(compressed_contents.message.string_data(), "some log");
         assert_eq!(compressed_contents.fields[0].key, "super_long");
         assert_eq!(
-          compressed_contents.fields[0].value.string_data(),
+          compressed_contents.fields[0].value().string_data(),
           "A".repeat((i + 1) * 1024)
         );
       }
@@ -2762,6 +2765,63 @@ fn transforms_emitted_logs_according_to_filters() {
 }
 
 #[test]
+fn scrub_rules_apply_before_filters_and_workflows() {
+  let mut setup = Setup::new();
+
+  setup.send_runtime_update();
+
+  // Send down a configuration:
+  //  * a single trigger buffer ('default') which accepts all logs
+  //  * a workflow which flushes the buffers when it sees "copy" equal to the scrubbed value
+  //  * a filter that copies "secret" into "copy", as the `_path_template` filter does
+  //  * a scrub rule that redacts "secret"
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: make_workflow_config_flushing_buffer(
+        "default",
+        field_equals("copy", "<redacted>"),
+      ),
+      filters_configuration: vec![Filter {
+        matcher: Some(message_equals("copy me")).into(),
+        transforms: vec![set_field!(captured("copy") = field_value!(field "secret"))],
+        ..Default::default()
+      }],
+      scrub_rules: vec![scrub_rule(regex_match_and_substitute_field!(
+        "secret",
+        ".+",
+        "<redacted>"
+      ))],
+      ..Default::default()
+    },
+  ));
+
+  assert!(maybe_nack.is_none());
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "copy me".into(),
+    [("secret".into(), AnnotatedLogField::new_custom("hunter2"))].into(),
+    [].into(),
+    None,
+  );
+
+  // The workflow only fires if the filter copied the scrubbed value, so an upload proves both
+  // the ordering and that workflows see scrubbed fields.
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    let log = log_upload.logs().into_iter().find(|log| log.message() == "copy me").unwrap();
+    assert_eq!("<redacted>", log.field("secret"));
+    assert_eq!("<redacted>", log.field("copy"));
+  });
+}
+
+#[test]
 fn remote_buffer_upload() {
   let mut setup = Setup::new();
 
@@ -3361,6 +3421,25 @@ fn command_state_metadata() -> HashMap<String, Data> {
     .collect()
 }
 
+fn assert_single_fragment_upload(
+  setup: &mut Setup,
+  begin: &UploadArtifactRequest,
+  expected: &[u8],
+) {
+  assert_eq!(begin.chunk_index, None);
+  assert_eq!(begin.contents.as_slice(), b"");
+  assert_eq!(begin.chunks.len(), 1);
+  let fragment = setup.server.blocking_next_artifact_upload().unwrap();
+  assert_eq!(fragment.artifact_id, begin.artifact_id);
+  assert_eq!(fragment.command_id, begin.command_id);
+  assert_eq!(fragment.chunk_index, Some(0));
+  assert_eq!(fragment.logical_bytes, begin.logical_bytes);
+  assert_eq!(fragment.chunks, []);
+  let mut decoder = ZlibDecoder::new(Vec::new());
+  decoder.write_all(&fragment.contents).unwrap();
+  assert_eq!(decoder.finish().unwrap(), expected);
+}
+
 #[test]
 fn screenshot_device_command_stages_correlated_attachment() {
   let command_id = "d4a6e1e7-4bf8-434e-b42b-fde1a3d9d0cb";
@@ -3398,7 +3477,7 @@ fn screenshot_device_command_stages_correlated_attachment() {
       ..
     }) if received_command_id == command_id
   );
-  let artifact_id = assert_matches!(
+  let artifact = assert_matches!(
     setup.server.blocking_next_artifact_upload(),
     Some(artifact) => {
       assert_eq!(artifact.command_id.as_deref(), Some(command_id));
@@ -3408,12 +3487,11 @@ fn screenshot_device_command_stages_correlated_attachment() {
         artifact.payload_encoding.enum_value_or_default(),
         ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
       );
-      let mut decoder = ZlibDecoder::new(Vec::new());
-      decoder.write_all(&artifact.contents).unwrap();
-      assert_eq!(decoder.finish().unwrap(), screenshot);
-      artifact.artifact_id
+      artifact
     }
   );
+  assert_single_fragment_upload(&mut setup, &artifact, &screenshot);
+  let artifact_id = artifact.artifact_id;
   assert_matches!(
     setup.server.blocking_next_device_command_update(),
     Some(DeviceCommandUpdate {
@@ -3503,10 +3581,7 @@ fn screenshot_device_command_reports_platform_handler_failures() {
         update_type: Some(device_command_update::Update_type::Failed(failed)),
         ..
       }) if received_command_id == command_id => {
-        assert_matches!(
-          failed.context.as_ref().and_then(|context| context.fields.get("error")),
-          Some(value) if value.data_type == Some(Data_type::StringData(expected_error.to_string()))
-        );
+        assert_eq!(failed.failure_message.as_deref(), Some(expected_error));
       }
     );
     setup.logger_handle.flush_state(Block::Yes {
@@ -3688,10 +3763,7 @@ fn runtime_device_command_handlers_follow_registration_changes() {
     update_type: Some(device_command_update::Update_type::Failed(failed)),
     ..
   }) => {
-    assert_matches!(
-      failed.context.as_ref().and_then(|context| context.fields.get("error")),
-      Some(value) if value.data_type == Some(Data_type::StringData("command unknown".to_string()))
-    );
+    assert_eq!(failed.failure_message.as_deref(), Some("command unknown"));
   });
 
   other_handle
@@ -3910,8 +3982,8 @@ fn registered_custom_device_command_reports_failure_context() {
   let registered_command_id = "com.example.capture.failure";
   let handler: Arc<dyn RegisteredCommandHandler> = Arc::new(TestDeviceCommandHandler {
     result: Mutex::new(Some(CommandResult::Failed {
-      error: CommandError::HandlerFailed("capture failed".to_string()),
-      fields: [("reason".into(), "camera unavailable".into())].into(),
+      error: CommandError::HandlerFailed("profiling_failed".to_string()),
+      fields: [("error".into(), "ERROR_FAILED_RATE_LIMIT_PROCESS".into())].into(),
     })),
   });
   let mut setup = Setup::new_with_options(SetupOptions {
@@ -3941,8 +4013,8 @@ fn registered_custom_device_command_reports_failure_context() {
     ..
   }) => {
     let fields = &failed.context.as_ref().unwrap().fields;
-    assert_matches!(fields.get("error"), Some(value) if value.data_type == Some(Data_type::StringData("capture failed".to_string())));
-    assert_matches!(fields.get("reason"), Some(value) if value.data_type == Some(Data_type::StringData("camera unavailable".to_string())));
+    assert_eq!(failed.failure_message.as_deref(), Some("profiling_failed"));
+    assert_eq!(fields["error"].string_data(), "ERROR_FAILED_RATE_LIMIT_PROCESS");
   });
 }
 
@@ -3987,7 +4059,7 @@ fn registered_custom_device_command_stages_correlated_attachment() {
       ..
     })
   );
-  let artifact_id = assert_matches!(
+  let artifact = assert_matches!(
     setup.server.blocking_next_artifact_upload(),
     Some(artifact) => {
       assert_eq!(artifact.command_id.as_deref(), Some(command_id));
@@ -3998,12 +4070,11 @@ fn registered_custom_device_command_stages_correlated_attachment() {
         artifact.payload_encoding.enum_value_or_default(),
         ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
       );
-      let mut decoder = ZlibDecoder::new(Vec::new());
-      decoder.write_all(&artifact.contents).unwrap();
-      assert_eq!(decoder.finish().unwrap(), b"custom-command-attachment");
-      artifact.artifact_id
+      artifact
     }
   );
+  assert_single_fragment_upload(&mut setup, &artifact, b"custom-command-attachment");
+  let artifact_id = artifact.artifact_id;
   assert_matches!(setup.server.blocking_next_device_command_update(), Some(DeviceCommandUpdate {
     update_sequence_number: 2,
     update_type: Some(device_command_update::Update_type::Completed(completed)),
@@ -4266,15 +4337,13 @@ fn workflow_command_attachment_emits_metadata_and_uploads_zlib() {
     artifact.payload_encoding.enum_value_or_default(),
     ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
   );
-  let mut decoder = ZlibDecoder::new(Vec::new());
-  decoder.write_all(&artifact.contents).unwrap();
-  assert_eq!(decoder.finish().unwrap(), attachment);
+  assert_single_fragment_upload(&mut setup, &artifact, &attachment);
 
   let payload_path = setup
     .sdk_directory
     .path()
     .join("workflow-attachments")
-    .join(format!("{artifact_id}.payload"));
+    .join(format!("{artifact_id}.raw"));
   assert_eq!(
     setup.wait_for_workflow_attachment_upload_completion(),
     artifact_id
@@ -4457,15 +4526,13 @@ fn workflow_screenshot_command_uploads_attachment() {
     artifact.payload_encoding.enum_value_or_default(),
     ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
   );
-  let mut decoder = ZlibDecoder::new(Vec::new());
-  decoder.write_all(&artifact.contents).unwrap();
-  assert_eq!(decoder.finish().unwrap(), screenshot);
+  assert_single_fragment_upload(&mut setup, &artifact, &screenshot);
 
   let payload_path = setup
     .sdk_directory
     .path()
     .join("workflow-attachments")
-    .join(format!("{artifact_id}.payload"));
+    .join(format!("{artifact_id}.raw"));
   assert_eq!(
     setup.wait_for_workflow_attachment_upload_completion(),
     artifact_id
@@ -4525,10 +4592,7 @@ fn unregistered_custom_device_command_fails_without_acceptance() {
     update_type: Some(device_command_update::Update_type::Failed(failed)),
     ..
   }) => {
-    assert_matches!(
-      failed.context.as_ref().and_then(|context| context.fields.get("error")),
-      Some(value) if value.data_type == Some(Data_type::StringData("command unknown".to_string()))
-    );
+    assert_eq!(failed.failure_message.as_deref(), Some("command unknown"));
   });
   setup.logger_handle.flush_state(Block::Yes {
     timeout: 15.std_seconds(),
@@ -5922,6 +5986,75 @@ fn workflow_log_match_uses_server_pushed_feature_flag_state() {
     stat_upload.get_workflow_counter("server_pushed_state_action", labels! {}),
     Some(1),
   );
+}
+
+#[test]
+fn state_change_flush_scrubs_global_fields() {
+  let mut setup = Setup::new();
+
+  setup.send_runtime_update();
+
+  // A workflow that flushes the buffer when a feature flag is set, and a scrub rule redacting a
+  // global field.
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_state_change_rule(
+      bd_proto::protos::state::scope::StateScope::FEATURE_FLAG,
+      "trigger_flush",
+      Some("true"),
+    ),
+    &[make_flush_buffers_action(
+      &["default"],
+      None,
+      "flush_action_id",
+    )],
+  );
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![WorkflowBuilder::new("flush_workflow", &[&a, &b]).build()],
+      scrub_rules: vec![scrub_rule(regex_match_and_substitute_field!(
+        "secret",
+        ".+",
+        "<redacted>"
+      ))],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  // A field set on the logger is carried by every log, including the synthetic log a state change
+  // adds when it triggers a flush.
+  setup
+    .logger_handle
+    .add_log_field("secret".to_string(), "hunter2".into());
+
+  setup.log_then_flush(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "ordinary log".into(),
+    [].into(),
+    [].into(),
+  );
+
+  setup
+    .logger_handle
+    .set_feature_flag_exposure("trigger_flush".to_string(), Some("true".to_string()));
+
+  // Both the ordinary log and the synthetic log the state change adds carry the global field,
+  // redacted.
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    let logs = log_upload.logs();
+    let ordinary = logs.iter().find(|log| log.message() == "ordinary log").unwrap();
+    assert_eq!(ordinary.field("secret"), "<redacted>");
+    let synthetic = logs.iter().find(|log| log.message() == "State Change").unwrap();
+    assert_eq!(synthetic.field("secret"), "<redacted>");
+  });
 }
 
 #[test]

@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #![deny(
   clippy::expect_used,
@@ -14,9 +14,32 @@
   clippy::unwrap_used
 )]
 
+mod crash_profile_source;
+mod input;
+mod report_attribution;
+mod retained;
 mod uploader;
 
-pub use uploader::{Client, EnqueueError, MockClient, SnappedFeatureFlag, UploadSource, Uploader};
+#[cfg(any(target_os = "android", test, feature = "test-support"))]
+pub mod crash_profile;
+#[cfg(any(target_os = "android", test, feature = "test-support"))]
+pub mod crash_profile_attribution;
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test;
+
+pub use bd_metadata::artifact::PERFETTO_CONTENT_TYPE;
+pub use crash_profile_source::encode_source;
+pub use report_attribution::{ReportAttribution, restore_pending_reports};
+pub use uploader::{
+  ArtifactStore,
+  Client,
+  EnqueueError,
+  MockClient,
+  SnappedFeatureFlag,
+  UploadSource,
+  Uploader,
+};
 
 #[cfg(test)]
 #[ctor::ctor(unsafe)]

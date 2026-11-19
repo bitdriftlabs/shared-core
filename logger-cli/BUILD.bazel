@@ -1,10 +1,12 @@
+load("@crates//logger-cli:data.bzl", "crate_data")
 load("//tools/lint:linters.bzl", "rust_binary")
 load("//tools/rust:feature_variants.bzl", "all_crate_deps_with_overrides")
-load("//tools/rust:tests.bzl", "rust_library_with_test")
+load("//tools/rust:tests.bzl", "rust_library_test", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
 
 LOGGER_CLI_DEPS = all_crate_deps_with_overrides(
+    crate_data(),
     dependency_overrides = {
         "//shared-core/bd-client-stats": "//shared-core/bd-client-stats:bd-client-stats-logger-cli",
     },
@@ -18,6 +20,7 @@ rust_library_with_test(
         exclude = ["src/bin/**/*.rs"],
     ),
     compile_data = ["src/testdata/fake_screenshot.jpg"],
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "logger_cli",
     crate_root = "src/lib.rs",
@@ -33,6 +36,12 @@ rust_binary(
     crate_root = "src/main.rs",
     edition = "2024",
     deps = LOGGER_CLI_DEPS + [":logger-cli"],
+)
+
+rust_library_test(
+    name = "cli-test",
+    crate = ":logger-cli-bin",
+    crate_data = crate_data(),
 )
 
 rust_binary(

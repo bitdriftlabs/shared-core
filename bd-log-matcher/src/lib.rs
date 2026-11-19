@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #![deny(
   clippy::expect_used,
@@ -18,6 +18,7 @@ pub use bd_log_primitives::TypedLogLevel;
 
 pub mod builder;
 pub mod matcher;
+pub mod regex_prefilter;
 pub mod state_value_matcher;
 mod value_matcher;
 pub mod version;

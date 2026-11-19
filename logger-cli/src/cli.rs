@@ -3,10 +3,13 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use clap::{ArgAction, Args, Parser, Subcommand};
+use logger_cli::issue_report::IssueKind;
 use logger_cli::logger::{LoggerArgs, SessionStrategyConfig};
+use logger_cli::synthetic_artifact::SourceKind;
+use logger_cli::synthetic_fixture::{FixtureKind, Pattern};
 use logger_cli::types::{LogLevel, LogType, Platform, RuntimeValueType};
 use std::collections::HashMap;
 use std::hash::BuildHasher;
@@ -87,6 +90,15 @@ pub enum Command {
   /// Generate a fake crash report and enqueue it for upload
   EnqueueFakeCrash(FakeCrashCommand),
 
+  /// Generate an immutable, deterministic synthetic attachment fixture.
+  GenerateAttachment(GenerateAttachmentCommand),
+
+  /// List canonical parent report IDs observed by the SDK.
+  SyntheticReports,
+
+  /// Submit a fixture through the real post-attribution crash-profile uploader.
+  EnqueueSyntheticProfile(SyntheticProfileCommand),
+
   /// Generate a new session
   NewSession,
 
@@ -113,6 +125,12 @@ pub enum Command {
 
   /// Set the current entity ID
   SetEntityId(SetEntityIdCommand),
+
+  /// Set a persistent field included with every subsequent log
+  AddField(AddFieldCommand),
+
+  /// Remove a persistent field
+  RemoveField(RemoveFieldCommand),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -160,6 +178,14 @@ pub struct StartCommand {
   /// Device model
   #[clap(long, required = false, default_value = "iPhone12,1")]
   pub model: String,
+
+  /// Operating system version reported to the server, which some commands require
+  #[clap(long)]
+  pub os_version: Option<String>,
+
+  /// Enable synthetic attachment commands for files in this directory.
+  #[clap(long)]
+  pub attachment_fixture_directory: Option<PathBuf>,
 }
 
 impl From<StartCommand> for LoggerArgs {
@@ -183,10 +209,40 @@ impl From<StartCommand> for LoggerArgs {
       app_version: cmd.app_version,
       app_version_code: cmd.app_version_code,
       model: cmd.model,
+      os_version: cmd.os_version,
       entity_id: cmd.entity_id,
       session_strategy,
+      attachment_fixture_directory: cmd.attachment_fixture_directory,
     }
   }
+}
+
+#[derive(Args, Debug)]
+pub struct GenerateAttachmentCommand {
+  #[clap(long)]
+  pub output: PathBuf,
+  #[clap(long)]
+  pub size_bytes: u64,
+  #[clap(long, value_enum, default_value = "perfetto")]
+  pub kind: FixtureKind,
+  #[clap(long, value_enum, default_value = "zeros")]
+  pub pattern: Pattern,
+  #[clap(long, default_value_t = 1)]
+  pub seed: u64,
+}
+
+#[derive(Args, Debug)]
+pub struct SyntheticProfileCommand {
+  #[clap(long)]
+  pub file: String,
+  #[clap(long, value_enum, default_value = "path")]
+  pub source: SourceKind,
+  #[clap(long, default_value_t = 0)]
+  pub offset_bytes: u64,
+  #[clap(long, required = true)]
+  pub parent: Vec<String>,
+  #[clap(long, default_value = "application/vnd.bitdrift.perfetto-trace")]
+  pub content_type: String,
 }
 
 #[derive(clap::ValueEnum, PartialEq, Eq, Debug, Clone)]
@@ -236,6 +292,9 @@ pub struct EnqueueCommand {
 
 #[derive(Args, Debug, Clone)]
 pub struct FakeCrashCommand {
+  /// Report kind; Android ANR and JVM `OutOfMemoryError` reports expose crash-profile links.
+  #[clap(long, value_enum, default_value = "native-crash")]
+  pub kind: IssueKind,
   /// Crash reason reported in the generated client report
   #[clap(long, default_value = "FakeCrash")]
   pub reason: String,
@@ -271,6 +330,10 @@ pub struct FakeCrashCommand {
   /// Immediately trigger upload of pending crash reports after writing the file
   #[clap(long, action = ArgAction::SetTrue)]
   pub upload: bool,
+
+  /// Attribute an immediately uploaded synthetic report to the running session.
+  #[clap(long, requires = "upload")]
+  pub current_session: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -316,6 +379,21 @@ pub struct SetFeatureFlagCommand {
   /// Optional variant value for the feature flag
   #[clap(long)]
   pub variant: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct AddFieldCommand {
+  /// Field key
+  pub key: String,
+
+  /// Field value
+  pub value: String,
+}
+
+#[derive(Args, Debug)]
+pub struct RemoveFieldCommand {
+  /// Field key
+  pub key: String,
 }
 
 #[derive(Args, Debug)]

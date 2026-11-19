@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[path = "./idle_timeout_test.rs"]
 mod idle_timeout_test;
@@ -12,10 +12,12 @@ use super::{Api, PlatformNetworkManager, PlatformNetworkStream, TestHooks};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::reconnect::ReconnectState;
 use crate::upload::{
+  DEVICE_COMMAND_RETENTION,
   DeviceCommandState,
   DeviceCommandUpdateTracker,
   MAX_KNOWN_COMMANDS,
   Tracked,
+  TrackedArtifactUpload,
   TrackedDeviceCommandUpdate,
 };
 use crate::{
@@ -48,6 +50,7 @@ use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::device_command_update_ack::Disposition as AckDisposition;
 use bd_proto::protos::client::api::handshake_response::StreamSettings;
 use bd_proto::protos::client::api::state_update_request::StartedSession;
+use bd_proto::protos::client::api::upload_artifact_response::State as ArtifactUploadState;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
@@ -80,13 +83,7 @@ use bd_state::StateReader;
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
-use bd_time::{
-  OffsetDateTimeExt,
-  TestTimeProvider,
-  TimeDurationExt,
-  TimeProvider,
-  ToProtoDuration,
-};
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
 use protobuf::{EnumOrUnknown, Message, MessageField};
 use std::collections::{BTreeMap, HashMap};
@@ -1443,7 +1440,7 @@ async fn data_idle_timeout_data_resets_timeout() {
 }
 
 #[tokio::test]
-async fn zlib_workflow_and_command_artifacts_skip_grpc_compression() {
+async fn preencoded_artifacts_and_chunks_skip_grpc_compression() {
   let mut setup = Setup::new().await;
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -1494,6 +1491,25 @@ async fn zlib_workflow_and_command_artifacts_skip_grpc_compression() {
       if request.command_id.as_deref() == Some("command_id")
         && request.payload_encoding.enum_value_or_default()
           == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+  );
+
+  let (tracked, _response) = TrackedArtifactUpload::new(
+    "chunk".into(),
+    UploadArtifactRequest {
+      logical_bytes: Some(1000),
+      chunk_index: Some(0),
+      contents: vec![b'a'; 1000],
+      ..Default::default()
+    },
+  );
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  let skipped_frame = setup.send_data_rx.recv().await.unwrap();
+  assert_eq!(skipped_frame[0], 0);
+  assert_matches!(
+    setup.decode(&skipped_frame).unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.chunk_index == Some(0)
   );
 
   let ordinary_upload = UploadArtifactRequest {
@@ -2025,7 +2041,7 @@ async fn command_artifact_acknowledgements_use_standard_upload_results() {
         ..Default::default()
       })
       .await;
-    assert_eq!(response.await.unwrap().success, error.is_empty());
+    assert_eq!(response.await.unwrap().error, error);
   }
 }
 
@@ -2276,7 +2292,7 @@ async fn device_command_update_waiter_retires_without_a_stream() {
     ..Default::default()
   };
   let (tracked, mut receiver) = TrackedDeviceCommandUpdate::new(update.command_id.clone(), update);
-  let tracked = tracked.with_remaining_time(std::time::Duration::from_secs(2));
+  let tracked = tracked.with_deadline(Instant::now() + std::time::Duration::from_secs(2));
   let mut tracker = DeviceCommandUpdateTracker::default();
   tracker.track_device_command_update(tracked).unwrap();
   tokio::time::advance(std::time::Duration::from_secs(1)).await;
@@ -2290,10 +2306,9 @@ async fn device_command_update_waiter_retires_without_a_stream() {
   assert_eq!(tracker.retained_update_count(), 0);
 }
 
-#[test]
-fn device_command_registry_backpressures_until_original_expiry_and_fences_new_sdk() {
-  let clock = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
-  let state = DeviceCommandState::new(clock.clone());
+#[tokio::test(start_paused = true)]
+async fn device_command_registry_backpressures_until_local_deadline_and_fences_new_sdk() {
+  let state = DeviceCommandState::new();
   let command = DeviceCommandRequest {
     command_id: Uuid::new_v4().to_string().into(),
     sdk_instance_id: state.sdk_instance_id.clone().into(),
@@ -2307,28 +2322,46 @@ fn device_command_registry_backpressures_until_original_expiry_and_fences_new_sd
   for _ in 0 .. MAX_KNOWN_COMMANDS {
     let mut occupied = command.clone();
     occupied.command_id = Uuid::new_v4().to_string().into();
-    occupied.expires_at.as_mut().unwrap().seconds = 2;
     assert!(state.admit(&occupied));
   }
   assert!(!state.admit(&command));
   assert_eq!(state.known_command_ids().len(), MAX_KNOWN_COMMANDS);
   assert_eq!(
     state.admission_retry_delay(&command),
-    Some(2.seconds().unsigned_abs())
+    Some(DEVICE_COMMAND_RETENTION)
   );
-  clock.advance(2.seconds());
-  assert!(state.admit(&command));
+  tokio::time::advance(
+    DEVICE_COMMAND_RETENTION
+      .checked_sub(std::time::Duration::from_secs(2))
+      .unwrap(),
+  )
+  .await;
   assert!(!state.admit(&command));
+  assert_eq!(
+    state.admission_retry_delay(&command),
+    Some(std::time::Duration::from_secs(2))
+  );
+  tokio::time::advance(std::time::Duration::from_secs(2)).await;
+  assert!(state.admit(&command));
+  let deadline = state.deadline(&command.command_id).unwrap();
+  assert_eq!(deadline, Instant::now() + DEVICE_COMMAND_RETENTION);
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  assert!(!state.admit(&command));
+  assert_eq!(state.deadline(&command.command_id), Some(deadline));
   assert_eq!(
     state.known_command_ids(),
     vec![command.command_id.to_string()]
   );
-  let recreated = DeviceCommandState::new(clock.clone());
+  let recreated = DeviceCommandState::new();
   assert_ne!(recreated.sdk_instance_id, state.sdk_instance_id);
   assert!(!recreated.admit(&command));
   assert_eq!(recreated.known_command_ids(), Vec::<String>::new());
-  clock.advance(8.seconds());
-  assert!(!state.admit(&command));
+  tokio::time::advance(
+    DEVICE_COMMAND_RETENTION
+      .checked_sub(std::time::Duration::from_secs(1))
+      .unwrap(),
+  )
+  .await;
   assert_eq!(state.known_command_ids(), Vec::<String>::new());
 }
 
@@ -2400,7 +2433,7 @@ fn command_update_with_result_bytes(bytes: usize) -> DeviceCommandUpdate {
 
 #[tokio::test(start_paused = true)]
 async fn device_command_update_byte_budget_survives_reconnect_and_backpressures_until_ack() {
-  let state = DeviceCommandState::new(Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)));
+  let state = DeviceCommandState::new();
   let mut setup = Setup::new().await;
   setup.next_stream(1.seconds()).await.unwrap();
   setup.handshake_response(0, None, None).await;
@@ -2486,10 +2519,8 @@ async fn device_command_oversized_result_becomes_bounded_failure() {
     panic!("expected an oversized-result failure");
   };
   assert_eq!(
-    failed.context.as_ref().unwrap().fields["error"].data_type,
-    Some(Data_type::StringData(
-      "device command result exceeds the 4 MiB update limit".to_string()
-    ))
+    failed.failure_message.as_deref(),
+    Some("device command result exceeds the 4 MiB update limit")
   );
   let mut setup = Setup::new().await;
   setup.next_stream(1.seconds()).await.unwrap();
@@ -2522,20 +2553,18 @@ async fn device_command_oversized_result_becomes_bounded_failure() {
 #[tokio::test(start_paused = true)]
 async fn device_command_update_byte_budget_is_released_on_retirement_expiry_and_teardown() {
   for release in ["retirement", "expiry", "teardown"] {
-    let state =
-      DeviceCommandState::new(Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)));
+    let state = DeviceCommandState::new();
     let update = command_update_with_result_bytes(3 * 1024 * 1024);
     let (tracked, response) =
       TrackedDeviceCommandUpdate::new(update.command_id.clone(), update.clone());
     let tracked = tracked
-      .with_remaining_time(std::time::Duration::from_secs(2))
+      .with_deadline(Instant::now() + std::time::Duration::from_secs(2))
       .with_byte_budget(&state)
       .await
       .unwrap();
     let mut tracker = DeviceCommandUpdateTracker::default();
     tracker.track_device_command_update(tracked).unwrap();
-    let fresh_state =
-      DeviceCommandState::new(Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)));
+    let fresh_state = DeviceCommandState::new();
     let fresh = command_update_with_result_bytes(3 * 1024 * 1024);
     let (fresh, fresh_response) = TrackedDeviceCommandUpdate::new(fresh.command_id.clone(), fresh);
     let mut fresh_waiting = Box::pin(fresh.with_byte_budget(&fresh_state));
@@ -2767,6 +2796,183 @@ async fn unknown_stats_upload_response_fails_stream() {
     .await;
 
   assert!(setup.next_stream(2.seconds()).await.is_some());
+}
+
+#[tokio::test(start_paused = true)]
+async fn chunk_progress_cannot_complete_a_whole_file_artifact_upload() {
+  for response in [
+    UploadArtifactResponse {
+      state: ArtifactUploadState::STATE_RECEIVING.into(),
+      ..Default::default()
+    },
+    UploadArtifactResponse {
+      state: ArtifactUploadState::STATE_FINALIZED.into(),
+      ..Default::default()
+    },
+    UploadArtifactResponse {
+      state: EnumOrUnknown::from_i32(99),
+      ..Default::default()
+    },
+    UploadArtifactResponse {
+      received_chunks: vec![1],
+      ..Default::default()
+    },
+  ] {
+    let mut setup = Setup::new().await;
+    assert!(setup.next_stream(1.seconds()).await.is_some());
+    setup
+      .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+      .await;
+    let (tracked, receiver) = Tracked::new("pending".into(), UploadArtifactRequest::default());
+    setup
+      .send_request(DataUpload::ArtifactUpload(tracked))
+      .await;
+    assert_matches!(
+      setup.next_request(1.seconds()).await.unwrap().request_type,
+      Some(Request_type::ArtifactUpload(_))
+    );
+    setup
+      .send_response(ApiResponse {
+        response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
+          upload_uuid: "pending".into(),
+          ..response
+        })),
+        ..Default::default()
+      })
+      .await;
+    assert!(receiver.await.is_err());
+    setup.wait_for_reconnect_backoff_started().await;
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn chunk_acknowledgements_are_typed_and_thin_operations_can_cross_streams() {
+  let mut setup = Setup::new().await;
+  setup.next_stream(1.seconds()).await.unwrap();
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+  let (tracked, response) = TrackedArtifactUpload::new(
+    "begin".into(),
+    UploadArtifactRequest {
+      upload_uuid: "begin".into(),
+      logical_bytes: Some(0),
+      ..Default::default()
+    },
+  );
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "begin");
+  let ack = UploadArtifactResponse {
+    upload_uuid: "begin".into(),
+    state: ArtifactUploadState::STATE_RECEIVING.into(),
+    ..Default::default()
+  };
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ArtifactUpload(ack.clone())),
+      ..Default::default()
+    })
+    .await;
+  assert_eq!(response.await.unwrap(), ack);
+  let (tracked, lost_ack) = TrackedArtifactUpload::new(
+    "lost-chunk".into(),
+    UploadArtifactRequest {
+      upload_uuid: "lost-chunk".into(),
+      logical_bytes: Some(1),
+      chunk_index: Some(0),
+      contents: vec![42],
+      ..Default::default()
+    },
+  );
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "lost-chunk");
+  setup.close_stream().await;
+  setup.wait_for_reconnect_backoff_started().await;
+  assert!(lost_ack.await.is_err());
+  let (cancelled, cancelled_response) = TrackedArtifactUpload::new(
+    "cancelled".into(),
+    UploadArtifactRequest {
+      upload_uuid: "cancelled".into(),
+      logical_bytes: Some(0),
+      ..Default::default()
+    },
+  );
+  drop(cancelled_response);
+  setup
+    .send_request(DataUpload::ArtifactUpload(cancelled))
+    .await;
+  let (tracked, response) = TrackedArtifactUpload::new(
+    "query".into(),
+    UploadArtifactRequest {
+      upload_uuid: "query".into(),
+      logical_bytes: Some(0),
+      ..Default::default()
+    },
+  );
+  setup.next_stream(2.seconds()).await.unwrap();
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "cancelled");
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
+        upload_uuid: "cancelled".into(),
+        state: ArtifactUploadState::STATE_RECEIVING.into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })
+    .await;
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "query");
+  let ack = UploadArtifactResponse {
+    upload_uuid: "query".into(),
+    state: ArtifactUploadState::STATE_RECEIVING.into(),
+    ..Default::default()
+  };
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ArtifactUpload(ack.clone())),
+      ..Default::default()
+    })
+    .await;
+  assert_eq!(response.await.unwrap(), ack);
+  let (tracked, response) = TrackedArtifactUpload::new(
+    "resume".into(),
+    UploadArtifactRequest {
+      upload_uuid: "resume".into(),
+      logical_bytes: Some(0),
+      ..Default::default()
+    },
+  );
+  setup
+    .send_request(DataUpload::ArtifactUpload(tracked))
+    .await;
+  assert_matches!(setup.next_request(1.seconds()).await.unwrap().request_type,
+    Some(Request_type::ArtifactUpload(request)) if request.upload_uuid == "resume");
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ArtifactUpload(UploadArtifactResponse {
+        upload_uuid: "wrong-correlation".into(),
+        state: ArtifactUploadState::STATE_RECEIVING.into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })
+    .await;
+  assert!(response.await.is_err());
+  setup.wait_for_reconnect_backoff_started().await;
 }
 
 #[tokio::test(start_paused = true)]

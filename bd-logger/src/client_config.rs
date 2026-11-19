@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./client_config_test.rs"]
@@ -27,10 +27,10 @@ use bd_client_common::file::write_compressed_protobuf;
 use bd_client_common::payload_conversion::{ClientConfigurationUpdateAck, IntoRequest};
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_stats_store::{Counter, Scope};
-use bd_log_filter::FilterChain;
+use bd_log_filter::{FilterChain, ScrubRules};
 use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{EncodableLog, FieldsRef};
+use bd_log_primitives::{EncodableLog, FieldsRef, Log};
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, DeviceCommandRequest};
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -42,6 +42,7 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
+use bd_proto::protos::filter::scrub::ScrubConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
 use bd_stats_common::Counter as _;
 use bd_time::TimeProvider;
@@ -72,6 +73,7 @@ pub struct Configuration {
   debug_workflows: WorkflowsConfigurationProto,
   bdtail: BdTailConfigurations,
   filters: FiltersConfiguration,
+  scrub: ScrubConfiguration,
 }
 
 impl Configuration {
@@ -82,6 +84,7 @@ impl Configuration {
       debug_workflows: sow.debug_workflows.unwrap_or_default(),
       bdtail: sow.bdtail_configuration.unwrap_or_default(),
       filters: sow.filters_configuration.unwrap_or_default(),
+      scrub: sow.scrub_configuration.unwrap_or_default(),
     }
   }
 }
@@ -265,6 +268,10 @@ pub struct LoggerUpdate {
   device_command_dispatcher: DeviceCommandDispatcher,
   stream_config_parse_failure: Counter,
   filter_config_parse_failure: Counter,
+  scrub_config_parse_failure: Counter,
+  // Publishes each applied configuration's scrub rules to the artifact uploader, which scrubs
+  // upload metadata with them on a best-effort basis.
+  scrub_rules_tx: tokio::sync::watch::Sender<Arc<ScrubRules>>,
 }
 
 impl LoggerUpdate {
@@ -281,6 +288,7 @@ impl LoggerUpdate {
     command_execution_policy: CommandExecutionPolicy,
     command_state: Arc<DeviceCommandState>,
     time_provider: Arc<dyn TimeProvider>,
+    scrub_rules_tx: tokio::sync::watch::Sender<Arc<ScrubRules>>,
     scope: &Scope,
   ) -> Self {
     Self {
@@ -300,6 +308,8 @@ impl LoggerUpdate {
       ),
       stream_config_parse_failure: scope.counter("stream_config_parse_failure"),
       filter_config_parse_failure: scope.counter("filter_config_parse_failure"),
+      scrub_config_parse_failure: scope.counter("scrub_config_parse_failure"),
+      scrub_rules_tx,
     }
   }
 }
@@ -342,6 +352,7 @@ impl ApplyConfig for LoggerUpdate {
       debug_workflows,
       bdtail,
       filters,
+      scrub,
     } = configuration;
     let device_commands = device_commands_from_bdtail(&bdtail)?;
     let has_active_tail_streams = bdtail
@@ -371,32 +382,39 @@ impl ApplyConfig for LoggerUpdate {
     self
       .filter_config_parse_failure
       .inc_by(filter_config_parse_failure_count);
+    let (scrub_rules, scrub_config_parse_failure_count) = ScrubRules::new(scrub);
+    self
+      .scrub_config_parse_failure
+      .inc_by(scrub_config_parse_failure_count);
+    let scrub_rules = Arc::new(scrub_rules);
 
-    if let Err(e) = self
-      .config_update_tx
-      .send(ConfigUpdate {
-        buffer_producers: BufferProducers::new(&self.buffer_manager)?,
-        buffer_selector: crate::buffer_selector::BufferSelector::new(&buffer)?,
-        // TODO(Augustyniak): Propagate the information about invalid workflows to server.
-        workflows_configuration,
-        tail_configs: TailConfigurations::new(
-          bdtail,
-          || {
-            // This is only called if we have active streams, which means we should have an active
-            // stream buffer.
-            Ok(
-              maybe_stream_buffer
-                .ok_or(InvariantError::Invariant)?
-                .register_producer()?,
-            )
-          },
-          || self.stream_config_parse_failure.inc(),
-        )?,
-        filter_chain,
-        from_cache,
-      })
-      .await
-    {
+    let config_update = ConfigUpdate {
+      buffer_producers: BufferProducers::new(&self.buffer_manager)?,
+      buffer_selector: crate::buffer_selector::BufferSelector::new(&buffer)?,
+      // TODO(Augustyniak): Propagate the information about invalid workflows to server.
+      workflows_configuration,
+      tail_configs: TailConfigurations::new(
+        bdtail,
+        || {
+          // This is only called if we have active streams, which means we should have an active
+          // stream buffer.
+          Ok(
+            maybe_stream_buffer
+              .ok_or(InvariantError::Invariant)?
+              .register_producer()?,
+          )
+        },
+        || self.stream_config_parse_failure.inc(),
+      )?,
+      scrub_rules: scrub_rules.clone(),
+      filter_chain,
+      from_cache,
+    };
+    // Publish the rules to the artifact uploader only once the configuration has been built, so a
+    // configuration rejected above never changes how artifact metadata is scrubbed.
+    self.scrub_rules_tx.send_replace(scrub_rules);
+
+    if let Err(e) = self.config_update_tx.send(config_update).await {
       log::debug!("failed to push config update to a channel: {e:?}");
       return Ok(());
     }
@@ -463,7 +481,7 @@ impl TailConfigurations {
         None
       };
 
-      active_streams.push((stream.stream_id.clone(), matcher));
+      active_streams.push((stream.stream_id, matcher));
     }
 
     if active_streams.is_empty() {
@@ -481,42 +499,57 @@ impl TailConfigurations {
     })
   }
 
-  pub(crate) fn maybe_stream_log(
+  /// The indices of the live tail streams that `log` matches.
+  pub(crate) fn matching_streams(
+    &self,
+    log: &Log,
+    state: &dyn bd_state::StateReader,
+  ) -> Vec<usize> {
+    let Some(inner) = &self.inner else {
+      return Vec::new();
+    };
+    inner
+      .active_streams
+      .iter()
+      .enumerate()
+      .filter(|(_, (_, matcher))| {
+        matcher.as_ref().is_none_or(|matcher| {
+          matcher.do_match(
+            log.log_level,
+            log.log_type,
+            &log.message,
+            FieldsRef::new(&log.fields, &log.matching_fields),
+            state,
+            &TinyMap::default(),
+            0,
+            MatchContext::default(),
+          )
+        })
+      })
+      .map(|(index, _)| index)
+      .collect()
+  }
+
+  /// Writes `log` to the stream buffer for the streams from `matching_streams`. Returns whether it
+  /// was written.
+  pub(crate) fn stream_log(
     &mut self,
     log: &mut EncodableLog,
-    state: &dyn bd_state::StateReader,
+    streams: &[usize],
   ) -> anyhow::Result<bool> {
     let Some(inner) = &mut self.inner else {
       return Ok(false);
     };
-
-    let active_streams = inner
-      .active_streams
+    let stream_ids = streams
       .iter()
-      .filter_map(|(id, matcher)| {
-        matcher
-          .as_ref()
-          .is_none_or(|matcher| {
-            matcher.do_match(
-              log.log.log_level,
-              log.log.log_type,
-              &log.log.message,
-              FieldsRef::new(&log.log.fields, &log.log.matching_fields),
-              state,
-              &TinyMap::default(),
-              0,
-              MatchContext::default(),
-            )
-          })
-          .then_some(id.as_str())
-      })
+      .filter_map(|index| inner.active_streams.get(*index))
+      .map(|(id, _)| id.as_str())
       .collect_vec();
-
-    if active_streams.is_empty() {
+    if stream_ids.is_empty() {
       return Ok(false);
     }
 
-    write_log_to_buffer(&mut inner.stream_producer, log, &[], &active_streams)?;
+    write_log_to_buffer(&mut inner.stream_producer, log, &[], &stream_ids)?;
 
     Ok(true)
   }

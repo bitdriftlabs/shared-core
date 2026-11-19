@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::RateLimitLayer;
 use crate::service::RequestSized;
@@ -12,7 +12,6 @@ use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::TimeDurationExt;
 use futures_util::future::BoxFuture;
 use futures_util::poll;
-use std::convert::Infallible;
 use time::ext::NumericalDuration;
 use tower::Service;
 
@@ -28,14 +27,14 @@ struct TestService {}
 impl tower::Service<&str> for TestService {
   type Response = String;
 
-  type Error = Infallible;
+  type Error = !;
 
-  type Future = BoxFuture<'static, std::result::Result<String, Infallible>>;
+  type Future = BoxFuture<'static, std::result::Result<String, !>>;
 
   fn poll_ready(
     &mut self,
     _cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<std::result::Result<(), Infallible>> {
+  ) -> std::task::Poll<std::result::Result<(), !>> {
     std::task::Poll::Ready(Ok(()))
   }
 

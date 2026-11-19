@@ -3,16 +3,16 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_proto::protos::state;
 
 pub mod cleanup;
-mod file_manager;
+pub mod file_manager;
 pub mod filename;
 pub mod framing;
-mod journal;
-mod memmapped_journal;
+pub mod journal;
+pub mod memmapped_journal;
 pub mod recovery;
 pub mod retention;
 pub mod store;

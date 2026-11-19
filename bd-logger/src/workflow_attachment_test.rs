@@ -3,12 +3,11 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{AttachmentStore, AttachmentStoreHandle, TestHooks, WorkflowAttachmentCleanupWorker};
 use crate::workflow_attachment_upload::WorkflowAttachmentUploadHandle;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
 use bd_artifact_upload::{Client as _, MockClient, UploadSource, Uploader};
 use bd_buffer::Buffer as RingBuffer;
 use bd_buffer::buffer::NonVolatileFileHeader;
@@ -20,15 +19,15 @@ use bd_client_common::file::{
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::Collector;
 use bd_log_primitives::{EncodableLog, Log, log_level};
-use bd_proto::protos::client::api::RuntimeUpdate;
+use bd_proto::protos::client::api::upload_artifact_response::State;
+use bd_proto::protos::client::api::{RuntimeUpdate, UploadArtifactResponse};
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, WorkflowAttachmentState};
 use bd_proto::protos::client::runtime::Runtime;
 use bd_proto::protos::client::runtime::runtime::Value;
 use bd_proto::protos::client::runtime::runtime::value::Type;
 use bd_proto::protos::logging::payload::LogType;
-use bd_runtime::runtime::attachment::MaxBytes;
-use bd_runtime::runtime::workflow_attachment::{MaxOwnedBytes, MaxOwnedFiles};
+use bd_runtime::runtime::chunked_artifact_upload::MaxLogicalBytes;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag, IntWatch};
 use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
@@ -50,11 +49,32 @@ use uuid::Uuid;
 const MIN_READ_LIMIT_BYTES: u64 = 32 * 1024 * 1024;
 
 impl AttachmentStore {
+  async fn payload_usage(&self) -> PayloadUsage {
+    let mut usage = PayloadUsage { files: 0, bytes: 0 };
+    let mut files = fs::read_dir(&self.directory).await.unwrap();
+    while let Some(file) = files.next_entry().await.unwrap() {
+      if file
+        .path()
+        .extension()
+        .is_some_and(|ext| ext == "payload" || ext == "raw")
+      {
+        usage.files += 1;
+        usage.bytes += file.metadata().await.unwrap().len();
+      }
+    }
+    usage
+  }
+
   pub(crate) async fn block_admissions_for_test(&self) -> SemaphorePermit<'_> {
     let permit = self.admissions.acquire().await.unwrap();
     log::debug!("workflow attachment admissions blocked for test");
     permit
   }
+}
+
+struct PayloadUsage {
+  files: usize,
+  bytes: u64,
 }
 
 struct AdmissionTestHooks {
@@ -78,7 +98,10 @@ impl TestHooks for AdmissionTestHooks {
 
 #[tokio::test]
 async fn cancelled_admission_never_leaks_files_or_capacity() {
-  for phase in ["waiting", "writing", "delivered"] {
+  for (phase, chunked) in ["waiting", "writing", "delivered"]
+    .into_iter()
+    .flat_map(|phase| [false, true].map(|chunked| (phase, chunked)))
+  {
     let directory = tempfile::tempdir().unwrap();
     let runtime = TestConfigLoader::new_in_directory(directory.path()).await;
     let mut store = AttachmentStoreHandle::new(directory.path().to_owned(), runtime.clone())
@@ -96,7 +119,19 @@ async fn cancelled_admission_never_leaks_files_or_capacity() {
     } else {
       None
     };
-    let mut admission = Box::pin(store.admit(UploadSource::Bytes(b"cancelled".to_vec()), None));
+    let source = if chunked {
+      let path = directory.path().join("capture");
+      fs::File::create(&path)
+        .await
+        .unwrap()
+        .set_len(1024 * 1024 + 1)
+        .await
+        .unwrap();
+      UploadSource::Path(path)
+    } else {
+      UploadSource::Bytes(b"cancelled".to_vec())
+    };
+    let mut admission = Box::pin(store.admit(source, None));
     assert!(futures_util::poll!(&mut admission).is_pending());
     if phase != "waiting" {
       started_rx.await.unwrap();
@@ -109,8 +144,8 @@ async fn cancelled_admission_never_leaks_files_or_capacity() {
 
     // The live worker holds this permit until publication and abandoned-result cleanup finish.
     let permit = store.block_admissions_for_test().await;
-    assert_eq!(store.capacity.lock().files, 0);
-    assert_eq!(store.capacity.lock().bytes, 0);
+    assert_eq!(store.payload_usage().await.files, 0);
+    assert_eq!(store.payload_usage().await.bytes, 0);
     assert!(
       fs::read_dir(&store.directory)
         .await
@@ -125,10 +160,10 @@ async fn cancelled_admission_never_leaks_files_or_capacity() {
       .admit(UploadSource::Bytes(b"next".to_vec()), None)
       .await
       .unwrap();
-    assert_eq!(store.capacity.lock().files, 1);
+    assert_eq!(store.payload_usage().await.files, 1);
     store.release(attachment.id).await.unwrap();
-    assert_eq!(store.capacity.lock().files, 0);
-    assert_eq!(store.capacity.lock().bytes, 0);
+    assert_eq!(store.payload_usage().await.files, 0);
+    assert_eq!(store.payload_usage().await.bytes, 0);
   }
 }
 
@@ -161,6 +196,7 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
         &runtime,
         &Collector::default(),
         HashMap::new(),
+        tokio::sync::watch::channel(Arc::default()).1,
         shutdown.make_shutdown(),
       );
       let uploader = tokio::spawn(uploader.run());
@@ -168,7 +204,7 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
       client
         .enqueue_workflow_attachment(
           attachment.id,
-          format!("workflow-attachments/{}.payload", attachment.id).into(),
+          store.upload_source(attachment.id).await.unwrap(),
           "session".into(),
           None,
           Some(persisted_tx),
@@ -177,9 +213,11 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
         )
         .unwrap();
       persisted_rx.await.unwrap().unwrap();
-      let Some(DataUpload::ArtifactUploadIntent(_intent)) = data_upload_rx.recv().await else {
-        panic!("expected initial workflow intent");
+      let Some(DataUpload::ArtifactUpload(begin)) = data_upload_rx.recv().await else {
+        panic!("expected initial workflow Begin");
       };
+      assert_eq!(begin.payload.chunk_index, None);
+      assert_eq!(begin.payload.contents.as_slice(), b"");
       shutdown.shutdown().await;
       uploader.await.unwrap();
       (attachment.id, store.payload_path(attachment.id))
@@ -204,13 +242,16 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
       &runtime,
       &Collector::default(),
       HashMap::new(),
+      tokio::sync::watch::channel(Arc::default()).1,
       shutdown.make_shutdown(),
     );
     let mut revision = client.upload_queue_revision();
     let uploader = tokio::spawn(uploader.run());
-    let Some(DataUpload::ArtifactUploadIntent(intent)) = data_upload_rx.recv().await else {
-      panic!("expected recovered workflow intent");
+    let Some(DataUpload::ArtifactUpload(begin)) = data_upload_rx.recv().await else {
+      panic!("expected recovered workflow Begin");
     };
+    assert_eq!(begin.payload.chunk_index, None);
+    assert_eq!(begin.payload.contents.as_slice(), b"");
     let store = match first_store {
       Some(store) => store,
       None => store_handle.get().await.unwrap(),
@@ -230,11 +271,13 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
         .await
         .unwrap()
     );
-    intent
+    begin
       .response_tx
-      .send(IntentResponse {
-        uuid: intent.uuid,
-        decision: IntentDecision::UploadImmediately,
+      .send(UploadArtifactResponse {
+        upload_uuid: begin.uuid,
+        state: State::STATE_RECEIVING.into(),
+        received_chunks: vec![0],
+        ..Default::default()
       })
       .unwrap();
     let Some(DataUpload::ArtifactUpload(upload)) = data_upload_rx.recv().await else {
@@ -245,14 +288,15 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
       .read_to_end(&mut decoded)
       .unwrap();
     assert_eq!(decoded, b"attachment");
-    assert!(cleanup.cleanup_once().await);
     assert!(!cleanup.cleanup_once().await);
     let previous = *revision.borrow();
     upload
       .response_tx
-      .send(UploadResponse {
-        uuid: upload.uuid,
-        success: true,
+      .send(UploadArtifactResponse {
+        upload_uuid: upload.uuid,
+        state: State::STATE_FINALIZED.into(),
+        received_chunks: vec![1],
+        ..Default::default()
       })
       .unwrap();
     let _ = revision
@@ -265,7 +309,7 @@ async fn restarting_store_and_uploader_preserves_leases_and_reclaims_unpinned_pa
     assert!(!cleanup.cleanup_once().await);
     assert!(!fs::try_exists(&payload).await.unwrap());
     assert!(store.metadata(id).await.unwrap().is_none());
-    assert_eq!(store.capacity.lock().files, 0);
+    assert_eq!(store.payload_usage().await.files, 0);
     assert!(
       Uploader::pending_workflow_attachments(directory.path())
         .await
@@ -322,27 +366,16 @@ async fn read_checked(store: &AttachmentStore, id: Uuid) -> io::Result<Vec<u8>> 
   let path = store.payload_path(id);
   let mut file = super::open_regular_file_async(&path).await?;
   let metadata = file.metadata().await?;
-  let read_limit = u64::from(*store.max_owned_bytes.read()).max(MIN_READ_LIMIT_BYTES);
-  if metadata.len() > read_limit {
+  let read_limit = MIN_READ_LIMIT_BYTES;
+  if metadata.len() > read_limit + 4 {
     return Err(io::Error::new(
       io::ErrorKind::InvalidData,
       "attachment exceeds size limit",
     ));
   }
-  let mut compressed =
-    Vec::with_capacity(usize::try_from(metadata.len()).map_err(io::Error::other)?);
-  file.read_to_end(&mut compressed).await?;
-  let mut payload = Vec::new();
-  let read = ZlibDecoder::new(compressed.as_slice())
-    .take(read_limit.saturating_add(1))
-    .read_to_end(&mut payload)?;
-  if read as u64 > read_limit {
-    return Err(io::Error::new(
-      io::ErrorKind::InvalidData,
-      "attachment exceeds size limit",
-    ));
-  }
-  Ok(payload)
+  let mut stored = Vec::with_capacity(usize::try_from(metadata.len()).map_err(io::Error::other)?);
+  file.read_to_end(&mut stored).await?;
+  read_checksummed_data(&stored).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 async fn new_store(directory: &tempfile::TempDir) -> AttachmentStore {
@@ -411,8 +444,8 @@ async fn uploaded_payload_is_released_after_the_queue_lease_ends_even_before_log
         .unwrap()
     );
     assert!(store.is_uploaded(attachment.id).await.unwrap());
-    assert_eq!(store.capacity.lock().files, 0);
-    assert_eq!(store.capacity.lock().bytes, 0);
+    assert_eq!(store.payload_usage().await.files, 0);
+    assert_eq!(store.payload_usage().await.bytes, 0);
   }
 }
 
@@ -442,7 +475,7 @@ async fn queued_payload_survives_retirement_and_restart_until_its_lease_is_remov
       read_checked(&store, attachment.id).await.unwrap(),
       b"queued"
     );
-    assert_eq!(store.capacity.lock().files, 1);
+    assert_eq!(store.payload_usage().await.files, 1);
     write_upload_leases(&directory, &[]).await;
     store.cleanup_all().await.unwrap();
     assert!(
@@ -455,8 +488,8 @@ async fn queued_payload_survives_retirement_and_restart_until_its_lease_is_remov
         .await
         .unwrap()
     );
-    assert_eq!(store.capacity.lock().files, 0);
-    assert_eq!(store.capacity.lock().bytes, 0);
+    assert_eq!(store.payload_usage().await.files, 0);
+    assert_eq!(store.payload_usage().await.bytes, 0);
   }
 }
 
@@ -488,7 +521,7 @@ async fn queue_only_payload_survives_release_and_restart() {
       .await
       .unwrap()
   );
-  assert_eq!(store.capacity.lock().files, 0);
+  assert_eq!(store.payload_usage().await.files, 0);
 }
 
 #[tokio::test]
@@ -971,8 +1004,8 @@ async fn workflow_attachment_rejects_corrupted_lifecycle_markers() {
         .await
         .unwrap()
     );
-    assert_eq!(restarted.capacity.lock().files, 0);
-    assert_eq!(restarted.capacity.lock().bytes, 0);
+    assert_eq!(restarted.payload_usage().await.files, 0);
+    assert_eq!(restarted.payload_usage().await.bytes, 0);
   }
 }
 
@@ -1023,12 +1056,12 @@ async fn workflow_attachment_restart_isolates_corrupt_metadata() {
         .await
         .unwrap()
     );
-    assert_eq!(restarted.capacity.lock().files, 1);
+    assert_eq!(restarted.payload_usage().await.files, 1);
     let payload_bytes = fs::metadata(restarted.payload_path(healthy.id))
       .await
       .unwrap()
       .len();
-    assert_eq!(restarted.capacity.lock().bytes, payload_bytes);
+    assert_eq!(restarted.payload_usage().await.bytes, payload_bytes);
     let admitted = restarted
       .admit(UploadSource::Bytes(b"new".to_vec()), None)
       .await
@@ -1040,7 +1073,7 @@ async fn workflow_attachment_restart_isolates_corrupt_metadata() {
         .unwrap()
     );
     assert_eq!(read_checked(&restarted, admitted.id).await.unwrap(), b"new");
-    assert_eq!(restarted.capacity.lock().files, 1);
+    assert_eq!(restarted.payload_usage().await.files, 1);
   }
 }
 
@@ -1108,16 +1141,16 @@ async fn workflow_attachment_cleanup_isolates_corrupted_retention_timestamp() {
     read_checked(&store, retained.id).await.unwrap(),
     b"retained"
   );
-  assert_eq!(store.capacity.lock().files, 1);
+  assert_eq!(store.payload_usage().await.files, 1);
   let payload_bytes = fs::metadata(store.payload_path(retained.id))
     .await
     .unwrap()
     .len();
-  assert_eq!(store.capacity.lock().bytes, payload_bytes);
+  assert_eq!(store.payload_usage().await.bytes, payload_bytes);
   store.cleanup_all().await.unwrap();
-  assert_eq!(store.capacity.lock().files, 0);
-  assert_eq!(store.capacity.lock().bytes, 0);
-  assert_eq!(new_store(&directory).await.capacity.lock().files, 0);
+  assert_eq!(store.payload_usage().await.files, 0);
+  assert_eq!(store.payload_usage().await.bytes, 0);
+  assert_eq!(new_store(&directory).await.payload_usage().await.files, 0);
 }
 
 #[tokio::test]
@@ -1143,7 +1176,7 @@ async fn workflow_attachment_restart_reclaims_unpublished_metadata() {
   assert!(!fs::try_exists(marker_path).await.unwrap());
   assert!(!fs::try_exists(staging_path).await.unwrap());
   assert_eq!(restarted.content_type(admitted.id).await.unwrap(), None);
-  assert_eq!(restarted.capacity.lock().files, 0);
+  assert_eq!(restarted.payload_usage().await.files, 0);
 }
 
 async fn new_cleanup_worker(
@@ -1171,7 +1204,7 @@ async fn new_cleanup_worker(
 }
 
 #[tokio::test]
-async fn runtime_limits_apply_to_existing_store() {
+async fn logical_limit_updates_apply_without_invalidating_retained_work() {
   let directory = tempfile::tempdir().unwrap();
   let runtime = ConfigLoader::new(directory.path());
   let store = Arc::new(
@@ -1187,12 +1220,7 @@ async fn runtime_limits_apply_to_existing_store() {
     .update_snapshot(RuntimeUpdate {
       version_nonce: "limits".to_string(),
       runtime: Some(Runtime {
-        values: [
-          (MaxBytes::path().to_string(), integer(3)),
-          (MaxOwnedBytes::path().to_string(), integer(64)),
-          (MaxOwnedFiles::path().to_string(), integer(2)),
-        ]
-        .into(),
+        values: [(MaxLogicalBytes::path().to_string(), integer(3))].into(),
         ..Default::default()
       })
       .into(),
@@ -1215,17 +1243,11 @@ async fn runtime_limits_apply_to_existing_store() {
     .admit(UploadSource::Bytes(vec![0; 1]), None)
     .await
     .unwrap();
-  assert!(
-    store
-      .admit(UploadSource::Bytes(vec![0; 1]), None)
-      .await
-      .is_err()
-  );
   runtime
     .update_snapshot(RuntimeUpdate {
       version_nonce: "smaller limit".to_string(),
       runtime: Some(Runtime {
-        values: [(MaxBytes::path().to_string(), integer(1))].into(),
+        values: [(MaxLogicalBytes::path().to_string(), integer(1))].into(),
         ..Default::default()
       })
       .into(),
@@ -1257,7 +1279,7 @@ async fn admits_bytes_and_path_and_counts_owned_files_after_restart() {
     admitted.id.to_string()
   );
   assert_eq!(read_checked(&store, admitted.id).await.unwrap(), b"first");
-  let stored_bytes = store.capacity.lock().bytes;
+  let stored_bytes = store.payload_usage().await.bytes;
   assert_eq!(
     stored_bytes,
     fs::metadata(store.payload_path(admitted.id))
@@ -1286,105 +1308,17 @@ async fn admits_bytes_and_path_and_counts_owned_files_after_restart() {
     .await
     .unwrap();
   assert_eq!(read_checked(&restarted, third.id).await.unwrap(), b"third");
-  assert_eq!(restarted.capacity.lock().files, 3);
+  assert_eq!(restarted.payload_usage().await.files, 3);
 }
 
 #[tokio::test]
-async fn concurrent_admissions_respect_owned_byte_limit() {
-  let directory = tempfile::tempdir().unwrap();
-  let runtime = ConfigLoader::new(directory.path());
-  let store = Arc::new(
-    AttachmentStore::new(directory.path(), &runtime)
-      .await
-      .unwrap(),
-  );
-  runtime
-    .update_snapshot(RuntimeUpdate {
-      version_nonce: "concurrent limit".to_string(),
-      runtime: Some(Runtime {
-        values: [(
-          MaxOwnedBytes::path().to_string(),
-          Value {
-            type_: Some(Type::UintValue(15)),
-            ..Default::default()
-          },
-        )]
-        .into(),
-        ..Default::default()
-      })
-      .into(),
-      ..Default::default()
-    })
-    .await
-    .unwrap();
-  let (first, second) = tokio::join!(
-    store.admit(UploadSource::Bytes(vec![1; 3]), None),
-    store.admit(UploadSource::Bytes(vec![2; 3]), None)
-  );
-  assert_eq!(usize::from(first.is_ok()) + usize::from(second.is_ok()), 1);
-  assert!(store.capacity.lock().bytes <= 15);
-  assert_eq!(new_store(&directory).await.capacity.lock().files, 1);
-}
-
-#[tokio::test]
-async fn admits_compressible_attachment_that_fits_owned_byte_limit() {
-  let directory = tempfile::tempdir().unwrap();
-  let runtime = ConfigLoader::new(directory.path());
-  let store = Arc::new(
-    AttachmentStore::new(directory.path(), &runtime)
-      .await
-      .unwrap(),
-  );
-  let integer = |value| Value {
-    type_: Some(Type::UintValue(value)),
-    ..Default::default()
-  };
-  runtime
-    .update_snapshot(RuntimeUpdate {
-      version_nonce: "compressed capacity".to_string(),
-      runtime: Some(Runtime {
-        values: [
-          (MaxBytes::path().to_string(), integer(1024)),
-          (MaxOwnedBytes::path().to_string(), integer(64)),
-        ]
-        .into(),
-        ..Default::default()
-      })
-      .into(),
-      ..Default::default()
-    })
-    .await
-    .unwrap();
-
-  let admitted = store
-    .admit(UploadSource::Bytes(vec![0; 1024]), None)
-    .await
-    .unwrap();
-  assert_eq!(
-    read_checked(&store, admitted.id).await.unwrap(),
-    vec![0; 1024]
-  );
-  assert!(store.capacity.lock().bytes <= 64);
-}
-
-#[tokio::test]
-async fn rejects_oversized_and_nonregular_sources_without_publishing() {
+async fn rejects_oversized_memory_and_nonregular_sources_without_publishing() {
   let directory = tempfile::tempdir().unwrap();
   let store = Arc::new(new_store(&directory).await);
-  let max_bytes = usize::try_from(*store.max_attachment_bytes.read()).unwrap();
-  let oversized_file = directory.path().join("oversized-file");
-  fs::write(&oversized_file, vec![0; max_bytes + 1])
-    .await
-    .unwrap();
+  let max_bytes = 256 * 1024 * 1024;
   assert!(
     store
       .admit(UploadSource::Bytes(vec![0; max_bytes + 1]), None)
-      .await
-      .is_err()
-  );
-  assert!(
-    store
-      .admit(UploadSource::Path(oversized_file), None)
       .await
       .is_err()
   );
@@ -1406,7 +1340,7 @@ async fn rejects_oversized_and_nonregular_sources_without_publishing() {
         .is_err()
     );
   }
-  assert_eq!(store.capacity.lock().files, 0);
+  assert_eq!(store.payload_usage().await.files, 0);
 }
 
 #[tokio::test]
@@ -1423,8 +1357,8 @@ async fn releasing_an_unreferenced_attachment_frees_capacity() {
       .await
       .unwrap()
   );
-  assert_eq!(store.capacity.lock().bytes, 0);
-  assert_eq!(store.capacity.lock().files, 0);
+  assert_eq!(store.payload_usage().await.bytes, 0);
+  assert_eq!(store.payload_usage().await.files, 0);
 }
 
 #[tokio::test]
@@ -1455,7 +1389,7 @@ async fn uploaded_attachments_keep_metadata_without_the_payload() {
       .await
       .unwrap()
   );
-  assert_eq!(store.capacity.lock().files, 0);
+  assert_eq!(store.payload_usage().await.files, 0);
 }
 
 #[tokio::test]
@@ -1835,7 +1769,7 @@ async fn rejects_tampered_payload_after_restart() {
   file.write_all(b"X").await.unwrap();
   let restarted = Arc::new(new_store(&directory).await);
   assert!(read_checked(&restarted, admitted.id).await.is_err());
-  let restarted_bytes = restarted.capacity.lock().bytes;
+  let restarted_bytes = restarted.payload_usage().await.bytes;
   assert_eq!(
     restarted_bytes,
     fs::metadata(restarted.payload_path(admitted.id))
@@ -1891,7 +1825,7 @@ async fn restart_reclaims_interrupted_admissions() {
   fs::write(&pending, b"interrupted").await.unwrap();
   let restarted = new_store(&directory).await;
   assert!(!fs::try_exists(&pending).await.unwrap());
-  assert_eq!(restarted.capacity.lock().files, 0);
+  assert_eq!(restarted.payload_usage().await.files, 0);
 }
 
 #[tokio::test]
@@ -2067,7 +2001,7 @@ async fn restart_discards_sidecars_with_incomplete_checksums() {
 
   let restarted = new_store(&directory).await;
 
-  assert_eq!(restarted.capacity.lock().files, 0);
+  assert_eq!(restarted.payload_usage().await.files, 0);
   assert!(!fs::try_exists(path).await.unwrap());
   assert!(!fs::try_exists(staging_path).await.unwrap());
 }
@@ -2112,13 +2046,13 @@ async fn restart_preserves_staged_metadata_on_io_errors() {
       .as_deref(),
     Some("image/jpeg")
   );
-  assert_eq!(restarted.capacity.lock().files, 1);
+  assert_eq!(restarted.payload_usage().await.files, 1);
   assert!(!fs::try_exists(staging_path).await.unwrap());
 }
 
 #[tokio::test]
 async fn restart_isolates_nonregular_owned_entries() {
-  for extension in ["payload", "metadata", "metadata.partial"] {
+  for extension in ["raw", "metadata", "metadata.partial"] {
     for is_symlink in [
       false,
       #[cfg(unix)]
@@ -2164,12 +2098,12 @@ async fn restart_isolates_nonregular_owned_entries() {
         read_checked(&restarted, healthy.id).await.unwrap(),
         b"healthy"
       );
-      assert_eq!(restarted.capacity.lock().files, 1);
+      assert_eq!(restarted.payload_usage().await.files, 1);
       let remaining_bytes = fs::metadata(restarted.payload_path(healthy.id))
         .await
         .unwrap()
         .len();
-      assert_eq!(restarted.capacity.lock().bytes, remaining_bytes);
+      assert_eq!(restarted.payload_usage().await.bytes, remaining_bytes);
       assert_eq!(
         fs::symlink_metadata(&path).await.unwrap_err().kind(),
         io::ErrorKind::NotFound
@@ -2231,12 +2165,12 @@ async fn restart_reclaims_orphan_and_uploaded_payloads() {
       read_checked(&restarted, healthy.id).await.unwrap(),
       b"healthy"
     );
-    assert_eq!(restarted.capacity.lock().files, 1);
+    assert_eq!(restarted.payload_usage().await.files, 1);
     let remaining_bytes = fs::metadata(restarted.payload_path(healthy.id))
       .await
       .unwrap()
       .len();
-    assert_eq!(restarted.capacity.lock().bytes, remaining_bytes);
+    assert_eq!(restarted.payload_usage().await.bytes, remaining_bytes);
     assert!(
       !fs::try_exists(restarted.payload_path(discarded.id))
         .await
@@ -2256,18 +2190,6 @@ async fn restart_reclaims_orphan_and_uploaded_payloads() {
   }
 }
 
-#[test]
-fn lifecycle_metadata_reserve_covers_maximum_fields() {
-  let mut metadata = WorkflowAttachmentState::default();
-  let initial_size = metadata.compute_size();
-  metadata.occurred_at_micros = Some(u64::MAX);
-  metadata.uploaded = true;
-  assert_eq!(
-    metadata.compute_size() - initial_size,
-    super::MAX_LIFECYCLE_METADATA_BYTES
-  );
-}
-
 #[tokio::test]
 async fn restart_discards_invalid_owned_payload_names() {
   for name in ["invalid".to_string(), Uuid::new_v4().simple().to_string()] {
@@ -2285,7 +2207,7 @@ async fn restart_discards_invalid_owned_payload_names() {
       read_checked(&restarted, healthy.id).await.unwrap(),
       b"healthy"
     );
-    assert_eq!(restarted.capacity.lock().files, 1);
+    assert_eq!(restarted.payload_usage().await.files, 1);
     assert!(!fs::try_exists(path).await.unwrap());
   }
 }

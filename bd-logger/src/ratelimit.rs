@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./ratelimit_test.rs"]
@@ -12,7 +12,6 @@ mod ratelimit_test;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
 use futures_util::future::BoxFuture;
 use parking_lot::Mutex;
-use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::time::Instant;
@@ -97,7 +96,6 @@ impl<T> RateLimit<T> {
 impl<S, Request: 'static + RequestSized + Send> Service<Request> for RateLimit<S>
 where
   S: Service<Request> + 'static + Send,
-  <S as Service<Request>>::Error: From<Infallible>,
   <S as Service<Request>>::Future: Send,
 {
   type Response = S::Response;

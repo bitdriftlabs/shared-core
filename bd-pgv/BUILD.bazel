@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("@crates//bd-pgv:data.bzl", "aliases", "all_crate_deps", "crate_data")
 load("//tools/lint:linters.bzl", "rust_binary")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 
@@ -15,7 +15,7 @@ rust_binary(
     crate_root = "src/bin/generate_protos.rs",
     edition = "2024",
     deps = all_crate_deps(normal = True) + [
-        "@crates//:protobuf-codegen",
+        "@crates//protobuf-codegen",
     ],
 )
 
@@ -25,6 +25,7 @@ rust_library_with_test(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    crate_data = crate_data(),
     crate_features = ["default"],
     crate_name = "bd_pgv",
     crate_root = "src/lib.rs",

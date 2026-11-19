@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./workflow_test.rs"]
@@ -92,6 +92,17 @@ pub fn command_details(selector: Option<&WorkflowCommandSelector>) -> String {
         Ok(WellKnownCommandType::HEAP_PROFILE_TRACE) => {
           output.push_str("\"heap_profile_trace\"");
         },
+        Ok(WellKnownCommandType::FILE_LIST) => output.push_str("\"file_list\""),
+        Ok(WellKnownCommandType::FILE_SIZE) => output.push_str("\"file_size\""),
+        Ok(WellKnownCommandType::FILE_CLEAR) => output.push_str("\"file_clear\""),
+        Ok(WellKnownCommandType::FILE_DELETE) => output.push_str("\"file_delete\""),
+        Ok(WellKnownCommandType::USER_SETTINGS_GET) => output.push_str("\"user_settings_get\""),
+        Ok(WellKnownCommandType::USER_SETTINGS_SET) => output.push_str("\"user_settings_set\""),
+        Ok(WellKnownCommandType::USER_SETTINGS_CLEAR) => output.push_str("\"user_settings_clear\""),
+        Ok(WellKnownCommandType::USER_SETTINGS_REMOVE) => {
+          output.push_str("\"user_settings_delete\"");
+        },
+        Ok(WellKnownCommandType::MEMORY_DUMP) => output.push_str("\"memory_dump\""),
         Ok(WellKnownCommandType::TYPE_UNSPECIFIED) | Err(_) => {
           let _ = write!(output, "\"unknown_builtin_{}\"", command.type_.value());
         },
@@ -1996,8 +2007,7 @@ impl Traversal {
         .inner()
         .states()
         .get(self.state_index)
-        .map(super::config::State::id)
-        .unwrap_or_default()
+        .map_or_default(super::config::State::id)
     );
 
     // Try to match explicit transitions (logs or state changes).

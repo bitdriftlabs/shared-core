@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::async_log_buffer::{
   AdmissionError,
@@ -36,7 +36,7 @@ use crate::device_command::{
   WorkflowCommandCompletion,
   WorkflowCommandDispatcher,
 };
-use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
+use crate::log_replay::{InternContext, LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::{Block, InitializationState, StartupReplayEligibility};
@@ -436,6 +436,7 @@ impl Setup {
       buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
       workflows_configuration,
       tail_configs: TailConfigurations::default(),
+      scrub_rules: Arc::default(),
       filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
       from_cache: false,
     }
@@ -1412,6 +1413,7 @@ impl LogReplay for TestReplay {
     &mut self,
     log: Log,
     command_event: Option<WorkflowCommandEvent>,
+    intern: Option<InternContext<'_>>,
     processing_pipeline: &mut ProcessingPipeline,
     state: &bd_state::Store,
     now: OffsetDateTime,
@@ -1436,7 +1438,7 @@ impl LogReplay for TestReplay {
 
     if self.forward_logs_to_pipeline {
       return LoggerReplay {}
-        .replay_log(log, command_event, processing_pipeline, state, now)
+        .replay_log(log, command_event, intern, processing_pipeline, state, now)
         .await;
     }
 
@@ -2484,7 +2486,7 @@ async fn workflow_command_processed_session_boundary_and_attribution() {
             .tmp_dir
             .path()
             .join("workflow-attachments")
-            .join(format!("{id}.payload"))
+            .join(format!("{id}.raw"))
         )
         .await
         .unwrap()
@@ -3115,7 +3117,7 @@ async fn direct_commands_use_processed_session_boundary_without_rewinding_loggin
         }),
       ))
       .unwrap();
-    let command_state = Arc::new(DeviceCommandState::new(Arc::new(SystemTimeProvider)));
+    let command_state = Arc::new(DeviceCommandState::new());
     let (upload_tx, mut updates) = mpsc::channel(16);
     let (trigger_tx, _trigger_rx) = mpsc::channel(1);
     let dispatcher = DeviceCommandDispatcher::new(
@@ -3907,7 +3909,7 @@ async fn failed_workflow_outcome_replay_releases_attachment() {
     .tmp_dir
     .path()
     .join("workflow-attachments")
-    .join(format!("{}.payload", attachment.id));
+    .join(format!("{}.raw", attachment.id));
   let state_store = TestStore::new().await;
   let state_store = (*state_store).clone();
 
@@ -3961,7 +3963,7 @@ async fn partially_written_workflow_outcome_keeps_attachment() {
     .await
     .unwrap();
   let attachment_directory = setup.tmp_dir.path().join("workflow-attachments");
-  let payload_path = attachment_directory.join(format!("{}.payload", attachment.id));
+  let payload_path = attachment_directory.join(format!("{}.raw", attachment.id));
   let metadata_path = attachment_directory.join(format!("{}.metadata", attachment.id));
   let occurred_at = OffsetDateTime::now_utc();
   let state_store = TestStore::new().await;
@@ -4029,7 +4031,7 @@ async fn committed_workflow_outcome_keeps_attachment_after_injected_log_failure(
     .await
     .unwrap();
   let attachment_directory = setup.tmp_dir.path().join("workflow-attachments");
-  let payload_path = attachment_directory.join(format!("{}.payload", attachment.id));
+  let payload_path = attachment_directory.join(format!("{}.raw", attachment.id));
   let metadata_path = attachment_directory.join(format!("{}.metadata", attachment.id));
   let occurred_at = OffsetDateTime::now_utc();
   let state_store = TestStore::new().await;

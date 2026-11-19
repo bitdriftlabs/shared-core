@@ -3,7 +3,17 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
+//! Shared payload encoding, filesystem capacity checks, and bounded I/O primitives.
+//!
+//! Upload owners choose their local envelope and publication policy; encoding helpers only
+//! transform bytes. Whole-file and chunked attachments both encode one complete zlib stream.
+//! Neither compression nor a
+//! successful write implies durable ownership: the owning store must publish and sync its index or
+//! sidecar. Bounded readers report malformed/oversized data as `InvalidData` while preserving
+//! underlying I/O errors, so recovery can discard corrupt data without treating a storage outage as
+//! corruption.
 
 #[cfg(test)]
 #[path = "./file_test.rs"]
@@ -16,7 +26,7 @@ use flate2::Compression;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use fs2::FileExt;
 use std::fs::File;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::Path;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
@@ -30,9 +40,8 @@ pub fn prepare_file_for_mmap(
   let required_file_size = requested_file_size.unwrap_or(current_file_size);
   let allocated_file_size = file.allocated_size()?;
   let required_disk_space = required_file_size.saturating_sub(allocated_file_size);
-  let available_disk_space = fs2::available_space(file_path)?;
-  let total_disk_space = fs2::total_space(file_path)?;
-  if !has_disk_space(required_disk_space, available_disk_space, total_disk_space) {
+  let available_disk_space = available_disk_space(file_path)?;
+  if available_disk_space < required_disk_space {
     log::error!(
       "Insufficient disk space to preallocate memory-mapped file {}: required \
        {required_disk_space}, available {available_disk_space}",
@@ -60,11 +69,29 @@ pub fn prepare_file_for_mmap(
   Ok(resized)
 }
 
-// A filesystem without a size limit, such as an unlimited tmpfs, reports zero total and available
-// space. Only filesystems that report a size can be checked up front; for the others, the
-// allocation below still fails if space runs out.
-fn has_disk_space(required: u64, available: u64, total: u64) -> bool {
-  total == 0 || available >= required
+/// Returns available bytes for admission, treating unsized filesystems as unbounded.
+///
+/// Some filesystems, notably unlimited tmpfs on remote build executors, report zero total and
+/// available space even though writes succeed. Checking available bytes alone would reject every
+/// mmap allocation and artifact staging attempt there. A nonzero total with zero available bytes,
+/// however, is a full filesystem and must still fail admission.
+///
+/// Represent the unsized case as `u64::MAX` so both synchronous mmap allocation and asynchronous
+/// artifact admission can use ordinary byte comparisons with the same policy. This is only a
+/// preflight hint, not a reservation: callers must still propagate allocation/write failures and
+/// enforce their own payload limits and storage budgets. Errors reading filesystem statistics also
+/// propagate; an unreadable filesystem is not an unsized one.
+pub(crate) fn available_disk_space(path: &Path) -> io::Result<u64> {
+  // Read both counters in one snapshot, rather than issuing separate available/total queries.
+  let stats = fs2::statvfs(path)?;
+  Ok(available_disk_space_from_stats(
+    stats.available_space(),
+    stats.total_space(),
+  ))
+}
+
+fn available_disk_space_from_stats(available: u64, total: u64) -> u64 {
+  if total == 0 { u64::MAX } else { available }
 }
 
 pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> anyhow::Result<Vec<u8>> {
@@ -110,14 +137,46 @@ pub async fn read_and_compress_limited_with_size(
 pub async fn read_limited(
   reader: impl AsyncRead + Unpin,
   max_input_bytes: u64,
-) -> anyhow::Result<Vec<u8>> {
+) -> io::Result<Vec<u8>> {
+  // Read one byte beyond the limit to distinguish an exact-boundary file from truncated success.
+  // All upload callers use finite limits; saturation also keeps this primitive safe for other
+  // users.
   let mut reader = reader.take(max_input_bytes.saturating_add(1));
   let mut input = Vec::new();
   reader.read_to_end(&mut input).await?;
   if u64::try_from(input.len()).unwrap_or(u64::MAX) > max_input_bytes {
-    anyhow::bail!("attachment exceeds size limit");
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      "attachment exceeds size limit",
+    ));
   }
   Ok(input)
+}
+
+/// Decodes a bounded zlib payload without trusting its advertised expansion ratio.
+pub fn read_compressed_limited(bytes: &[u8], max_bytes: u64) -> io::Result<Vec<u8>> {
+  // The decoder validates zlib integrity. The extra output byte bounds even a highly compressible
+  // corrupt index/chunk before protobuf parsing or logical-digest verification can allocate more.
+  let mut output = Vec::new();
+  let mut decoder = ZlibDecoder::new(bytes);
+  decoder
+    .by_ref()
+    .take(max_bytes.saturating_add(1))
+    .read_to_end(&mut output)
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+  if u64::try_from(output.len()).unwrap_or(u64::MAX) > max_bytes {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      "decoded payload exceeds size limit",
+    ));
+  }
+  if decoder.total_in() != bytes.len() as u64 {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      "trailing compressed payload bytes",
+    ));
+  }
+  Ok(output)
 }
 
 pub fn read_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -201,10 +260,13 @@ pub async fn async_write_checksummed_data(
   mut writer: impl AsyncWriteExt + Unpin,
 ) -> anyhow::Result<()> {
   let mut crc = crc32fast::Hasher::new();
-  let mut buffer = vec![0; 1024];
-  while let Ok(bytes_read) = reader.read(&mut buffer).await
-    && bytes_read > 0
-  {
+  let mut buffer = vec![0; 64 * 1024];
+  // An input error must not be sealed into an apparently valid, truncated CRC envelope.
+  loop {
+    let bytes_read = reader.read(&mut buffer).await?;
+    if bytes_read == 0 {
+      break;
+    }
     crc.update(&buffer[.. bytes_read]);
     writer.write_all(&buffer[.. bytes_read]).await?;
   }
@@ -213,6 +275,7 @@ pub async fn async_write_checksummed_data(
   // Write the CRC at the end of the data.
   let crc_bytes = crc.to_le_bytes();
   writer.write_all(&crc_bytes).await?;
+  writer.flush().await?;
 
   Ok(())
 }

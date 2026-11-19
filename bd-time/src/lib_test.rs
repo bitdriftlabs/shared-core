@@ -7,14 +7,58 @@
 use crate::{
   DynamicIntervalTicker,
   OffsetDateTimeExt as _,
+  ProtoDurationExt as _,
   TestTimeProvider,
   Ticker,
   TimeProvider,
+  TimestampExt as _,
 };
+use protobuf::well_known_types::duration::Duration as ProtoDuration;
+use protobuf::well_known_types::timestamp::Timestamp;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 use time::ext::NumericalDuration;
 use time::macros::datetime;
+
+#[test]
+fn checked_protobuf_timestamps_validate_representation_and_preserve_nanos() {
+  for value in [
+    datetime!(0001-01-01 0:00 UTC),
+    datetime!(1969-12-31 23:59:59.999999999 UTC),
+    datetime!(2026-01-01 12:34:56.123456789 UTC),
+    datetime!(9999-12-31 23:59:59.999999999 UTC),
+  ] {
+    assert_eq!(
+      value.into_proto().to_offset_date_time_checked(),
+      Some(value)
+    );
+  }
+  for nanos in [-1, 1_000_000_000, i32::MAX] {
+    assert_eq!(
+      Timestamp {
+        nanos,
+        ..Default::default()
+      }
+      .to_offset_date_time_checked(),
+      None
+    );
+  }
+  for seconds in [
+    i64::MIN,
+    i64::MAX,
+    datetime!(0001-01-01 0:00 UTC).unix_timestamp() - 1,
+    datetime!(9999-12-31 23:59:59 UTC).unix_timestamp() + 1,
+  ] {
+    assert_eq!(
+      Timestamp {
+        seconds,
+        ..Default::default()
+      }
+      .to_offset_date_time_checked(),
+      None
+    );
+  }
+}
 
 #[test]
 fn timestamp_floor() {
@@ -139,4 +183,54 @@ async fn dynamic_interval_ticker_reloads_interval_provider() {
   let second_now = time_provider.now();
   ticker.tick().await;
   assert_eq!(time_provider.now(), second_now + time::Duration::seconds(1));
+}
+
+fn timestamp(seconds: i64, nanos: i32) -> Timestamp {
+  Timestamp {
+    seconds,
+    nanos,
+    ..Default::default()
+  }
+}
+
+fn proto_duration(seconds: i64, nanos: i32) -> ProtoDuration {
+  ProtoDuration {
+    seconds,
+    nanos,
+    ..Default::default()
+  }
+}
+
+#[test]
+fn conversions_saturate_instead_of_panicking() {
+  assert_eq!(
+    proto_duration(i64::MAX, 2_000_000_000).to_time_duration(),
+    time::Duration::MAX
+  );
+  assert_eq!(
+    proto_duration(i64::MIN, -2_000_000_000).to_time_duration(),
+    time::Duration::MIN
+  );
+  // One nanosecond past the latest date `OffsetDateTime` can hold.
+  assert_eq!(
+    timestamp(253_402_300_799, 1_000_000_000).to_offset_date_time(),
+    datetime!(9999-12-31 23:59:59.999999999 UTC)
+  );
+}
+
+#[test]
+fn conversions_keep_their_old_output() {
+  assert_eq!(
+    timestamp(1_609_459_200, 123_456_789).to_offset_date_time(),
+    datetime!(2021-01-01 00:00:00.123456789 UTC)
+  );
+  // Negative nanos have always counted as zero.
+  assert_eq!(
+    timestamp(1_609_459_200, -5).to_offset_date_time(),
+    datetime!(2021-01-01 00:00:00 UTC)
+  );
+  assert_eq!(
+    proto_duration(-3, -500_000_000).to_time_duration(),
+    time::Duration::new(-3, -500_000_000)
+  );
 }

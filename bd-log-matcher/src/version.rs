@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./version_test.rs"]
@@ -171,13 +171,11 @@ impl Display for Version {
         + &self
           .revision
           .as_deref()
-          .map(|s| "-".to_string() + s)
-          .unwrap_or_default()
+          .map_or_default(|s| "-".to_string() + s)
         + &self
           .build_metadata
           .as_deref()
-          .map(|s| "+".to_string() + s)
-          .unwrap_or_default()
+          .map_or_default(|s| "+".to_string() + s)
     )
   }
 }

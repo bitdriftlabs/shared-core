@@ -23,6 +23,7 @@ flatbuffers.workspace       = true
 flate2                      = { workspace = true, default-features = false, features = ["zlib"] }
 fs2.workspace               = true
 itertools.workspace         = true
+libc.workspace              = true
 log.workspace               = true
 mockall.workspace           = true
 parking_lot.workspace       = true

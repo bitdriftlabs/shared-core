@@ -1,4 +1,4 @@
-load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("@crates//bd-proto-util:data.bzl", "aliases", "all_crate_deps", "crate_data")
 load("@rules_cc//cc:defs.bzl", "cc_library")
 load("//tools/rust:tests.bzl", "rust_library_with_test")
 
@@ -35,6 +35,7 @@ rust_library_with_test(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
+    crate_data = crate_data(),
     crate_features = [
         "default",
         "buffer-log-validate",

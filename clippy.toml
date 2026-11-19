@@ -1,0 +1,6 @@
+# Clippy reads this from the workspace root when linting with Cargo. Test code may panic: a test's
+# failure is its report.
+allow-expect-in-tests           = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests            = true
+allow-unwrap-in-tests           = true

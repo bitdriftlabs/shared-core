@@ -2,10 +2,11 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// LICENSE file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod filter;
+pub mod scrub;
 
 use super::log_matcher::log_matcher;
 use bd_pgv::generated::protos::validate;

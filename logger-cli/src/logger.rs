@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./logger_test.rs"]
@@ -13,6 +13,12 @@ use crate::fake_perfetto::{COMMAND_NAME, FakePerfettoCommand};
 use crate::fake_screenshot::FakeScreenshotTarget;
 use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
+use crate::synthetic_artifact::{
+  COMMAND_NAME as SYNTHETIC_COMMAND_NAME,
+  FixtureSource,
+  SyntheticAttachmentCommand,
+  SyntheticProfiles,
+};
 use crate::types::{Platform, RuntimeValueType};
 use bd_log_primitives::LogFields;
 use bd_logger::{Block, CaptureSession, CommandRegistration, InitParams, Logger, MetadataProvider};
@@ -22,7 +28,7 @@ use bd_session::{Strategy, StrategyWithWorker, configuration};
 use bd_time::TimeProvider;
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::thread::sleep;
@@ -72,6 +78,7 @@ pub enum SessionStrategyConfig {
 
 pub struct LoggerHolder {
   pub logger: Arc<Mutex<Logger>>,
+  pub synthetic_profiles: Option<Arc<SyntheticProfiles>>,
   session_strategy: Arc<Strategy>,
   future: Mutex<Option<LoggerFuture>>,
   _shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
@@ -83,9 +90,11 @@ impl LoggerHolder {
     session_strategy: Arc<Strategy>,
     future: LoggerFuture,
     shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
+    synthetic_profiles: Option<Arc<SyntheticProfiles>>,
   ) -> Self {
     Self {
       logger: Arc::new(Mutex::new(logger)),
+      synthetic_profiles,
       session_strategy,
       future: Mutex::new(Some(future)),
       _shutdown_trigger: shutdown_trigger,
@@ -166,6 +175,16 @@ impl LoggerHolder {
   pub fn set_feature_flag(&self, name: String, variant: Option<String>) {
     let handle = { self.logger.lock().new_logger_handle() };
     handle.set_feature_flag_exposure(name, variant);
+  }
+
+  pub fn add_field(&self, key: String, value: String) {
+    let handle = { self.logger.lock().new_logger_handle() };
+    handle.add_log_field(key, value.into());
+  }
+
+  pub fn remove_field(&self, key: &str) {
+    let handle = { self.logger.lock().new_logger_handle() };
+    handle.remove_log_field(key);
   }
 
   pub fn set_entity_id(&self, entity_id: &str) {
@@ -333,8 +352,10 @@ pub struct LoggerArgs {
   pub app_version: String,
   pub app_version_code: String,
   pub model: String,
+  pub os_version: Option<String>,
   pub entity_id: Option<String>,
   pub session_strategy: SessionStrategyConfig,
+  pub attachment_fixture_directory: Option<PathBuf>,
 }
 
 pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<LoggerHolder> {
@@ -366,12 +387,19 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     app_version_code: args.app_version_code.clone(),
     platform: args.platform.into(),
     device: device.clone(),
-    os_version: None,
+    os_version: args.os_version.clone(),
     manufacturer: None,
     model: args.model.clone(),
   });
 
-  let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
+  let fixture_source = match &args.attachment_fixture_directory {
+    Some(root) => Some(Arc::new(FixtureSource::new(root, sdk_directory).await?)),
+    None => None,
+  };
+  let profiles = fixture_source
+    .as_ref()
+    .map(|source| Arc::new(SyntheticProfiles::new(source.clone())));
+  let mut builder = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
     api_key: args.api_key.clone(),
     target_domain: args.api_url.clone(),
@@ -410,10 +438,20 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     artifact_type_id: "screenshot".into(),
     timeout: None,
     handler: Arc::new(FakeScreenshotTarget),
-  })?
-  .build()?;
+  })?;
+  if let Some(source) = fixture_source {
+    builder = builder.with_command(CommandRegistration::Registered(
+      SYNTHETIC_COMMAND_NAME.into(),
+      Arc::new(SyntheticAttachmentCommand(source)),
+    ))?;
+  }
+  if let Some(profiles) = &profiles {
+    tokio::fs::create_dir_all(sdk_directory.join("reports/watcher")).await?;
+    builder = builder.with_report_attribution(Some(profiles.clone()));
+  }
+  let (logger, _, future, _) = builder.build()?;
 
-  let logger = LoggerHolder::new(logger, session_strategy, future, shutdown_trigger);
+  let logger = LoggerHolder::new(logger, session_strategy, future, shutdown_trigger, profiles);
   if let Some(entity_id) = args.entity_id.as_deref() {
     // Queue the entity update before the async startup begins so builder initialization replays
     // it into durable state ahead of the API init flow.

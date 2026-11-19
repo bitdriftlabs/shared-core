@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::config::{
   ActionEmitMetric,
@@ -149,6 +149,7 @@ fn command_details_encode_selectors_and_escape_strings() {
       WellKnownCommandType::HEAP_PROFILE_TRACE,
       "heap_profile_trace",
     ),
+    (WellKnownCommandType::MEMORY_DUMP, "memory_dump"),
     (WellKnownCommandType::TYPE_UNSPECIFIED, "unknown_builtin_0"),
   ] {
     let selector = WorkflowCommandSelector {

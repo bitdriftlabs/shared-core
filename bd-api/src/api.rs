@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./api_test.rs"]
@@ -345,10 +345,11 @@ impl StreamState {
         self.send_request(req).await
       },
       DataUpload::ArtifactUpload(tracked) => {
-        let req = self.upload_state_tracker.track_upload(tracked);
-        let mode = if req.payload_encoding.enum_value_or_default()
-          == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-          && (req.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID || req.command_id.is_some())
+        let req = self.upload_state_tracker.track_artifact(tracked);
+        let mode = if req.logical_bytes.is_some()
+          || (req.payload_encoding.enum_value_or_default()
+            == ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
+            && (req.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID || req.command_id.is_some()))
         {
           EncodeMode::SkipCompression
         } else {
@@ -528,7 +529,7 @@ impl Api {
 
     let reconnect_state = crate::reconnect::ReconnectState::new(store, time_provider.clone());
     let session_updates = session_strategy.subscribe_updates();
-    let device_command_state = Arc::new(DeviceCommandState::new(time_provider.clone()));
+    let device_command_state = Arc::new(DeviceCommandState::new());
     Self {
       sdk_directory,
       api_key,
@@ -1392,7 +1393,7 @@ impl Api {
 
           stream_state
             .upload_state_tracker
-            .resolve_pending_upload(&artifact_upload.upload_uuid, &artifact_upload.error)?;
+            .resolve_artifact(artifact_upload)?;
         },
         Some(Response_type::ArtifactIntent(artifact_upload_intent)) => {
           log::debug!(

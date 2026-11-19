@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #![deny(
   clippy::expect_used,
@@ -17,6 +17,8 @@
 #[cfg(test)]
 #[path = "./lib_test.rs"]
 mod tests;
+
+pub mod artifact;
 
 use std::collections::HashMap;
 
@@ -51,7 +53,8 @@ use std::collections::HashMap;
 //             explicit acknowledgement dispositions.
 // Version 50: Android stack trace built-in command support.
 // Version 51: Added log body extraction for Sankey nodes.
-pub const CONFIGURATION_VERSION: &str = "51";
+// Version 52: Added scrub rules, applied to every log before the filters.
+pub const CONFIGURATION_VERSION: &str = "53";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

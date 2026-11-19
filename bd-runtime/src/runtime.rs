@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
 #[path = "./runtime_test.rs"]
@@ -657,6 +657,31 @@ pub mod debugging {
   );
 }
 
+pub mod field_interning {
+  // Stores each persistent field set once on the device and leaves its fields out of buffered
+  // logs, which refer to the set's version instead. The server restores the fields at ingest. On by
+  // default. Turning it off stops interning new logs and deletes the table at once, so interned
+  // logs still buffered upload without their persistent fields.
+  bool_feature_flag!(Enabled, "field_interning.enabled", true);
+
+  // The largest size of the field-set version table. The table starts at 16 KiB and grows to this
+  // cap as needed; at the cap, the oldest versions are folded into the table's base, and buffered
+  // logs that still refer to them upload without their persistent fields. Clamped to 4 MiB.
+  int_feature_flag!(
+    TableMaxBytes,
+    "field_interning.table_max_bytes",
+    1024 * 1024
+  );
+
+  // The cooldown of a key that changes too often: it is interned again after this many logs
+  // without a change.
+  int_feature_flag!(WindowLogs, "field_interning.window_logs", 512);
+
+  // A key that changes again within this many logs of its previous change stays inline for the
+  // cooldown.
+  int_feature_flag!(MinLogsPerChange, "field_interning.min_logs_per_change", 4);
+}
+
 pub mod crash_reporting {
   // Enables or disables the detection and reporting of application crashes and
   // other fatal events. This defaults to enabled so fresh installs still monitor
@@ -668,6 +693,24 @@ pub mod crash_reporting {
   bool_feature_flag!(
     UseBdCrashReporter,
     "client_feature.ios.use_bd_crash_reporter",
+    true
+  );
+}
+
+pub mod crash_profiles {
+  // Subscribes to Android system-triggered ANR profiles (API 36+) and uploads those attributable
+  // to SDK ANR reports. Android reads the same key; disabling it removes the SDK trigger and stops
+  // queued adoption.
+  bool_feature_flag!(
+    AnrEnabled,
+    "client_feature.android.crash_profiles.anr",
+    true
+  );
+
+  // As above for Java OutOfMemoryError profiles (API 37+) attributable to SDK JVM OOM reports.
+  bool_feature_flag!(
+    OomEnabled,
+    "client_feature.android.crash_profiles.oom",
     true
   );
 }
@@ -1092,8 +1135,6 @@ pub mod session {
 }
 
 pub mod artifact_upload {
-  int_feature_flag!(MaxPendingEntries, "artifact_upload.max_pending_entries", 10);
-
   static ONE_MEGABYTE: u32 = 1024 * 1024; // 1 MiB in bytes
 
   int_feature_flag!(
@@ -1103,8 +1144,14 @@ pub mod artifact_upload {
   );
 }
 
-pub mod attachment {
-  int_feature_flag!(MaxBytes, "attachment.max_bytes", 5 * 1024 * 1024);
+pub mod chunked_artifact_upload {
+  use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
+
+  int_feature_flag!(
+    MaxLogicalBytes,
+    "artifact_upload.chunked.max_logical_bytes",
+    MAX_ARTIFACT_LOGICAL_BYTES
+  );
 }
 
 pub mod device_command {
@@ -1113,15 +1160,6 @@ pub mod device_command {
     "device_command.execution_timeout_ms",
     time::Duration::seconds(5)
   );
-}
-
-pub mod workflow_attachment {
-  int_feature_flag!(
-    MaxOwnedBytes,
-    "workflow_attachment.max_owned_bytes",
-    32 * 1024 * 1024
-  );
-  int_feature_flag!(MaxOwnedFiles, "workflow_attachment.max_owned_files", 64);
 }
 
 pub mod session_capture {

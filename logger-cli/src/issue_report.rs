@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 //! Synthetic issue reports in the platform layer's on-disk format, for local data generators.
 
@@ -46,6 +46,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   ThreadDetailsArgs,
   Timestamp,
 };
+use clap::ValueEnum;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use time::OffsetDateTime;
 
@@ -53,7 +54,7 @@ use time::OffsetDateTime;
 // IssueKind
 //
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum IssueKind {
   NativeCrash,
   JvmCrash,

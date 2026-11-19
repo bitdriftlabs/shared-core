@@ -3,9 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
-
-#![allow(clippy::unwrap_used)]
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
@@ -1045,7 +1043,7 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
       .insert(Scope::FeatureFlagExposure, key, value)
       .await?;
     let rotation = setup.store.rotate_journal().await?;
-    snapshot_paths.push(rotation.snapshot_path.clone().unwrap());
+    snapshot_paths.push(rotation.snapshot_path.unwrap());
   }
 
   // Verify all compressed archives exist

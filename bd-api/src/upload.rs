@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use anyhow::anyhow;
 use bd_proto::protos::bdtail::bdtail_config::DeviceCommandRequest;
@@ -16,7 +16,6 @@ pub use bd_proto::protos::client::api::log_upload_intent_request::{
 pub use bd_proto::protos::client::api::log_upload_intent_response::Decision as LogsUploadDecision;
 use bd_proto::protos::client::api::sankey_intent_response::Decision as SankeyPathUploadDecision;
 use bd_proto::protos::client::api::{
-  DeviceCommandResultContext,
   DeviceCommandUpdate,
   DeviceCommandUpdateAck,
   LogUploadRequest,
@@ -25,18 +24,18 @@ use bd_proto::protos::client::api::{
   StatsUploadRequest,
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
+  UploadArtifactResponse,
   device_command_update,
   upload_artifact_intent_response,
 };
-use bd_proto::protos::logging::payload::Data;
-use bd_proto::protos::logging::payload::data::Data_type;
-use bd_time::TimeProvider;
 use parking_lot::Mutex;
 use protobuf::Message;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use std::time::Duration;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use upload_artifact_intent_response::Decision as ArtifactIntentDecision;
 use uuid::Uuid;
 
@@ -97,6 +96,15 @@ pub struct IntentResponse {
   pub decision: IntentDecision,
 }
 
+//
+// PendingArtifact
+//
+
+struct PendingArtifact {
+  chunked: bool,
+  response_tx: oneshot::Sender<UploadArtifactResponse>,
+}
+
 /// Used to track pending upload requests. Requests are identified by a UUID recorded at
 /// upload time, which is used to correlate it with incoming response. Each pending request
 /// maintains a oneshot channel which is used to signal back to the uploader the result of the
@@ -109,6 +117,7 @@ pub struct StateTracker {
   // A map of pending log intents to their response channel. This is used to communicate back the
   // result of an intent request back to the upload task.
   pending_intents: HashMap<String, tokio::sync::oneshot::Sender<IntentResponse>>,
+  pending_artifacts: HashMap<String, PendingArtifact>,
 }
 
 impl StateTracker {
@@ -117,12 +126,45 @@ impl StateTracker {
     Self {
       pending_uploads: HashMap::new(),
       pending_intents: HashMap::new(),
+      pending_artifacts: HashMap::new(),
     }
   }
 
   #[must_use]
   pub fn has_pending_requests(&self) -> bool {
-    !self.pending_uploads.is_empty() || !self.pending_intents.is_empty()
+    !self.pending_uploads.is_empty()
+      || !self.pending_intents.is_empty()
+      || !self.pending_artifacts.is_empty()
+  }
+
+  pub fn track_artifact(&mut self, upload: TrackedArtifactUpload) -> UploadArtifactRequest {
+    let uuid = upload.uuid.clone();
+    let (request, response_tx) = upload.into_parts();
+    self.pending_artifacts.insert(
+      uuid,
+      PendingArtifact {
+        chunked: request.logical_bytes.is_some(),
+        response_tx,
+      },
+    );
+    request
+  }
+
+  pub fn resolve_artifact(&mut self, response: UploadArtifactResponse) -> anyhow::Result<()> {
+    let pending = self
+      .pending_artifacts
+      .remove(&response.upload_uuid)
+      .ok_or_else(|| {
+        anyhow!(
+          "State for artifact request with uuid {:?} was inconsistent",
+          response.upload_uuid
+        )
+      })?;
+    if !pending.chunked && (response.state.value() != 0 || !response.received_chunks.is_empty()) {
+      anyhow::bail!("chunked acknowledgement does not match a whole-file artifact request");
+    }
+    let _ignored = pending.response_tx.send(response);
+    Ok(())
   }
 
   /// Track a log upload intent, converting it into an upload intent request.
@@ -183,24 +225,26 @@ impl StateTracker {
 
 pub const MAX_KNOWN_COMMANDS: usize = 64;
 const MAX_PENDING_COMMAND_UPDATE_BYTES: usize = 4 * 1024 * 1024;
+/// Local bookkeeping must cover the server's maximum invocation lifetime to prevent reexecution.
+pub const DEVICE_COMMAND_RETENTION: Duration = Duration::from_hours(24);
 
 /// Admission and deduplication state for one live SDK, shared with every replacement API stream.
 /// Nothing here is persisted: a recreated SDK must not inherit execution authority.
 pub struct DeviceCommandState {
   /// Fresh per SDK, not per connection. Dispatches must name this owner before being admitted.
   pub sdk_instance_id: String,
-  time_provider: Arc<dyn TimeProvider>,
   pending_update_bytes: Arc<Semaphore>,
-  // Keep IDs through their original expiry, including after completion, so configuration
-  // omission/reappearance cannot execute a command twice. Values contain no result payloads.
-  commands: Mutex<BTreeMap<String, protobuf::well_known_types::timestamp::Timestamp>>,
+  // Keep IDs for a fixed monotonic lifetime, including after completion. The server owns
+  // invocation expiry; device wall clocks must not affect admission, deduplication, or delivery
+  // budgets.
+  commands: Mutex<BTreeMap<String, Instant>>,
 }
 
 impl DeviceCommandState {
-  pub fn new(time_provider: Arc<dyn TimeProvider>) -> Self {
+  #[must_use]
+  pub fn new() -> Self {
     Self {
       sdk_instance_id: Uuid::new_v4().to_string(),
-      time_provider,
       pending_update_bytes: Arc::new(Semaphore::new(MAX_PENDING_COMMAND_UPDATE_BYTES)),
       commands: Mutex::default(),
     }
@@ -208,41 +252,39 @@ impl DeviceCommandState {
 
   #[cfg(test)]
   pub fn known_command_ids(&self) -> Vec<String> {
-    let now = self.time_provider.now();
+    let now = Instant::now();
     let mut commands = self.commands.lock();
-    commands.retain(|_, deadline| {
-      (deadline.seconds, deadline.nanos) > (now.unix_timestamp(), now.nanosecond().cast_signed())
-    });
+    commands.retain(|_, deadline| *deadline > now);
     commands.keys().cloned().collect()
   }
 
   /// Atomically claims a new invocation before execution can be spawned. Capacity is released by
-  /// original expiry, never by an ACK or by removing a command from a configuration.
+  /// the local retention deadline, never by an ACK or removing a command from a configuration.
   pub fn admit(&self, command: &DeviceCommandRequest) -> bool {
-    let Some(deadline) = command.expires_at.as_ref() else {
-      return false;
-    };
-    let now = self.time_provider.now();
     if command.sdk_instance_id.as_str() != self.sdk_instance_id
       || Uuid::parse_str(&command.command_id).is_err()
-      || (deadline.seconds, deadline.nanos)
-        <= (now.unix_timestamp(), now.nanosecond().cast_signed())
     {
       return false;
     }
+    let now = Instant::now();
     let mut commands = self.commands.lock();
-    commands.retain(|_, expiry| {
-      (expiry.seconds, expiry.nanos) > (now.unix_timestamp(), now.nanosecond().cast_signed())
-    });
+    commands.retain(|_, deadline| *deadline > now);
     if commands.len() >= MAX_KNOWN_COMMANDS || commands.contains_key(command.command_id.as_str()) {
       return false;
     }
-    commands.insert(command.command_id.to_string(), deadline.clone());
+    commands.insert(
+      command.command_id.to_string(),
+      now + DEVICE_COMMAND_RETENTION,
+    );
+    log::debug!(
+      "admitted device command {} with local retention {DEVICE_COMMAND_RETENTION:?}",
+      command.command_id
+    );
     true
   }
 
-  /// Returns the earliest deadline worth retrying after capacity rejection. Invalid, expired,
-  /// wrong-owner, and already-admitted commands must not enter the deferred admission queue.
+  /// Returns the earliest local capacity release. Invalid, wrong-owner, and already-admitted
+  /// commands must not enter the deferred admission queue.
   pub fn admission_retry_delay(
     &self,
     command: &DeviceCommandRequest,
@@ -252,40 +294,27 @@ impl DeviceCommandState {
     {
       return None;
     }
-    let deadline = command.expires_at.as_ref()?;
-    let now = self.time_provider.now();
     let commands = self.commands.lock();
-    if commands.contains_key(command.command_id.as_str())
-      || (deadline.seconds, deadline.nanos)
-        <= (now.unix_timestamp(), now.nanosecond().cast_signed())
-    {
+    if commands.contains_key(command.command_id.as_str()) {
       return None;
     }
-    let deadline = commands
-      .values()
-      .chain(std::iter::once(deadline))
-      .min_by_key(|expiry| (expiry.seconds, expiry.nanos))?;
-    let deadline = time::OffsetDateTime::from_unix_timestamp(deadline.seconds)
-      .ok()?
-      .replace_nanosecond(u32::try_from(deadline.nanos).ok()?)
-      .ok()?;
-    Some((deadline - now).try_into().unwrap_or_default())
+    Some(
+      commands
+        .values()
+        .min()?
+        .saturating_duration_since(Instant::now()),
+    )
   }
 
-  /// Converts the immutable server deadline into a relative budget for an update waiter. A mux
-  /// reconnect must reuse this budget's deadline rather than grant another full lifetime.
-  pub fn remaining_time(&self, command_id: &str) -> Option<std::time::Duration> {
-    let commands = self.commands.lock();
-    let deadline = commands.get(command_id)?;
-    let deadline = time::OffsetDateTime::from_unix_timestamp(deadline.seconds)
-      .ok()?
-      .replace_nanosecond(u32::try_from(deadline.nanos).ok()?)
-      .ok()?;
-    Some(
-      (deadline - self.time_provider.now())
-        .try_into()
-        .unwrap_or_default(),
-    )
+  /// Reuses the admission deadline for every update and replacement API stream.
+  pub fn deadline(&self, command_id: &str) -> Option<Instant> {
+    self.commands.lock().get(command_id).copied()
+  }
+}
+
+impl Default for DeviceCommandState {
+  fn default() -> Self {
+    Self::new()
   }
 }
 
@@ -488,6 +517,9 @@ pub struct LogBatch {
 
   /// The id of the buffer the logs are being uploaded from.
   pub buffer_id: String,
+
+  /// The field sets referred to by interned logs in the batch, one per version.
+  pub field_sets: Vec<bd_proto::protos::client::api::FieldSet>,
 }
 
 /// A batch of logs sent to be uploaded. The upload is wrapped in an Arc to allow for cheap retries.
@@ -504,13 +536,13 @@ pub type TrackedSankeyPathUploadIntentRequest = Tracked<SankeyIntentRequest, Int
 /// response to a specific listener.
 pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, IntentResponse>;
 
-pub type TrackedArtifactUpload = Tracked<UploadArtifactRequest, UploadResponse>;
+pub type TrackedArtifactUpload = Tracked<UploadArtifactRequest, UploadArtifactResponse>;
 pub type TrackedArtifactIntent = Tracked<UploadArtifactIntentRequest, IntentResponse>;
 
 #[derive(Debug)]
 pub struct CommandUpdateSender {
   channel: Option<tokio::sync::oneshot::Sender<()>>,
-  expires_at: Option<tokio::time::Instant>,
+  expires_at: Option<Instant>,
   expiry_task: Option<JoinHandle<()>>,
   byte_permit: Option<OwnedSemaphorePermit>,
 }
@@ -531,7 +563,7 @@ impl CommandUpdateSender {
       .is_some_and(|channel| !channel.is_closed())
       && self
         .expires_at
-        .is_none_or(|deadline| deadline > tokio::time::Instant::now())
+        .is_none_or(|deadline| deadline > Instant::now())
   }
 
   pub fn send(mut self, response: ()) -> anyhow::Result<()> {
@@ -566,20 +598,9 @@ impl TrackedDeviceCommandUpdate {
         update_sequence_number: payload.update_sequence_number,
         update_type: Some(device_command_update::Update_type::Failed(
           device_command_update::Failed {
-            context: Some(DeviceCommandResultContext {
-              fields: [(
-                "error".to_string(),
-                Data {
-                  data_type: Some(Data_type::StringData(
-                    "device command result exceeds the 4 MiB update limit".to_string(),
-                  )),
-                  ..Default::default()
-                },
-              )]
-              .into(),
-              ..Default::default()
-            })
-            .into(),
+            failure_message: Some(
+              "device command result exceeds the 4 MiB update limit".to_string(),
+            ),
             ..Default::default()
           },
         )),
@@ -603,7 +624,7 @@ impl TrackedDeviceCommandUpdate {
   }
 
   /// Reserves bytes across queued and tracked updates. The caller bounds this wait by command
-  /// expiry.
+  /// local retention.
   pub async fn with_byte_budget(mut self, state: &DeviceCommandState) -> anyhow::Result<Self> {
     let bytes = self.payload.compute_size();
     if bytes > MAX_PENDING_COMMAND_UPDATE_BYTES as u64 {
@@ -621,9 +642,8 @@ impl TrackedDeviceCommandUpdate {
   }
 
   #[must_use]
-  pub fn with_remaining_time(mut self, remaining: std::time::Duration) -> Self {
-    let expires_at = tokio::time::Instant::now() + remaining;
-    self.response_tx.expires_at = Some(expires_at);
+  pub fn with_deadline(mut self, deadline: Instant) -> Self {
+    self.response_tx.expires_at = Some(deadline);
     // The caller bounds enqueueing and ACK waiting by this same budget. Only tracked payloads
     // need a separate expiry task, because API reconnect/backoff can stop polling them.
     self

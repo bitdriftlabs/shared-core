@@ -4,8 +4,6 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#![allow(clippy::unwrap_used)]
-
 use super::{retry_notify, retry_notify_with_sleep};
 use std::cell::Cell;
 use std::future::{Future, poll_fn, ready};

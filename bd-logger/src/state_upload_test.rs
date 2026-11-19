@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::*;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _, IntWatch};
@@ -306,7 +306,7 @@ async fn process_upload_advances_pending_oldest_across_multiple_snapshots() {
   mock_client
     .expect_enqueue_upload()
     .times(2)
-    .returning(|_, _, _, _, _, _, persisted_tx| {
+    .returning(|_, _, _, _, _, _, _, persisted_tx| {
       if let Some(tx) = persisted_tx {
         let _ = tx.send(Ok(()));
       }
@@ -339,7 +339,7 @@ async fn older_incoming_range_reexpands_pending_after_progress() {
   mock_client
     .expect_enqueue_upload()
     .times(2)
-    .returning(|_, _, _, _, _, _, persisted_tx| {
+    .returning(|_, _, _, _, _, _, _, persisted_tx| {
       if let Some(tx) = persisted_tx {
         let _ = tx.send(Ok(()));
       }
@@ -437,7 +437,7 @@ async fn enqueue_backpressure_keeps_pending_range() {
   mock_client
     .expect_enqueue_upload()
     .times(1)
-    .returning(|_, _, _, _, _, _, _| Err(bd_artifact_upload::EnqueueError::QueueFull));
+    .returning(|_, _, _, _, _, _, _, _| Err(bd_artifact_upload::EnqueueError::QueueFull));
   let mut worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
   worker.pending_range = Some(PendingRange {
@@ -462,7 +462,7 @@ async fn persisted_ack_error_keeps_pending_range() {
   mock_client
     .expect_enqueue_upload()
     .times(1)
-    .returning(|_, _, _, _, _, _, persisted_tx| {
+    .returning(|_, _, _, _, _, _, _, persisted_tx| {
       if let Some(tx) = persisted_tx {
         let _ = tx.send(Err(bd_artifact_upload::EnqueueError::Closed));
       }
@@ -484,7 +484,7 @@ async fn persisted_ack_channel_drop_keeps_pending_range() {
   mock_client
     .expect_enqueue_upload()
     .times(1)
-    .returning(|_, _, _, _, _, _, _| Ok(Uuid::new_v4()));
+    .returning(|_, _, _, _, _, _, _, _| Ok(Uuid::new_v4()));
 
   let mut worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
@@ -501,7 +501,7 @@ async fn successful_enqueue_ack_clears_pending() {
   mock_client
     .expect_enqueue_upload()
     .times(1)
-    .returning(|_, _, _, _, _, _, persisted_tx| {
+    .returning(|_, _, _, _, _, _, _, persisted_tx| {
       if let Some(tx) = persisted_tx {
         let _ = tx.send(Ok(()));
       }
@@ -657,7 +657,7 @@ async fn restart_with_zero_last_change_uploads_existing_snapshot() {
   mock_client
     .expect_enqueue_upload()
     .times(1)
-    .returning(|_, _, _, _, _, _, persisted_tx| {
+    .returning(|_, _, _, _, _, _, _, persisted_tx| {
       if let Some(tx) = persisted_tx {
         let _ = tx.send(Ok(()));
       }

@@ -3,7 +3,7 @@
 //
 // Use of this source code is governed by a source available license that can be found in the
 // LICENSE.polyform file or at:
-// https://polyformproject.org/licenses/strict/1.0.0
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 //
 // ProtoConfig
@@ -107,7 +107,10 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
     },
     ProtoConfig {
       output_dir: "src/protos/filter",
-      inputs: &["../api/src/bitdrift_public/protobuf/filter/v1/filter.proto"],
+      inputs: &[
+        "../api/src/bitdrift_public/protobuf/filter/v1/filter.proto",
+        "../api/src/bitdrift_public/protobuf/filter/v1/scrub.proto",
+      ],
       includes: PROTO_INCLUDES,
       use_tokio_bytes: false,
       file_header: true,
