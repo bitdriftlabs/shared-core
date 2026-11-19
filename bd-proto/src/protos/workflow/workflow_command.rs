@@ -1718,7 +1718,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     d\x20samples.2\x04(\x80\x80\x04\x1ay\n\x16track_java_allocations\x10\x06\
     \x1aYRecords\x20Java\x20heap\x20allocations\x20instead\x20of\x20native\
     \x20ones;\x20a\x20profile\x20records\x20one\x20or\x20the\x20other.2\x020\
-    \x01*\n\n\x08\x08\x01\x12\x0215\x185:\x9f\x01\n\x1awell_known_command_op\
+    \x01*\n\n\x08\x08\x01\x12\x0215\x184:\x9f\x01\n\x1awell_known_command_op\
     tions\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v\
     1.WellKnownCommandOptions\x12!.google.protobuf.EnumValueOptionsR\x17well\
     KnownCommandOptionsb\x06proto3\

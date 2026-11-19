@@ -54,7 +54,7 @@ use std::collections::HashMap;
 // Version 50: Android stack trace built-in command support.
 // Version 51: Added log body extraction for Sankey nodes.
 // Version 52: Added scrub rules, applied to every log before the filters.
-pub const CONFIGURATION_VERSION: &str = "53";
+pub const CONFIGURATION_VERSION: &str = "52";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
