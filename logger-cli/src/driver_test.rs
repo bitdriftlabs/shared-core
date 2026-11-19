@@ -7,7 +7,7 @@
 
 use super::{Driver, stop_worker, wait_for_configuration};
 use crate::issue_report::{IssueKind, IssueReport, StackFrame};
-use crate::logger::{LoggerArgs, SessionStrategyConfig};
+use crate::logger::{LoggerArgs, MuxTransport, SessionStrategyConfig};
 use crate::types::Platform;
 use bd_logger::{AdmissionError, FlushError, SdkStatusTracker};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
@@ -373,6 +373,7 @@ fn args(port: u16) -> LoggerArgs {
   LoggerArgs {
     api_url: format!("http://127.0.0.1:{port}"),
     api_key: "test-key".into(),
+    transport: MuxTransport::Grpc,
     app_id: "driver-test".into(),
     platform: Platform::Apple,
     app_version: "1.2.3".into(),

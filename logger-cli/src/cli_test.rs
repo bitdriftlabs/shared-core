@@ -8,7 +8,22 @@
 use super::{Command, Options, SessionStrategy};
 use crate::cli::FakeFeatureFlag;
 use clap::Parser;
-use logger_cli::logger::SessionStrategyConfig;
+use logger_cli::logger::{MuxTransport, SessionStrategyConfig};
+
+#[test]
+fn mux_websocket_is_explicit_opt_in() {
+  for (args, transport) in [
+    (&[][..], MuxTransport::Grpc),
+    (&["--transport", "websocket"][..], MuxTransport::Websocket),
+  ] {
+    let options = Options::parse_from(
+      ["logger-cli", "start", "--api-key", "test-key"]
+        .into_iter()
+        .chain(args.iter().copied()),
+    );
+    assert!(matches!(options.command, Command::Start(cmd) if cmd.transport == transport));
+  }
+}
 
 #[test]
 fn parses_set_entity_id_command() {

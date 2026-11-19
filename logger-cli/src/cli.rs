@@ -7,7 +7,7 @@
 
 use clap::{ArgAction, Args, Parser, Subcommand};
 use logger_cli::issue_report::IssueKind;
-use logger_cli::logger::{LoggerArgs, SessionStrategyConfig};
+use logger_cli::logger::{LoggerArgs, MuxTransport, SessionStrategyConfig};
 use logger_cli::synthetic_artifact::SourceKind;
 use logger_cli::synthetic_fixture::{FixtureKind, Pattern};
 use logger_cli::types::{LogLevel, LogType, Platform, RuntimeValueType};
@@ -159,6 +159,10 @@ pub struct StartCommand {
   #[clap(env, long, required = false, default_value = "https://api.bitdrift.io")]
   pub api_url: String,
 
+  /// Transport to use for the mux connection.
+  #[clap(long, value_enum, default_value = "grpc")]
+  pub transport: MuxTransport,
+
   /// Uniquely identify the app
   #[clap(env, long, required = false, default_value = "io.bitdrift.cli")]
   pub app_id: String,
@@ -204,6 +208,7 @@ impl From<StartCommand> for LoggerArgs {
         format!("https://{}", cmd.api_url)
       },
       api_key: cmd.api_key,
+      transport: cmd.transport,
       app_id: cmd.app_id,
       platform: cmd.platform,
       app_version: cmd.app_version,

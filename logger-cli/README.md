@@ -58,6 +58,16 @@ options.
 
 The `start` command runs until stopped with `Ctrl-C`.
 
+To exercise mux over WebSocket instead of the default gRPC transport:
+
+```bash
+API_KEY=<key> API_URL=https://api.bitdrift.dev logger-cli start --transport websocket
+```
+
+Only the mux connection uses WebSocket. Its endpoint appends `/v1/mux/ws` to the API
+base path, including any reverse-proxy prefix. Other requests still use HTTP, and
+the CLI does not fall back to gRPC if WebSocket is unavailable.
+
 Logger CLI always fulfills remote screenshot device commands with a deterministic 1x1 JPEG. This
 makes it suitable as the simulated device for end-to-end screenshot testing: after the command
 reaches `Succeeded`, its attachment is available through the device-command attachment endpoint as
