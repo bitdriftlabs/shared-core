@@ -1636,7 +1636,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x02\x10\x01\x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\
     \x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.p\
     rotobuf.logging.v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\
-    \x12\x03\xf8B\x01*\x98\x20\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_U\
+    \x12\x03\xf8B\x01*\x82\x20\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_U\
     NSPECIFIED\x10\0\x12o\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1aW\xc2\xf3\x18S\
     \n\x12dump_device_buffer\x12$Requests\x20the\x20device's\x20buffered\x20\
     logs.*\x17\n\t\x08\x01\x12\x036.0\x181\n\n\x08\x02\x12\x0415.0\x181\x12|\
@@ -1732,11 +1732,10 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     n\x20Android\x20platform-redacted\x20Perfetto\x20system\x20timeline.\x1a\
     n\n\x0bduration_ms\x10\x05\x1aXHow\x20long\x20to\x20record,\x20in\x20mil\
     liseconds.\x20Android\x20clamps\x20the\x20duration\x20to\x20its\x20suppo\
-    rted\x20range.2\x03(\x88'*\n\n\x08\x08\x01\x12\x0215\x184\"\x04\x08\x0f\
-    \x10\x0f*\x0eJAVA_HEAP_DUMP:\x9f\x01\n\x1awell_known_command_options\x18\
-    \xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.WellKno\
-    wnCommandOptions\x12!.google.protobuf.EnumValueOptionsR\x17wellKnownComm\
-    andOptionsb\x06proto3\
+    rted\x20range.2\x03(\x88'*\n\n\x08\x08\x01\x12\x0215\x184:\x9f\x01\n\x1a\
+    well_known_command_options\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_publi\
+    c.protobuf.workflow.v1.WellKnownCommandOptions\x12!.google.protobuf.Enum\
+    ValueOptionsR\x17wellKnownCommandOptionsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
