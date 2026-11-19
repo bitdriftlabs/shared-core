@@ -13,6 +13,7 @@ aws-lc-rs            = ["hyper-rustls/aws-lc-rs", "hyper-rustls-default"]
 default              = ["aws-lc-rs"]
 hyper-rustls-default = ["hyper-rustls/native-tokio", "hyper-rustls/http1", "hyper-rustls/http2", "hyper-rustls/tls12"]
 ring                 = ["hyper-rustls/ring", "hyper-rustls-default"]
+websocket            = ["dep:futures-util", "dep:tokio-tungstenite"]
 
 [dependencies]
 anyhow.workspace            = true
@@ -23,6 +24,7 @@ bd-error-reporter           = { path = "../bd-error-reporter" }
 bd-shutdown                 = { path = "../bd-shutdown" }
 bd-workspace-hack.workspace = true
 bytes.workspace             = true
+futures-util                = { workspace = true, features = ["sink"], optional = true }
 http.workspace              = true
 http-body.workspace         = true
 http-body-util.workspace    = true
@@ -34,6 +36,7 @@ serde.workspace             = true
 serde_json.workspace        = true
 tokio.workspace             = true
 tokio-stream.workspace      = true
+tokio-tungstenite           = { workspace = true, features = ["rustls-tls-native-roots"], optional = true }
 
 [dev-dependencies]
 assert_matches.workspace  = true

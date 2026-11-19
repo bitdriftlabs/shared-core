@@ -347,6 +347,7 @@ fn make_session_strategy_with_time_provider(
 pub struct LoggerArgs {
   pub api_url: String,
   pub api_key: String,
+  pub transport: MuxTransport,
   pub app_id: String,
   pub platform: Platform,
   pub app_version: String,
@@ -356,6 +357,13 @@ pub struct LoggerArgs {
   pub entity_id: Option<String>,
   pub session_strategy: SessionStrategyConfig,
   pub attachment_fixture_directory: Option<PathBuf>,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MuxTransport {
+  #[default]
+  Grpc,
+  Websocket,
 }
 
 pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<LoggerHolder> {
@@ -378,8 +386,15 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
   }
 
   let shutdown_trigger = bd_shutdown::ComponentShutdownTrigger::default();
-  let shutdown = shutdown_trigger.make_shutdown();
-  let network = bd_hyper_network::HyperNetwork::run_on_thread(&args.api_url, shutdown);
+  let network: Box<dyn bd_api::PlatformNetworkManager<_>> = match args.transport {
+    MuxTransport::Grpc => Box::new(bd_hyper_network::HyperNetwork::run_on_thread(
+      &args.api_url,
+      shutdown_trigger.make_shutdown(),
+    )),
+    MuxTransport::Websocket => Box::new(bd_hyper_network::websocket::WebSocketNetwork::new(
+      &args.api_url,
+    )?),
+  };
 
   let static_metadata = Arc::new(Metadata {
     app_id: Some(args.app_id.clone()),
@@ -424,7 +439,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
     device,
     store,
-    network: Box::new(network),
+    network,
     static_metadata,
     start_in_sleep_mode: false,
   })

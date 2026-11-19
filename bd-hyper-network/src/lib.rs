@@ -8,6 +8,8 @@
 #[cfg(test)]
 #[path = "./hyper_test.rs"]
 mod hyper_test;
+#[cfg(feature = "websocket")]
+pub mod websocket;
 
 use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 use bd_error_reporter::reporter::{Reporter, handle_unexpected};

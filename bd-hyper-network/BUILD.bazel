@@ -1,18 +1,50 @@
-load("@crates//bd-hyper-network:data.bzl", "all_crate_deps", "crate_data")
-load("//tools/rust:tests.bzl", "rust_library_with_test")
+load("@crates//bd-hyper-network:data.bzl", "crate_data")
+load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
+load("//tools/rust:tests.bzl", "rust_library_test")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library_with_test(
+_CRATE_DATA = crate_data()
+
+# Cargo metadata includes optional dependencies enabled anywhere in the workspace.
+_WEBSOCKET_DEPS = [
+    dep
+    for dep in _CRATE_DATA["deps"]
+    if dep.startswith(("@crates//futures-util-", "@crates//tokio-tungstenite-"))
+]
+
+_DEFAULT_CRATE_DATA = dict(
+    _CRATE_DATA,
+    deps = [dep for dep in _CRATE_DATA["deps"] if dep not in _WEBSOCKET_DEPS],
+)
+
+rust_library_with_feature_variants(
     name = "bd-hyper-network",
     srcs = glob(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
-    crate_data = crate_data(),
+    crate_data = _DEFAULT_CRATE_DATA,
     crate_features = ["default"],
     crate_name = "bd_hyper_network",
     crate_root = "src/lib.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True),
+    feature_variants = {
+        "websocket": {
+            "crate_features": ["websocket"],
+            "extra_deps": _WEBSOCKET_DEPS,
+        },
+    },
+)
+
+rust_library_test(
+    crate = ":bd-hyper-network",
+    crate_data = _DEFAULT_CRATE_DATA,
+)
+
+rust_library_test(
+    name = "websocket-test",
+    crate = ":bd-hyper-network-websocket",
+    crate_data = _CRATE_DATA,
+    nextest_filter = "test(websocket)",
 )

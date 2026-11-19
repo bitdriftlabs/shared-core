@@ -14,7 +14,7 @@ bd-artifact-upload.path      = "../bd-artifact-upload"
 bd-client-common.workspace   = true
 bd-client-stats              = { path = "../bd-client-stats", features = ["logger-cli-observer"] }
 bd-device.path               = "../bd-device"
-bd-hyper-network.path        = "../bd-hyper-network"
+bd-hyper-network             = { path = "../bd-hyper-network", features = ["websocket"] }
 bd-key-value.path            = "../bd-key-value"
 bd-log.path                  = "../bd-log"
 bd-log-primitives.path       = "../bd-log-primitives"
