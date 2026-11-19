@@ -39,6 +39,10 @@ mod upload_coordination;
 mod workflow_attachment;
 mod workflow_attachment_upload;
 
+/// Drives the per-log path one stage at a time, for benchmarks.
+#[cfg(feature = "benchmark")]
+#[doc(hidden)]
+pub use async_log_buffer::benchmark;
 pub use state_upload::{SnapshotRef, StateUploadHandle};
 
 #[cfg(test)]

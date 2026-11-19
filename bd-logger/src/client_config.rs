@@ -68,16 +68,16 @@ pub trait ApplyConfig {
 
 #[cfg_attr(test, derive(Debug, Default, PartialEq))]
 pub struct Configuration {
-  buffer: BufferConfigList,
-  workflows: WorkflowsConfigurationProto,
-  debug_workflows: WorkflowsConfigurationProto,
+  pub(crate) buffer: BufferConfigList,
+  pub(crate) workflows: WorkflowsConfigurationProto,
+  pub(crate) debug_workflows: WorkflowsConfigurationProto,
   bdtail: BdTailConfigurations,
-  filters: FiltersConfiguration,
-  scrub: ScrubConfiguration,
+  pub(crate) filters: FiltersConfiguration,
+  pub(crate) scrub: ScrubConfiguration,
 }
 
 impl Configuration {
-  fn new(sow: StateOfTheWorld) -> Self {
+  pub(crate) fn new(sow: StateOfTheWorld) -> Self {
     Self {
       buffer: sow.buffer_config_list.unwrap_or_default(),
       workflows: sow.workflows_configuration.unwrap_or_default(),
