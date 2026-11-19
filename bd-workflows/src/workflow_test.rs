@@ -149,6 +149,8 @@ fn command_details_encode_selectors_and_escape_strings() {
       WellKnownCommandType::HEAP_PROFILE_TRACE,
       "heap_profile_trace",
     ),
+    (WellKnownCommandType::SYSTEM_TRACE, "system_trace"),
+    (WellKnownCommandType::JAVA_HEAP_DUMP, "java_heap_dump"),
     (WellKnownCommandType::MEMORY_DUMP, "memory_dump"),
     (WellKnownCommandType::TYPE_UNSPECIFIED, "unknown_builtin_0"),
   ] {

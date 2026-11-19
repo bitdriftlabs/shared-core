@@ -92,6 +92,8 @@ pub fn command_details(selector: Option<&WorkflowCommandSelector>) -> String {
         Ok(WellKnownCommandType::HEAP_PROFILE_TRACE) => {
           output.push_str("\"heap_profile_trace\"");
         },
+        Ok(WellKnownCommandType::SYSTEM_TRACE) => output.push_str("\"system_trace\""),
+        Ok(WellKnownCommandType::JAVA_HEAP_DUMP) => output.push_str("\"java_heap_dump\""),
         Ok(WellKnownCommandType::FILE_LIST) => output.push_str("\"file_list\""),
         Ok(WellKnownCommandType::FILE_SIZE) => output.push_str("\"file_size\""),
         Ok(WellKnownCommandType::FILE_CLEAR) => output.push_str("\"file_clear\""),

@@ -1486,6 +1486,10 @@ pub enum WellKnownCommandType {
     MEMORY_DUMP = 12,
     // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.WellKnownCommandType.HEAP_PROFILE_TRACE)
     HEAP_PROFILE_TRACE = 13,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.WellKnownCommandType.SYSTEM_TRACE)
+    SYSTEM_TRACE = 14,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.workflow.v1.WellKnownCommandType.JAVA_HEAP_DUMP)
+    JAVA_HEAP_DUMP = 15,
 }
 
 impl ::protobuf::Enum for WellKnownCommandType {
@@ -1511,6 +1515,8 @@ impl ::protobuf::Enum for WellKnownCommandType {
             11 => ::std::option::Option::Some(WellKnownCommandType::FILE_DELETE),
             12 => ::std::option::Option::Some(WellKnownCommandType::MEMORY_DUMP),
             13 => ::std::option::Option::Some(WellKnownCommandType::HEAP_PROFILE_TRACE),
+            14 => ::std::option::Option::Some(WellKnownCommandType::SYSTEM_TRACE),
+            15 => ::std::option::Option::Some(WellKnownCommandType::JAVA_HEAP_DUMP),
             _ => ::std::option::Option::None
         }
     }
@@ -1531,6 +1537,8 @@ impl ::protobuf::Enum for WellKnownCommandType {
             "FILE_DELETE" => ::std::option::Option::Some(WellKnownCommandType::FILE_DELETE),
             "MEMORY_DUMP" => ::std::option::Option::Some(WellKnownCommandType::MEMORY_DUMP),
             "HEAP_PROFILE_TRACE" => ::std::option::Option::Some(WellKnownCommandType::HEAP_PROFILE_TRACE),
+            "SYSTEM_TRACE" => ::std::option::Option::Some(WellKnownCommandType::SYSTEM_TRACE),
+            "JAVA_HEAP_DUMP" => ::std::option::Option::Some(WellKnownCommandType::JAVA_HEAP_DUMP),
             _ => ::std::option::Option::None
         }
     }
@@ -1550,6 +1558,8 @@ impl ::protobuf::Enum for WellKnownCommandType {
         WellKnownCommandType::FILE_DELETE,
         WellKnownCommandType::MEMORY_DUMP,
         WellKnownCommandType::HEAP_PROFILE_TRACE,
+        WellKnownCommandType::SYSTEM_TRACE,
+        WellKnownCommandType::JAVA_HEAP_DUMP,
     ];
 }
 
@@ -1631,13 +1641,13 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x02\x10\x01\x1ag\n\x0eArgumentsEntry\x12\x10\n\x03key\x18\x01\x20\
     \x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.p\
     rotobuf.logging.v1.DataR\x05value:\x028\x01B\x17\n\x10command_selector\
-    \x12\x03\xf8B\x01*\xf2\x1c\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_U\
-    NSPECIFIED\x10\0\x12o\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1aW\xc2\xf3\x18S\
-    \n\x12dump_device_buffer\x12$Requests\x20the\x20device's\x20buffered\x20\
-    logs.*\x17\n\t\x08\x01\x12\x036.0\x181\n\n\x08\x02\x12\x0415.0\x181\x12|\
-    \n\x0fTAKE_SCREENSHOT\x10\x02\x1ag\xc2\xf3\x18c\n\x0ftake_screenshot\x12\
-    5Captures\x20the\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20\
-    image.\x20\x01*\x17\n\t\x08\x01\x12\x038.0\x181\n\n\x08\x02\x12\x0415.0\
+    \x12\x03\xf8B\x01*\x80!\n\x14WellKnownCommandType\x12\x14\n\x10TYPE_UNSP\
+    ECIFIED\x10\0\x12o\n\x12DUMP_DEVICE_BUFFER\x10\x01\x1aW\xc2\xf3\x18S\n\
+    \x12dump_device_buffer\x12$Requests\x20the\x20device's\x20buffered\x20lo\
+    gs.*\x17\n\t\x08\x01\x12\x036.0\x181\n\n\x08\x02\x12\x0415.0\x181\x12|\n\
+    \x0fTAKE_SCREENSHOT\x10\x02\x1ag\xc2\xf3\x18c\n\x0ftake_screenshot\x125C\
+    aptures\x20the\x20device's\x20current\x20screen\x20as\x20a\x20JPEG\x20im\
+    age.\x20\x01*\x17\n\t\x08\x01\x12\x038.0\x181\n\n\x08\x02\x12\x0415.0\
     \x181\x12\xaa\x02\n\x14STACK_SAMPLING_TRACE\x10\x03\x1a\x8f\x02\xc2\xf3\
     \x18\x8a\x02\n\x14stack_sampling_trace\x12FCaptures\x20a\x20Perfetto\x20\
     stack\x20sampling\x20trace\x20of\x20the\x20application's\x20process.\x1a\
@@ -1718,10 +1728,22 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     d\x20samples.2\x04(\x80\x80\x04\x1ay\n\x16track_java_allocations\x10\x06\
     \x1aYRecords\x20Java\x20heap\x20allocations\x20instead\x20of\x20native\
     \x20ones;\x20a\x20profile\x20records\x20one\x20or\x20the\x20other.2\x020\
-    \x01*\n\n\x08\x08\x01\x12\x0215\x184:\x9f\x01\n\x1awell_known_command_op\
-    tions\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v\
-    1.WellKnownCommandOptions\x12!.google.protobuf.EnumValueOptionsR\x17well\
-    KnownCommandOptionsb\x06proto3\
+    \x01*\n\n\x08\x08\x01\x12\x0215\x184\x12\xe3\x01\n\x0cSYSTEM_TRACE\x10\
+    \x0e\x1a\xd0\x01\xc2\xf3\x18\xcb\x01\n\x0csystem_trace\x12?Captures\x20a\
+    n\x20Android\x20platform-redacted\x20Perfetto\x20system\x20timeline.\x1a\
+    n\n\x0bduration_ms\x10\x05\x1aXHow\x20long\x20to\x20record,\x20in\x20mil\
+    liseconds.\x20Android\x20clamps\x20the\x20duration\x20to\x20its\x20suppo\
+    rted\x20range.2\x03(\x88'*\n\n\x08\x08\x01\x12\x0215\x184\x12\xa5\x02\n\
+    \x0eJAVA_HEAP_DUMP\x10\x0f\x1a\x90\x02\xc2\xf3\x18\x8b\x02\n\x0ejava_hea\
+    p_dump\x12vCaptures\x20a\x20Perfetto\x20ART\x20heap\x20retention\x20grap\
+    h.\x20It\x20can\x20expose\x20app\x20class\x20and\x20reference\x20structu\
+    re\x20and\x20is\x20not\x20log-redacted.\x1au\n\x0ebuffer_size_kb\x10\x05\
+    \x1a[Profiler\x20buffer\x20size\x20in\x20KiB,\x20subject\x20to\x20Androi\
+    d's\x20bounds.\x20This\x20is\x20not\x20an\x20output-file\x20limit.2\x04(\
+    \x80\x80\x04*\n\n\x08\x08\x01\x12\x0215\x184:\x9f\x01\n\x1awell_known_co\
+    mmand_options\x18\xb8\x8e\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.wo\
+    rkflow.v1.WellKnownCommandOptions\x12!.google.protobuf.EnumValueOptionsR\
+    \x17wellKnownCommandOptionsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
