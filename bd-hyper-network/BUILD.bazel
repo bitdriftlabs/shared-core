@@ -47,4 +47,9 @@ rust_library_test(
     crate = ":bd-hyper-network-websocket",
     crate_data = _CRATE_DATA,
     nextest_filter = "test(websocket)",
+    # The libtest compile does not inherit the library's feature cfgs.
+    test_crate_features = [
+        "default",
+        "websocket",
+    ],
 )

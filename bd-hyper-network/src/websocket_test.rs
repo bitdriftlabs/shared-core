@@ -19,17 +19,37 @@ use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 use tokio_tungstenite::tungstenite::protocol::Message;
 
+#[test]
+fn websocket_url_preserves_api_base_path() {
+  for (base, expected) in [
+    ("https://example.test", "wss://example.test/v1/mux/ws"),
+    (
+      "https://example.test/capture",
+      "wss://example.test/capture/v1/mux/ws",
+    ),
+  ] {
+    assert_eq!(WebSocketNetwork::new(base).unwrap().uri, expected);
+  }
+}
+
 #[tokio::test]
 async fn websocket_bridges_binary_records_and_can_open_a_replacement_after_close() {
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-  let network =
-    WebSocketNetwork::new(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+  let network = WebSocketNetwork::new(&format!(
+    "http://{}/capture/",
+    listener.local_addr().unwrap()
+  ))
+  .unwrap();
   let exchange = async {
     let server = async {
       for _ in 0 .. 2 {
         let (tcp, _) = listener.accept().await.unwrap();
+        #[expect(
+          clippy::result_large_err,
+          reason = "Tungstenite fixes the callback error type"
+        )]
         let mut ws = accept_hdr_async(tcp, |request: &Request, mut response: Response| {
-          assert_eq!(request.uri().path(), "/v1/mux/ws");
+          assert_eq!(request.uri().path(), "/capture/v1/mux/ws");
           assert_eq!(request.headers()["x-bitdrift-api-key"], "test-key");
           assert_eq!(request.headers()["x-bitdrift-app-id"], "test-app");
           assert_eq!(request.headers()[SEC_WEBSOCKET_PROTOCOL], "bitdrift.mux.v1");
@@ -49,6 +69,7 @@ async fn websocket_bridges_binary_records_and_can_open_a_replacement_after_close
           .await
           .unwrap();
         ws.close(None).await.unwrap();
+        assert_eq!(ws.next().await.unwrap().unwrap(), Message::Close(None));
       }
     };
     let client = async {

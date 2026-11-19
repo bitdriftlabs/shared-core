@@ -46,11 +46,12 @@ impl WebSocketNetwork {
     let authority = base
       .authority()
       .ok_or_else(|| anyhow::anyhow!("mux WebSocket API base has no authority"))?;
+    let path = format!("{}/v1/mux/ws", base.path().trim_end_matches('/'));
     Ok(Self {
       uri: Uri::builder()
         .scheme(scheme)
         .authority(authority.clone())
-        .path_and_query("/v1/mux/ws")
+        .path_and_query(path)
         .build()?,
     })
   }
@@ -123,21 +124,31 @@ impl<T> PlatformNetworkManager<T> for WebSocketNetwork {
                 .await
                 .is_err()
               {
-                return None;
+                return (None, false);
               }
             },
             Ok(Message::Ping(_) | Message::Pong(_)) => {},
-            Ok(Message::Close(_)) => break,
-            _ => return Some("mux WebSocket receive failed"),
+            Ok(Message::Close(_)) => return (Some("mux WebSocket closed"), true),
+            _ => return (Some("mux WebSocket receive failed"), false),
           }
         }
-        Some("mux WebSocket closed")
+        (Some("mux WebSocket closed"), false)
       };
-      let reason = tokio::select! {
-        () = event_tx.closed() => None,
-        reason = send => reason,
-        reason = receive => reason,
+      let (reason, reply_to_close) = tokio::select! {
+        () = event_tx.closed() => (None, false),
+        reason = send => (reason, false),
+        result = receive => result,
       };
+      if reply_to_close {
+        // Reading Close queues Tungstenite's reply. Flush the socket itself after canceling the
+        // send loop so a pending item in the split sink cannot get in the way.
+        let mut socket = writer
+          .reunite(reader)
+          .expect("reader and writer came from the same socket");
+        if !matches!(timeout(IO_TIMEOUT, socket.flush()).await, Ok(Ok(()))) {
+          log::debug!("failed to flush mux WebSocket close reply");
+        }
+      }
       if let Some(reason) = reason {
         let _ = event_tx
           .send(StreamEvent::StreamClosed(reason.to_string()))
