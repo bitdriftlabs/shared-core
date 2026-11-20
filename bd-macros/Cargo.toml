@@ -11,5 +11,6 @@ doctest = false
 [dependencies]
 bd-macros-impl.path         = "../bd-macros-impl"
 bd-workspace-hack.workspace = true
+bytes.workspace             = true
 time.workspace              = true
 uuid.workspace              = true
