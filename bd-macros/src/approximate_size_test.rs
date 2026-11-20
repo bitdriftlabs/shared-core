@@ -108,7 +108,7 @@ fn counts_bytes_length() {
     size_of_val(&payload).saturating_add(48)
   );
   assert_eq!(
-    payload.slice(..16).approximate_size_bytes(),
+    payload.slice(.. 16).approximate_size_bytes(),
     size_of_val(&payload).saturating_add(16)
   );
 }
