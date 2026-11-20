@@ -101,6 +101,19 @@ fn counts_boxed_pointees_but_not_shared_arcs() {
 }
 
 #[test]
+fn counts_bytes_length() {
+  let payload = bytes::Bytes::from(vec![0_u8; 48]);
+  assert_eq!(
+    payload.approximate_size_bytes(),
+    size_of_val(&payload).saturating_add(48)
+  );
+  assert_eq!(
+    payload.slice(.. 16).approximate_size_bytes(),
+    size_of_val(&payload).saturating_add(16)
+  );
+}
+
+#[test]
 fn derives_owned_child_storage() {
   let mut label = String::with_capacity(16);
   label.push_str("tag");

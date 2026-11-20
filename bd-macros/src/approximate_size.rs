@@ -128,6 +128,15 @@ impl<T: ?Sized> ApproximateSize for Arc<T> {
   }
 }
 
+// Unlike Arc, Bytes is charged its visible length: queued payloads are usually the buffer's only
+// owner, and leaving them out would hide most of a queue's memory. A slice still sharing a larger
+// buffer is undercounted, and clones of one buffer are each charged.
+impl ApproximateSize for bytes::Bytes {
+  fn approximate_size_children_bytes(&self) -> usize {
+    self.len()
+  }
+}
+
 impl<A: ApproximateSize, B: ApproximateSize> ApproximateSize for (A, B) {
   fn approximate_size_children_bytes(&self) -> usize {
     self
