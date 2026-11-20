@@ -16,9 +16,14 @@ protos:
 		cd bd-proto && cargo run --features codegen --bin generate-protos; \
 	fi
 
-.PHONY: check-protos
-check-protos: protos
-	git diff --exit-code -- bd-proto/src/protos bd-proto/src/flatbuffers bd-pgv/src/generated
+.PHONY: flatbuffer-deps
+flatbuffer-deps:
+	cargo build --package bd-report-convert
+
+.PHONY: check-generated
+check-generated: protos flatbuffer-deps
+	git diff --exit-code -- bd-proto/src/protos bd-proto/src/flatbuffers \
+		bd-pgv/src/generated bd-report-convert/src/flatbuffers/*
 
 .PHONY: setup
 setup:
