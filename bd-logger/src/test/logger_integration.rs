@@ -503,18 +503,22 @@ fn log_upload_with_compression() {
     uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
     assert_eq!(log_upload.logs().len(), 10);
 
-    // With the 4KiB limit we expect the first three logs to be inline an the rest compressed.
-    for i in 0.. 10 {
+    let raw_logs = log_upload.raw_logs();
+    let hydrated_logs = log_upload.logs();
+    // Inspect the wire payload: hydrating interned fields also decompresses the log.
+    for (i, raw) in raw_logs.iter().enumerate() {
+      assert_eq!(hydrated_logs[i].message(), "some log");
+      assert_eq!(hydrated_logs[i].field("super_long"), "A".repeat((i + 1) * 1024));
       if i < 3 {
-        assert_eq!(log_upload.logs()[i].message(), "some log");
-        assert_eq!(log_upload.logs()[i].field("super_long"), "A".repeat((i + 1) * 1024));
+        assert!(raw.message.is_some());
+        assert_eq!(raw.compressed_contents, Vec::<u8>::new());
       } else {
-        assert!(!log_upload.logs()[i].has_message());
-        assert!(!log_upload.logs()[i].has_field("super_long"));
+        assert!(raw.message.is_none());
+        assert!(raw.fields.iter().all(|field| field.key != "super_long"));
 
         let decoded = Vec::new();
         let mut decoder = ZlibDecoder::new(decoded);
-        decoder.write_all(log_upload.logs()[i].compressed_contents()).unwrap();
+        decoder.write_all(&raw.compressed_contents).unwrap();
         let decoded = decoder.finish().unwrap();
         let compressed_contents = CompressedContents::parse_from_bytes(&decoded).unwrap();
         assert_eq!(compressed_contents.message.string_data(), "some log");

@@ -1353,7 +1353,7 @@ async fn disk_persistence() {
 
 #[tokio::test]
 async fn queued_command_origin_survives_runtime_changes_and_uploader_restart() {
-  let mut setup = Setup::new(1).await;
+  let mut setup = Setup::new().await;
   let mut origin = command_metadata();
   origin.insert(
     "__bd_labels".to_string(),
@@ -1370,7 +1370,7 @@ async fn queued_command_origin_survives_runtime_changes_and_uploader_restart() {
       None,
       "session".to_string(),
       vec![],
-      "command".to_string(),
+      Uuid::new_v4().to_string(),
       None,
       Some(persisted_tx),
       None,
@@ -1381,14 +1381,15 @@ async fn queued_command_origin_survives_runtime_changes_and_uploader_restart() {
     "__bd_labels".to_string(),
     "{}".to_string(),
   )]));
+  setup.chunk_transfer_enabled.send(true).unwrap();
   let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    assert_eq!(intent.payload.metadata["__bd_labels"].string_data(), r#"{"channel":"production"}"#);
+  assert_matches!(upload, DataUpload::ArtifactUpload(begin) => {
+    assert_eq!(begin.payload.state_metadata["__bd_labels"].string_data(), r#"{"channel":"production"}"#);
   });
   let mut setup = setup.reinitialize().await;
   let upload = setup.data_upload_rx.recv().await.unwrap();
-  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
-    assert_eq!(intent.payload.metadata["__bd_labels"].string_data(), r#"{"channel":"production"}"#);
+  assert_matches!(upload, DataUpload::ArtifactUpload(begin) => {
+    assert_eq!(begin.payload.state_metadata["__bd_labels"].string_data(), r#"{"channel":"production"}"#);
   });
   setup.shutdown().await;
 }
