@@ -22,11 +22,9 @@ use bd_proto::protos::client::api::{
   SankeyIntentRequest,
   SankeyPathUploadRequest,
   StatsUploadRequest,
-  UploadArtifactIntentRequest,
   UploadArtifactRequest,
   UploadArtifactResponse,
   device_command_update,
-  upload_artifact_intent_response,
 };
 use parking_lot::Mutex;
 use protobuf::Message;
@@ -36,7 +34,6 @@ use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
-use upload_artifact_intent_response::Decision as ArtifactIntentDecision;
 use uuid::Uuid;
 
 //
@@ -73,15 +70,6 @@ impl From<LogsUploadDecision> for IntentDecision {
     match decision {
       LogsUploadDecision::Drop(_) => Self::Drop,
       LogsUploadDecision::UploadImmediately(_) => Self::UploadImmediately,
-    }
-  }
-}
-
-impl From<ArtifactIntentDecision> for IntentDecision {
-  fn from(decision: ArtifactIntentDecision) -> Self {
-    match decision {
-      ArtifactIntentDecision::Drop(_) => Self::Drop,
-      ArtifactIntentDecision::UploadImmediately(_) => Self::UploadImmediately,
     }
   }
 }
@@ -537,7 +525,6 @@ pub type TrackedSankeyPathUploadIntentRequest = Tracked<SankeyIntentRequest, Int
 pub type TrackedLogUploadIntent = Tracked<LogUploadIntentRequest, IntentResponse>;
 
 pub type TrackedArtifactUpload = Tracked<UploadArtifactRequest, UploadArtifactResponse>;
-pub type TrackedArtifactIntent = Tracked<UploadArtifactIntentRequest, IntentResponse>;
 
 #[derive(Debug)]
 pub struct CommandUpdateSender {

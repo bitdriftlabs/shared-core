@@ -241,7 +241,16 @@ impl AttachmentStore {
       }
       if entry_path
         .extension()
-        .is_none_or(|extension| extension != "payload" && extension != "raw")
+        .is_some_and(|extension| extension == "payload")
+      {
+        remove_owned_path_if_exists(&entry_path).await?;
+        recovered_sidecar = true;
+        log::warn!("discarded legacy retained workflow attachment");
+        continue;
+      }
+      if entry_path
+        .extension()
+        .is_none_or(|extension| extension != "raw")
       {
         continue;
       }
@@ -258,12 +267,7 @@ impl AttachmentStore {
         log::warn!("discarded nonregular workflow attachment payload {id}");
         continue;
       }
-      if !payload_ids.insert(id) {
-        return Err(io::Error::new(
-          io::ErrorKind::InvalidData,
-          "workflow attachment has multiple payload formats",
-        ));
-      }
+      payload_ids.insert(id);
     }
     metadata_paths.sort();
     metadata_paths.dedup();
@@ -513,9 +517,7 @@ impl AttachmentStore {
     let mut metadata_removed = false;
     while let Some(entry) = entries.next_entry().await? {
       let path = entry.path();
-      if path
-        .extension()
-        .is_some_and(|extension| extension == "payload" || extension == "raw")
+      if path.extension().is_some_and(|extension| extension == "raw")
         && let Some(id) = owned_attachment_id(&path)
       {
         if pending_uploads.contains(&id) {
@@ -588,13 +590,8 @@ impl AttachmentStore {
 
   pub(crate) async fn upload_source(&self, id: Uuid) -> io::Result<PathBuf> {
     let raw = PathBuf::from(format!("workflow-attachments/{id}.raw"));
-    match fs::symlink_metadata(self.sdk_directory.join(&raw)).await {
-      Ok(_) => Ok(raw),
-      Err(error) if error.kind() == io::ErrorKind::NotFound => {
-        Ok(PathBuf::from(format!("workflow-attachments/{id}.payload")))
-      },
-      Err(error) => Err(error),
-    }
+    fs::symlink_metadata(self.sdk_directory.join(&raw)).await?;
+    Ok(raw)
   }
 
   fn metadata_path(&self, id: Uuid) -> PathBuf {

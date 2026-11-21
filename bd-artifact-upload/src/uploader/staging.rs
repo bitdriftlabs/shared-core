@@ -5,49 +5,33 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-//! The submission-to-index transaction shared by whole-file and chunked artifacts.
-//!
-//! All representations share physical-byte and artifact-count admission. Accepted entries are
-//! never evicted to make room for a different format. Payload preparation stays concrete rather
-//! than hiding encoding behind a strategy framework. What is shared is the ownership algorithm:
-//! reject collisions, prepare bytes, register one entry, publish the common index, release sources,
-//! and acknowledge persistence.
+//! The submission-to-index transaction for chunked artifacts.
 //!
 //! A preparation ledger records only paths actually touched by this attempt. Before publication it
-//! supports rollback (including restoring a moved snapshot); after publication it must not unlink
-//! payloads, even if fsync fails. Borrowed workflow payloads never enter the ledger. Restart
-//! recovery uses the persisted descriptors instead, so no additional journal or on-disk schema is
-//! needed.
+//! supports rollback; after publication it must not unlink payloads, even if fsync fails. Borrowed
+//! workflow payloads never enter the ledger. Restart recovery uses the persisted descriptors
+//! instead, so no additional journal or on-disk schema is needed.
 
 use super::{
-  ARTIFACT_UPLOAD_DIRECTORY,
-  Artifact,
-  ArtifactPayloadEncoding,
   ArtifactStore,
   EnqueueError,
   NewUpload,
-  PreparationMode,
-  StorageFormat,
   UploadArtifactRequest,
   UploadSource,
   Uploader,
   WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID,
   retained_persistence_error,
 };
-use crate::input::Input;
-use bd_client_common::file::async_write_checksummed_data;
 use bd_client_common::file_system::OwnedFile;
 use bd_stats_common::Counter as _;
-use bd_time::OffsetDateTimeExt;
 use protobuf::Message as _;
 use std::path::PathBuf;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 
 #[derive(Default)]
 pub(super) struct StagedFiles {
   pub(super) created: Vec<PathBuf>,
-  original: Option<(PathBuf, bool)>,
+  pub(super) remove_source: Option<PathBuf>,
   published: bool,
 }
 
@@ -56,7 +40,6 @@ impl Uploader {
     let NewUpload {
       source,
       request,
-      mode,
       persisted_tx,
       completion_tx,
       source_lease,
@@ -64,10 +47,13 @@ impl Uploader {
     } = upload;
     let id = request.artifact_id.clone();
     let retained = matches!(source, UploadSource::Retained(_));
+    if let Some(hooks) = &self.test_hooks {
+      hooks.preparation_started(&source, &request);
+    }
     let mut files = StagedFiles::default();
-    log::debug!("preparing artifact {id} ({mode:?})");
+    log::debug!("preparing chunked artifact {id}");
     let result = self
-      .stage_upload(source, request, mode, &mut source_cleanup, &mut files)
+      .stage_upload(source, request, &mut source_cleanup, &mut files)
       .await;
     let success = result.is_ok();
     if !retained
@@ -79,7 +65,7 @@ impl Uploader {
       self.stats.dropped.inc();
     }
     if !success && !files.published {
-      self.rollback_files(&mut files).await;
+      self.rollback_files(&files).await;
     }
 
     // Keep the synchronous guard only for cancellation/rejection. Normal cleanup runs off the
@@ -92,7 +78,7 @@ impl Uploader {
     }
     if success {
       if !guarded_source
-        && let Some((path, false)) = files.original.take()
+        && let Some(path) = files.remove_source.take()
         && let Err(error) = self.file_system.delete_file(&path).await
       {
         log::warn!(
@@ -130,7 +116,6 @@ impl Uploader {
     &mut self,
     source: UploadSource,
     mut request: UploadArtifactRequest,
-    mode: PreparationMode,
     source_cleanup: &mut Option<OwnedFile>,
     files: &mut StagedFiles,
   ) -> Result<Option<u64>, EnqueueError> {
@@ -142,16 +127,9 @@ impl Uploader {
         .await
         .map_err(|error| EnqueueError::RetryablePersistence(error.into()))?;
     }
-    let chunked = match mode {
-      PreparationMode::WholeFile => false,
-      PreparationMode::Chunked => true,
-    };
-    if chunked {
-      super::chunked::validate_capture_request(&request)?;
-      // Retain only scrubbed metadata; transfer also applies the rules current at each Begin.
-      request.state_metadata =
-        super::scrub_metadata(&self.scrub_rules.borrow(), &request.state_metadata);
-    }
+    super::chunked::validate_capture_request(&request)?;
+    request.state_metadata =
+      super::scrub_metadata(&self.scrub_rules.borrow(), &request.state_metadata);
     let id = &request.artifact_id;
     if let Some(existing) = self
       .chunked
@@ -159,8 +137,7 @@ impl Uploader {
       .iter()
       .find(|entry| entry.artifact_id == *id)
     {
-      if chunked
-        && request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
+      if request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
         && existing.type_id == request.type_id
         && existing.session_id == request.session_id
       {
@@ -170,63 +147,30 @@ impl Uploader {
         "artifact ID already has chunked ownership"
       )));
     }
-    if let Some(existing) = self.index.iter().find(|entry| entry.name == *id) {
-      if !chunked
-        && existing.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
-        && request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
-        && existing.session_id == request.session_id
-      {
-        return Ok(None);
-      }
-      return Err(EnqueueError::Other(anyhow::anyhow!(
-        "workflow attachment ID belongs to another session or artifact type"
-      )));
-    }
     let retained = matches!(source, UploadSource::Retained(_));
     let artifact_id = request.artifact_id.clone();
     if self
       .index_proto()
       .compute_size()
       .saturating_add(request.compute_size())
-      .saturating_add(64)
+      .saturating_add(super::chunked::CHUNK_DESCRIPTOR_RESERVE_BYTES)
       > super::chunked::MAX_INDEX_BYTES
     {
       return Err(anyhow::anyhow!("insufficient bounded index space for artifact metadata").into());
     }
     let _preparation = ArtifactStore::lock().await.map_err(EnqueueError::Other)?;
-    let size = if chunked {
-      let entry = self
-        .prepare_chunked(source, request, source_cleanup, files)
-        .await
-        .map_err(|error| {
-          if retained {
-            retained_persistence_error(error)
-          } else {
-            EnqueueError::Other(error)
-          }
-        })?;
-      let size = entry.logical_bytes;
-      self.chunked.entries.push(entry);
-      self.index_sync_required = true;
-      size
-    } else {
-      if let Some(hooks) = &self.test_hooks {
-        hooks.whole_file_preparation_started(&source);
-      }
-      let entry = self
-        .prepare_whole_file(source, request, files)
-        .await
-        .map_err(|error| {
-          if retained {
-            retained_persistence_error(error)
-          } else {
-            EnqueueError::Other(error)
-          }
-        })?;
-      self.index.push_back(entry);
-      self.index_sync_required = true;
-      None
-    };
+    let entry = self
+      .prepare_chunked(source, request, source_cleanup, files)
+      .await
+      .map_err(|error| {
+        if retained {
+          retained_persistence_error(error)
+        } else {
+          EnqueueError::Other(error)
+        }
+      })?;
+    let size = entry.logical_bytes;
+    self.chunked.entries.push(entry);
     if let Some(hooks) = &self.test_hooks {
       hooks.payload_prepared();
     }
@@ -234,8 +178,7 @@ impl Uploader {
       Ok(()) => {
         files.published = true;
         log::debug!(
-          "durably staged artifact: artifact_id={artifact_id} chunked={chunked} \
-           logical_bytes={size:?}"
+          "durably staged chunked artifact: artifact_id={artifact_id} logical_bytes={size:?}"
         );
         Ok(size)
       },
@@ -246,11 +189,7 @@ impl Uploader {
         Err(EnqueueError::RetryablePersistence(error.into()))
       },
       Err(error) => {
-        if chunked {
-          self.chunked.entries.pop();
-        } else {
-          self.index.pop_back();
-        }
+        self.chunked.entries.pop();
         Err(
           if retained {
             retained_persistence_error(error.error)
@@ -262,129 +201,7 @@ impl Uploader {
     }
   }
 
-  async fn prepare_whole_file(
-    &self,
-    source: UploadSource,
-    request: UploadArtifactRequest,
-    files: &mut StagedFiles,
-  ) -> anyhow::Result<Artifact> {
-    let retained = matches!(source, UploadSource::Retained(_));
-    let target = ARTIFACT_UPLOAD_DIRECTORY.join(&request.artifact_id);
-    let format = match source {
-      UploadSource::Retained(path) => {
-        self.file_system.sync_file_and_parent(&path).await?;
-        StorageFormat::RAW
-      },
-      source => {
-        let original = match &source {
-          UploadSource::Path(path) => Some(path.clone()),
-          _ => None,
-        };
-        let mut input = Input::open(source, self.file_system.as_ref()).await?;
-        let size = input.size();
-        let identity = match &input {
-          Input::File { file, .. } if original.is_some() => {
-            super::chunked::file_identity(&file.metadata().await?)
-          },
-          _ => None,
-        };
-        self
-          .chunked
-          .admission
-          .check_capacity(
-            self.file_system.as_ref(),
-            size,
-            if original.is_some() { size } else { 0 },
-            identity,
-            size.saturating_add(4096),
-          )
-          .await?;
-        // Register before writing or moving: even a partial payload needs rollback.
-        files.created.push(target.clone());
-        let format = if let Some(path) = original {
-          if let Err(error) = self.file_system.rename_file(&path, &target).await {
-            log::debug!("failed to move artifact source, falling back to copy: {error}");
-            let mut output = self.file_system.create_file(&target).await?;
-            // Legacy snapshots are already self-validating. Copy exactly the bytes a rename
-            // preserves, without adding a storage checksum or another compression layer.
-            tokio::io::copy(&mut input.reader().take(size + 1), &mut output).await?;
-            output.flush().await?;
-            files.original = Some((path, false));
-          } else {
-            files.original = Some((path, true));
-          }
-          StorageFormat::RAW
-        } else {
-          let mut output = self.file_system.create_file(&target).await?;
-          async_write_checksummed_data(input.reader().take(size + 1), &mut output).await?;
-          StorageFormat::CHECKSUMMED
-        };
-        input.validate().await?;
-        let expected_size = size
-          + if format == StorageFormat::CHECKSUMMED {
-            4
-          } else {
-            0
-          };
-        if self
-          .file_system
-          .open_regular_file(&target)
-          .await?
-          .metadata()
-          .await?
-          .len()
-          != expected_size
-        {
-          anyhow::bail!("artifact changed during preparation");
-        }
-        self.file_system.sync_file_and_parent(&target).await?;
-        format
-      },
-    };
-    let payload_encoding = if retained && request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID {
-      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB
-    } else {
-      ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_RAW
-    };
-    Ok(Artifact {
-      name: request.artifact_id,
-      type_id: Some(
-        if request.type_id.is_empty() {
-          super::CLIENT_REPORT_ARTIFACT_TYPE_ID.into()
-        } else {
-          request.type_id
-        },
-      ),
-      time: if request.time.is_some() {
-        request.time
-      } else {
-        self.time_provider.now().into_proto()
-      },
-      session_id: request.session_id,
-      pending_intent_negotiation: true,
-      metadata: request.state_metadata,
-      storage_format: format.into(),
-      feature_flags: request.feature_flags,
-      command_id: request.command_id,
-      content_type: request.content_type,
-      payload_encoding: payload_encoding.into(),
-      crash_profile: request.crash_profile,
-      ..Default::default()
-    })
-  }
-
-  async fn rollback_files(&mut self, files: &mut StagedFiles) {
-    if let Some((original, true)) = files.original.take()
-      && let Some(target) = files.created.first()
-      && let Err(error) = self.file_system.rename_file(target, &original).await
-    {
-      // Do not turn a failed restore into deletion of the only remaining snapshot copy.
-      log::warn!(
-        "failed to restore moved artifact source {}: {error}",
-        original.display()
-      );
-      return;
-    }
+  async fn rollback_files(&mut self, files: &StagedFiles) {
     if let Err(error) = self.delete_paths(&files.created).await {
       log::warn!("failed to roll back unpublished artifact files; will retry: {error}");
     }

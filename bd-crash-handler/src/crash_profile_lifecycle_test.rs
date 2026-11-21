@@ -8,7 +8,6 @@
 use super::{CrashReportBuilder, Setup};
 use crate::ReportOrigin;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse};
 use bd_artifact_upload::crash_profile::Kind;
 use bd_artifact_upload::crash_profile_attribution::CrashProfileAttribution;
 use bd_artifact_upload::test::heap_profile;
@@ -31,6 +30,7 @@ use bd_runtime::test::TestConfigLoader;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_time::TestTimeProvider;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -51,8 +51,7 @@ struct Pipeline {
   progress: watch::Receiver<u64>,
   filesystem: Arc<TestFileSystem>,
   uploads: mpsc::Receiver<DataUpload>,
-  pending_report: Option<String>,
-  pending_profile: Option<UploadArtifactRequest>,
+  pending_uploads: HashMap<String, UploadArtifactRequest>,
   completed_uploads: Vec<UploadArtifactRequest>,
   queue_revision: watch::Receiver<u64>,
   runtime: TestConfigLoader,
@@ -104,8 +103,7 @@ impl Pipeline {
       progress,
       filesystem,
       uploads,
-      pending_report: None,
-      pending_profile: None,
+      pending_uploads: HashMap::new(),
       completed_uploads: Vec::new(),
       queue_revision,
       runtime,
@@ -169,29 +167,10 @@ impl Pipeline {
   async fn next_completed_upload(&mut self) -> UploadArtifactRequest {
     loop {
       let upload = self.uploads.recv().await.unwrap();
-      let upload = match upload {
-        DataUpload::ArtifactUploadIntent(intent) => {
-          assert_eq!(intent.payload.type_id, CLIENT_REPORT_ARTIFACT_TYPE_ID);
-          assert!(intent.payload.crash_profile.is_none());
-          assert!(
-            self
-              .pending_report
-              .replace(intent.payload.artifact_id)
-              .is_none()
-          );
-          intent
-            .response_tx
-            .send(IntentResponse {
-              uuid: intent.uuid,
-              decision: IntentDecision::UploadImmediately,
-            })
-            .unwrap();
-          continue;
-        },
-        DataUpload::ArtifactUpload(upload) => upload,
-        _ => panic!("unexpected upload in crash-profile lifecycle"),
+      let DataUpload::ArtifactUpload(upload) = upload else {
+        panic!("unexpected upload in crash-profile lifecycle");
       };
-      let mut request = upload.payload;
+      let request = upload.payload;
       log::debug!(
         "acknowledging lifecycle artifact: artifact_id={} type={} chunk_index={:?}",
         request.artifact_id,
@@ -202,38 +181,40 @@ impl Pipeline {
         upload_uuid: upload.uuid,
         ..Default::default()
       };
-      if request.type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID {
-        assert_eq!(request.chunk_index, None);
+      assert!(request.logical_bytes.is_some());
+      if request.chunk_index.is_none() {
+        assert!(matches!(
+          request.type_id.as_str(),
+          CLIENT_REPORT_ARTIFACT_TYPE_ID | CRASH_PROFILE_ARTIFACT_TYPE_ID
+        ));
+        if request.type_id == CLIENT_REPORT_ARTIFACT_TYPE_ID {
+          assert!(request.crash_profile.is_none());
+        }
         assert_eq!(request.contents, b"");
         assert_eq!(request.chunks.len(), 1);
         assert_eq!(
           request.payload_encoding,
           ArtifactPayloadEncoding::ARTIFACT_PAYLOAD_ENCODING_ZLIB.into()
         );
-        assert!(self.pending_profile.replace(request).is_none());
+        assert!(
+          self
+            .pending_uploads
+            .insert(request.artifact_id.clone(), request)
+            .is_none()
+        );
         response.state = State::STATE_RECEIVING.into();
         response.received_chunks = vec![0];
         upload.response_tx.send(response).unwrap();
         continue;
       }
-      if request.chunk_index.is_some() {
-        assert_eq!(request.chunk_index, Some(0));
-        let mut begin = self.pending_profile.take().unwrap();
-        assert_eq!(request.artifact_id, begin.artifact_id);
-        // Thin fragments omit descriptive metadata; retain Begin for the completed-file assertions.
-        begin.contents = request.contents;
-        request = begin;
-        response.state = State::STATE_FINALIZED.into();
-        response.received_chunks = vec![1];
-      } else {
-        assert_eq!(request.type_id, CLIENT_REPORT_ARTIFACT_TYPE_ID);
-        assert_eq!(
-          self.pending_report.take(),
-          Some(request.artifact_id.clone())
-        );
-      }
+      assert_eq!(request.chunk_index, Some(0));
+      let mut begin = self.pending_uploads.remove(&request.artifact_id).unwrap();
+      // Thin fragments omit descriptive metadata; retain Begin for the completed-file assertions.
+      begin.contents = request.contents;
+      response.state = State::STATE_FINALIZED.into();
+      response.received_chunks = vec![1];
       upload.response_tx.send(response).unwrap();
-      return request;
+      return begin;
     }
   }
 
@@ -371,7 +352,7 @@ async fn actual_persistence_rejection_retires_source_but_not_report_candidate() 
     assert_eq!(pending.artifact, []);
     assert_eq!(pending.chunked_artifact, []);
     assert_eq!(pipeline.completed_uploads, []);
-    assert!(pipeline.pending_profile.is_none());
+    assert!(pipeline.pending_uploads.is_empty());
     assert!(matches!(
       pipeline.uploads.try_recv(),
       Err(mpsc::error::TryRecvError::Empty)

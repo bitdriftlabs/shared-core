@@ -186,7 +186,6 @@ impl SetupSingleConsumer {
       DataUpload::LogsUploadIntent(_) => panic!("unexpected intent"),
       DataUpload::SankeyPathUploadIntent(_) => panic!("unexpected sankey upload intent"),
       DataUpload::SankeyPathUpload(_) => panic!("unexpected sankey upload"),
-      DataUpload::ArtifactUploadIntent(_) => panic!("unexpected artifact upload intent"),
       DataUpload::ArtifactUpload(_) => panic!("unexpected artifact upload"),
       DataUpload::AcklessLogsUpload(_) => panic!("unexpected ackless upload"),
       DataUpload::DebugData(_) => panic!("unexpected debug data upload"),

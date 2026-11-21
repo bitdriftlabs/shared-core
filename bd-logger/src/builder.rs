@@ -576,8 +576,7 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
-      // The uploader has not started yet, so no ACK, rejection or eviction can remove a pending
-      // report before it is restored.
+      // Restore attribution before the uploader can retire pending reports.
       if let Some(attribution) = &self.report_attribution {
         bd_artifact_upload::restore_pending_reports(
           attribution.as_ref(),

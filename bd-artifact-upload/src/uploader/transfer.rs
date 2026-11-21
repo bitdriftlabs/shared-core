@@ -10,11 +10,12 @@
 
 use super::Uploader;
 use super::chunked::{CHUNK_BYTES, chunk_path};
-use super::storage::StoredArtifact;
+use super::storage::owned_paths;
 use bd_api::DataUpload;
 use bd_api::upload::TrackedArtifactUpload;
 use bd_backoff::{ExponentialBackoff, InfiniteBackoff};
 use bd_client_common::file::read_limited;
+use bd_metadata::artifact::ARTIFACT_BEGIN_METADATA_KEYS;
 use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{UploadArtifactRequest, UploadArtifactResponse};
 use bd_stats_common::Counter as _;
@@ -56,19 +57,39 @@ impl Progress {
         .map(|(index, _)| index)
     };
     if let Some(index) = chunk_index {
+      let is_final = index as usize + 1 == template.chunks.len();
       UploadArtifactRequest {
         upload_uuid,
         artifact_id: template.artifact_id.clone(),
         command_id: template.command_id.clone(),
         logical_bytes: template.logical_bytes,
         chunk_index: Some(index),
+        state_metadata: if is_final {
+          template.state_metadata.clone()
+        } else {
+          std::collections::HashMap::new()
+        },
+        feature_flags: if is_final {
+          template.feature_flags.clone()
+        } else {
+          Vec::new()
+        },
         ..Default::default()
       }
     } else {
-      UploadArtifactRequest {
+      let mut begin = UploadArtifactRequest {
         upload_uuid,
+        feature_flags: Vec::new(),
         ..template.clone()
+      };
+      // Non-empty uploads carry full scrubbed state_metadata and feature_flags on the final chunk.
+      // Begin carries only the bounded identity/policy keys needed for admission and sampling.
+      if !template.chunks.is_empty() {
+        begin
+          .state_metadata
+          .retain(|key, _| ARTIFACT_BEGIN_METADATA_KEYS.contains(&key.as_str()));
       }
+      begin
     }
   }
 }
@@ -188,7 +209,6 @@ impl Uploader {
         .map(|index| template.chunks[index as usize].clone());
       let filesystem = self.file_system.clone();
       let sender = self.data_upload_tx.clone();
-      let capacity = self.artifact_rpc_capacity.clone();
       let hooks = self.test_hooks.clone();
       self.chunk_cursor = index + 1;
       self.chunk_task_handle = Some(tokio::spawn(async move {
@@ -224,16 +244,11 @@ impl Uploader {
             })
             .await??;
           }
-          // Local reads/verification do not occupy the fair network permit. Whole-file attempts
-          // share this capacity and release it during retry backoff.
-          let waiting = Instant::now();
-          let _permit = capacity.acquire_owned().await?;
           request.state_metadata =
             super::scrub_metadata(&scrub_rules.borrow(), &request.state_metadata);
           log::debug!(
             "sending chunked artifact: artifact_id={id} upload_uuid={uuid} operation={operation} \
-             chunk_index={chunk_index:?} capacity_wait_ms={} payload_bytes={}",
-            waiting.elapsed().as_millis(),
+             chunk_index={chunk_index:?} payload_bytes={}",
             request.contents.len(),
           );
           let (tracked, response) = TrackedArtifactUpload::new(uuid.clone(), request);
@@ -384,9 +399,8 @@ impl Uploader {
   async fn retire_chunk(&mut self, index: usize, result: Result<(), String>) -> anyhow::Result<()> {
     let entry = self.chunked.entries.remove(index);
     let id = entry.artifact_id.clone();
-    let paths = StoredArtifact::Chunked(&entry).owned_paths()?;
+    let paths: Vec<_> = owned_paths(&entry).collect();
     self.chunk_progress.remove(&id);
-    self.index_sync_required = true;
     // On a failed index commit keep bytes charged and let reconciliation finish their cleanup.
     let retirement = self.retire_files(&paths).await;
     log::debug!(

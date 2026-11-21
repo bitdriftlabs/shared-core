@@ -220,7 +220,7 @@ impl WorkflowAttachmentUploadWorker {
           },
         }
       } else {
-        PathBuf::from(format!("workflow-attachments/{id}.payload"))
+        PathBuf::from(format!("workflow-attachments/{id}.raw"))
       };
       let (completion_tx, completion_rx) = if attachment_store.is_some() {
         let (completion_tx, completion_rx) = oneshot::channel();

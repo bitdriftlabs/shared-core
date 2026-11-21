@@ -21,7 +21,6 @@ use bd_client_stats_store::Collector;
 use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{RuntimeUpdate, UploadArtifactResponse};
-use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, WorkflowAttachmentState};
 use bd_proto::protos::client::runtime::Runtime;
 use bd_proto::protos::client::runtime::runtime::Value;
@@ -389,11 +388,11 @@ async fn write_upload_leases(directory: &tempfile::TempDir, ids: &[Uuid]) {
   let path = directory.path().join("report_uploads");
   fs::create_dir_all(&path).await.unwrap();
   let index = ArtifactUploadIndex {
-    artifact: ids
+    chunked_artifact: ids
       .iter()
-      .map(|id| Artifact {
-        name: id.to_string(),
-        type_id: Some("workflow_attachment".into()),
+      .map(|id| bd_proto::protos::client::api::UploadArtifactRequest {
+        artifact_id: id.to_string(),
+        type_id: "workflow_attachment".into(),
         ..Default::default()
       })
       .collect(),
@@ -2192,14 +2191,18 @@ async fn restart_reclaims_orphan_and_uploaded_payloads() {
 
 #[tokio::test]
 async fn restart_discards_invalid_owned_payload_names() {
-  for name in ["invalid".to_string(), Uuid::new_v4().simple().to_string()] {
+  for file_name in [
+    "invalid.raw".to_string(),
+    format!("{}.raw", Uuid::new_v4().simple()),
+    format!("{}.payload", Uuid::new_v4()),
+  ] {
     let directory = tempfile::tempdir().unwrap();
     let store = Arc::new(new_store(&directory).await);
     let healthy = store
       .admit(UploadSource::Bytes(b"healthy".to_vec()), None)
       .await
       .unwrap();
-    let path = store.directory.join(format!("{name}.payload"));
+    let path = store.directory.join(file_name);
     fs::write(&path, b"orphan").await.unwrap();
 
     let restarted = new_store(&directory).await;
@@ -2210,4 +2213,27 @@ async fn restart_discards_invalid_owned_payload_names() {
     assert_eq!(restarted.payload_usage().await.files, 1);
     assert!(!fs::try_exists(path).await.unwrap());
   }
+}
+
+#[tokio::test]
+async fn restart_discards_legacy_payload_with_active_log_reference() {
+  let directory = tempfile::tempdir().unwrap();
+  let store = Arc::new(new_store(&directory).await);
+  let legacy = store
+    .admit(UploadSource::Bytes(b"legacy".to_vec()), None)
+    .await
+    .unwrap();
+  store
+    .record_timestamp(legacy.id, OffsetDateTime::from_unix_timestamp(10).unwrap())
+    .await
+    .unwrap();
+  let raw_path = store.directory.join(format!("{}.raw", legacy.id));
+  let payload_path = store.directory.join(format!("{}.payload", legacy.id));
+  let metadata_path = store.metadata_path(legacy.id);
+  fs::rename(&raw_path, &payload_path).await.unwrap();
+
+  let restarted = new_store(&directory).await;
+  assert_eq!(restarted.payload_usage().await.files, 0);
+  assert!(!fs::try_exists(payload_path).await.unwrap());
+  assert!(!fs::try_exists(metadata_path).await.unwrap());
 }

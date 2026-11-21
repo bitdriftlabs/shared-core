@@ -87,7 +87,6 @@ impl ArtifactStore {
     match filesystem.open_regular_file(&index_path).await {
       Ok(mut file) => {
         let index = read_index(&mut file).await?;
-        ids.extend(index.artifact.into_iter().map(|entry| entry.name));
         for request in index.chunked_artifact {
           ids.insert(safe_id(&request.artifact_id)?.to_string());
         }
@@ -129,10 +128,7 @@ impl ArtifactStore {
       if file_identity(&metadata).is_none_or(|key| identities.insert(key)) {
         used = used.saturating_add(metadata.len());
       }
-      if path
-        .extension()
-        .is_none_or(|extension| extension != "raw" && extension != "payload")
-      {
+      if path.extension().is_none_or(|extension| extension != "raw") {
         continue;
       }
       let Some(id) = path
@@ -142,9 +138,7 @@ impl ArtifactStore {
       else {
         continue;
       };
-      if path.extension().is_some_and(|extension| extension == "raw")
-        && !ids.contains(&id.to_string())
-      {
+      if !ids.contains(&id.to_string()) {
         let logical = metadata
           .len()
           .checked_sub(4)

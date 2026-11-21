@@ -23,7 +23,6 @@ use bd_proto::protos::client::api::{
   SankeyIntentRequest,
   SankeyPathUploadRequest,
   StatsUploadRequest,
-  UploadArtifactIntentRequest,
 };
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::{ExponentialBackoffValues, ExponentialBackoffWatch, FeatureFlag};
@@ -70,9 +69,6 @@ pub enum DataUpload {
 
   /// A Sankey path upload request.
   SankeyPathUpload(TrackedUpload<SankeyPathUploadRequest>),
-
-  /// An intent to upload an generic artifact.
-  ArtifactUploadIntent(TrackedIntent<UploadArtifactIntentRequest>),
 
   /// A whole-file or chunk-mode artifact request with its full protobuf acknowledgement.
   ArtifactUpload(upload::TrackedArtifactUpload),
