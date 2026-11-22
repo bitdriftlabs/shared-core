@@ -45,7 +45,7 @@ fn next_snapshot(server: &mut ServerHandle) -> Option<UploadArtifactRequest> {
 #[test]
 fn continuous_buffer_creates_and_uploads_state_snapshot() {
   let mut setup = Setup::new_with_cached_runtime(SetupOptions {
-    sdk_directory: Arc::new(TempDir::with_prefix("sdk").unwrap()),
+    sdk_directory: Arc::new(TempDir::with_prefix_in("sdk-state", ".").unwrap()),
     disk_storage: true,
     extra_runtime_values: vec![
       (

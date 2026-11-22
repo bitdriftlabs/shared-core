@@ -15,10 +15,16 @@ use bd_api::DataUpload;
 use bd_api::upload::TrackedArtifactUpload;
 use bd_backoff::{ExponentialBackoff, InfiniteBackoff};
 use bd_client_common::file::read_limited;
-use bd_metadata::artifact::ARTIFACT_BEGIN_METADATA_KEYS;
+use bd_metadata::artifact::{
+  ARTIFACT_BEGIN_METADATA_KEYS,
+  MAX_ARTIFACT_ATTACHED_METADATA_BYTES,
+  MAX_ARTIFACT_MANIFEST_BYTES,
+  MAX_ARTIFACT_ORIGIN_BYTES,
+};
 use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{UploadArtifactRequest, UploadArtifactResponse};
 use bd_stats_common::Counter as _;
+use protobuf::Message as _;
 use sha2::{Digest, Sha256};
 use std::io;
 use tokio::time::Instant;
@@ -107,6 +113,43 @@ pub(super) struct Attempt {
 #[derive(Debug, thiserror::Error)]
 #[error("invalid staged fragment: {0}")]
 struct InvalidFragment(anyhow::Error);
+
+#[derive(Debug, thiserror::Error)]
+#[error("scrubbed artifact metadata exceeds upload limits")]
+struct OversizedMetadata;
+
+// The metadata budgets leave room for the bounded fragment, the ApiRequest wrapper and framing
+// under the server's request cap.
+fn check_scrubbed_metadata(request: &UploadArtifactRequest) -> Result<(), OversizedMetadata> {
+  let limit = if request.chunk_index.is_none() {
+    if request.state_metadata.len() > 32
+      || request
+        .state_metadata
+        .values()
+        .any(|value| value.string_data().len() > 255)
+      || request
+        .state_metadata
+        .iter()
+        .map(|(key, value)| key.len() + value.string_data().len())
+        .sum::<usize>()
+        > MAX_ARTIFACT_ORIGIN_BYTES
+    {
+      return Err(OversizedMetadata);
+    }
+    MAX_ARTIFACT_MANIFEST_BYTES
+  } else {
+    MAX_ARTIFACT_ATTACHED_METADATA_BYTES
+  };
+  let contents_bytes = if request.contents.is_empty() {
+    0
+  } else {
+    protobuf::rt::bytes_size(3, &request.contents)
+  };
+  if request.compute_size() - contents_bytes > u64::from(limit) {
+    return Err(OversizedMetadata);
+  }
+  Ok(())
+}
 
 fn fragment_read_error(error: impl Into<anyhow::Error>) -> anyhow::Error {
   let error = error.into();
@@ -246,6 +289,7 @@ impl Uploader {
           }
           request.state_metadata =
             super::scrub_metadata(&scrub_rules.borrow(), &request.state_metadata);
+          check_scrubbed_metadata(&request)?;
           log::debug!(
             "sending chunked artifact: artifact_id={id} upload_uuid={uuid} operation={operation} \
              chunk_index={chunk_index:?} payload_bytes={}",
@@ -332,9 +376,9 @@ impl Uploader {
           )
           .await?;
       },
-      Err(error) if error.is::<InvalidFragment>() => {
+      Err(error) if error.is::<InvalidFragment>() || error.is::<OversizedMetadata>() => {
         log::warn!(
-          "retiring corrupt chunked artifact: artifact_id={} error={error}",
+          "retiring invalid chunked artifact: artifact_id={} error={error}",
           attempt.id
         );
         self.retire_chunk(index, Err(error.to_string())).await?;

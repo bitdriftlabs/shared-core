@@ -45,11 +45,12 @@ Intermediate PutChunk requests carry only identity, logical size, index and exac
 The final PutChunk (`index == chunks.len() - 1`) also carries the full scrubbed `state_metadata`
 and `feature_flags`, which the server persists inside the canonical completed artifact envelope so
 downstream readers can reconstruct them from S3 rather than Kafka. Offset is index times 1 MiB in
-the encoded file, not the logical file. The SDK reapplies current scrub rules just before each Begin
-and final PutChunk is sent, including after offline waits. In the new non-command path, the payload
-geometry determines the staging prefix and the first completed publication binds the owner and
-bytes. `session_id` may be empty when not applicable (such as state snapshots or previous-run
-reports without a persisted session ID).
+the encoded file, not the logical file. The local queue retains the original metadata. The SDK
+scrubs a fresh copy with current rules for each send attempt, including retries after offline waits.
+If the result exceeds the upload limits, the SDK retires the upload locally. In the new non-command
+path, the payload geometry determines the staging prefix and the first completed publication binds
+the owner and bytes. `session_id` may be empty when not applicable (such as state snapshots or
+previous-run reports without a persisted session ID).
 
 Missing or empty MIME types resolve to `application/octet-stream`; valid supplied types are
 normalized for the uploaded attachment. The SDK preserves the original optional value in its Begin

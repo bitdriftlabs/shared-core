@@ -183,6 +183,7 @@ async fn driver_reports_issues_in_the_current_session() {
   assert_eq!(upload.contents, b"");
   assert_eq!(upload.chunks.len(), 1);
   assert_eq!(upload.session_id, session);
+  assert_eq!(upload.feature_flags, []);
   let chunk = server.next_artifact_upload().await.unwrap();
   assert_eq!(chunk.artifact_id, upload.artifact_id);
   assert_eq!(chunk.chunk_index, Some(0));
@@ -191,7 +192,7 @@ async fn driver_reports_issues_in_the_current_session() {
     report.to_bytes().unwrap()
   );
   assert!(
-    upload
+    chunk
       .feature_flags
       .iter()
       .any(|flag| flag.name == "payment_sdk_v2" && flag.variant.as_deref() == Some("enabled"))

@@ -526,7 +526,9 @@ impl LoggerBuilder {
 
       // Initialize state store using runtime configuration. This may fall back to an in-memory
       // store if persistent storage cannot be initialized or if directed by configuration.
-      let state_directory = self.params.sdk_directory.join("state");
+      // Snapshot paths go back through the artifact filesystem, which joins relative paths with
+      // the SDK directory. Use an absolute state directory so that prefix is not applied twice.
+      let state_directory = std::path::absolute(self.params.sdk_directory.join("state"))?;
       let result = bd_state::Store::from_runtime(
         &state_directory,
         time_provider.clone(),

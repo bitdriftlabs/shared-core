@@ -1843,6 +1843,38 @@ async fn chunked_failed_source_cleanup_stays_charged_until_recovery_retries_it()
   setup.shutdown().await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn index_sync_retry_cleans_moved_source_before_transfer() {
+  let mut setup = Setup::new().await;
+  let id = Uuid::new_v4();
+  let path = setup.capture(id, b"file").await;
+  let index = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
+  setup.filesystem.fail_next_sync_at(index.clone());
+  let first_sync = setup.filesystem.gate_next_sync(index.clone());
+  let persisted = setup.stage_capture(path, setup.request(id));
+  let fail = first_sync.await.unwrap();
+  // Arm the retry gate before the injected failure can wake the retry loop.
+  let retry = setup.filesystem.gate_next_sync(index);
+  fail.send(()).unwrap();
+  assert_matches::assert_matches!(
+    persisted.await.unwrap(),
+    Err(EnqueueError::RetryablePersistence(_))
+  );
+  let resume = retry.await.unwrap();
+  let source = source_path(&id.to_string());
+  assert!(setup.filesystem.exists(&source).await.unwrap());
+  resume.send(()).unwrap();
+
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let begin = setup.next_chunk_operation().await;
+  assert_eq!(begin.payload.artifact_id, id.to_string());
+  assert_eq!(begin.payload.chunk_index, None);
+  assert!(!setup.filesystem.exists(&source).await.unwrap());
+  progress(begin, State::STATE_RECEIVING, &[0]);
+  setup.finish_single_fragment(id, b"file").await;
+  setup.shutdown().await;
+}
+
 #[tokio::test]
 async fn legacy_entry_does_not_delete_accepted_chunks_with_same_id() {
   let setup = Setup::new().await;

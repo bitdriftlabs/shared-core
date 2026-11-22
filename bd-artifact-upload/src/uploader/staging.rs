@@ -115,7 +115,7 @@ impl Uploader {
   async fn stage_upload(
     &mut self,
     source: UploadSource,
-    mut request: UploadArtifactRequest,
+    request: UploadArtifactRequest,
     source_cleanup: &mut Option<OwnedFile>,
     files: &mut StagedFiles,
   ) -> Result<Option<u64>, EnqueueError> {
@@ -126,10 +126,9 @@ impl Uploader {
         .write_index()
         .await
         .map_err(|error| EnqueueError::RetryablePersistence(error.into()))?;
+      self.reconcile_files().await;
     }
     super::chunked::validate_capture_request(&request)?;
-    request.state_metadata =
-      super::scrub_metadata(&self.scrub_rules.borrow(), &request.state_metadata);
     let id = &request.artifact_id;
     if let Some(existing) = self
       .chunked
@@ -185,6 +184,8 @@ impl Uploader {
       Err(error) if error.published => {
         // The renamed index may already reference these files. Keep the entry and payloads, and
         // retry that exact index; rollback here would turn a durability error into payload loss.
+        // TODO: Persist the snapshot's source association if deduplication becomes necessary.
+        // After this error the producer may retry the preserved journal under a new artifact ID.
         files.published = true;
         Err(EnqueueError::RetryablePersistence(error.into()))
       },

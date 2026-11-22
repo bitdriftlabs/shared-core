@@ -773,7 +773,7 @@ impl Uploader {
           if self.index_dirty && let Err(error) = self.write_index().await {
             log::warn!("failed to reconcile artifact index; will retry: {error}");
           }
-          if !self.index_dirty && self.cleanup_pending {
+          if !self.index_dirty {
             self.reconcile_files().await;
           }
           retry_delay = if self.index_dirty || self.cleanup_pending {

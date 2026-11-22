@@ -784,6 +784,102 @@ async fn metadata_is_scrubbed_with_the_rules_current_when_each_request_is_built(
   setup.upload_complete_rx.recv().await.unwrap();
 }
 
+#[tokio::test]
+async fn non_idempotent_scrubbing_runs_once_per_attempt() {
+  let mut setup = Setup::new().await;
+  let (rules, failures) = ScrubRules::new(ScrubConfiguration {
+    rules: vec![scrub_rule(regex_match_and_substitute_field!(
+      "app_id",
+      "example",
+      "<example>"
+    ))],
+    ..Default::default()
+  });
+  assert_eq!(failures, 0);
+  setup.scrub_rules_tx.send_replace(Arc::new(rules));
+  let id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::Bytes(b"report".to_vec()),
+      "client_report".into(),
+      [("app_id".into(), "example".into())].into(),
+      None,
+      String::new(),
+      vec![],
+      None,
+      None,
+    )
+    .unwrap();
+
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let begin = setup.next_chunk_operation().await;
+  let expected = string_metadata(&[("app_id", "<example>")]);
+  assert_eq!(begin.payload.state_metadata, expected);
+  drop(begin);
+  assert_eq!(setup.allow_file_begin().await.state_metadata, expected);
+  assert_eq!(
+    setup
+      .finish_single_fragment(id, b"report")
+      .await
+      .state_metadata,
+    expected
+  );
+  setup.shutdown().await;
+}
+
+#[tokio::test]
+async fn oversized_scrubbed_chunk_metadata_retires_upload_without_sending_chunk() {
+  let mut setup = Setup::new().await;
+  let enqueue = |state| {
+    setup.client.enqueue_upload(
+      UploadSource::Bytes(b"report".to_vec()),
+      "client_report".into(),
+      state,
+      None,
+      String::new(),
+      vec![],
+      None,
+      None,
+    )
+  };
+  let rejected = enqueue([("expands".into(), "a".repeat(512 * 1024).into())].into()).unwrap();
+  let next = enqueue([].into()).unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    rejected.to_string()
+  );
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    next.to_string()
+  );
+  let (rules, failures) = ScrubRules::new(ScrubConfiguration {
+    rules: vec![scrub_rule(regex_match_and_substitute_field!(
+      "expands", "a", "aa"
+    ))],
+    ..Default::default()
+  });
+  assert_eq!(failures, 0);
+  setup.scrub_rules_tx.send_replace(Arc::new(rules));
+
+  assert_eq!(
+    setup.allow_file_begin().await.artifact_id,
+    rejected.to_string()
+  );
+  assert_eq!(setup.allow_file_begin().await.artifact_id, next.to_string());
+  // Advancing to the next artifact's final chunk proves the first one was skipped.
+  setup.finish_single_fragment(next, b"report").await;
+  let index = Uploader::pending_index(setup.filesystem.directory())
+    .await
+    .unwrap();
+  assert!(
+    !index
+      .chunked_artifact
+      .iter()
+      .any(|entry| entry.artifact_id == rejected.to_string())
+  );
+  setup.shutdown().await;
+}
+
 #[test]
 fn scrub_metadata_keeps_untouched_values_verbatim_and_removes_unreadable_values_by_key() {
   let (rules, failures) = ScrubRules::new(ScrubConfiguration {
