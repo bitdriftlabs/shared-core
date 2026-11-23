@@ -843,11 +843,11 @@ async fn oversized_scrubbed_chunk_metadata_retires_upload_without_sending_chunk(
     )
   };
   let rejected = enqueue([("expands".into(), "a".repeat(512 * 1024).into())].into()).unwrap();
-  let next = enqueue([].into()).unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     rejected.to_string()
   );
+  let next = enqueue([].into()).unwrap();
   assert_eq!(
     setup.entry_received_rx.recv().await.unwrap(),
     next.to_string()
