@@ -20,6 +20,7 @@ use crate::uploader::{
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::TrackedArtifactUpload;
+use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, MAX_RAW_CLIENT_REPORT_BYTES};
 use bd_client_common::file::{
   read_checksummed_data,
   read_compressed_protobuf,
@@ -1371,7 +1372,6 @@ async fn command_upload_persistence_reports_original_size() {
         "attachment".to_string(),
         None,
         "session_id".to_string(),
-        vec![],
         command_id.clone(),
         None,
         Some(persisted_tx),
@@ -1426,7 +1426,6 @@ async fn command_upload_preserves_identity_and_content_type_after_restart() {
       "custom_attachment".to_string(),
       None,
       "session_id".to_string(),
-      vec![],
       COMMAND_ID.to_string(),
       Some("application/vnd.example.capture".to_string()),
       Some(tx),
@@ -1784,7 +1783,6 @@ async fn file_begin_retries_apply_current_scrub_rules_without_payload_or_manifes
       "device_command_attachment".into(),
       None,
       "session".into(),
-      Vec::new(),
       COMMAND_ID.into(),
       None,
       Some(tx),
@@ -1845,7 +1843,6 @@ async fn command_upload_intent_drop_completes_with_failure() {
       "screenshot".to_string(),
       None,
       "session_id".to_string(),
-      vec![],
       COMMAND_ID.to_string(),
       None,
       None,
@@ -1897,7 +1894,6 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       "attachment".to_string(),
       None,
       "session_id".to_string(),
-      vec![],
       command_id.clone(),
       None,
       Some(file_persisted_tx),
@@ -1924,7 +1920,6 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       "attachment".to_string(),
       None,
       "session_id".to_string(),
-      vec![],
       command_id.clone(),
       None,
       Some(bytes_persisted_tx),
@@ -1953,7 +1948,6 @@ async fn command_upload_rejects_oversized_file_and_path_sources_before_persistin
       "attachment".to_string(),
       None,
       "session_id".to_string(),
-      vec![],
       command_id,
       None,
       Some(path_persisted_tx),
@@ -1985,7 +1979,6 @@ async fn command_upload_negative_ack_retries_without_stopping_uploader() {
       "screenshot".to_string(),
       None,
       "session_id".to_string(),
-      vec![],
       COMMAND_ID.to_string(),
       None,
       None,
@@ -2042,7 +2035,6 @@ async fn corrupt_command_fragments_fail_without_retry_and_release_owned_bytes() 
         "screenshot".to_string(),
         None,
         "session_id".to_string(),
-        vec![],
         COMMAND_ID.to_string(),
         None,
         None,
@@ -2105,7 +2097,6 @@ async fn command_upload_retries_with_the_same_artifact_and_command_ids() {
       "screenshot".to_string(),
       None,
       "session_id".to_string(),
-      vec![],
       COMMAND_ID.to_string(),
       Some("image/jpeg".to_string()),
       None,
@@ -2171,6 +2162,45 @@ async fn upload_retries() {
 }
 
 #[tokio::test]
+async fn client_report_staging_enforces_the_backend_size_limit() {
+  let setup = Setup::new().await;
+  for (size, accepted) in [
+    (MAX_RAW_CLIENT_REPORT_BYTES, true),
+    (MAX_RAW_CLIENT_REPORT_BYTES + 1, false),
+  ] {
+    let report = setup.make_file(b"");
+    report.set_len(size as u64).unwrap();
+    let (persisted_tx, persisted_rx) = oneshot::channel();
+    let id = setup
+      .client
+      .enqueue_upload(
+        UploadSource::File(report),
+        CLIENT_REPORT_ARTIFACT_TYPE_ID.into(),
+        [].into(),
+        None,
+        String::new(),
+        vec![],
+        None,
+        Some(persisted_tx),
+      )
+      .unwrap();
+    let result = persisted_rx.await.unwrap();
+    let index = Uploader::pending_index(setup.filesystem.directory())
+      .await
+      .unwrap();
+    if accepted {
+      result.unwrap();
+      assert_eq!(index.chunked_artifact[0].artifact_id, id.to_string());
+      assert_eq!(index.chunked_artifact[0].logical_bytes, Some(size as u64));
+    } else {
+      assert_matches!(result, Err(EnqueueError::Other(_)));
+      assert_eq!(index.chunked_artifact.len(), 1);
+    }
+  }
+  setup.shutdown().await;
+}
+
+#[tokio::test]
 async fn enqueue_upload_acknowledges_after_disk_persist() {
   let mut setup = Setup::new().await;
 
@@ -2211,7 +2241,6 @@ async fn rejected_command_upload_deletes_owned_source() {
       "device_command_attachment".into(),
       None,
       "session".into(),
-      vec![],
       Uuid::new_v4().to_string(),
       None,
       None,
@@ -2238,7 +2267,6 @@ async fn command_source_is_consumed_before_persistence_ack() {
       "device_command_attachment".into(),
       None,
       "session".into(),
-      vec![],
       Uuid::new_v4().to_string(),
       None,
       Some(persisted_tx),

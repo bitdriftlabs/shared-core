@@ -37,6 +37,7 @@ use bd_client_common::artifact::{
   CRASH_PROFILE_ARTIFACT_TYPE_ID,
   CRASH_PROFILE_MAX_REPORT_IDS,
   MAX_ARTIFACT_LOGICAL_BYTES,
+  MAX_RAW_CLIENT_REPORT_BYTES,
   STATE_SNAPSHOT_ARTIFACT_TYPE_ID,
 };
 use bd_client_common::file::{read_compressed_limited, read_limited};
@@ -78,7 +79,6 @@ const MAX_MANIFEST_BYTES: u64 = MAX_ARTIFACT_MANIFEST_BYTES as u64;
 const MAX_ATTACHED_METADATA_BYTES: u64 = MAX_ARTIFACT_ATTACHED_METADATA_BYTES as u64;
 // Reserve room for up to 257 chunk descriptors and index entry framing before staging.
 pub(super) const CHUNK_DESCRIPTOR_RESERVE_BYTES: u64 = 16 * 1024;
-const MAX_PENDING_REPORT_ATTRIBUTION_BYTES: u64 = 10 * 1024 * 1024;
 
 //
 // Spool
@@ -214,6 +214,14 @@ pub(super) fn validate_capture_request(request: &UploadArtifactRequest) -> anyho
   Ok(id)
 }
 
+fn logical_size_limit(type_id: &str) -> u64 {
+  if type_id == CLIENT_REPORT_ARTIFACT_TYPE_ID {
+    MAX_RAW_CLIENT_REPORT_BYTES as u64
+  } else {
+    u64::from(MAX_ARTIFACT_LOGICAL_BYTES)
+  }
+}
+
 fn validate_entry(request: &UploadArtifactRequest) -> anyhow::Result<()> {
   validate_metadata(request, MAX_ATTACHED_METADATA_BYTES + MAX_MANIFEST_BYTES)?;
 
@@ -225,7 +233,7 @@ fn validate_entry(request: &UploadArtifactRequest) -> anyhow::Result<()> {
   let encoded = request
     .encoded_bytes
     .ok_or_else(|| anyhow::anyhow!("missing artifact encoded size"))?;
-  if size > u64::from(MAX_ARTIFACT_LOGICAL_BYTES)
+  if size > logical_size_limit(&request.type_id)
     || encoded > artifact_encoded_bound(size)
     || (size != 0 && encoded == 0)
     || (size == 0 && request.command_id.is_none())
@@ -309,7 +317,7 @@ pub(super) async fn stage(
     .checked_sub(if checksummed { 4 } else { 0 })
     .ok_or_else(|| anyhow::anyhow!("invalid checksummed workflow input"))?;
   anyhow::ensure!(
-    size <= u64::from(MAX_ARTIFACT_LOGICAL_BYTES),
+    size <= logical_size_limit(&request.type_id),
     "artifact exceeds logical size limit"
   );
   if size == 0 && request.command_id.is_none() {
@@ -561,10 +569,6 @@ pub async fn read_pending_report(
   let size = request
     .logical_bytes
     .ok_or_else(|| anyhow::anyhow!("missing logical size"))?;
-  anyhow::ensure!(
-    size <= MAX_PENDING_REPORT_ATTRIBUTION_BYTES,
-    "queued report exceeds attribution byte limit"
-  );
   let expected_encoded = request.encoded_bytes.unwrap_or_default();
   let mut verifier = StreamVerifier::new(Some(Vec::with_capacity(usize::try_from(size)?)));
   for (index, descriptor) in request.chunks.iter().enumerate() {

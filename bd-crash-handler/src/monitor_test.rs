@@ -10,6 +10,7 @@ mod crash_profile_lifecycle;
 
 use crate::{CrashReportHook, CrashReportInfo, Monitor, global_state};
 use bd_artifact_upload::{Client, ReportAttribution, UploadSource};
+use bd_client_common::artifact::MAX_RAW_CLIENT_REPORT_BYTES;
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_log_primitives::{AnnotatedLogFields, LogFields};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
@@ -1327,6 +1328,39 @@ async fn enqueued_reports_reach_attribution_without_extra_upload_metadata() {
     )]
   );
   assert_eq!(attribution.ready.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn oversized_report_logs_the_crash_but_is_not_an_attribution_candidate() {
+  let timestamp = datetime!(2024-01-15 12:34:56 UTC);
+  let mut data = CrashReportBuilder::new("java.lang.OutOfMemoryError")
+    .report_type(ReportType::JVMCrash)
+    .timestamp(timestamp)
+    .crash_profile_source(b"facts")
+    .build();
+  data.resize(MAX_RAW_CLIENT_REPORT_BYTES + 1, 0);
+  let attribution = Arc::new(RecordingAttribution::default());
+  let mut setup = Setup::new(None, false, None, None).await;
+  setup.monitor.report_attribution = Some(attribution.clone());
+  setup.expect_artifact_upload_with_flags(
+    &data,
+    Uuid::new_v4(),
+    [
+      ("app_version".into(), "unknown".into()),
+      ("os_version".into(), "unknown".into()),
+    ]
+    .into(),
+    Some(timestamp),
+    "previous_session_id",
+    Some(vec![
+      ("initial_flag".to_string(), "true".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
+  );
+  setup.make_crash("report.cap", &data);
+
+  assert_eq!(setup.process_all_pending_reports().await.len(), 1);
+  assert_eq!(*attribution.reports.lock(), Vec::new());
 }
 
 #[tokio::test]

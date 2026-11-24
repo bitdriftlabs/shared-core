@@ -57,10 +57,11 @@ normalized for the uploaded attachment. The SDK preserves the original optional 
 manifest.
 
 Nonempty chunked files always use zlib, including when it expands input. SDK admission reserves the
-codec's worst-case output in addition to an owned source. The logical limit remains 256 MiB; encoded
-expansion can require 257 fragments and a 33-byte receipt bitmap. The empty remote-file special case
-has zero logical/encoded bytes, SHA-256(empty), RAW encoding and no fragments. Workflow attachments
-and crash profiles cannot be empty.
+codec's worst-case output in addition to an owned source. The general logical limit is 256 MiB;
+encoded expansion can require 257 fragments and a 33-byte receipt bitmap. Client reports share a
+10 MiB limit across SDK staging, restart attribution, and ingest. The empty remote-file special
+case has zero logical/encoded bytes, SHA-256(empty), RAW encoding and no fragments. Command
+attachments do not carry feature flags. Workflow attachments and crash profiles cannot be empty.
 
 ## SDK ownership
 

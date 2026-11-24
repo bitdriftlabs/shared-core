@@ -182,7 +182,6 @@ async fn retained_workflows_and_direct_commands_share_chunk_admission() {
         "device_command_attachment".into(),
         None,
         "session".into(),
-        Vec::new(),
         Uuid::new_v4().to_string(),
         None,
         Some(tx),

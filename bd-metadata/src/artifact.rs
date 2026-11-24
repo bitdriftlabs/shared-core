@@ -9,6 +9,8 @@
 
 /// Hard logical-file ceiling; admission policy may set a lower limit.
 pub const MAX_ARTIFACT_LOGICAL_BYTES: u32 = 256 * 1024 * 1024;
+/// Maximum uncompressed size of a chunked client report.
+pub const MAX_RAW_CLIENT_REPORT_BYTES: usize = 10 * 1024 * 1024;
 pub const ARTIFACT_CHUNK_BYTES: u32 = 1024 * 1024;
 pub const MAX_ARTIFACT_ENCODED_BYTES: u32 = MAX_ARTIFACT_LOGICAL_BYTES + ARTIFACT_CHUNK_BYTES;
 pub const MAX_ARTIFACT_CHUNKS: u32 = MAX_ARTIFACT_ENCODED_BYTES / ARTIFACT_CHUNK_BYTES;

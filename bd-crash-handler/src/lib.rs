@@ -23,7 +23,7 @@ mod file_watcher;
 pub mod global_state;
 
 use bd_artifact_upload::{ReportAttribution, SnappedFeatureFlag, UploadSource};
-use bd_client_common::artifact::CLIENT_REPORT_ARTIFACT_TYPE_ID;
+use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, MAX_RAW_CLIENT_REPORT_BYTES};
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_error_reporter::reporter::handle_unexpected;
@@ -629,8 +629,10 @@ impl Monitor {
       return None;
     };
 
-    // The platform decides from the report itself whether it is eligible for attribution.
-    if let Some(attribution) = &self.report_attribution {
+    // Keep the crash log even when the report is too large to stage as a profile parent.
+    if mapped_file.len() <= MAX_RAW_CLIENT_REPORT_BYTES
+      && let Some(attribution) = &self.report_attribution
+    {
       attribution.add_report(artifact_id, &bin_report, &session_id);
     }
 
