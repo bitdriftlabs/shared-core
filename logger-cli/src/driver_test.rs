@@ -9,6 +9,8 @@ use super::{Driver, stop_worker, wait_for_configuration};
 use crate::issue_report::{IssueKind, IssueReport, StackFrame};
 use crate::logger::{LoggerArgs, MuxTransport, SessionStrategyConfig};
 use crate::types::Platform;
+use bd_client_common::artifact::CLIENT_REPORT_ARTIFACT_TYPE_ID;
+use bd_client_common::file::read_compressed;
 use bd_logger::{AdmissionError, FlushError, SdkStatusTracker};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
@@ -176,10 +178,21 @@ async fn driver_reports_issues_in_the_current_session() {
   driver.flush().await.unwrap();
 
   let upload = server.next_artifact_upload().await.unwrap();
+  assert_eq!(upload.type_id, CLIENT_REPORT_ARTIFACT_TYPE_ID);
+  assert_eq!(upload.chunk_index, None);
+  assert_eq!(upload.contents, b"");
+  assert_eq!(upload.chunks.len(), 1);
   assert_eq!(upload.session_id, session);
-  assert_eq!(upload.contents, report.to_bytes().unwrap());
+  assert_eq!(upload.feature_flags, []);
+  let chunk = server.next_artifact_upload().await.unwrap();
+  assert_eq!(chunk.artifact_id, upload.artifact_id);
+  assert_eq!(chunk.chunk_index, Some(0));
+  assert_eq!(
+    read_compressed(&chunk.contents).unwrap(),
+    report.to_bytes().unwrap()
+  );
   assert!(
-    upload
+    chunk
       .feature_flags
       .iter()
       .any(|flag| flag.name == "payment_sdk_v2" && flag.variant.as_deref() == Some("enabled"))
@@ -222,8 +235,14 @@ async fn driver_takes_every_concurrent_issue_report() {
   third.unwrap();
 
   let mut uploaded = Vec::new();
-  for _ in &reports {
-    uploaded.push(server.next_artifact_upload().await.unwrap().contents);
+  while uploaded.len() < reports.len() {
+    let request = server.next_artifact_upload().await.unwrap();
+    if let Some(index) = request.chunk_index {
+      assert_eq!(index, 0);
+      uploaded.push(read_compressed(&request.contents).unwrap());
+    } else {
+      assert_eq!(request.chunks.len(), 1);
+    }
   }
   let mut expected: Vec<_> = reports
     .iter()
@@ -241,13 +260,15 @@ async fn artifact_wait_holds_until_the_report_upload_is_acknowledged() {
   let directory = TempDir::new().unwrap();
   let driver = start_streaming_driver(&mut server, directory.path()).await;
   driver.begin_session("crasher").unwrap();
-  let blocked = server.block_next_artifact_upload_response();
+  let blocked = server.block_next_artifact_finalization();
   driver
     .report_issue(&handled_error("CheckoutError"))
     .await
     .unwrap();
-  // The upload has reached the server, so its payload stays queued until the response arrives.
-  server.next_artifact_upload().await.unwrap();
+  let begin = server.next_artifact_upload().await.unwrap();
+  let chunk = server.next_artifact_upload().await.unwrap();
+  assert_eq!(chunk.artifact_id, begin.artifact_id);
+  assert_eq!(chunk.chunk_index, Some(0));
 
   // With no time to wait, the queued upload must make the wait fail instead of returning early.
   let pending = driver

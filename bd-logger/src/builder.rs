@@ -526,7 +526,9 @@ impl LoggerBuilder {
 
       // Initialize state store using runtime configuration. This may fall back to an in-memory
       // store if persistent storage cannot be initialized or if directed by configuration.
-      let state_directory = self.params.sdk_directory.join("state");
+      // Snapshot paths go back through the artifact filesystem, which joins relative paths with
+      // the SDK directory. Use an absolute state directory so that prefix is not applied twice.
+      let state_directory = std::path::absolute(self.params.sdk_directory.join("state"))?;
       let result = bd_state::Store::from_runtime(
         &state_directory,
         time_provider.clone(),
@@ -576,8 +578,7 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
-      // The uploader has not started yet, so no ACK, rejection or eviction can remove a pending
-      // report before it is restored.
+      // Restore attribution before the uploader can retire pending reports.
       if let Some(attribution) = &self.report_attribution {
         bd_artifact_upload::restore_pending_reports(
           attribution.as_ref(),

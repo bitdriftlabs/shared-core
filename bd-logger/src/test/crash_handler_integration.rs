@@ -9,6 +9,8 @@ use super::setup::Setup;
 use crate::logger::{Block, ReportProcessingSession};
 use crate::test::setup::SetupOptions;
 use assert_matches::assert_matches;
+use bd_client_common::artifact::CLIENT_REPORT_ARTIFACT_TYPE_ID;
+use bd_client_common::file::read_compressed;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::config::v1::config::buffer_config;
 use bd_proto::protos::logging::payload::{Data, LogType};
@@ -26,7 +28,6 @@ use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::test_api_server::log_upload::LogUpload;
 use itertools::Itertools as _;
-use std::collections::HashSet;
 use std::sync::Arc;
 use time::ext::NumericalStdDuration;
 use time::macros::datetime;
@@ -172,42 +173,36 @@ fn crash_report_upload() {
   assert_eq!(crash.field("custom"), "<redacted>");
   let crash1_uuid = crash.field("_crash_artifact_id");
 
-  let mut remaining_uploads: HashSet<_> = [crash1_uuid].into();
-  // Verify that out of band uploads happen.
-  for _ in 0 .. 1 {
-    // Verify that out of band uploads happen.
-    let request = setup.server.blocking_next_artifact_intent().unwrap();
-    let uuid = request.artifact_id;
-    // Crash-report metadata is scrubbed with the rules current when each request is built.
-    assert_eq!(
-      request.metadata.get("custom").map(Data::string_data),
-      Some("<redacted>")
-    );
+  let begin = setup.server.blocking_next_artifact_upload().unwrap();
+  assert_eq!(begin.type_id, CLIENT_REPORT_ARTIFACT_TYPE_ID);
+  assert_eq!(begin.artifact_id, crash1_uuid);
+  assert_eq!(begin.chunk_index, None);
+  assert_eq!(begin.contents, b"");
+  assert_eq!(begin.chunks.len(), 1);
+  assert!(!begin.state_metadata.contains_key("custom"));
+  assert_eq!(begin.feature_flags, []);
 
-    let request = setup.server.blocking_next_artifact_upload().unwrap();
-    assert_eq!(request.artifact_id, uuid);
-    assert_eq!(request.contents, CRASH_CONTENTS.as_bytes());
-    assert_eq!(
-      request.state_metadata.get("custom").map(Data::string_data),
-      Some("<redacted>")
-    );
-    let mut feature_flags = request
-      .feature_flags
-      .iter()
-      .sorted_by(|a, b| a.name.cmp(&b.name));
-    assert_matches!(feature_flags.next(), Some(flag) => {
-      assert_eq!(flag.name, "flag_name");
-        assert!(flag.variant.is_none());
-    });
-    assert_matches!(feature_flags.next(), Some(flag) => {
-      assert_eq!(flag.name, "flag_with_variant");
-        assert_eq!(flag.variant.as_deref(), Some("variant"));
-    });
-    remaining_uploads.remove(uuid.as_str());
-  }
-
-  assert!(
-    remaining_uploads.is_empty(),
-    "all uploads should have been seen"
+  let chunk = setup.server.blocking_next_artifact_upload().unwrap();
+  assert_eq!(chunk.artifact_id, begin.artifact_id);
+  assert_eq!(chunk.chunk_index, Some(0));
+  assert_eq!(
+    chunk.state_metadata.get("custom").map(Data::string_data),
+    Some("<redacted>")
+  );
+  let mut feature_flags = chunk
+    .feature_flags
+    .iter()
+    .sorted_by(|a, b| a.name.cmp(&b.name));
+  assert_matches!(feature_flags.next(), Some(flag) => {
+    assert_eq!(flag.name, "flag_name");
+    assert!(flag.variant.is_none());
+  });
+  assert_matches!(feature_flags.next(), Some(flag) => {
+    assert_eq!(flag.name, "flag_with_variant");
+    assert_eq!(flag.variant.as_deref(), Some("variant"));
+  });
+  assert_eq!(
+    read_compressed(&chunk.contents).unwrap(),
+    CRASH_CONTENTS.as_bytes()
   );
 }

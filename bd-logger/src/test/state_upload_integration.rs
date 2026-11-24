@@ -7,8 +7,10 @@
 
 use super::setup::{Setup, SetupOptions};
 use crate::log_level;
+use bd_client_common::artifact::STATE_SNAPSHOT_ARTIFACT_TYPE_ID;
 use bd_log_matcher::builder::message_equals;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
+use bd_proto::protos::client::api::UploadArtifactRequest;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
@@ -22,13 +24,28 @@ use bd_test_helpers::config_helper::{
   make_workflow_config_flushing_buffer,
 };
 use bd_test_helpers::runtime::ValueKind;
+use bd_test_helpers::test_api_server::ServerHandle;
 use std::sync::Arc;
 use tempfile::TempDir;
+
+// These small fixtures fit in one fragment. Count payloads, not their Begin requests.
+fn next_snapshot(server: &mut ServerHandle) -> Option<UploadArtifactRequest> {
+  while let Some(request) = server.blocking_next_artifact_upload() {
+    if let Some(index) = request.chunk_index {
+      assert_eq!(index, 0);
+      return Some(request);
+    }
+    assert_eq!(request.type_id, STATE_SNAPSHOT_ARTIFACT_TYPE_ID);
+    assert_eq!(request.contents, b"");
+    assert_eq!(request.chunks.len(), 1);
+  }
+  None
+}
 
 #[test]
 fn continuous_buffer_creates_and_uploads_state_snapshot() {
   let mut setup = Setup::new_with_cached_runtime(SetupOptions {
-    sdk_directory: Arc::new(TempDir::with_prefix("sdk").unwrap()),
+    sdk_directory: Arc::new(TempDir::with_prefix_in("sdk-state", ".").unwrap()),
     disk_storage: true,
     extra_runtime_values: vec![
       (
@@ -93,7 +110,7 @@ fn continuous_buffer_creates_and_uploads_state_snapshot() {
   let start = std::time::Instant::now();
 
   while start.elapsed() < timeout {
-    if let Some(upload) = setup.server.blocking_next_artifact_upload() {
+    if let Some(upload) = next_snapshot(&mut setup.server) {
       assert!(
         !upload.contents.is_empty(),
         "state snapshot should have content"
@@ -103,6 +120,8 @@ fn continuous_buffer_creates_and_uploads_state_snapshot() {
     }
     std::thread::sleep(std::time::Duration::from_millis(100));
   }
+
+  panic!("expected state snapshot upload within timeout");
 }
 
 #[test]
@@ -181,7 +200,7 @@ fn trigger_buffer_flush_creates_snapshot() {
   let start = std::time::Instant::now();
 
   while start.elapsed() < timeout {
-    if let Some(artifact) = setup.server.blocking_next_artifact_upload() {
+    if let Some(artifact) = next_snapshot(&mut setup.server) {
       assert!(
         !artifact.contents.is_empty(),
         "state snapshot should have content"
@@ -258,7 +277,7 @@ fn trigger_buffer_with_multiple_flushes_uploads_state_once() {
   let timeout = std::time::Duration::from_millis(500);
   let start = std::time::Instant::now();
   while start.elapsed() < timeout {
-    if setup.server.blocking_next_artifact_upload().is_some() {
+    if next_snapshot(&mut setup.server).is_some() {
       first_flush_artifacts += 1;
     } else {
       break;
@@ -287,7 +306,7 @@ fn trigger_buffer_with_multiple_flushes_uploads_state_once() {
   let mut second_flush_artifacts = 0;
   let start = std::time::Instant::now();
   while start.elapsed() < timeout {
-    if setup.server.blocking_next_artifact_upload().is_some() {
+    if next_snapshot(&mut setup.server).is_some() {
       second_flush_artifacts += 1;
     } else {
       break;
@@ -350,7 +369,7 @@ fn state_correlator_prevents_duplicate_uploads() {
   let timeout = std::time::Duration::from_millis(500);
   let start = std::time::Instant::now();
   while start.elapsed() < timeout {
-    if setup.server.blocking_next_artifact_upload().is_some() {
+    if next_snapshot(&mut setup.server).is_some() {
       first_batch_artifacts += 1;
     } else {
       break;
@@ -371,7 +390,7 @@ fn state_correlator_prevents_duplicate_uploads() {
   let mut second_batch_artifacts = 0;
   let start = std::time::Instant::now();
   while start.elapsed() < timeout {
-    if setup.server.blocking_next_artifact_upload().is_some() {
+    if next_snapshot(&mut setup.server).is_some() {
       second_batch_artifacts += 1;
     } else {
       break;
@@ -433,7 +452,7 @@ fn new_state_changes_trigger_new_snapshot() {
   let timeout = std::time::Duration::from_millis(500);
   let start = std::time::Instant::now();
   while start.elapsed() < timeout {
-    if setup.server.blocking_next_artifact_upload().is_none() {
+    if next_snapshot(&mut setup.server).is_none() {
       break;
     }
   }
@@ -531,7 +550,7 @@ fn stream_only_buffer_does_not_upload_state_snapshot() {
   let mut found_artifact = false;
 
   while start.elapsed() < timeout {
-    if setup.server.blocking_next_artifact_upload().is_some() {
+    if next_snapshot(&mut setup.server).is_some() {
       found_artifact = true;
       break;
     }
@@ -604,7 +623,7 @@ fn continuous_buffer_uploads_state_with_first_batch() {
   let timeout = std::time::Duration::from_secs(2);
   let start = std::time::Instant::now();
   while start.elapsed() < timeout {
-    if let Some(artifact) = setup.server.blocking_next_artifact_upload() {
+    if let Some(artifact) = next_snapshot(&mut setup.server) {
       assert!(
         !artifact.contents.is_empty(),
         "continuous buffers should trigger state snapshot artifact upload"
@@ -666,7 +685,7 @@ fn continuous_streaming_multiple_batches_single_state_upload() {
   let timeout = std::time::Duration::from_millis(500);
   let start = std::time::Instant::now();
   while start.elapsed() < timeout {
-    if setup.server.blocking_next_artifact_upload().is_some() {
+    if next_snapshot(&mut setup.server).is_some() {
       first_batch_artifacts += 1;
     } else {
       break;
@@ -687,7 +706,7 @@ fn continuous_streaming_multiple_batches_single_state_upload() {
   let mut second_batch_artifacts = 0;
   let start = std::time::Instant::now();
   while start.elapsed() < timeout {
-    if setup.server.blocking_next_artifact_upload().is_some() {
+    if next_snapshot(&mut setup.server).is_some() {
       second_batch_artifacts += 1;
     } else {
       break;
@@ -708,7 +727,7 @@ fn continuous_streaming_multiple_batches_single_state_upload() {
   let mut third_batch_artifacts = 0;
   let start = std::time::Instant::now();
   while start.elapsed() < timeout {
-    if setup.server.blocking_next_artifact_upload().is_some() {
+    if next_snapshot(&mut setup.server).is_some() {
       third_batch_artifacts += 1;
     } else {
       break;

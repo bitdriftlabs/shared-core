@@ -5,68 +5,21 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-//! The filesystem projection of the two persisted artifact layouts.
-//!
-//! This is deliberately not another index or uploader. A whole-file entry owns one spool file,
-//! except for workflow entries, which only borrow their canonical payload. A chunked entry owns its
-//! descriptor-addressed files and, temporarily, a moved capture source. Defining those paths here
-//! lets startup, failed-cleanup reconciliation and retirement use the same ownership rules.
+//! Filesystem ownership and cleanup for the chunk spool.
 //!
 //! Deletion is always downstream of index publication. If publishing/removing a lease fails, the
 //! uploader stays dirty and suppresses orphan deletion until the shared index retry succeeds.
 
 use super::chunked::{chunk_path, source_path};
-use super::{
-  ARTIFACT_UPLOAD_DIRECTORY,
-  REPORT_INDEX_FILE,
-  Uploader,
-  WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID,
-};
+use super::{ARTIFACT_UPLOAD_DIRECTORY, REPORT_INDEX_FILE, Uploader};
 use bd_proto::protos::client::api::UploadArtifactRequest;
-use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-//
-// StoredArtifact
-//
-
-/// A borrowed view, not a third in-memory or persisted representation of artifact metadata.
-pub(super) enum StoredArtifact<'a> {
-  WholeFile(&'a Artifact),
-  Chunked(&'a UploadArtifactRequest),
-}
-
-impl StoredArtifact<'_> {
-  pub(super) fn owned_paths(&self) -> anyhow::Result<Vec<PathBuf>> {
-    match self {
-      Self::WholeFile(entry) => {
-        let path = Uploader::payload_path(entry)?;
-        // A workflow lease protects storage owned by AttachmentStore. Removing the lease must not
-        // unlink that payload: the store also tracks independent log references and retention.
-        Ok(
-          if entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID) {
-            Vec::new()
-          } else {
-            vec![path]
-          },
-        )
-      },
-      Self::Chunked(request) => Ok(
-        (0 .. request.chunks.len())
-          .map(|index| chunk_path(&request.artifact_id, index))
-          .chain(self.source_path())
-          .collect(),
-      ),
-    }
-  }
-
-  fn source_path(&self) -> Option<PathBuf> {
-    match self {
-      Self::WholeFile(_) => None,
-      Self::Chunked(request) => Some(source_path(&request.artifact_id)),
-    }
-  }
+pub(super) fn owned_paths(request: &UploadArtifactRequest) -> impl Iterator<Item = PathBuf> + '_ {
+  (0 .. request.chunks.len())
+    .map(|index| chunk_path(&request.artifact_id, index))
+    .chain(std::iter::once(source_path(&request.artifact_id)))
 }
 
 //
@@ -83,14 +36,6 @@ pub(super) struct IndexWriteError {
 }
 
 impl Uploader {
-  fn stored_artifacts(&self) -> impl Iterator<Item = StoredArtifact<'_>> {
-    self
-      .index
-      .iter()
-      .map(StoredArtifact::WholeFile)
-      .chain(self.chunked.entries.iter().map(StoredArtifact::Chunked))
-  }
-
   pub(super) async fn delete_paths(&mut self, paths: &[PathBuf]) -> anyhow::Result<()> {
     // Try every known path rather than stopping at the first unlink failure. A failed unlink is
     // still visible to usage accounting and the next orphan scan; no synthetic credit is released.
@@ -112,8 +57,10 @@ impl Uploader {
     // Only callers that know the index is durable may release moved capture sources. Payload
     // chunks remain owned until whole-artifact retirement, independently of per-chunk progress.
     let sources: Vec<_> = self
-      .stored_artifacts()
-      .filter_map(|entry| entry.source_path())
+      .chunked
+      .entries
+      .iter()
+      .map(|entry| source_path(&entry.artifact_id))
       .collect();
     if let Err(error) = self.delete_paths(&sources).await {
       log::warn!("failed to remove committed artifact sources; will retry: {error}");
@@ -130,10 +77,7 @@ impl Uploader {
   }
 
   async fn clean_orphan_files(&mut self) -> anyhow::Result<()> {
-    let mut retained = HashSet::new();
-    for entry in self.stored_artifacts() {
-      retained.extend(entry.owned_paths()?);
-    }
+    let mut retained: HashSet<_> = self.chunked.entries.iter().flat_map(owned_paths).collect();
     retained.insert(ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE));
     let mut orphaned = Vec::new();
     for file in self
@@ -155,7 +99,7 @@ impl Uploader {
   pub(super) async fn retire_files(&mut self, paths: &[PathBuf]) -> anyhow::Result<()> {
     // The caller has removed the entry from its in-memory collection. Persist that removal first;
     // on failure keep every byte, and let index_retry + orphan reconciliation finish retirement.
-    // This same ordering covers success, intent rejection, eviction and explicit chunk rejection.
+    // This same ordering covers success, admission denial and explicit chunk rejection.
     if let Err(error) = self.write_index().await {
       self.cleanup_pending = true;
       return Err(error.into());

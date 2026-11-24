@@ -33,17 +33,21 @@ use super::{
 };
 use crate::input::Input;
 use bd_client_common::artifact::{
+  CLIENT_REPORT_ARTIFACT_TYPE_ID,
   CRASH_PROFILE_ARTIFACT_TYPE_ID,
   CRASH_PROFILE_MAX_REPORT_IDS,
   MAX_ARTIFACT_LOGICAL_BYTES,
+  MAX_RAW_CLIENT_REPORT_BYTES,
+  STATE_SNAPSHOT_ARTIFACT_TYPE_ID,
 };
 use bd_client_common::file::{read_compressed_limited, read_limited};
-use bd_client_common::file_system::{FileSystem, OwnedFile};
+use bd_client_common::file_system::{FileSystem, OwnedFile, open_regular_file_async};
 use bd_log_primitives::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_metadata::artifact::{
+  ARTIFACT_BEGIN_METADATA_KEYS,
   ARTIFACT_CHUNK_BYTES,
+  MAX_ARTIFACT_ATTACHED_METADATA_BYTES,
   MAX_ARTIFACT_MANIFEST_BYTES,
-  MAX_ARTIFACT_ORIGIN_BYTES,
   artifact_encoded_bound,
 };
 use bd_proto::protos::client::api::{
@@ -72,9 +76,9 @@ use uuid::Uuid;
 pub(super) const CHUNK_BYTES: u64 = ARTIFACT_CHUNK_BYTES as u64;
 pub(super) const MAX_INDEX_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = MAX_ARTIFACT_MANIFEST_BYTES as u64;
-// Reserve room for request framing before staging new ownership.
-const RESERVED_INDEX_ENTRY_BYTES: u64 = MAX_MANIFEST_BYTES + 64;
-const MAX_CAPTURE_METADATA_BYTES: u64 = MAX_ARTIFACT_ORIGIN_BYTES as u64;
+const MAX_ATTACHED_METADATA_BYTES: u64 = MAX_ARTIFACT_ATTACHED_METADATA_BYTES as u64;
+// Reserve room for up to 257 chunk descriptors and index entry framing before staging.
+pub(super) const CHUNK_DESCRIPTOR_RESERVE_BYTES: u64 = 16 * 1024;
 
 //
 // Spool
@@ -120,9 +124,7 @@ fn validate_metadata(request: &UploadArtifactRequest, limit: u64) -> anyhow::Res
   if request.compute_size() > limit
     || request.type_id.is_empty()
     || request.type_id.len() > 255
-    || request.session_id.is_empty()
     || request.session_id.len() > 255
-    || request.state_metadata.len() > 32
     || request
       .content_type
       .as_ref()
@@ -131,15 +133,20 @@ fn validate_metadata(request: &UploadArtifactRequest, limit: u64) -> anyhow::Res
     anyhow::bail!("invalid local chunked artifact metadata");
   }
 
-  // The retained request is a payload-free Begin/resume template, not a network attempt or a
-  // whole-file report.
+  // The retained request is a payload-free template, not a network attempt or a whole-file upload.
   if !request.upload_uuid.is_empty()
     || !request.contents.is_empty()
     || request.chunk_index.is_some()
-    || !request.feature_flags.is_empty()
     || request.workflow_report_handoff.is_some()
   {
     anyhow::bail!("invalid local chunked artifact metadata");
+  }
+
+  for flag in &request.feature_flags {
+    if flag.name.is_empty() {
+      anyhow::bail!("missing artifact feature flag name");
+    }
+    timestamp(flag.last_updated.as_ref())?;
   }
 
   // Parent report IDs are immutable crash-profile associations, never command authority.
@@ -169,30 +176,31 @@ fn validate_metadata(request: &UploadArtifactRequest, limit: u64) -> anyhow::Res
     },
     None
       if request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
-        || request.type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID => {},
+        || request.type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID
+        || request.type_id == CLIENT_REPORT_ARTIFACT_TYPE_ID
+        || request.type_id == STATE_SNAPSHOT_ARTIFACT_TYPE_ID => {},
     _ => anyhow::bail!("invalid local chunked artifact provenance"),
   }
 
-  // Origin fields share one aggregate budget as well as individual key/value limits.
-  let mut origin_bytes = 0;
+  // Keys must be bounded for every artifact. Identity keys sent on Begin must be bounded strings;
+  // full state_metadata and feature_flags travel on the final chunk within the overall size cap.
   for (key, data) in &request.state_metadata {
-    let Some(Data_type::StringData(value)) = &data.data_type else {
-      anyhow::bail!("chunked origin fields must be bounded strings");
-    };
-    if key.is_empty() || key.len() > 255 || value.len() > 255 {
-      anyhow::bail!("invalid local chunked origin field");
+    if key.is_empty() || key.len() > 255 {
+      anyhow::bail!("invalid local chunked metadata key");
     }
-    origin_bytes += key.len() + value.len();
-  }
-  if u64::try_from(origin_bytes)? > MAX_CAPTURE_METADATA_BYTES {
-    anyhow::bail!("chunked origin metadata exceeds its size limit");
+    if ARTIFACT_BEGIN_METADATA_KEYS.contains(&key.as_str()) {
+      match &data.data_type {
+        Some(Data_type::StringData(value)) if value.len() <= 255 => {},
+        _ => anyhow::bail!("Begin identity metadata fields must be bounded strings"),
+      }
+    }
   }
   timestamp(request.time.as_ref())?;
   Ok(id)
 }
 
 pub(super) fn validate_capture_request(request: &UploadArtifactRequest) -> anyhow::Result<Uuid> {
-  let id = validate_metadata(request, MAX_CAPTURE_METADATA_BYTES)?;
+  let id = validate_metadata(request, MAX_ATTACHED_METADATA_BYTES)?;
   // Producers supply capture identity and timestamp. Only staging may add file geometry/hashes.
   if request.logical_bytes.is_some()
     || request.encoded_bytes.is_some()
@@ -206,8 +214,16 @@ pub(super) fn validate_capture_request(request: &UploadArtifactRequest) -> anyho
   Ok(id)
 }
 
+fn logical_size_limit(type_id: &str) -> u64 {
+  if type_id == CLIENT_REPORT_ARTIFACT_TYPE_ID {
+    MAX_RAW_CLIENT_REPORT_BYTES as u64
+  } else {
+    u64::from(MAX_ARTIFACT_LOGICAL_BYTES)
+  }
+}
+
 fn validate_entry(request: &UploadArtifactRequest) -> anyhow::Result<()> {
-  validate_metadata(request, MAX_MANIFEST_BYTES)?;
+  validate_metadata(request, MAX_ATTACHED_METADATA_BYTES + MAX_MANIFEST_BYTES)?;
 
   // Establish geometry before deriving any chunk offset. Empty remote files have no descriptors
   // and still carry SHA-256(empty); empty workflow attachments are not admissible.
@@ -217,7 +233,7 @@ fn validate_entry(request: &UploadArtifactRequest) -> anyhow::Result<()> {
   let encoded = request
     .encoded_bytes
     .ok_or_else(|| anyhow::anyhow!("missing artifact encoded size"))?;
-  if size > u64::from(MAX_ARTIFACT_LOGICAL_BYTES)
+  if size > logical_size_limit(&request.type_id)
     || encoded > artifact_encoded_bound(size)
     || (size != 0 && encoded == 0)
     || (size == 0 && request.command_id.is_none())
@@ -289,7 +305,7 @@ pub(super) fn file_identity(_: &Metadata) -> Option<(u64, u64)> {
   None
 }
 
-async fn stage(
+pub(super) async fn stage(
   fs: &dyn FileSystem,
   mut input: Input,
   mut request: UploadArtifactRequest,
@@ -300,14 +316,25 @@ async fn stage(
     .size()
     .checked_sub(if checksummed { 4 } else { 0 })
     .ok_or_else(|| anyhow::anyhow!("invalid checksummed workflow input"))?;
+  anyhow::ensure!(
+    size <= logical_size_limit(&request.type_id),
+    "artifact exceeds logical size limit"
+  );
+  if size == 0 && request.command_id.is_none() {
+    anyhow::bail!("empty non-command artifact");
+  }
   let mut whole = Sha256::new();
   let mut crc = checksummed.then(crc32fast::Hasher::new);
   let mut remaining = size;
   let mut chunks = Vec::new();
-  let mut encoder = ZlibEncoder::new(
-    Vec::new(),
-    Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
-  );
+  // State snapshots are already zlib-compressed journals; stored blocks preserve the uniform
+  // ZLIB wire encoding without paying double-compression CPU on mobile or server.
+  let compression = if request.type_id == STATE_SNAPSHOT_ARTIFACT_TYPE_ID {
+    Compression::none()
+  } else {
+    Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL)
+  };
+  let mut encoder = ZlibEncoder::new(Vec::new(), compression);
   let mut pending = Vec::new();
   let chunk_bytes = usize::try_from(CHUNK_BYTES)?;
   let mut encoded_bytes = 0_u64;
@@ -422,73 +449,143 @@ async fn write_chunk(
   fs.sync_file(&path).await
 }
 
+//
+// StreamVerifier
+//
+
+struct StreamVerifier {
+  whole: Sha256,
+  decoder: Decompress,
+  ended: bool,
+  output: Option<Vec<u8>>,
+}
+
+impl StreamVerifier {
+  fn new(output: Option<Vec<u8>>) -> Self {
+    Self {
+      whole: Sha256::new(),
+      decoder: Decompress::new(true),
+      ended: false,
+      output,
+    }
+  }
+
+  fn feed_fragment(
+    &mut self,
+    encoded: &[u8],
+    descriptor: &ArtifactChunkDescriptor,
+    expected_encoded: u64,
+    size: u64,
+  ) -> anyhow::Result<()> {
+    if encoded.len() != descriptor.encoded_bytes as usize
+      || Sha256::digest(encoded).as_slice() != descriptor.encoded_sha256
+    {
+      anyhow::bail!("staged chunk does not match encoded descriptor");
+    }
+
+    let mut offset = 0;
+    let mut output = vec![0; 64 * 1024];
+    loop {
+      let before_in = self.decoder.total_in();
+      let before_out = self.decoder.total_out();
+      let status = self
+        .decoder
+        .decompress(&encoded[offset ..], &mut output, FlushDecompress::None)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+      offset += usize::try_from(self.decoder.total_in() - before_in)?;
+      let produced = usize::try_from(self.decoder.total_out() - before_out)?;
+      anyhow::ensure!(
+        self.decoder.total_out() <= size,
+        "staged stream exceeds logical size"
+      );
+      self.whole.update(&output[.. produced]);
+      if let Some(decoded) = &mut self.output {
+        decoded.extend_from_slice(&output[.. produced]);
+      }
+      if status == Status::StreamEnd {
+        anyhow::ensure!(
+          self.decoder.total_in() == expected_encoded,
+          "trailing staged stream bytes"
+        );
+        self.ended = true;
+        break;
+      }
+      if offset == encoded.len() && produced < output.len() {
+        break;
+      }
+      anyhow::ensure!(
+        self.decoder.total_in() != before_in || produced != 0,
+        "stalled staged decoder"
+      );
+    }
+    Ok(())
+  }
+
+  fn finish(self, size: u64, expected_digest: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
+    if (size != 0 && (!self.ended || self.decoder.total_out() != size))
+      || self.whole.finalize().as_slice() != expected_digest
+    {
+      anyhow::bail!("staged artifact does not match whole logical digest");
+    }
+    Ok(self.output)
+  }
+}
+
 async fn validate_files(
   fs: &dyn FileSystem,
   request: &UploadArtifactRequest,
 ) -> anyhow::Result<()> {
   // validate_entry has already established geometry and allowed encodings. This pass verifies the
   // corresponding disk bytes without loading more than one encoded/decoded chunk at a time.
-  let mut whole = Sha256::new();
-  let mut decoder = Decompress::new(true);
-  let mut ended = false;
   let size = request
     .logical_bytes
     .ok_or_else(|| anyhow::anyhow!("missing logical size"))?;
+  let expected_encoded = request.encoded_bytes.unwrap_or_default();
+  let mut verifier = StreamVerifier::new(None);
   for (index, descriptor) in request.chunks.iter().enumerate() {
-    // Check encoded size/hash before attempting decompression.
     let mut file = fs
       .open_regular_file(&chunk_path(&request.artifact_id, index))
       .await?;
     let encoded = read_limited(&mut file, u64::from(descriptor.encoded_bytes)).await?;
     let descriptor = descriptor.clone();
-    let expected_encoded = request.encoded_bytes.unwrap_or_default();
-    (whole, decoder, ended) = tokio::task::spawn_blocking(move || {
-      if encoded.len() != descriptor.encoded_bytes as usize
-        || Sha256::digest(&encoded).as_slice() != descriptor.encoded_sha256
-      {
-        anyhow::bail!("staged chunk does not match encoded descriptor");
-      }
-      let mut offset = 0;
-      let mut output = vec![0; 64 * 1024];
-      loop {
-        let before_in = decoder.total_in();
-        let before_out = decoder.total_out();
-        let status = decoder
-          .decompress(&encoded[offset ..], &mut output, FlushDecompress::None)
-          .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        offset += usize::try_from(decoder.total_in() - before_in)?;
-        let produced = usize::try_from(decoder.total_out() - before_out)?;
-        anyhow::ensure!(
-          decoder.total_out() <= size,
-          "staged stream exceeds logical size"
-        );
-        whole.update(&output[.. produced]);
-        if status == Status::StreamEnd {
-          anyhow::ensure!(
-            decoder.total_in() == expected_encoded,
-            "trailing staged stream bytes"
-          );
-          ended = true;
-          break;
-        }
-        if offset == encoded.len() && produced < output.len() {
-          break;
-        }
-        anyhow::ensure!(
-          decoder.total_in() != before_in || produced != 0,
-          "stalled staged decoder"
-        );
-      }
-      Ok::<_, anyhow::Error>((whole, decoder, ended))
+    verifier = tokio::task::spawn_blocking(move || {
+      verifier.feed_fragment(&encoded, &descriptor, expected_encoded, size)?;
+      Ok::<_, anyhow::Error>(verifier)
     })
     .await??;
   }
-  if (size != 0 && (!ended || decoder.total_out() != size))
-    || whole.finalize().as_slice() != request.logical_sha256
-  {
-    anyhow::bail!("staged artifact does not match whole logical digest");
-  }
+  verifier.finish(size, &request.logical_sha256)?;
   Ok(())
+}
+
+pub async fn read_pending_report(
+  sdk_directory: &Path,
+  request: &UploadArtifactRequest,
+) -> anyhow::Result<Vec<u8>> {
+  if request.type_id != CLIENT_REPORT_ARTIFACT_TYPE_ID {
+    anyhow::bail!("queued artifact is not a client report");
+  }
+  validate_entry(request)?;
+  let size = request
+    .logical_bytes
+    .ok_or_else(|| anyhow::anyhow!("missing logical size"))?;
+  let expected_encoded = request.encoded_bytes.unwrap_or_default();
+  let mut verifier = StreamVerifier::new(Some(Vec::with_capacity(usize::try_from(size)?)));
+  for (index, descriptor) in request.chunks.iter().enumerate() {
+    let path = sdk_directory.join(chunk_path(&request.artifact_id, index));
+    let mut file = open_regular_file_async(&path).await?;
+    let fragment = read_limited(&mut file, u64::from(descriptor.encoded_bytes)).await?;
+    let descriptor = descriptor.clone();
+    verifier = tokio::task::spawn_blocking(move || {
+      verifier.feed_fragment(&fragment, &descriptor, expected_encoded, size)?;
+      Ok::<_, anyhow::Error>(verifier)
+    })
+    .await??;
+  }
+  let decoded = verifier
+    .finish(size, &request.logical_sha256)?
+    .ok_or_else(|| anyhow::anyhow!("missing decoded queued report buffer"))?;
+  Ok(decoded)
 }
 
 impl Uploader {
@@ -499,12 +596,12 @@ impl Uploader {
     source_cleanup: &mut Option<OwnedFile>,
     files: &mut StagedFiles,
   ) -> anyhow::Result<UploadArtifactRequest> {
-    if self.index_proto().compute_size() + RESERVED_INDEX_ENTRY_BYTES > MAX_INDEX_BYTES {
-      anyhow::bail!("insufficient bounded index space for chunked artifact metadata");
-    }
     let source = if matches!(source, UploadSource::Bytes(_) | UploadSource::File(_)) {
       let input = Input::open(source, self.file_system.as_ref()).await?;
       let size = input.size();
+      if size == 0 && request.command_id.is_none() {
+        anyhow::bail!("empty non-command artifact");
+      }
       self
         .chunked
         .admission
@@ -555,6 +652,18 @@ impl Uploader {
       .admission
       .admit_capture(self.file_system.as_ref(), &metadata)
       .await?;
+    if request.type_id == STATE_SNAPSHOT_ARTIFACT_TYPE_ID {
+      // The snapshot producer still owns its source until the new manifest is durable.
+      files.remove_source = Some(path);
+      return stage(
+        self.file_system.as_ref(),
+        Input::from_file(file, &metadata)?,
+        request,
+        files,
+        false,
+      )
+      .await;
+    }
     // Move first: interrupted preparations have only SDK-local, safely named orphan files.
     // Cross-filesystem rename errors reject admission rather than creating an untracked copy.
     let retained_source = source_path(&request.artifact_id);
@@ -595,9 +704,8 @@ impl Uploader {
     // TODO: Recover entries incrementally through the index owner so the first valid artifact can
     // transfer before the entire logical backlog is checked. Preserve collision/corruption fencing
     // and gate preparation/admission until recovery has established every durable ownership lease.
-    // Rebuild ownership from committed entries, not current runtime admission limits. Whole-file
-    // IDs participate in collision detection so no two modes can claim the same artifact.
-    let mut ids: HashSet<String> = self.index.iter().map(|entry| entry.name.clone()).collect();
+    // Rebuild ownership from committed entries, not current runtime admission limits.
+    let mut ids = HashSet::new();
     let mut retained = Vec::new();
     for request in std::mem::take(&mut self.chunked.entries) {
       // Reject malformed templates before deriving paths, allocating chunk buffers or decoding
@@ -610,9 +718,8 @@ impl Uploader {
       let id = &request.artifact_id;
       if !ids.insert(id.clone()) {
         // Remove both owners of a collision; choosing one could hide conflicting payload identity.
-        log::warn!("discarding duplicate/cross-mode chunked artifact {id}");
+        log::warn!("discarding duplicate chunked artifact {id}");
         retained.retain(|entry: &UploadArtifactRequest| entry.artifact_id != *id);
-        self.index.retain(|entry| entry.name != *id);
         *modified = true;
         continue;
       }
@@ -639,7 +746,6 @@ impl Uploader {
       retained.push(request);
     }
     self.chunked.entries = retained;
-    self.index_sync_required |= *modified;
     Ok(())
   }
 }

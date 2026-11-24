@@ -1357,7 +1357,6 @@ async fn stage_device_command_attachment(
     type_id.to_string(),
     None,
     session_id.to_string(),
-    Vec::new(),
     command_id.to_string(),
     attachment.content_type,
     Some(persisted_tx),

@@ -132,7 +132,12 @@ async fn profile_chunks_survive_restart_and_policy_reduction_with_original_paren
       Some(u32::try_from(index).unwrap())
     );
     assert!(upload.payload.crash_profile.is_none());
-    assert!(upload.payload.state_metadata.is_empty());
+    if index + 1 < chunks {
+      assert!(upload.payload.state_metadata.is_empty());
+      assert_eq!(upload.payload.feature_flags, []);
+    } else {
+      assert!(!upload.payload.state_metadata.is_empty());
+    }
     assert_eq!(upload.payload.session_id, "");
     reconstructed.extend_from_slice(&upload.payload.contents);
     if index + 1 == chunks {
@@ -241,7 +246,7 @@ fn legacy_indexes_decode_without_profile_metadata() {
 }
 
 #[tokio::test]
-async fn profile_links_survive_restart_and_use_begin_intent_while_reports_keep_legacy_intent() {
+async fn reports_and_profiles_use_begin_after_restart() {
   let linked = CrashProfileMetadata {
     report_ids: vec![Uuid::new_v4().to_string(), Uuid::new_v4().to_string()],
     ..Default::default()
@@ -290,82 +295,37 @@ async fn profile_links_survive_restart_and_use_begin_intent_while_reports_keep_l
         .unwrap(),
     )
     .unwrap();
-    if links.is_some() {
-      assert_eq!(index.artifact, []);
-      assert_eq!(index.chunked_artifact[0].artifact_id, id);
-      assert_eq!(
-        index.chunked_artifact[0].crash_profile.as_ref(),
-        links.as_ref()
-      );
-    } else {
-      assert_eq!(index.artifact[0].name, id);
-      assert_eq!(index.artifact[0].crash_profile.as_ref(), links.as_ref());
-    }
+    assert_eq!(index.artifact, []);
+    assert_eq!(index.chunked_artifact[0].artifact_id, id);
+    assert_eq!(
+      index.chunked_artifact[0].crash_profile.as_ref(),
+      links.as_ref()
+    );
     setup = setup.reinitialize().await;
-    if links.is_some() {
-      for success in [false, true] {
-        let begin = setup.allow_file_begin().await;
-        assert_eq!(begin.artifact_id, id);
-        assert_eq!(begin.crash_profile.as_ref(), links.as_ref());
-        assert_eq!(begin.state_metadata, command_state_metadata());
+    setup.chunk_transfer_enabled.send(true).unwrap();
+    for success in [false, true] {
+      let begin = chunk_request(&mut setup).await;
+      assert_eq!(begin.payload.artifact_id, id);
+      assert_eq!(begin.payload.type_id, type_id);
+      assert_eq!(begin.payload.crash_profile.as_ref(), links.as_ref());
+      if links.is_some() {
+        assert_eq!(begin.payload.state_metadata, command_state_metadata());
         assert_eq!(
-          begin.content_type.as_deref(),
+          begin.payload.content_type.as_deref(),
           Some("application/vnd.bitdrift.perfetto-trace")
         );
-        let upload = chunk_request(&mut setup).await;
-        assert_eq!(upload.payload.chunk_index, Some(0));
-        assert_eq!(
-          read_compressed(&upload.payload.contents).unwrap(),
-          b"artifact"
-        );
-        if success {
-          progress(upload, State::STATE_FINALIZED, &[1]);
-        } else {
-          upload
-            .response_tx
-            .send(UploadArtifactResponse {
-              upload_uuid: upload.uuid,
-              state: State::STATE_RETRYABLE.into(),
-              error: "temporary failure".into(),
-              ..Default::default()
-            })
-            .unwrap();
-        }
       }
-      assert_eq!(setup.upload_complete_rx.recv().await.unwrap(), id);
-      setup.shutdown().await;
-      continue;
-    }
-    loop {
-      match setup.data_upload_rx.recv().await.unwrap() {
-        DataUpload::ArtifactUploadIntent(intent) => {
-          assert_eq!(intent.payload.artifact_id, id);
-          assert_eq!(intent.payload.crash_profile.as_ref(), links.as_ref());
-          if intent
-            .response_tx
-            .send(IntentResponse {
-              uuid: intent.uuid,
-              decision: IntentDecision::UploadImmediately,
-            })
-            .is_err()
-          {
-            log::debug!("pre-restart test intent responder was cancelled");
-          }
-        },
-        DataUpload::ArtifactUpload(upload) => {
-          assert_eq!(upload.payload.artifact_id, id);
-          assert_eq!(upload.payload.contents, b"artifact");
-          assert_eq!(upload.payload.crash_profile.as_ref(), links.as_ref());
-          upload
-            .response_tx
-            .send(UploadArtifactResponse {
-              upload_uuid: upload.uuid,
-              ..Default::default()
-            })
-            .unwrap();
-          break;
-        },
-        _ => panic!("unexpected upload kind"),
+      progress(begin, State::STATE_RECEIVING, &[0]);
+      let upload = chunk_request(&mut setup).await;
+      assert_eq!(upload.payload.chunk_index, Some(0));
+      assert_eq!(
+        read_compressed(&upload.payload.contents).unwrap(),
+        b"artifact"
+      );
+      if success {
+        progress(upload, State::STATE_FINALIZED, &[1]);
+      } else {
+        progress(upload, State::STATE_RETRYABLE, &[]);
       }
     }
     assert_eq!(setup.upload_complete_rx.recv().await.unwrap(), id);
@@ -382,7 +342,6 @@ fn linked_report_storage_counts_toward_queue_size() {
       type_id: CRASH_PROFILE_ARTIFACT_TYPE_ID.into(),
       ..Default::default()
     },
-    PreparationMode::Chunked,
   );
   let without_links = upload.approximate_size_bytes();
   let mut report_id = String::with_capacity(1024);

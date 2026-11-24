@@ -61,10 +61,6 @@ pub use bd_proto::protos::client::api::sankey_intent_response::{
   UploadImmediately as SankeyPathUploadDecisionImmediately,
 };
 use bd_proto::protos::client::api::state_update_request::OpaqueEntityUpdate;
-pub use bd_proto::protos::client::api::upload_artifact_intent_response::{
-  Decision as ArtifactIntentDecision,
-  Drop as ArtifactIntentDecisionDrop,
-};
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
@@ -338,10 +334,6 @@ impl StreamState {
       },
       DataUpload::SankeyPathUpload(request) => {
         let req = self.upload_state_tracker.track_upload(request);
-        self.send_request(req).await
-      },
-      DataUpload::ArtifactUploadIntent(tracked) => {
-        let req = self.upload_state_tracker.track_intent(tracked);
         self.send_request(req).await
       },
       DataUpload::ArtifactUpload(tracked) => {
@@ -1395,18 +1387,6 @@ impl Api {
             .upload_state_tracker
             .resolve_artifact(artifact_upload)?;
         },
-        Some(Response_type::ArtifactIntent(artifact_upload_intent)) => {
-          log::debug!(
-            "received ack for artifact upload intent {:?}, decision: {:?}",
-            artifact_upload_intent.intent_uuid,
-            artifact_upload_intent.decision
-          );
-
-          stream_state.upload_state_tracker.resolve_intent(
-            &artifact_upload_intent.intent_uuid,
-            artifact_upload_intent.decision,
-          )?;
-        },
         Some(Response_type::ConfigurationUpdate(update)) => {
           let mut update = update;
           let client_state_updates = std::mem::take(&mut update.client_state_updates);
@@ -1441,7 +1421,7 @@ impl Api {
             .device_command_updates
             .resolve_device_command_update(&acknowledgement);
         },
-        None => {
+        Some(Response_type::ArtifactIntent(_)) | None => {
           debug_assert!(false, "not handled");
         },
       }

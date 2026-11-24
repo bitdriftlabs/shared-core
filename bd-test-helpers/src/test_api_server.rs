@@ -43,11 +43,8 @@ use bd_proto::protos::client::api::{
   StateUpdateResponse,
   StatsUploadRequest,
   StatsUploadResponse,
-  UploadArtifactIntentRequest,
-  UploadArtifactIntentResponse,
   UploadArtifactRequest,
   UploadArtifactResponse,
-  upload_artifact_intent_response,
 };
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::workflow::workflow;
@@ -123,7 +120,6 @@ struct ServiceState {
   log_upload_tx: Sender<LogUploadRequest>,
   log_intent_tx: Sender<LogUploadIntentRequest>,
   artifact_upload_tx: Sender<UploadArtifactRequest>,
-  artifact_intent_tx: Sender<UploadArtifactIntentRequest>,
   stats_upload_tx: Sender<StatsUploadRequest>,
   configuration_ack_tx: Sender<(i32, ConfigurationUpdateAck)>,
   runtime_ack_tx: Sender<(i32, ConfigurationUpdateAck)>,
@@ -297,7 +293,7 @@ impl ArtifactUploadResponseControl {
 // BlockedArtifactUploadResponse
 //
 
-/// Holds back the response to the next artifact upload on any stream until released. While held,
+/// Holds back the next artifact finalization response on any stream until released. While held,
 /// that stream processes no further requests, stream actions or shutdown. Dropping the handle
 /// without releasing it suppresses the response instead of sending it.
 pub struct BlockedArtifactUploadResponse {
@@ -507,7 +503,9 @@ impl RequestProcessor {
           .await
           .unwrap();
 
-        if let Some(release_rx) = self.stream_state.artifact_upload_response_control.next() {
+        if state == ArtifactState::STATE_FINALIZED
+          && let Some(release_rx) = self.stream_state.artifact_upload_response_control.next()
+        {
           log::debug!(
             "[S{}] blocking artifact upload response {} until released",
             self.stream_id,
@@ -531,31 +529,6 @@ impl RequestProcessor {
             received_chunks,
             ..Default::default()
           })),
-          ..Default::default()
-        })
-      },
-      Some(Request_type::ArtifactIntent(intent)) => {
-        log::debug!("[S{}] received artifact intent {intent:?}", self.stream_id);
-
-        self
-          .stream_state
-          .artifact_intent_tx
-          .send(intent.clone())
-          .await
-          .unwrap();
-
-        Some(ApiResponse {
-          response_type: Some(Response_type::ArtifactIntent(
-            UploadArtifactIntentResponse {
-              intent_uuid: intent.intent_uuid.clone(),
-              decision: Some(
-                upload_artifact_intent_response::Decision::UploadImmediately(
-                  upload_artifact_intent_response::UploadImmediately::default(),
-                ),
-              ),
-              ..Default::default()
-            },
-          )),
           ..Default::default()
         })
       },
@@ -1019,7 +992,6 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let (log_upload_tx, log_upload_rx) = channel(256);
   let (log_intent_tx, log_intent_rx) = channel(256);
   let (artifact_upload_tx, artifact_upload_rx) = channel(256);
-  let (artifact_intent_tx, artifact_intent_rx) = channel(256);
   let (stats_upload_tx, stats_upload_rx) = channel(256);
   let (handshake_request_tx, handshake_request_rx) = channel(256);
   let (configuration_ack_tx, configuration_ack_rx) = channel(1);
@@ -1067,7 +1039,6 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           log_upload_tx,
           log_intent_tx,
           artifact_upload_tx,
-          artifact_intent_tx,
           stats_upload_tx,
           configuration_ack_tx,
           runtime_ack_tx,
@@ -1107,7 +1078,6 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
     handshake_response_control,
     log_intent_rx,
     artifact_upload_rx,
-    artifact_intent_rx,
     stats_upload_rx,
     stats_upload_response_control,
     artifact_upload_response_control,
@@ -1273,7 +1243,6 @@ pub struct ServerHandle {
   handshake_request_rx: Receiver<(i32, HandshakeRequest)>,
   handshake_response_control: HandshakeResponseControl,
   artifact_upload_rx: Receiver<UploadArtifactRequest>,
-  artifact_intent_rx: Receiver<UploadArtifactIntentRequest>,
   log_intent_rx: Receiver<LogUploadIntentRequest>,
   stats_upload_rx: Receiver<StatsUploadRequest>,
   stats_upload_response_control: StatsUploadResponseControl,
@@ -1419,10 +1388,10 @@ impl ServerHandle {
     Self::next_request(&mut self.artifact_upload_rx).await
   }
 
-  /// Holds back the response to the next artifact upload until the returned handle is released. See
+  /// Holds back the next artifact finalization response until the returned handle is released. See
   /// [`BlockedArtifactUploadResponse`] for what a held response blocks.
   #[must_use]
-  pub fn block_next_artifact_upload_response(&self) -> BlockedArtifactUploadResponse {
+  pub fn block_next_artifact_finalization(&self) -> BlockedArtifactUploadResponse {
     self.artifact_upload_response_control.block_next()
   }
 
@@ -1432,14 +1401,6 @@ impl ServerHandle {
 
   pub fn next_log_intent(&mut self) -> Option<LogUploadIntentRequest> {
     Self::blocking_next_request_with_timeout(&mut self.log_intent_rx)
-  }
-
-  pub async fn next_artifact_intent(&mut self) -> Option<UploadArtifactIntentRequest> {
-    Self::next_request(&mut self.artifact_intent_rx).await
-  }
-
-  pub fn blocking_next_artifact_intent(&mut self) -> Option<UploadArtifactIntentRequest> {
-    Self::blocking_next_request_with_timeout(&mut self.artifact_intent_rx)
   }
 
   pub async fn next_log_upload(&mut self) -> Option<LogUploadRequest> {

@@ -17,13 +17,13 @@ use super::{
   EnqueueError,
   NewUpload,
   PersistenceAck,
-  PreparationMode,
   REPORT_INDEX_FILE,
+  SnappedFeatureFlag,
   UploadSource,
   Uploader,
 };
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse, TrackedArtifactUpload};
+use bd_api::upload::TrackedArtifactUpload;
 use bd_client_common::artifact::MAX_ARTIFACT_LOGICAL_BYTES;
 use bd_client_common::file::{
   read_compressed,
@@ -32,7 +32,7 @@ use bd_client_common::file::{
 };
 use bd_client_common::file_system::{FileSystem, RealFileSystem};
 use bd_client_common::test::TestFileSystem;
-use bd_log_primitives::LogFields;
+use bd_log_primitives::{DataValue, LogFields};
 use bd_metadata::artifact::artifact_encoded_bound;
 use bd_proto::protos::client::api::upload_artifact_response::State;
 use bd_proto::protos::client::api::{
@@ -74,7 +74,7 @@ impl Setup {
     persisted_tx: oneshot::Sender<Result<u64, EnqueueError>>,
     completion_tx: Option<oneshot::Sender<Result<(), String>>>,
   ) -> Result<(), EnqueueError> {
-    let mut upload = NewUpload::new(UploadSource::Path(path), request, PreparationMode::Chunked);
+    let mut upload = NewUpload::new(UploadSource::Path(path), request);
     upload.persisted_tx = Some(PersistenceAck::Command(persisted_tx));
     upload.completion_tx = completion_tx;
     self.client.submit(upload)
@@ -207,7 +207,6 @@ async fn commands_and_profiles_negotiate_then_transfer_one_encoded_fragment_at_e
             "device_command_attachment".into(),
             None,
             "session".into(),
-            Vec::new(),
             Uuid::new_v4().to_string(),
             None,
             Some(tx),
@@ -436,7 +435,7 @@ async fn invalid_chunk_acknowledgements_and_retryable_errors_resume_without_rele
 }
 
 #[tokio::test(start_paused = true)]
-async fn chunk_transfers_interleave_whole_file_traffic_without_eviction_or_fallback() {
+async fn command_and_report_chunks_share_the_same_scheduler() {
   let mut setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let mut completions = Vec::new();
@@ -458,30 +457,27 @@ async fn chunk_transfers_interleave_whole_file_traffic_without_eviction_or_fallb
   setup.chunk_transfer_enabled.send(true).unwrap();
   let begin = setup.next_chunk_operation().await;
   let first = begin.payload.artifact_id.clone();
+  let (tx, rx) = oneshot::channel();
   let report = setup
     .client
     .enqueue_upload(
       UploadSource::Bytes(b"report".to_vec()),
-      "report".into(),
+      "client_report".into(),
       [].into(),
       None,
       "session".into(),
       Vec::new(),
       None,
-      None,
+      Some(tx),
     )
     .unwrap();
-  assert_eq!(
-    setup.entry_received_rx.recv().await.unwrap(),
-    report.to_string()
-  );
+  rx.await.unwrap().unwrap();
   progress(begin, State::STATE_RECEIVING, &[0]);
-  // Depending on task polling, a waiting whole-file intent may precede the next Begin; both must
-  // get capacity without allowing another chunk RPC to pass its predecessor's acknowledgement.
+  // Both types go through Begin and PutChunk, in the same fair queue.
   let mut chunk_operations = Vec::new();
   let mut report_done = false;
   let mut completed = 0;
-  while chunk_operations.len() < 3 || !report_done || completed < 3 {
+  while chunk_operations.len() < 5 || completed < 3 {
     let upload = tokio::select! {
       upload = setup.data_upload_rx.recv() => upload.unwrap(),
       Some(_) = setup.upload_complete_rx.recv() => { completed += 1; continue; }
@@ -491,6 +487,7 @@ async fn chunk_transfers_interleave_whole_file_traffic_without_eviction_or_fallb
         let request = &operation.payload;
         chunk_operations.push(request.artifact_id.clone());
         let state = if request.chunk_index.is_some() {
+          report_done |= request.artifact_id == report.to_string();
           State::STATE_FINALIZED
         } else {
           State::STATE_RECEIVING
@@ -502,33 +499,11 @@ async fn chunk_transfers_interleave_whole_file_traffic_without_eviction_or_fallb
         };
         progress(operation, state, receipts);
       },
-      DataUpload::ArtifactUploadIntent(intent) => {
-        assert_eq!(intent.payload.artifact_id, report.to_string());
-        intent
-          .response_tx
-          .send(IntentResponse {
-            uuid: intent.uuid,
-            decision: IntentDecision::UploadImmediately,
-          })
-          .unwrap();
-      },
-      DataUpload::ArtifactUpload(upload) => {
-        assert_eq!(upload.payload.artifact_id, report.to_string());
-        upload
-          .response_tx
-          .send(UploadArtifactResponse {
-            upload_uuid: upload.uuid,
-            ..Default::default()
-          })
-          .unwrap();
-        report_done = true;
-      },
       other => panic!("unexpected upload: {other:?}"),
     }
   }
   assert_ne!(chunk_operations[0], first);
-  assert_eq!(chunk_operations[1], first);
-  assert_ne!(chunk_operations[2], first);
+  assert!(report_done);
   for completion in completions {
     completion.await.unwrap().unwrap();
   }
@@ -553,8 +528,7 @@ async fn chunked_shared_index_preserves_published_snapshot_on_sync_failure() {
     .await
     .unwrap()
     .unwrap();
-  // A chunked entry requires durability for every subsequent shared-index publication, including
-  // whole-file admissions. Failure after rename must not restore/unlink the now-indexed snapshot.
+  // An ambiguous commit retains both the staged fragments and the producer's original journal.
   let source = PathBuf::from("snapshot.zz");
   setup
     .filesystem
@@ -582,25 +556,26 @@ async fn chunked_shared_index_preserves_published_snapshot_on_sync_failure() {
     rx.await.unwrap(),
     Err(EnqueueError::RetryablePersistence(_))
   ));
-  assert!(!setup.filesystem.exists(&source).await.unwrap());
-  let payload = ARTIFACT_UPLOAD_DIRECTORY.join(id.to_string());
+  assert!(setup.filesystem.exists(&source).await.unwrap());
+  let payload = chunk_path(&id.to_string(), 0);
   assert_eq!(
-    setup.filesystem.read_file(&payload).await.unwrap(),
+    read_compressed(&setup.filesystem.read_file(&payload).await.unwrap()).unwrap(),
     b"snapshot"
   );
   let setup = recovered(setup).await;
   assert_eq!(
-    setup.filesystem.read_file(&payload).await.unwrap(),
+    read_compressed(&setup.filesystem.read_file(&payload).await.unwrap()).unwrap(),
     b"snapshot"
   );
   let index = setup.chunk_index().await;
   assert!(
     index
-      .artifact
+      .chunked_artifact
       .iter()
-      .any(|entry| entry.name == id.to_string())
+      .any(|entry| entry.artifact_id == id.to_string())
   );
-  assert_eq!(index.chunked_artifact.len(), 1);
+  assert_eq!(index.artifact, []);
+  assert_eq!(index.chunked_artifact.len(), 2);
   setup.shutdown().await;
 }
 
@@ -784,7 +759,6 @@ async fn descriptor_and_byte_sources_stage_without_a_source_copy_or_per_chunk_di
         "device_command_attachment".into(),
         None,
         "session".into(),
-        Vec::new(),
         Uuid::new_v4().to_string(),
         None,
         Some(tx),
@@ -1029,7 +1003,6 @@ async fn chunked_count_bound_preserves_accepted_entries_and_rejects_overflow() {
       "device_command_attachment".into(),
       None,
       "session".into(),
-      Vec::new(),
       Uuid::new_v4().to_string(),
       None,
       Some(tx),
@@ -1039,8 +1012,8 @@ async fn chunked_count_bound_preserves_accepted_entries_and_rejects_overflow() {
   assert!(rx.await.unwrap().is_err());
   assert!(!source.exists());
   let index = setup.chunk_index().await;
-  assert_eq!(index.artifact.len(), 31);
-  assert_eq!(index.chunked_artifact.len(), 32);
+  assert_eq!(index.artifact, []);
+  assert_eq!(index.chunked_artifact.len(), 63);
   assert!(
     ArtifactStore::new(&setup.runtime)
       .retain(
@@ -1174,9 +1147,9 @@ async fn disk_admission_protects_unmaterialized_raw_reservations() {
 }
 
 #[tokio::test]
-async fn common_byte_capacity_includes_whole_chunked_and_retained_payloads() {
+async fn common_byte_capacity_includes_chunked_and_retained_payloads() {
   tokio::fs::create_dir_all(".tmp").await.unwrap();
-  for layout in ["whole", "chunked", "retained"] {
+  for layout in ["chunked", "retained"] {
     for (spare_bytes, accepted) in [(7, false), (8, true)] {
       let directory = tempfile::TempDir::with_prefix_in("artifact-bytes", ".tmp").unwrap();
       let filesystem = RealFileSystem::new(
@@ -1197,9 +1170,8 @@ async fn common_byte_capacity_includes_whole_chunked_and_retained_payloads() {
         .unwrap();
       let id = Uuid::new_v4().to_string();
       let path = match layout {
-        "whole" => ARTIFACT_UPLOAD_DIRECTORY.join(&id),
         "chunked" => source_path(&id),
-        _ => PathBuf::from(format!("workflow-attachments/{id}.payload")),
+        _ => PathBuf::from(format!("workflow-attachments/{id}.raw")),
       };
       filesystem
         .create_file(&path)
@@ -1208,6 +1180,23 @@ async fn common_byte_capacity_includes_whole_chunked_and_retained_payloads() {
         .set_len(640 * 1024 * 1024 - spare_bytes)
         .await
         .unwrap();
+      if layout == "retained" {
+        // An indexed workflow source has already staged its encoded fragments.
+        filesystem
+          .write_file(
+            &ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE),
+            &write_compressed_protobuf(&ArtifactUploadIndex {
+              chunked_artifact: vec![UploadArtifactRequest {
+                artifact_id: id,
+                ..Default::default()
+              }],
+              ..Default::default()
+            })
+            .unwrap(),
+          )
+          .await
+          .unwrap();
+      }
       assert_eq!(
         ArtifactStore::new(&runtime)
           .check_capacity(&filesystem, 4, 4, None, 4,)
@@ -1312,56 +1301,6 @@ async fn chunked_hard_logical_ceiling_rejects_oversized_files() {
       .await
       .unwrap()
   );
-  setup.shutdown().await;
-}
-
-#[tokio::test]
-async fn chunked_admission_reserves_bounded_shared_index_metadata() {
-  let setup = Setup::new().await;
-  setup.configure_admission(Vec::new()).await;
-  let mut revision = setup.client.upload_queue_revision();
-  wait_for_queue_revision(&mut revision, 0).await;
-  let whole_file_id = Uuid::new_v4();
-  setup.abort_for_recovery();
-  let index = ArtifactUploadIndex {
-    artifact: vec![Artifact {
-      name: whole_file_id.to_string(),
-      pending_intent_negotiation: true,
-      metadata: [(
-        "whole_file".into(),
-        Data {
-          data_type: Some(Data_type::StringData(
-            "x".repeat(usize::try_from(MAX_INDEX_BYTES).unwrap() - 32 * 1024),
-          )),
-          ..Default::default()
-        },
-      )]
-      .into(),
-      ..Default::default()
-    }],
-    ..Default::default()
-  };
-  setup
-    .filesystem
-    .write_file(
-      &ARTIFACT_UPLOAD_DIRECTORY.join(whole_file_id.to_string()),
-      b"whole-file",
-    )
-    .await
-    .unwrap();
-  setup.write_chunk_index(&index).await;
-  let setup = recovered(setup).await;
-  let id = Uuid::new_v4();
-  let path = setup.capture(id, b"file").await;
-  assert!(
-    setup
-      .stage_capture(path.clone(), setup.request(id))
-      .await
-      .unwrap()
-      .is_err()
-  );
-  assert!(!path.exists());
-  assert_eq!(setup.chunk_index().await, index);
   setup.shutdown().await;
 }
 
@@ -1769,7 +1708,7 @@ async fn chunked_invalid_capture_metadata_consumes_owned_source_without_index_co
       2 => metadata
         .state_metadata
         .insert(
-          "origin".into(),
+          "app_id".into(),
           Data {
             data_type: Some(Data_type::StringData("x".repeat(256))),
             ..Default::default()
@@ -1793,7 +1732,7 @@ async fn chunked_invalid_capture_metadata_consumes_owned_source_without_index_co
 }
 
 #[tokio::test]
-async fn chunked_whole_file_index_writes_preserve_workflow_chunk_ownership() {
+async fn shared_index_report_writes_preserve_workflow_chunk_ownership() {
   let mut setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
@@ -1811,7 +1750,7 @@ async fn chunked_whole_file_index_writes_preserve_workflow_chunk_ownership() {
     .client
     .enqueue_upload(
       super::UploadSource::Bytes(b"whole-file".to_vec()),
-      "report".into(),
+      "client_report".into(),
       LogFields::default(),
       None,
       "session".into(),
@@ -1827,7 +1766,7 @@ async fn chunked_whole_file_index_writes_preserve_workflow_chunk_ownership() {
   ));
   resume.send(()).unwrap();
   rx.await.unwrap().unwrap();
-  assert_eq!(setup.chunk_index().await.chunked_artifact, before);
+  assert_eq!(setup.chunk_index().await.chunked_artifact[.. 1], before);
   assert_eq!(
     Uploader::pending_workflow_attachments(setup.filesystem.directory())
       .await
@@ -1837,7 +1776,7 @@ async fn chunked_whole_file_index_writes_preserve_workflow_chunk_ownership() {
   // Consume the test hook so shutdown/recovery cannot leave a producer blocked on its observer.
   setup.entry_received_rx.recv().await.unwrap();
   let setup = recovered(setup).await;
-  assert_eq!(setup.chunk_index().await.chunked_artifact, before);
+  assert_eq!(setup.chunk_index().await.chunked_artifact[.. 1], before);
   setup.shutdown().await;
 }
 
@@ -1901,8 +1840,40 @@ async fn chunked_failed_source_cleanup_stays_charged_until_recovery_retries_it()
   setup.shutdown().await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn index_sync_retry_cleans_moved_source_before_transfer() {
+  let mut setup = Setup::new().await;
+  let id = Uuid::new_v4();
+  let path = setup.capture(id, b"file").await;
+  let index = ARTIFACT_UPLOAD_DIRECTORY.join(&*REPORT_INDEX_FILE);
+  setup.filesystem.fail_next_sync_at(index.clone());
+  let first_sync = setup.filesystem.gate_next_sync(index.clone());
+  let persisted = setup.stage_capture(path, setup.request(id));
+  let fail = first_sync.await.unwrap();
+  // Arm the retry gate before the injected failure can wake the retry loop.
+  let retry = setup.filesystem.gate_next_sync(index);
+  fail.send(()).unwrap();
+  assert_matches::assert_matches!(
+    persisted.await.unwrap(),
+    Err(EnqueueError::RetryablePersistence(_))
+  );
+  let resume = retry.await.unwrap();
+  let source = source_path(&id.to_string());
+  assert!(setup.filesystem.exists(&source).await.unwrap());
+  resume.send(()).unwrap();
+
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let begin = setup.next_chunk_operation().await;
+  assert_eq!(begin.payload.artifact_id, id.to_string());
+  assert_eq!(begin.payload.chunk_index, None);
+  assert!(!setup.filesystem.exists(&source).await.unwrap());
+  progress(begin, State::STATE_RECEIVING, &[0]);
+  setup.finish_single_fragment(id, b"file").await;
+  setup.shutdown().await;
+}
+
 #[tokio::test]
-async fn chunked_cross_mode_collision_does_not_delete_accepted_chunks() {
+async fn legacy_entry_does_not_delete_accepted_chunks_with_same_id() {
   let setup = Setup::new().await;
   setup.configure_admission(Vec::new()).await;
   let id = Uuid::new_v4();
@@ -1933,7 +1904,7 @@ async fn chunked_cross_mode_collision_does_not_delete_accepted_chunks() {
     .unwrap(),
     b"file"
   );
-  let mut index = original;
+  let mut index = original.clone();
   index.artifact.push(Artifact {
     name: id.to_string(),
     ..Default::default()
@@ -1948,8 +1919,250 @@ async fn chunked_cross_mode_collision_does_not_delete_accepted_chunks() {
     .unwrap();
   setup.write_chunk_index(&index).await;
   let setup = recovered(setup).await;
+  assert_eq!(setup.chunk_index().await, original);
+  assert_eq!(
+    setup
+      .collector
+      .scope("artifact_upload")
+      .counter("dropped")
+      .get(),
+    1
+  );
+  assert!(
+    !setup
+      .filesystem
+      .exists(&ARTIFACT_UPLOAD_DIRECTORY.join(id.to_string()))
+      .await
+      .unwrap()
+  );
+  setup.shutdown().await;
+}
+
+#[tokio::test]
+async fn client_report_accepts_large_typed_metadata_and_feature_flags() {
+  let setup = Setup::new().await;
+  setup.configure_admission(Vec::new()).await;
+
+  let mut fields = LogFields::new();
+  for index in 0_u8 .. 40 {
+    fields.insert(
+      format!("custom_field_{index}").into(),
+      match index % 3 {
+        0 => DataValue::from(format!("value-{index}")),
+        1 => DataValue::from(vec![index; 8]),
+        _ => DataValue::from(vec![DataValue::from(format!("item-{index}"))]),
+      },
+    );
+  }
+  let now = setup.time_provider.now();
+  // Exceed the 8 KiB origin-metadata cap while remaining within the 64 KiB manifest limit.
+  let flags: Vec<_> = (0 .. 160)
+    .map(|index| {
+      SnappedFeatureFlag::new(
+        format!("feature_flag_experiment_name_{index:03}"),
+        Some(format!("treatment_variant_{index:03}")),
+        now,
+      )
+    })
+    .collect();
+
+  let (tx, rx) = oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::Bytes(b"report-body".to_vec()),
+      "client_report".into(),
+      fields.clone(),
+      Some(now),
+      "session".into(),
+      flags.clone(),
+      None,
+      Some(tx),
+    )
+    .unwrap();
+  rx.await.unwrap().unwrap();
+
+  // Invalid empty feature-flag names and attached metadata over 960 KiB are rejected synchronously,
+  // while empty session_id (e.g. previous-run crashes) and large metadata (>64 KiB) succeed.
+  assert!(
+    setup
+      .client
+      .enqueue_upload(
+        UploadSource::Bytes(b"report-body".to_vec()),
+        "client_report".into(),
+        LogFields::new(),
+        Some(now),
+        String::new(),
+        vec![SnappedFeatureFlag::new(String::new(), None, now)],
+        None,
+        None,
+      )
+      .is_err()
+  );
+  let oversized_flags: Vec<_> = (0 .. 12_000)
+    .map(|index| {
+      SnappedFeatureFlag::new(
+        format!("oversized_feature_flag_name_{index:05}"),
+        Some("x".repeat(48)),
+        now,
+      )
+    })
+    .collect();
+  assert!(
+    setup
+      .client
+      .enqueue_upload(
+        UploadSource::Bytes(b"report-body".to_vec()),
+        "client_report".into(),
+        LogFields::new(),
+        Some(now),
+        String::new(),
+        oversized_flags,
+        None,
+        None,
+      )
+      .is_err()
+  );
+
+  let mut setup = recovered(setup).await;
+  setup.chunk_transfer_enabled.send(true).unwrap();
+  let begin = setup.next_chunk_operation().await;
+  assert_eq!(begin.payload.artifact_id, id.to_string());
+  assert!(begin.payload.state_metadata.is_empty());
+  assert_eq!(begin.payload.feature_flags, []);
+  progress(begin, State::STATE_RECEIVING, &[0]);
+  let final_chunk = setup.finish_single_fragment(id, b"report-body").await;
+  assert_eq!(final_chunk.state_metadata.len(), 40);
+  assert_eq!(final_chunk.feature_flags.len(), 160);
+  assert!(final_chunk.compute_size() > 8 * 1024);
+  assert_eq!(
+    setup.upload_complete_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+
+  // Empty session_id (e.g. previous-run crash report) is accepted and preserves identity keys on
+  // Begin and full metadata on the final chunk.
+  let (empty_session_tx, empty_session_rx) = oneshot::channel();
+  let empty_session_id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::Bytes(b"prev-run-crash".to_vec()),
+      "client_report".into(),
+      [("app_id".into(), "com.example.app".into())].into(),
+      Some(now),
+      String::new(),
+      Vec::new(),
+      None,
+      Some(empty_session_tx),
+    )
+    .unwrap();
+  empty_session_rx.await.unwrap().unwrap();
+  let begin = setup.next_chunk_operation().await;
+  assert_eq!(begin.payload.artifact_id, empty_session_id.to_string());
+  assert_eq!(begin.payload.session_id, "");
+  assert_eq!(begin.payload.state_metadata.len(), 1);
+  assert_eq!(begin.payload.feature_flags, []);
+  progress(begin, State::STATE_RECEIVING, &[0]);
+  let final_chunk = setup
+    .finish_single_fragment(empty_session_id, b"prev-run-crash")
+    .await;
+  assert_eq!(final_chunk.state_metadata.len(), 1);
+  assert_eq!(
+    setup.upload_complete_rx.recv().await.unwrap(),
+    empty_session_id.to_string()
+  );
+  setup.shutdown().await;
+}
+
+#[tokio::test]
+async fn state_snapshot_uses_stored_zlib_and_preserves_source_on_mid_staging_failure() {
+  let setup = Setup::new().await;
+  setup.configure_admission(Vec::new()).await;
+
+  let mut rng = StdRng::seed_from_u64(0x5a7e_5a90);
+  let mut journal = vec![0_u8; usize::try_from(CHUNK_BYTES).unwrap() + 4096];
+  rng.fill(&mut journal[..]);
+  let source = PathBuf::from("state-snapshot-mid-fail.zz");
+  setup
+    .filesystem
+    .write_file(&source, &journal)
+    .await
+    .unwrap();
+
+  // Fail syncing the second chunk after the first chunk is written to disk.
+  let failed_id = Uuid::new_v4();
+  setup
+    .filesystem
+    .fail_next_sync_at(chunk_path(&failed_id.to_string(), 1));
+  let failed_request = UploadArtifactRequest {
+    artifact_id: failed_id.to_string(),
+    type_id: "state_snapshot".into(),
+    time: setup.time_provider.now().into_proto(),
+    ..Default::default()
+  };
+  assert!(
+    setup
+      .stage_capture(source.clone(), failed_request)
+      .await
+      .unwrap()
+      .is_err()
+  );
+  assert_eq!(setup.filesystem.read_file(&source).await.unwrap(), journal);
+  assert!(
+    !setup
+      .filesystem
+      .exists(&chunk_path(&failed_id.to_string(), 0))
+      .await
+      .unwrap()
+  );
+  assert!(
+    !setup
+      .filesystem
+      .exists(&chunk_path(&failed_id.to_string(), 1))
+      .await
+      .unwrap()
+  );
+
+  // Retry succeeds with stored zlib blocks (level 0) and removes the original source after commit.
+  let (tx, rx) = oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::Path(source.clone()),
+      "state_snapshot".into(),
+      LogFields::new(),
+      None,
+      String::new(),
+      Vec::new(),
+      None,
+      Some(tx),
+    )
+    .unwrap();
+  rx.await.unwrap().unwrap();
+  assert!(!setup.filesystem.exists(&source).await.unwrap());
+
   let index = setup.chunk_index().await;
-  assert!(index.artifact.is_empty() && index.chunked_artifact.is_empty());
+  let entry = index
+    .chunked_artifact
+    .iter()
+    .find(|entry| entry.artifact_id == id.to_string())
+    .unwrap();
+  assert_eq!(entry.chunks.len(), 2);
+  let mut encoded = setup
+    .filesystem
+    .read_file(&chunk_path(&id.to_string(), 0))
+    .await
+    .unwrap();
+  // RFC 1950 zlib header (2 bytes) followed by an uncompressed DEFLATE block (BTYPE = 00).
+  assert_eq!((encoded[2] >> 1) & 0b11, 0);
+  encoded.extend(
+    setup
+      .filesystem
+      .read_file(&chunk_path(&id.to_string(), 1))
+      .await
+      .unwrap(),
+  );
+  assert_eq!(read_compressed(&encoded).unwrap(), journal);
   setup.shutdown().await;
 }
 

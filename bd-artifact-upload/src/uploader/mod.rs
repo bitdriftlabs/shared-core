@@ -14,10 +14,7 @@
 //! entries share the index, but their spool files stay separate and workflow payloads remain
 //! borrowed.
 //!
-//! Commands, crash profiles and newly retained workflows use chunked storage at every size. Client
-//! reports, snapshots and legacy retained workflows use whole-file storage. All payloads share
-//! capacity admission without evicting accepted work. Whole-file uploads retain their intent/order
-//! policy; chunks share fair network capacity between attempts.
+//! All artifacts use Begin/PutChunk and share capacity admission without evicting accepted work.
 //! Persistence never implies upload success or restored invocation authority.
 //!
 //! Optional lifecycle hooks let tests observe recovery and gate staging/upload completion without
@@ -33,7 +30,7 @@ mod tests;
 mod chunked_tests;
 
 mod admission;
-mod chunked;
+pub mod chunked;
 
 mod staging;
 
@@ -41,14 +38,14 @@ mod storage;
 
 mod transfer;
 
-use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
 use bd_api::{DataUpload, RuntimeBackoffPolicy};
-use bd_backoff::future::retry_notify;
-use bd_backoff::{ExponentialBackoff, InfiniteBackoff};
 use bd_bounded_buffer::SendCounters;
-use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, CRASH_PROFILE_ARTIFACT_TYPE_ID};
-use bd_client_common::error::InvariantError;
-use bd_client_common::file::{read_checksummed_data, write_compressed_protobuf};
+use bd_client_common::artifact::{
+  CLIENT_REPORT_ARTIFACT_TYPE_ID,
+  CRASH_PROFILE_ARTIFACT_TYPE_ID,
+  STATE_SNAPSHOT_ARTIFACT_TYPE_ID,
+};
+use bd_client_common::file::write_compressed_protobuf;
 use bd_client_common::file_system::{FileSystem, OwnedFile};
 use bd_client_common::maybe_await;
 use bd_client_stats_store::{Collector, Counter, Scope};
@@ -56,29 +53,23 @@ use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_filter::ScrubRules;
 use bd_log_primitives::{DataValue, LogFields};
 use bd_macros::ApproximateSize;
-use bd_proto::protos::client::api::{
-  ArtifactPayloadEncoding,
-  CrashProfileMetadata,
-  UploadArtifactIntentRequest,
-  UploadArtifactRequest,
-};
-use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
-use bd_proto::protos::client::artifact::{ArtifactUploadIndex, StorageFormat};
+use bd_proto::protos::client::api::{CrashProfileMetadata, UploadArtifactRequest};
+use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
 use bd_runtime::runtime::{ConfigLoader, artifact_upload};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Counter as _;
-use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
+use bd_time::{OffsetDateTimeExt, TimeProvider};
 use mockall::automock;
 use protobuf::Message as _;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use time::OffsetDateTime;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot, watch};
+use tokio::sync::{OwnedSemaphorePermit, oneshot, watch};
 use tokio::time::{Instant, MissedTickBehavior, interval, sleep_until};
 use uuid::Uuid;
 
@@ -141,7 +132,6 @@ struct NewUpload {
   source: UploadSource,
   #[approximate_size(with = request_size)]
   request: UploadArtifactRequest,
-  mode: PreparationMode,
   #[approximate_size(skip)]
   persisted_tx: Option<PersistenceAck>,
   #[approximate_size(skip)]
@@ -166,30 +156,16 @@ fn request_size(request: &UploadArtifactRequest) -> usize {
     .saturating_add(spare_profile_bytes)
 }
 
-//
-// PreparationMode
-//
-
-// TODO: Unify report/snapshot transport after preserving their metadata, pre-encoded payloads and
-// publication semantics, and evaluating S3 admission/receipt costs. See
-// docs/chunked-uploads.md#deferred-transport-unification.
-#[derive(ApproximateSize, Clone, Copy, Debug, PartialEq, Eq)]
-enum PreparationMode {
-  WholeFile,
-  Chunked,
-}
-
 impl NewUpload {
-  fn new(source: UploadSource, request: UploadArtifactRequest, mode: PreparationMode) -> Self {
+  fn new(source: UploadSource, request: UploadArtifactRequest) -> Self {
     // Command/crash-profile/chunk capture paths transfer even when enqueue is rejected. Snapshot
     // paths remain retryable inputs until publication; retained workflow paths stay borrowed.
-    let source_cleanup = (mode == PreparationMode::Chunked)
+    let source_cleanup = (request.type_id != STATE_SNAPSHOT_ARTIFACT_TYPE_ID)
       .then(|| source.owned_file())
       .flatten();
     Self {
       source,
       request,
-      mode,
       persisted_tx: None,
       completion_tx: None,
       source_lease: None,
@@ -208,8 +184,7 @@ pub enum UploadSource {
   // Whole-file snapshots stay unchanged and retryable until publication; chunked captures
   // transfer ownership even on rejection and are compressed during preparation.
   Path(PathBuf),
-  // A workflow payload borrowed through a durable upload-index lease: .payload is zlib; .raw is
-  // streamed, checksummed input for chunk preparation.
+  // A checksummed workflow source borrowed through a durable upload-index lease.
   Retained(PathBuf),
 }
 
@@ -364,7 +339,6 @@ pub trait Client: Send + Sync {
     type_id: String,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
-    feature_flags: Vec<SnappedFeatureFlag>,
     command_id: String,
     content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<u64, EnqueueError>>>,
@@ -423,29 +397,20 @@ impl UploadClient {
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<Uuid, EnqueueError> {
-    let mode = if matches!(&source, UploadSource::Retained(path) if path.extension().is_some_and(|extension| extension == "raw"))
-      || command_id.is_some()
-      || type_id == CRASH_PROFILE_ARTIFACT_TYPE_ID
-      || (type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID
-        && !matches!(&source, UploadSource::Retained(_)))
-    {
-      PreparationMode::Chunked
-    } else {
-      PreparationMode::WholeFile
-    };
-    let timestamp = if mode == PreparationMode::WholeFile {
-      timestamp
-    } else {
-      Some(timestamp.unwrap_or_else(|| self.time_provider.now()))
-    };
     let request = UploadArtifactRequest {
       artifact_id: uuid.to_string(),
-      type_id,
+      type_id: if type_id.is_empty() {
+        CLIENT_REPORT_ARTIFACT_TYPE_ID.into()
+      } else {
+        type_id
+      },
       state_metadata: state
         .into_iter()
         .map(|(key, value)| (key.into(), value.into_proto()))
         .collect(),
-      time: timestamp.map_or_else(Default::default, OffsetDateTimeExt::into_proto),
+      time: timestamp
+        .unwrap_or_else(|| self.time_provider.now())
+        .into_proto(),
       session_id,
       feature_flags: feature_flags
         .into_iter()
@@ -461,16 +426,14 @@ impl UploadClient {
       crash_profile: crash_profile.into(),
       ..Default::default()
     };
-    let mut upload = NewUpload::new(source, request, mode);
+    let mut upload = NewUpload::new(source, request);
     upload.persisted_tx = persisted_tx;
     upload.completion_tx = completion_tx;
     upload.source_lease = source_lease;
-    if mode == PreparationMode::Chunked {
-      chunked::validate_capture_request(&upload.request).map_err(|error| {
-        log::warn!("invalid artifact chunk capture metadata: {error}");
-        EnqueueError::Other(error)
-      })?;
-    }
+    chunked::validate_capture_request(&upload.request).map_err(|error| {
+      log::warn!("invalid artifact chunk capture metadata: {error}");
+      EnqueueError::Other(error)
+    })?;
     self.submit(upload)?;
     Ok(uuid)
   }
@@ -491,9 +454,7 @@ impl Client for UploadClient {
     completion_tx: Option<oneshot::Sender<std::result::Result<(), String>>>,
     source_lease: Option<OwnedSemaphorePermit>,
   ) -> std::result::Result<(), EnqueueError> {
-    if source_path != Path::new(&format!("workflow-attachments/{artifact_id}.payload"))
-      && source_path != Path::new(&format!("workflow-attachments/{artifact_id}.raw"))
-    {
+    if source_path != Path::new(&format!("workflow-attachments/{artifact_id}.raw")) {
       return Err(EnqueueError::Other(anyhow::anyhow!(
         "invalid workflow attachment path"
       )));
@@ -551,7 +512,6 @@ impl Client for UploadClient {
     type_id: String,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
-    feature_flags: Vec<SnappedFeatureFlag>,
     command_id: String,
     content_type: Option<String>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<u64, EnqueueError>>>,
@@ -564,7 +524,7 @@ impl Client for UploadClient {
       self.command_artifact_metadata.clone(),
       timestamp,
       session_id,
-      feature_flags,
+      Vec::new(),
       Some(command_id),
       content_type,
       None,
@@ -605,8 +565,6 @@ impl Client for UploadClient {
 enum Error {
   #[error("Task is shutting down")]
   Shutdown,
-  #[error("Upload attempt did not complete successfully")]
-  IncompleteUpload,
   #[error("Unhandled error: {0:#}")]
   Unhandled(anyhow::Error),
 }
@@ -623,12 +581,6 @@ impl From<tokio::task::JoinError> for Error {
   }
 }
 
-impl From<InvariantError> for Error {
-  fn from(value: InvariantError) -> Self {
-    Self::Unhandled(value.into())
-  }
-}
-
 type Result<T> = std::result::Result<T, Error>;
 
 //
@@ -641,7 +593,7 @@ trait TestHooks: Send + Sync {
 
   async fn initialized(&self);
 
-  fn whole_file_preparation_started(&self, source: &UploadSource);
+  fn preparation_started(&self, source: &UploadSource, request: &UploadArtifactRequest);
 
   fn payload_prepared(&self);
 
@@ -656,14 +608,11 @@ pub struct Uploader {
   data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
   upload_queued_rx: bd_bounded_buffer::Receiver<NewUpload>,
   shutdown: ComponentShutdown,
-  time_provider: Arc<dyn TimeProvider>,
   file_system: Arc<dyn FileSystem>,
 
-  index: VecDeque<Artifact>,
   chunked: chunked::Spool,
   queue_revision: watch::Sender<u64>,
   index_dirty: bool,
-  index_sync_required: bool,
   cleanup_pending: bool,
   upload_completions: HashMap<String, oneshot::Sender<std::result::Result<(), String>>>,
 
@@ -677,9 +626,6 @@ pub struct Uploader {
   // whatever rules are current when each request is built; sends never wait for rules.
   scrub_rules: watch::Receiver<Arc<ScrubRules>>,
 
-  intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
-  upload_task_handle: Option<tokio::task::JoinHandle<Result<()>>>,
-  artifact_rpc_capacity: Arc<Semaphore>,
   chunk_task_handle: Option<tokio::task::JoinHandle<transfer::Attempt>>,
   chunk_progress: HashMap<String, transfer::Progress>,
   chunk_cursor: usize,
@@ -691,7 +637,6 @@ pub struct Uploader {
 
 impl Drop for Uploader {
   fn drop(&mut self) {
-    self.stop_current_upload();
     if let Some(task) = self.chunk_task_handle.take() {
       task.abort();
     }
@@ -699,13 +644,7 @@ impl Drop for Uploader {
 }
 
 impl Uploader {
-  /// Reads the durable upload index without starting the uploader. Callers that need entries before
-  /// any upload can remove them must read before `run` starts.
-  pub async fn pending_artifacts(sdk_directory: &Path) -> io::Result<Vec<Artifact>> {
-    Ok(Self::pending_index(sdk_directory).await?.artifact)
-  }
-
-  async fn pending_index(sdk_directory: &Path) -> io::Result<ArtifactUploadIndex> {
+  pub(crate) async fn pending_index(sdk_directory: &Path) -> io::Result<ArtifactUploadIndex> {
     let path = sdk_directory
       .join(&*ARTIFACT_UPLOAD_DIRECTORY)
       .join(&*REPORT_INDEX_FILE);
@@ -719,43 +658,18 @@ impl Uploader {
     chunked::read_index(&mut file).await
   }
 
-  /// Reads durable workflow leases from both formats before payload cleanup can run.
+  /// Reads durable workflow leases before payload cleanup can run.
   pub async fn pending_workflow_attachments(sdk_directory: &Path) -> io::Result<HashSet<Uuid>> {
-    let index = Self::pending_index(sdk_directory).await?;
-    let whole_file = index
-      .artifact
-      .into_iter()
-      .filter(|entry| entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID))
-      .map(|entry| {
-        Uuid::parse_str(&entry.name)
-          .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
-      });
-    let chunked = index
+    Self::pending_index(sdk_directory)
+      .await?
       .chunked_artifact
       .into_iter()
       .filter(|request| request.type_id == WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID)
       .map(|request| {
         chunked::safe_id(&request.artifact_id)
           .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
-      });
-    whole_file.chain(chunked).collect()
-  }
-
-  fn payload_path(entry: &Artifact) -> anyhow::Result<PathBuf> {
-    if Path::new(&entry.name)
-      .file_name()
-      .and_then(|name| name.to_str())
-      != Some(&entry.name)
-      || entry.name == "."
-      || entry.name == ".."
-    {
-      anyhow::bail!("unsafe artifact filename");
-    }
-    if entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID) {
-      let id = Uuid::parse_str(&entry.name)?;
-      return Ok(PathBuf::from(format!("workflow-attachments/{id}.payload")));
-    }
-    Ok(ARTIFACT_UPLOAD_DIRECTORY.join(&entry.name))
+      })
+      .collect()
   }
 
   pub fn new(
@@ -787,20 +701,14 @@ impl Uploader {
       data_upload_tx,
       upload_queued_rx: upload_rx,
       shutdown,
-      time_provider: time_provider.clone(),
       file_system,
-      index: VecDeque::default(),
       chunked: chunked::Spool::new(runtime),
       queue_revision: queue_revision_tx,
       index_dirty: false,
-      index_sync_required: false,
       cleanup_pending: false,
       upload_completions: HashMap::default(),
       backoff_policy: RuntimeBackoffPolicy::new(runtime),
       scrub_rules,
-      upload_task_handle: None,
-      intent_task_handle: None,
-      artifact_rpc_capacity: Arc::new(Semaphore::new(1)),
       chunk_task_handle: None,
       chunk_progress: HashMap::new(),
       chunk_cursor: 0,
@@ -820,13 +728,6 @@ impl Uploader {
     };
 
     (uploader, client)
-  }
-
-  fn request_metadata(&self, metadata: &HashMap<String, Data>) -> RequestMetadata {
-    RequestMetadata {
-      raw: metadata.clone(),
-      scrub_rules: self.scrub_rules.clone(),
-    }
   }
 
   pub async fn run(self) {
@@ -853,99 +754,8 @@ impl Uploader {
     index_retry.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut retry_delay = INDEX_RETRY_INTERVAL;
 
-    // The state machinery below relies on careful handling of the contents of the index list, as
-    // we want to make sure that we don't lose entries due to process shutdown. The pending upload
-    // remains at the head of the list during intent negotiation/uploads and is only removed after
-    // the upload completes or we decide to not upload the file.
     loop {
       self.start_chunk_attempt();
-      // If we're not currently processing an entry and there are pending work to do, check the
-      // next entry in the list and perform the next step.
-      if self.intent_task_handle.is_none()
-        && self.upload_task_handle.is_none()
-        && let Some(next) = self.index.front().cloned()
-      {
-        if next.pending_intent_negotiation {
-          log::debug!(
-            "starting intent negotiation: artifact_id={}, type={}",
-            next.name,
-            next.type_id.as_deref().unwrap_or("<missing>")
-          );
-
-          self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
-            self.data_upload_tx.clone(),
-            next.name.clone(),
-            next.type_id.clone().unwrap_or_default(),
-            next.session_id.clone(),
-            next.time.to_offset_date_time(),
-            self.request_metadata(&next.metadata),
-            next.crash_profile.as_ref().cloned(),
-            self.backoff_policy.backoff_mark_update(),
-            self.artifact_rpc_capacity.clone(),
-          )));
-          continue;
-        }
-
-        let contents = async {
-          let file_path = Self::payload_path(&next)?;
-          self.file_system.read_file(&file_path).await
-        }
-        .await;
-        let Ok(contents) = contents else {
-          log::warn!(
-            "failed to read artifact {}: {:?}",
-            next.name,
-            contents.err()
-          );
-          let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
-          self
-            .discard_upload(entry, "artifact upload file could not be read".to_string())
-            .await;
-          continue;
-        };
-
-        let contents = if next.storage_format.enum_value_or_default() == StorageFormat::RAW {
-          Some(contents)
-        } else {
-          read_checksummed_data(&contents).ok()
-        };
-        let Some(contents) = contents else {
-          log::warn!("artifact {} failed integrity validation", next.name);
-          let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
-          self
-            .discard_upload(
-              entry,
-              "artifact upload file failed integrity validation".to_string(),
-            )
-            .await;
-          continue;
-        };
-        log::debug!(
-          "starting file upload: artifact_id={}, type={}, payload_bytes={}",
-          next.name,
-          next.type_id.as_deref().unwrap_or("<missing>"),
-          contents.len()
-        );
-        self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
-          self.data_upload_tx.clone(),
-          contents,
-          next.name.clone(),
-          next.type_id.clone().unwrap_or_default(),
-          next.time.to_offset_date_time(),
-          next.session_id.clone(),
-          self.backoff_policy.backoff_mark_update(),
-          self.request_metadata(&next.metadata),
-          next.feature_flags.clone(),
-          next.command_id.clone(),
-          next.content_type.clone(),
-          next.payload_encoding.enum_value_or_default(),
-          next.crash_profile.as_ref().cloned(),
-          self.artifact_rpc_capacity.clone(),
-        )));
-      }
-
-      // Only one task should ever be active at a time.
-      debug_assert!(!(self.intent_task_handle.is_some() && self.upload_task_handle.is_some()));
 
       // At this point either wait for progress to be made to the current entry or wait for a new
       // entry to be submitted.
@@ -953,10 +763,11 @@ impl Uploader {
       let chunk_retry_at = self.next_chunk_retry();
       let chunk_retry = sleep_until(chunk_retry_at.unwrap_or_else(Instant::now));
       tokio::pin!(chunk_retry);
+      let index_work = self.index_dirty || self.cleanup_pending;
       tokio::select! {
         () = &mut chunk_retry, if chunk_retry_at.is_some() => {}
         // Failed commits must be reconciled even if no further uploads arrive.
-        _ = index_retry.tick(), if self.index_dirty || self.cleanup_pending => {
+        _ = index_retry.tick(), if index_work => {
           if self.index_dirty && let Err(error) = self.write_index().await {
             log::warn!("failed to reconcile artifact index; will retry: {error}");
           }
@@ -972,12 +783,10 @@ impl Uploader {
         }
         () = self.shutdown.cancelled() => {
           log::debug!(
-            "shutting down uploader: whole_files={} chunked_files={} chunk_rpc_active={}",
-            self.index.len(),
+            "shutting down uploader: queued_files={} chunk_rpc_active={}",
             self.chunked.entries.len(),
             self.chunk_task_handle.is_some(),
           );
-          self.stop_current_upload();
           if let Some(task) = self.chunk_task_handle.take() {
             task.abort();
           }
@@ -990,29 +799,10 @@ impl Uploader {
           // concurrent index writers. Add a gated-preparation/active-transfer regression with it.
           self.track_upload(upload).await;
         }
-        intent_decision = maybe_await(&mut self.intent_task_handle) => {
-            self.handle_intent_negotiation_decision(intent_decision??).await?;
-        }
         result = maybe_await(&mut self.chunk_task_handle) => {
           if let Err(error) = self.handle_chunk_attempt(result?).await {
             log::warn!("failed to persist chunked transfer progress; will reconcile: {error}");
           }
-        }
-        result = maybe_await(&mut self.upload_task_handle) => {
-            match result? {
-              Ok(()) => {
-                let name = self.handle_upload_complete().await?;
-                self.complete_upload(&name, Ok(()));
-
-                if let Some(hooks) = &self.test_hooks {
-                    hooks.upload_complete(&name).await;
-                }
-              },
-              Err(error) => {
-                let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
-                self.discard_upload(entry, error.to_string()).await;
-              },
-            }
         }
 
       }
@@ -1053,121 +843,22 @@ impl Uploader {
         ArtifactUploadIndex::default()
       },
     };
-    self.index = index.artifact.into_iter().collect();
+    let discarded = index.artifact.len();
     self.chunked.entries = index.chunked_artifact;
 
-    // Ensure that the files stored on disk pending upload and the index are in sync. If either the
-    // file is missing for an index entry or a file exists without an index entry they can never
-    // be uploaded, so just clean them up.
-
-    // TODO(snowp): Should we check for crc integrity at this point? Currently we only do so when
-    // we are considering a file for upload.
-
-    let mut modified = false;
-    let mut new_index = VecDeque::default();
-    for entry in self.index.drain(..) {
-      let path = match Self::payload_path(&entry) {
-        Ok(path) => path,
-        Err(error) => {
-          log::warn!("discarding invalid queued artifact {}: {error}", entry.name);
-          modified = true;
-          self.index_sync_required = true;
-          continue;
-        },
-      };
-      let path_exists = self.file_system.exists(&path).await;
-      match path_exists {
-        Ok(false) => {
-          log::debug!(
-            "removing artifact {} from index, file does not exist",
-            entry.name
-          );
-          modified = true;
-          self.index_sync_required |=
-            entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID);
-          continue;
-        },
-        Err(error) => {
-          log::warn!("failed to locate queued artifact {}: {error}", entry.name);
-        },
-        Ok(true) => {},
-      }
-      new_index.push_back(entry);
-    }
-
-    self.index = new_index;
+    let mut modified = discarded != 0;
     self.recover_chunks(&mut modified).await?;
 
     if modified {
       self.write_index().await?;
     }
+    if discarded != 0 {
+      log::warn!("discarded {discarded} legacy whole-file artifact uploads");
+      self.stats.dropped.inc_by(discarded as u64);
+    }
 
     self.reconcile_files().await;
     Ok(())
-  }
-
-  async fn handle_intent_negotiation_decision(&mut self, decision: IntentDecision) -> Result<()> {
-    match decision {
-      IntentDecision::Drop => {
-        self.stats.dropped_intent.inc();
-        let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
-        self
-          .discard_upload(
-            entry,
-            "artifact upload was rejected during intent negotiation".to_string(),
-          )
-          .await;
-      },
-      IntentDecision::UploadImmediately => {
-        self.stats.accepted_intent.inc();
-        let entry = self.index.front_mut().ok_or(InvariantError::Invariant)?;
-        log::debug!(
-          "artifact intent accepted: artifact_id={}, type={}",
-          entry.name,
-          entry.type_id.as_deref().unwrap_or("<missing>")
-        );
-        // Mark the file as being ready for uploads and persist this to the index.
-        entry.pending_intent_negotiation = false;
-        if let Err(error) = self.write_index().await {
-          log::warn!("failed to write artifact index: {error}");
-        }
-      },
-    }
-    Ok(())
-  }
-
-  async fn handle_upload_complete(&mut self) -> Result<String> {
-    self.stats.uploaded.inc();
-
-    let entry = self.index.pop_front().ok_or(InvariantError::Invariant)?;
-    self.index_sync_required |=
-      entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID);
-    self.retire_whole_file(&entry).await;
-
-    Ok(entry.name)
-  }
-
-  async fn discard_upload(&mut self, entry: Artifact, error: String) {
-    log::debug!(
-      "discarding artifact: artifact_id={}, type={}, reason={error}",
-      entry.name,
-      entry.type_id.as_deref().unwrap_or("<missing>")
-    );
-    self.index_sync_required |=
-      entry.type_id.as_deref() == Some(WORKFLOW_ATTACHMENT_ARTIFACT_TYPE_ID);
-    self.retire_whole_file(&entry).await;
-    self.complete_upload(&entry.name, Err(error));
-  }
-
-  async fn retire_whole_file(&mut self, entry: &Artifact) {
-    let result = async {
-      let paths = storage::StoredArtifact::WholeFile(entry).owned_paths()?;
-      self.retire_files(&paths).await
-    }
-    .await;
-    if let Err(error) = result {
-      log::warn!("failed to retire artifact {}: {error}", entry.name);
-    }
   }
 
   fn complete_upload(&mut self, artifact_id: &str, result: std::result::Result<(), String>) {
@@ -1176,18 +867,8 @@ impl Uploader {
     }
   }
 
-  fn stop_current_upload(&mut self) {
-    if let Some(task) = self.upload_task_handle.take() {
-      task.abort();
-    }
-    if let Some(task) = self.intent_task_handle.take() {
-      task.abort();
-    }
-  }
-
   fn index_proto(&self) -> ArtifactUploadIndex {
     ArtifactUploadIndex {
-      artifact: self.index.iter().cloned().collect(),
       chunked_artifact: self.chunked.entries.clone(),
       ..Default::default()
     }
@@ -1227,160 +908,16 @@ impl Uploader {
     self
       .queue_revision
       .send_modify(|revision| *revision = revision.wrapping_add(1));
-    if self.index_sync_required || !self.chunked.entries.is_empty() {
-      self
-        .file_system
-        .sync_file_and_parent(&index_path)
-        .await
-        .map_err(|error| storage::IndexWriteError {
-          published: true,
-          error,
-        })?;
-    }
+    self
+      .file_system
+      .sync_file_and_parent(&index_path)
+      .await
+      .map_err(|error| storage::IndexWriteError {
+        published: true,
+        error,
+      })?;
     self.index_dirty = false;
-    self.index_sync_required = false;
     Ok(())
-  }
-
-  async fn upload_artifact(
-    data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
-    contents: Vec<u8>,
-    name: String,
-    type_id: String,
-    timestamp: OffsetDateTime,
-    session_id: String,
-    mut retry_policy: ExponentialBackoff,
-    state_metadata: RequestMetadata,
-    feature_flags: Vec<FeatureFlag>,
-    command_id: Option<String>,
-    content_type: Option<String>,
-    payload_encoding: ArtifactPayloadEncoding,
-    crash_profile: Option<CrashProfileMetadata>,
-    capacity: Arc<Semaphore>,
-  ) -> Result<()> {
-    let path = ARTIFACT_UPLOAD_DIRECTORY.join(&name);
-    log::debug!(
-      "uploading artifact: artifact_id={name}, type={type_id}, path={}, payload_bytes={}, \
-       encoding={payload_encoding:?}, linked_reports={}",
-      path.display(),
-      contents.len(),
-      crash_profile
-        .as_ref()
-        .map_or(0, |profile| profile.report_ids.len())
-    );
-
-    // Use exponential backoff to avoid retrying over and over again in case something is going
-    // wrong. We put no overall timeout as the device might be offline for a long time and we want
-    // to give it whatever time it needs to perform the upload.
-
-    retry_notify(
-      || Some(retry_policy.next_backoff()),
-      || async {
-        let _permit = capacity.acquire().await.map_err(|_| Error::Shutdown)?;
-        let upload_uuid = TrackedArtifactUpload::upload_uuid();
-        let (tracked, response) = TrackedArtifactUpload::new(
-          upload_uuid.clone(),
-          UploadArtifactRequest {
-            upload_uuid,
-            type_id: type_id.clone(),
-            contents: contents.clone(),
-            artifact_id: name.clone(),
-            time: timestamp.into_proto(),
-            session_id: session_id.clone(),
-            state_metadata: state_metadata.current(),
-            feature_flags: feature_flags.clone(),
-            command_id: command_id.clone(),
-            content_type: content_type.clone(),
-            payload_encoding: payload_encoding.into(),
-            crash_profile: crash_profile.clone().into(),
-            ..Default::default()
-          },
-        );
-        data_upload_tx
-          .send(DataUpload::ArtifactUpload(tracked))
-          .await
-          .map_err(|_| Error::Shutdown)?;
-        match response.await {
-          Ok(response) if response.error.is_empty() => {
-            log::debug!("artifact upload succeeded: artifact_id={name}, type={type_id}");
-            Ok(())
-          },
-          Ok(_) | Err(_) => Err(Error::IncompleteUpload),
-        }
-      },
-      |error| matches!(error, Error::IncompleteUpload),
-      |error, delay| {
-        log::debug!(
-          "artifact upload failed: artifact_id={name}, type={type_id}, error={error:?}, \
-           retry_delay={delay:?}"
-        );
-      },
-    )
-    .await
-  }
-
-  async fn perform_intent_negotiation(
-    data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
-    id: String,
-    type_id: String,
-    session_id: String,
-    timestamp: OffsetDateTime,
-    state_metadata: RequestMetadata,
-    crash_profile: Option<CrashProfileMetadata>,
-    mut retry_policy: ExponentialBackoff,
-    capacity: Arc<Semaphore>,
-  ) -> Result<IntentDecision> {
-    retry_notify(
-      || Some(retry_policy.next_backoff()),
-      || async {
-        let _permit = capacity.acquire().await.map_err(|_| Error::Shutdown)?;
-        let upload_uuid = TrackedArtifactIntent::upload_uuid();
-        let (tracked, response) = TrackedArtifactIntent::new(
-          upload_uuid.clone(),
-          UploadArtifactIntentRequest {
-            type_id: type_id.clone(),
-            artifact_id: id.clone(),
-            intent_uuid: upload_uuid.clone(),
-            session_id: (!session_id.is_empty()).then(|| session_id.clone()),
-            time: timestamp.into_proto(),
-            metadata: state_metadata.current(),
-            crash_profile: crash_profile.clone().into(),
-            ..Default::default()
-          },
-        );
-        data_upload_tx
-          .send(DataUpload::ArtifactUploadIntent(tracked))
-          .await
-          .map_err(|_| Error::Shutdown)?;
-        response
-          .await
-          .map(|response| response.decision)
-          .map_err(|_| Error::IncompleteUpload)
-      },
-      |error| matches!(error, Error::IncompleteUpload),
-      |error, delay| {
-        log::debug!(
-          "artifact intent failed: artifact_id={id}, type={type_id}, error={error:?}, \
-           retry_delay={delay:?}"
-        );
-      },
-    )
-    .await
-  }
-}
-
-/// The metadata of an artifact being sent. The index keeps it raw; every attempt to send an intent
-/// or upload request scrubs it with the rules current at that moment, so rules applied while a
-/// request is being retried, for example before any configuration has loaded, reach the next
-/// attempt.
-struct RequestMetadata {
-  raw: HashMap<String, Data>,
-  scrub_rules: watch::Receiver<Arc<ScrubRules>>,
-}
-
-impl RequestMetadata {
-  fn current(&self) -> HashMap<String, Data> {
-    scrub_metadata(&self.scrub_rules.borrow(), &self.raw)
   }
 }
 

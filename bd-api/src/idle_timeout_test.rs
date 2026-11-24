@@ -30,8 +30,6 @@ use bd_proto::protos::client::api::{
   SankeyPathUploadResponse,
   StatsUploadRequest,
   StatsUploadResponse,
-  UploadArtifactIntentRequest,
-  UploadArtifactIntentResponse,
   UploadArtifactRequest,
   UploadArtifactResponse,
 };
@@ -82,7 +80,6 @@ enum RequestKind {
   Chunk,
   LogIntent,
   SankeyIntent,
-  ArtifactIntent,
 }
 
 fn pending_request(kind: RequestKind, uuid: &str) -> (DataUpload, ApiResponse, PendingResponse) {
@@ -171,18 +168,6 @@ fn pending_request(kind: RequestKind, uuid: &str) -> (DataUpload, ApiResponse, P
         PendingResponse::Intent(receiver),
       )
     },
-    RequestKind::ArtifactIntent => {
-      let (tracked, receiver) =
-        Tracked::new(uuid.to_string(), UploadArtifactIntentRequest::default());
-      (
-        DataUpload::ArtifactUploadIntent(tracked),
-        Response_type::ArtifactIntent(UploadArtifactIntentResponse {
-          intent_uuid: uuid.to_string(),
-          ..Default::default()
-        }),
-        PendingResponse::Intent(receiver),
-      )
-    },
   };
   (
     upload,
@@ -239,7 +224,6 @@ async fn tracked_uploads_and_intents_keep_stream_alive_until_response() {
     RequestKind::Chunk,
     RequestKind::LogIntent,
     RequestKind::SankeyIntent,
-    RequestKind::ArtifactIntent,
   ] {
     let (mut setup, mut idle_rx) = setup(1500).await;
     let (request, response, receiver) = pending_request(kind, "pending");

@@ -15,15 +15,13 @@
 #[path = "./report_attribution_test.rs"]
 mod tests;
 
-use crate::uploader::ARTIFACT_UPLOAD_DIRECTORY;
+use crate::uploader::chunked::read_pending_report;
 use crate::{Client, Uploader};
 use bd_client_common::artifact::CLIENT_REPORT_ARTIFACT_TYPE_ID;
-use bd_client_common::file::read_checksummed_data;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Report,
   root_as_report,
 };
-use bd_proto::protos::client::artifact::StorageFormat;
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use std::path::Path;
@@ -35,9 +33,8 @@ use uuid::Uuid;
 //
 
 pub trait ReportAttribution: Send + Sync {
-  /// Adds a report that the ordinary uploader accepted under `report_id`: either a fresh dispatch
-  /// during this process, or a report restored from the pending upload index at startup. Reports
-  /// remain eligible until process exit, including after their upload ACK.
+  /// Adds a newly enqueued or restored report. It remains eligible until process exit,
+  /// including after its upload ACK.
   fn add_report(&self, report_id: Uuid, report: &Report<'_>, session_id: &str);
 
   /// The initial previous-run report pass has finished. Earlier platform submissions wait for this;
@@ -48,65 +45,32 @@ pub trait ReportAttribution: Send + Sync {
   fn start(&self, client: Arc<dyn Client>, runtime: &ConfigLoader, shutdown: ComponentShutdown);
 }
 
-/// Seeds attribution from reports still in the pending upload index, re-reading each report's
-/// queued payload. This must run before the uploader starts, since upload ACK, intent rejection and
-/// eviction remove entries and payloads. The pending queue bounds this work; unreadable payloads
-/// remain ordinary uploads and are simply not attributable.
+/// Restores attribution candidates from queued chunked reports before the uploader can retire them.
 pub async fn restore_pending_reports(attribution: &dyn ReportAttribution, sdk_directory: &Path) {
-  let entries = match Uploader::pending_artifacts(sdk_directory).await {
-    Ok(entries) => entries,
+  let entries = match Uploader::pending_index(sdk_directory).await {
+    Ok(index) => index.chunked_artifact,
     Err(error) => {
       log::warn!("failed to read pending reports for attribution: {error}");
       return;
     },
   };
-  log::debug!(
-    "restoring pending attribution reports: artifacts={}",
-    entries.len()
-  );
   let mut restored = 0;
   for entry in entries {
-    if entry.type_id.as_deref() != Some(CLIENT_REPORT_ARTIFACT_TYPE_ID) {
+    if entry.type_id != CLIENT_REPORT_ARTIFACT_TYPE_ID {
       continue;
     }
-    let Ok(report_id) = Uuid::parse_str(&entry.name) else {
-      log::debug!(
-        "skipping pending attribution report: reason=invalid_report_id, artifact={}",
-        entry.name
-      );
+    let Ok(report_id) = Uuid::parse_str(&entry.artifact_id) else {
       continue;
     };
-    let path = sdk_directory
-      .join(&*ARTIFACT_UPLOAD_DIRECTORY)
-      .join(&entry.name);
-    let payload = match tokio::fs::read(&path).await {
-      Ok(payload) => payload,
-      Err(error) => {
-        log::debug!("failed to read pending report {report_id}: {error}");
-        continue;
+    match read_pending_report(sdk_directory, &entry).await {
+      Ok(payload) => match root_as_report(&payload) {
+        Ok(report) => {
+          attribution.add_report(report_id, &report, &entry.session_id);
+          restored += 1;
+        },
+        Err(error) => log::debug!("queued report {report_id} is unreadable: {error}"),
       },
-    };
-    let payload = if entry.storage_format.enum_value_or_default() == StorageFormat::RAW {
-      Ok(payload)
-    } else {
-      read_checksummed_data(&payload)
-    };
-    let payload = match payload {
-      Ok(payload) => payload,
-      Err(error) => {
-        log::debug!("pending report {report_id} storage decoding failed: {error}");
-        continue;
-      },
-    };
-    match root_as_report(&payload) {
-      Ok(report) => {
-        log::debug!(
-          "restoring crash profile attribution candidate from pending report {report_id}"
-        );
-        attribution.add_report(report_id, &report, &entry.session_id);
-        restored += 1;
-      },
-      Err(error) => log::debug!("pending report {report_id} is not a readable report: {error}"),
+      Err(error) => log::debug!("queued report {report_id} could not be read: {error}"),
     }
   }
   log::debug!("restored {restored} pending reports for attribution");

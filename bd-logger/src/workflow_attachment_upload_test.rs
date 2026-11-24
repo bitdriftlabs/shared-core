@@ -182,7 +182,6 @@ async fn retained_workflows_and_direct_commands_share_chunk_admission() {
         "device_command_attachment".into(),
         None,
         "session".into(),
-        Vec::new(),
         Uuid::new_v4().to_string(),
         None,
         Some(tx),
@@ -798,7 +797,7 @@ async fn cancelled_staging_keeps_cleanup_excluded_until_the_queue_releases_its_l
 #[tokio::test]
 async fn stage_waits_for_indexed_lease_ack() {
   let artifact_id = Uuid::new_v4();
-  let expected_source = PathBuf::from(format!("workflow-attachments/{artifact_id}.payload"));
+  let expected_source = PathBuf::from(format!("workflow-attachments/{artifact_id}.raw"));
   let (ack_tx, ack_rx) = oneshot::channel();
   let mut mock_client = bd_artifact_upload::MockClient::new();
   let mut ack_tx = Some(ack_tx);

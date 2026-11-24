@@ -1447,7 +1447,7 @@ async fn command_execution_timeout_excludes_attachment_upload() {
   artifacts
     .expect_enqueue_command_upload()
     .times(1)
-    .returning(move |_, _, _, _, _, _, _, persisted_tx, completion_tx| {
+    .returning(move |_, _, _, _, _, _, persisted_tx, completion_tx| {
       upload_started_tx
         .send((persisted_tx.unwrap(), completion_tx.unwrap()))
         .unwrap();
@@ -1591,7 +1591,7 @@ async fn direct_stack_sampling_is_passed_through_to_the_platform_handler() {
     .expect_enqueue_command_upload()
     .times(1)
     .returning(
-      move |source, type_id, _, _, _, _, content_type, persisted_tx, completion_tx| {
+      move |source, type_id, _, _, _, content_type, persisted_tx, completion_tx| {
         let UploadSource::Path(path) = source else {
           panic!("expected the trace to be uploaded from its path");
         };
@@ -1683,7 +1683,7 @@ async fn direct_stack_sampling_staging_failure_deletes_the_handed_over_file() {
   artifacts
     .expect_enqueue_command_upload()
     .times(1)
-    .returning(|source, _, _, _, _, _, _, _, _| {
+    .returning(|source, _, _, _, _, _, _, _| {
       let UploadSource::Path(path) = source else {
         panic!("expected path")
       };
@@ -1725,7 +1725,7 @@ async fn direct_stack_sampling_upload_failure_after_persistence_leaves_the_path_
   artifacts
     .expect_enqueue_command_upload()
     .times(1)
-    .returning(|_, _, _, _, _, _, _, persisted_tx, completion_tx| {
+    .returning(|_, _, _, _, _, _, persisted_tx, completion_tx| {
       // The uploader persisted (and, in production, deleted) the source before the upload failed.
       persisted_tx.unwrap().send(Ok(5)).unwrap();
       completion_tx
@@ -1805,7 +1805,7 @@ async fn cancelling_direct_file_upload_after_persistence_preserves_reused_path()
   artifacts
     .expect_enqueue_command_upload()
     .times(1)
-    .returning(move |source, _, _, _, _, _, _, persistence, completion| {
+    .returning(move |source, _, _, _, _, _, persistence, completion| {
       let UploadSource::Path(path) = source else {
         panic!("expected path")
       };

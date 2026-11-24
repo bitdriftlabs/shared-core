@@ -87,16 +87,11 @@ impl ArtifactStore {
     id: Uuid,
     allow_missing: bool,
   ) -> anyhow::Result<()> {
-    let mut removed = false;
-    for extension in ["payload", "raw"] {
-      let path = PathBuf::from(format!("workflow-attachments/{id}.{extension}"));
-      if filesystem.exists(&path).await? {
-        filesystem.open_regular_file(&path).await?;
-        filesystem.delete_file(&path).await?;
-        removed = true;
-      }
-    }
-    if !removed && !allow_missing {
+    let path = PathBuf::from(format!("workflow-attachments/{id}.raw"));
+    if filesystem.exists(&path).await? {
+      filesystem.open_regular_file(&path).await?;
+      filesystem.delete_file(&path).await?;
+    } else if !allow_missing {
       return Err(
         std::io::Error::new(
           std::io::ErrorKind::NotFound,

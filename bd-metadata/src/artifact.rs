@@ -9,11 +9,26 @@
 
 /// Hard logical-file ceiling; admission policy may set a lower limit.
 pub const MAX_ARTIFACT_LOGICAL_BYTES: u32 = 256 * 1024 * 1024;
+/// Maximum uncompressed size of a chunked client report.
+pub const MAX_RAW_CLIENT_REPORT_BYTES: usize = 10 * 1024 * 1024;
 pub const ARTIFACT_CHUNK_BYTES: u32 = 1024 * 1024;
 pub const MAX_ARTIFACT_ENCODED_BYTES: u32 = MAX_ARTIFACT_LOGICAL_BYTES + ARTIFACT_CHUNK_BYTES;
 pub const MAX_ARTIFACT_CHUNKS: u32 = MAX_ARTIFACT_ENCODED_BYTES / ARTIFACT_CHUNK_BYTES;
 pub const MAX_ARTIFACT_MANIFEST_BYTES: u32 = 64 * 1024;
 pub const MAX_ARTIFACT_ORIGIN_BYTES: usize = 8 * 1024;
+/// Maximum serialized metadata (`state_metadata` + `feature_flags`) attached to a final chunk.
+/// Leaves room for a full 1 MiB encoded chunk and gRPC framing inside the 2 MiB request cap.
+pub const MAX_ARTIFACT_ATTACHED_METADATA_BYTES: u32 = 960 * 1024;
+/// Identity/policy `state_metadata` keys sent on `Begin` (full scrubbed metadata travels on the
+/// final chunk and is persisted in the canonical completed artifact envelope).
+pub const ARTIFACT_BEGIN_METADATA_KEYS: &[&str] = &[
+  "app_id",
+  "app_version",
+  "device_id",
+  "platform",
+  "_app_version_code",
+  "_build_number",
+];
 
 /// Maximum encoded size reserved and accepted for one artifact's continuous zlib stream.
 ///
