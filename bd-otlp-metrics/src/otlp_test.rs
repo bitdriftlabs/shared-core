@@ -294,6 +294,44 @@ fn histogram_temporalities_cannot_share_a_metric_name() {
 }
 
 #[test]
+fn stale_counter_has_no_value_and_shares_the_cumulative_sum() {
+  let live = OtlpMetric {
+    metric: metric(
+      MetricType::Counter(CounterType::Absolute),
+      120,
+      MetricValue::Simple(42.0),
+    ),
+    start_time_unix_nano: 60_000_000_000,
+    is_monotonic: true,
+  };
+  let mut stale = live.clone();
+  stale.metric.timestamp = 180;
+  let request = ExportMetricsServiceRequest::parse_from_bytes(
+    &encode_otlp_points(
+      vec![OtlpPoint::Metric(live), OtlpPoint::StaleCounter(stale)],
+      OtlpCompression::None,
+    )
+    .unwrap(),
+  )
+  .unwrap();
+  let metrics = &request.resource_metrics[0].scope_metrics[0].metrics;
+  assert_eq!(metrics.len(), 1);
+  let Some(Data::Sum(sum)) = &metrics[0].data else {
+    panic!("expected sum");
+  };
+  let [live, stale] = sum.data_points.as_slice() else {
+    panic!("expected live and stale points");
+  };
+  assert_eq!(live.as_double(), 42.0);
+  assert_eq!(live.flags, 0);
+  assert_eq!(stale.flags, 1);
+  assert!(stale.value.is_none());
+  assert_eq!(live.attributes, stale.attributes);
+  assert_eq!(live.start_time_unix_nano, stale.start_time_unix_nano);
+  assert_eq!(stale.time_unix_nano, 180_000_000_000);
+}
+
+#[test]
 fn counters_preserve_independent_intervals_temporality_and_monotonicity() {
   let request = decode(vec![
     OtlpMetric {
