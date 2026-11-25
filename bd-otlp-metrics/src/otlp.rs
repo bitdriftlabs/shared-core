@@ -16,6 +16,7 @@ use crate::protos::metrics::metric::Data;
 use crate::protos::metrics::summary_data_point::ValueAtQuantile;
 use crate::protos::metrics::{
   AggregationTemporality,
+  DataPointFlags,
   ExponentialHistogram,
   ExponentialHistogramDataPoint,
   Gauge,
@@ -48,6 +49,51 @@ pub enum OtlpCompression {
 }
 
 //
+// MetricSample
+//
+
+enum MetricSample {
+  Recorded(OtlpMetric),
+  StaleCounter(OtlpMetric),
+}
+
+impl MetricSample {
+  fn metric(&self) -> &OtlpMetric {
+    match self {
+      Self::Recorded(sample) | Self::StaleCounter(sample) => sample,
+    }
+  }
+
+  fn into_number_point(self) -> NumberDataPoint {
+    let sample = self.metric();
+    let mut point = NumberDataPoint {
+      attributes: tags_to_key_value(&sample.metric),
+      start_time_unix_nano: sample.start_time_unix_nano,
+      time_unix_nano: sample.metric.timestamp * 1_000_000_000,
+      ..Default::default()
+    };
+    match self {
+      Self::Recorded(sample) => {
+        point.value = Some(number_data_point::Value::AsDouble(
+          sample.metric.value.to_simple(),
+        ));
+      },
+      Self::StaleCounter(_) => {
+        point.flags = DataPointFlags::DATA_POINT_FLAGS_NO_RECORDED_VALUE_MASK as u32;
+      },
+    }
+    point
+  }
+
+  fn into_recorded(self) -> OtlpMetric {
+    match self {
+      Self::Recorded(sample) => sample,
+      Self::StaleCounter(_) => unreachable!("stale samples can only enter counter groups"),
+    }
+  }
+}
+
+//
 // OtlpMetric
 //
 
@@ -67,6 +113,7 @@ pub struct OtlpMetric {
 #[derive(Clone, Debug)]
 pub enum OtlpPoint {
   Metric(OtlpMetric),
+  StaleCounter(OtlpMetric),
   ExponentialHistogram {
     name: Chars,
     point: ExponentialHistogramDataPoint,
@@ -212,22 +259,14 @@ fn tags_to_key_value(metric: &ModelMetric) -> Vec<KeyValue> {
 }
 
 fn make_simple_metric(
-  samples: Vec<OtlpMetric>,
+  samples: Vec<MetricSample>,
   name: Bytes,
   mtype: MetricType,
   is_monotonic: bool,
 ) -> Option<Metric> {
   let data_points = samples
     .into_iter()
-    .map(|sample| NumberDataPoint {
-      attributes: tags_to_key_value(&sample.metric),
-      start_time_unix_nano: sample.start_time_unix_nano,
-      time_unix_nano: sample.metric.timestamp * 1_000_000_000,
-      value: Some(number_data_point::Value::AsDouble(
-        sample.metric.value.to_simple(),
-      )),
-      ..Default::default()
-    })
+    .map(MetricSample::into_number_point)
     .collect();
 
   Some(Metric {
@@ -254,9 +293,10 @@ fn make_simple_metric(
   })
 }
 
-fn make_histogram_metric(samples: Vec<OtlpMetric>, name: Bytes) -> Option<Metric> {
+fn make_histogram_metric(samples: Vec<MetricSample>, name: Bytes) -> Option<Metric> {
   let data_points = samples
     .into_iter()
+    .map(MetricSample::into_recorded)
     .map(|sample| {
       let histogram = sample.metric.value.to_histogram();
       let mut bucket_counts: Vec<u64> = histogram
@@ -307,13 +347,14 @@ fn make_histogram_metric(samples: Vec<OtlpMetric>, name: Bytes) -> Option<Metric
 }
 
 fn make_summary_metric(
-  samples: Vec<OtlpMetric>,
+  samples: Vec<MetricSample>,
   name: Bytes,
   sort_quantiles: bool,
 ) -> Option<Metric> {
   let data_points = samples
     .into_iter()
     .map(|sample| {
+      let sample = sample.into_recorded();
       let summary = sample.metric.value.to_summary();
       #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
       let count = summary.sample_count as u64;
@@ -387,8 +428,14 @@ pub fn encode_otlp_points(
   let mut kinds = HashMap::new();
   for point in points {
     let (name, kind, temporality) = match &point {
-      OtlpPoint::Metric(sample) => {
+      OtlpPoint::Metric(sample) | OtlpPoint::StaleCounter(sample) => {
         validate_otlp_metric(sample)?;
+        if matches!(point, OtlpPoint::StaleCounter(_))
+          && (!sample.is_monotonic
+            || sample.metric.get_id().mtype() != Some(MetricType::Counter(CounterType::Absolute)))
+        {
+          anyhow::bail!("OTLP stale counter must be a cumulative monotonic counter");
+        }
         (
           Chars::from_bytes(sample.metric.get_id().name().clone())?,
           Some((
@@ -416,7 +463,8 @@ pub fn encode_otlp_points(
       anyhow::bail!("conflicting OTLP metric types under the same name");
     }
     match point {
-      OtlpPoint::Metric(sample) => samples.push(sample),
+      OtlpPoint::Metric(sample) => samples.push(MetricSample::Recorded(sample)),
+      OtlpPoint::StaleCounter(sample) => samples.push(MetricSample::StaleCounter(sample)),
       OtlpPoint::ExponentialHistogram {
         name,
         point,
@@ -457,21 +505,32 @@ fn encode_samples(
   compression: OtlpCompression,
   sort_quantiles: bool,
 ) -> Bytes {
-  encode_request(make_metrics(samples, sort_quantiles), compression)
+  encode_request(
+    make_metrics(
+      samples.into_iter().map(MetricSample::Recorded),
+      sort_quantiles,
+    ),
+    compression,
+  )
 }
 
-fn make_metrics(samples: Vec<OtlpMetric>, sort_quantiles: bool) -> Vec<Metric> {
-  let metrics_by_name_and_type: HashMap<(Bytes, MetricType, bool), Vec<OtlpMetric>> = samples
-    .into_iter()
-    .fold(HashMap::new(), |mut metrics, sample| {
-      let key = (
-        sample.metric.get_id().name().clone(),
-        sample.metric.get_id().mtype().unwrap_or(MetricType::Gauge),
-        sample.is_monotonic,
-      );
-      metrics.entry(key).or_default().push(sample);
-      metrics
-    });
+fn make_metrics(
+  samples: impl IntoIterator<Item = MetricSample>,
+  sort_quantiles: bool,
+) -> Vec<Metric> {
+  let mut metrics_by_name_and_type: HashMap<_, Vec<_>> = HashMap::new();
+  for sample in samples {
+    let metric = sample.metric();
+    let key = (
+      metric.metric.get_id().name().clone(),
+      metric.metric.get_id().mtype().unwrap_or(MetricType::Gauge),
+      metric.is_monotonic,
+    );
+    metrics_by_name_and_type
+      .entry(key)
+      .or_default()
+      .push(sample);
+  }
 
   metrics_by_name_and_type
     .into_iter()
