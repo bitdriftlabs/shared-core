@@ -70,6 +70,17 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
       file_header: true,
     },
     ProtoConfig {
+      output_dir: "src/protos/profiling",
+      inputs: &[
+        "../api/src/bitdrift/public/unary/issues/v1/crash.proto",
+        "../api/src/bitdrift_public/protobuf/profiling/v1/stack_profile.proto",
+        "../api/src/bitdrift_public/protobuf/profiling/v1/thread_snapshot.proto",
+      ],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
       output_dir: "src/protos/value_matcher",
       inputs: &["../api/src/bitdrift_public/protobuf/value_matcher/v1/value_matcher.proto"],
       includes: PROTO_INCLUDES,
